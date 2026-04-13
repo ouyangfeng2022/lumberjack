@@ -17,7 +17,13 @@ class TokenizerProtocol(Protocol):
 class MarkdownParserProtocol(Protocol):
     """Turn markdown text into an internal AST."""
 
-    def parse(self, text: str, *, document_title: str = "document.md") -> DocumentAST: ...
+    def parse(
+        self,
+        text: str,
+        *,
+        document_title: str = "document.md",
+        document_metadata: dict[str, object] | None = None,
+    ) -> DocumentAST: ...
 
 
 class SplitterProtocol(Protocol):

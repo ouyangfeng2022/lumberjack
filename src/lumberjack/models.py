@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 type HeadingKey = tuple[int, str]
 type HeadingPath = tuple[HeadingKey, ...]
@@ -41,19 +42,25 @@ class DocumentAST:
     title: str
     source: str
     root: SectionNode
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
 class SplitOptions:
     max_tokens: int = 1200
-    min_tokens: int = 200
+    min_tokens: int = 50
     retain_headings: bool = True
     merge_small_chunks: bool = True
 
 
 @dataclass(slots=True)
 class Chunk:
+    chunk_id: str
     text: str
     token_count: int
     headings: HeadingPath = ()
     section_level: int = 0
+    document_title: str = ""
+    document_path: str | None = None
+    start_line: int | None = None
+    end_line: int | None = None

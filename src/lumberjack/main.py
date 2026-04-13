@@ -3,9 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from .core import MarkdownParser, MarkdownSplitter, create_tokenizer
-from .models import Chunk, SplitOptions
+from .api import chunk_to_dict, split_markdown_file
+
+if TYPE_CHECKING:
+    from .models import Chunk
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -24,18 +27,15 @@ def build_parser() -> argparse.ArgumentParser:
         default="simple",
         help="Tokenizer implementation",
     )
+    parser.add_argument(
+        "--parser",
+        choices=("simple", "marko"),
+        default="simple",
+        help="Markdown parser implementation",
+    )
     parser.add_argument("--max-tokens", type=int, default=1200)
-    parser.add_argument("--min-tokens", type=int, default=200)
+    parser.add_argument("--min-tokens", type=int, default=50)
     return parser
-
-
-def chunk_to_dict(chunk: Chunk) -> dict[str, object]:
-    return {
-        "text": chunk.text,
-        "token_count": chunk.token_count,
-        "headings": list(chunk.headings),
-        "section_level": chunk.section_level,
-    }
 
 
 def render_markdown(chunks: list[Chunk]) -> str:
@@ -49,17 +49,13 @@ def render_markdown(chunks: list[Chunk]) -> str:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
-
     input_path = Path(args.input)
-    markdown_text = input_path.read_text(encoding="utf-8")
-
-    tokenizer = create_tokenizer(args.tokenizer)
-    markdown_parser = MarkdownParser()
-    splitter = MarkdownSplitter(tokenizer=tokenizer)
-    document = markdown_parser.parse(markdown_text, document_title=input_path.name)
-    chunks = splitter.split(
-        document,
-        SplitOptions(max_tokens=args.max_tokens, min_tokens=args.min_tokens),
+    chunks = split_markdown_file(
+        input_path,
+        max_tokens=args.max_tokens,
+        min_tokens=args.min_tokens,
+        tokenizer=args.tokenizer,
+        parser=args.parser,
     )
 
     if args.format == "markdown":

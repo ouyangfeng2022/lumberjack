@@ -34,7 +34,7 @@ class MarkdownSplitter(SplitterProtocol):
         chunks = self._merge_fragments(fragments, options)
         if options.merge_small_chunks:
             chunks = self._merge_small_chunks(chunks, options)
-        return chunks
+        return self._finalize_chunks(chunks, document)
 
     def _validate_options(self, options: SplitOptions) -> None:
         if options.max_tokens <= 0:
@@ -81,6 +81,8 @@ class MarkdownSplitter(SplitterProtocol):
         current_tokens = 0
         current_headings: HeadingPath = ()
         current_level = 0
+        current_start_line: int | None = None
+        current_end_line: int | None = None
 
         for fragment in fragments:
             rendered = fragment.render()
@@ -89,16 +91,21 @@ class MarkdownSplitter(SplitterProtocol):
                 if current_parts:
                     chunks.append(
                         Chunk(
+                            chunk_id="",
                             text=join_markdown(current_parts),
                             token_count=current_tokens,
                             headings=current_headings,
                             section_level=current_level,
+                            start_line=current_start_line,
+                            end_line=current_end_line,
                         )
                     )
                     current_parts = []
                     current_tokens = 0
                     current_headings = ()
                     current_level = 0
+                    current_start_line = None
+                    current_end_line = None
 
                 chunks.extend(self._split_fragment(fragment, options.max_tokens))
                 continue
@@ -106,30 +113,46 @@ class MarkdownSplitter(SplitterProtocol):
             if current_parts and current_tokens + token_count > options.max_tokens:
                 chunks.append(
                     Chunk(
+                        chunk_id="",
                         text=join_markdown(current_parts),
                         token_count=current_tokens,
                         headings=current_headings,
                         section_level=current_level,
+                        start_line=current_start_line,
+                        end_line=current_end_line,
                     )
                 )
                 current_parts = []
                 current_tokens = 0
                 current_headings = ()
                 current_level = 0
+                current_start_line = None
+                current_end_line = None
 
             current_parts.append(rendered)
             current_tokens += token_count
             if not current_headings:
                 current_headings = fragment.headings
                 current_level = fragment.section_level
+            current_start_line = self._coalesce_min(
+                current_start_line,
+                self._first_line(blocks=fragment.blocks),
+            )
+            current_end_line = self._coalesce_max(
+                current_end_line,
+                self._last_line(blocks=fragment.blocks),
+            )
 
         if current_parts:
             chunks.append(
                 Chunk(
+                    chunk_id="",
                     text=join_markdown(current_parts),
                     token_count=current_tokens,
                     headings=current_headings,
                     section_level=current_level,
+                    start_line=current_start_line,
+                    end_line=current_end_line,
                 )
             )
 
@@ -141,10 +164,13 @@ class MarkdownSplitter(SplitterProtocol):
             rendered = fragment.render()
             return [
                 Chunk(
+                    chunk_id="",
                     text=rendered,
                     token_count=self.tokenizer.count(rendered),
                     headings=fragment.headings,
                     section_level=fragment.section_level,
+                    start_line=self._first_line(blocks=fragment.blocks),
+                    end_line=self._last_line(blocks=fragment.blocks),
                 )
             ]
 
@@ -156,10 +182,13 @@ class MarkdownSplitter(SplitterProtocol):
             rendered = fragment.render()
             return [
                 Chunk(
+                    chunk_id="",
                     text=rendered,
                     token_count=self.tokenizer.count(rendered),
                     headings=fragment.headings,
                     section_level=fragment.section_level,
+                    start_line=self._first_line(blocks=fragment.blocks),
+                    end_line=self._last_line(blocks=fragment.blocks),
                 )
             ]
 
@@ -174,10 +203,13 @@ class MarkdownSplitter(SplitterProtocol):
             ):
                 chunks.append(
                     Chunk(
+                        chunk_id="",
                         text=join_markdown(current_parts),
                         token_count=current_tokens,
                         headings=fragment.headings,
                         section_level=fragment.section_level,
+                        start_line=self._first_line(blocks=fragment.blocks),
+                        end_line=self._last_line(blocks=fragment.blocks),
                     )
                 )
                 current_parts = [fragment.prefix] if fragment.prefix else []
@@ -192,10 +224,13 @@ class MarkdownSplitter(SplitterProtocol):
                 oversized_parts = [fragment.prefix, block.text] if fragment.prefix else [block.text]
                 chunks.append(
                     Chunk(
+                        chunk_id="",
                         text=join_markdown(oversized_parts),
                         token_count=prefix_tokens + block_tokens,
                         headings=fragment.headings,
                         section_level=fragment.section_level,
+                        start_line=block.start_line,
+                        end_line=block.end_line,
                     )
                 )
                 current_parts = [fragment.prefix] if fragment.prefix else []
@@ -206,10 +241,13 @@ class MarkdownSplitter(SplitterProtocol):
                 piece_tokens = self.tokenizer.count(piece)
                 chunks.append(
                     Chunk(
+                        chunk_id="",
                         text=join_markdown([fragment.prefix, piece]) if fragment.prefix else piece,
                         token_count=prefix_tokens + piece_tokens,
                         headings=fragment.headings,
                         section_level=fragment.section_level,
+                        start_line=block.start_line,
+                        end_line=block.end_line,
                     )
                 )
 
@@ -219,10 +257,13 @@ class MarkdownSplitter(SplitterProtocol):
             if rendered:
                 chunks.append(
                     Chunk(
+                        chunk_id="",
                         text=rendered,
                         token_count=current_tokens,
                         headings=fragment.headings,
                         section_level=fragment.section_level,
+                        start_line=self._first_line(blocks=fragment.blocks),
+                        end_line=self._last_line(blocks=fragment.blocks),
                     )
                 )
 
@@ -293,11 +334,81 @@ class MarkdownSplitter(SplitterProtocol):
                 and previous.token_count + chunk.token_count <= options.max_tokens
             ):
                 merged[-1] = Chunk(
+                    chunk_id=previous.chunk_id,
                     text=join_markdown([previous.text, chunk.text]),
                     token_count=previous.token_count + chunk.token_count,
                     headings=previous.headings or chunk.headings,
                     section_level=previous.section_level or chunk.section_level,
+                    document_title=previous.document_title or chunk.document_title,
+                    document_path=previous.document_path or chunk.document_path,
+                    start_line=self._coalesce_min(previous.start_line, chunk.start_line),
+                    end_line=self._coalesce_max(previous.end_line, chunk.end_line),
                 )
             else:
                 merged.append(chunk)
         return merged
+
+    def _finalize_chunks(self, chunks: list[Chunk], document: DocumentAST) -> list[Chunk]:
+        finalized: list[Chunk] = []
+        document_path = self._document_path(document)
+        for index, chunk in enumerate(chunks, start=1):
+            finalized.append(
+                Chunk(
+                    chunk_id=f"chunk-{index:04d}",
+                    text=chunk.text,
+                    token_count=chunk.token_count,
+                    headings=chunk.headings,
+                    section_level=chunk.section_level,
+                    document_title=document.title,
+                    document_path=document_path,
+                    start_line=chunk.start_line,
+                    end_line=chunk.end_line,
+                )
+            )
+        return finalized
+
+    def _document_path(self, document: DocumentAST) -> str | None:
+        path = document.metadata.get("path")
+        return str(path) if path is not None else None
+
+    def _first_line(
+        self,
+        *,
+        blocks: list[MarkdownBlock] | None = None,
+        fragments: list[_Fragment] | None = None,
+    ) -> int | None:
+        line_numbers: list[int] = []
+        if blocks is not None:
+            line_numbers.extend(
+                block.start_line for block in blocks if block.start_line is not None
+            )
+        if fragments is not None:
+            for fragment in fragments:
+                line_numbers.extend(
+                    block.start_line for block in fragment.blocks if block.start_line is not None
+                )
+        return min(line_numbers) if line_numbers else None
+
+    def _last_line(
+        self,
+        *,
+        blocks: list[MarkdownBlock] | None = None,
+        fragments: list[_Fragment] | None = None,
+    ) -> int | None:
+        line_numbers: list[int] = []
+        if blocks is not None:
+            line_numbers.extend(block.end_line for block in blocks if block.end_line is not None)
+        if fragments is not None:
+            for fragment in fragments:
+                line_numbers.extend(
+                    block.end_line for block in fragment.blocks if block.end_line is not None
+                )
+        return max(line_numbers) if line_numbers else None
+
+    def _coalesce_min(self, left: int | None, right: int | None) -> int | None:
+        values = [value for value in (left, right) if value is not None]
+        return min(values) if values else None
+
+    def _coalesce_max(self, left: int | None, right: int | None) -> int | None:
+        values = [value for value in (left, right) if value is not None]
+        return max(values) if values else None

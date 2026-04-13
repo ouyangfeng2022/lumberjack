@@ -29,7 +29,13 @@ def _classify_block(line: str) -> str:
 class MarkdownParser(MarkdownParserProtocol):
     """A lightweight markdown parser for section-aware splitting."""
 
-    def parse(self, text: str, *, document_title: str = "document.md") -> DocumentAST:
+    def parse(
+        self,
+        text: str,
+        *,
+        document_title: str = "document.md",
+        document_metadata: dict[str, object] | None = None,
+    ) -> DocumentAST:
         root = SectionNode(level=0, title=document_title)
         section_stack: list[SectionNode] = [root]
 
@@ -103,4 +109,20 @@ class MarkdownParser(MarkdownParserProtocol):
             current_lines.append(line)
 
         flush_current_block(end_line=len(total_lines))
-        return DocumentAST(title=document_title, source=text, root=root)
+        return DocumentAST(
+            title=document_title,
+            source=text,
+            root=root,
+            metadata=document_metadata or {},
+        )
+
+
+def create_parser(name: str) -> MarkdownParserProtocol:
+    normalized = name.strip().lower()
+    if normalized in {"simple", "default"}:
+        return MarkdownParser()
+    if normalized == "marko":
+        from .marko_parser import MarkoMarkdownParser
+
+        return MarkoMarkdownParser()
+    raise ValueError(f"Unsupported parser: {name}")
