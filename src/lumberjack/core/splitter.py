@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Iterable
 
 from ..base.interfaces import SplitterProtocol, TokenizerProtocol
 from ..models import Chunk, DocumentAST, HeadingPath, MarkdownBlock, SectionNode, SplitOptions
@@ -24,6 +25,21 @@ class _Fragment:
         return join_markdown(parts)
 
 
+@dataclass(slots=True)
+class _Entry:
+    headings: HeadingPath
+    body: str
+    section_level: int
+    start_line: int | None
+    end_line: int | None
+
+
+@dataclass(slots=True)
+class _ChunkDraft:
+    entries: list[_Entry]
+    token_count: int
+
+
 class MarkdownSplitter(SplitterProtocol):
     def __init__(self, tokenizer: TokenizerProtocol | None = None):
         self.tokenizer = tokenizer or SimpleCharTokenizer()
@@ -34,7 +50,7 @@ class MarkdownSplitter(SplitterProtocol):
         chunks = self._merge_fragments(fragments, options)
         if options.merge_small_chunks:
             chunks = self._merge_small_chunks(chunks, options)
-        return self._finalize_chunks(chunks, document)
+        return self._finalize_chunks(chunks, document, retain_headings=options.retain_headings)
 
     def _validate_options(self, options: SplitOptions) -> None:
         if options.max_tokens <= 0:
@@ -75,122 +91,53 @@ class MarkdownSplitter(SplitterProtocol):
 
         return fragments
 
-    def _merge_fragments(self, fragments: list[_Fragment], options: SplitOptions) -> list[Chunk]:
-        chunks: list[Chunk] = []
-        current_parts: list[str] = []
+    def _merge_fragments(
+        self,
+        fragments: list[_Fragment],
+        options: SplitOptions,
+    ) -> list[_ChunkDraft]:
+        chunks: list[_ChunkDraft] = []
+        current_entries: list[_Entry] = []
         current_tokens = 0
-        current_headings: HeadingPath = ()
-        current_level = 0
-        current_start_line: int | None = None
-        current_end_line: int | None = None
 
         for fragment in fragments:
             rendered = fragment.render()
             token_count = self.tokenizer.count(rendered)
             if token_count > options.max_tokens:
-                if current_parts:
-                    chunks.append(
-                        Chunk(
-                            chunk_id="",
-                            text=join_markdown(current_parts),
-                            token_count=current_tokens,
-                            headings=current_headings,
-                            section_level=current_level,
-                            start_line=current_start_line,
-                            end_line=current_end_line,
-                        )
-                    )
-                    current_parts = []
+                if current_entries:
+                    chunks.append(_ChunkDraft(entries=current_entries.copy(), token_count=current_tokens))
+                    current_entries = []
                     current_tokens = 0
-                    current_headings = ()
-                    current_level = 0
-                    current_start_line = None
-                    current_end_line = None
 
                 chunks.extend(self._split_fragment(fragment, options.max_tokens))
                 continue
 
-            if current_parts and current_tokens + token_count > options.max_tokens:
-                chunks.append(
-                    Chunk(
-                        chunk_id="",
-                        text=join_markdown(current_parts),
-                        token_count=current_tokens,
-                        headings=current_headings,
-                        section_level=current_level,
-                        start_line=current_start_line,
-                        end_line=current_end_line,
-                    )
-                )
-                current_parts = []
+            if current_entries and current_tokens + token_count > options.max_tokens:
+                chunks.append(_ChunkDraft(entries=current_entries.copy(), token_count=current_tokens))
+                current_entries = []
                 current_tokens = 0
-                current_headings = ()
-                current_level = 0
-                current_start_line = None
-                current_end_line = None
 
-            current_parts.append(rendered)
+            current_entries.append(self._entry_from_fragment(fragment))
             current_tokens += token_count
-            if not current_headings:
-                current_headings = fragment.headings
-                current_level = fragment.section_level
-            current_start_line = self._coalesce_min(
-                current_start_line,
-                self._first_line(blocks=fragment.blocks),
-            )
-            current_end_line = self._coalesce_max(
-                current_end_line,
-                self._last_line(blocks=fragment.blocks),
-            )
 
-        if current_parts:
-            chunks.append(
-                Chunk(
-                    chunk_id="",
-                    text=join_markdown(current_parts),
-                    token_count=current_tokens,
-                    headings=current_headings,
-                    section_level=current_level,
-                    start_line=current_start_line,
-                    end_line=current_end_line,
-                )
-            )
+        if current_entries:
+            chunks.append(_ChunkDraft(entries=current_entries.copy(), token_count=current_tokens))
 
         return chunks
 
-    def _split_fragment(self, fragment: _Fragment, max_tokens: int) -> list[Chunk]:
+    def _split_fragment(self, fragment: _Fragment, max_tokens: int) -> list[_ChunkDraft]:
         prefix_tokens = self.tokenizer.count(fragment.prefix) if fragment.prefix else 0
         if prefix_tokens >= max_tokens:
-            rendered = fragment.render()
-            return [
-                Chunk(
-                    chunk_id="",
-                    text=rendered,
-                    token_count=self.tokenizer.count(rendered),
-                    headings=fragment.headings,
-                    section_level=fragment.section_level,
-                    start_line=self._first_line(blocks=fragment.blocks),
-                    end_line=self._last_line(blocks=fragment.blocks),
-                )
-            ]
+            return [self._draft_from_entry(self._entry_from_fragment(fragment), fragment.render())]
 
-        chunks: list[Chunk] = []
-        current_parts = [fragment.prefix] if fragment.prefix else []
+        chunks: list[_ChunkDraft] = []
+        current_parts: list[str] = []
         current_tokens = prefix_tokens
+        current_start_line: int | None = None
+        current_end_line: int | None = None
 
         if not fragment.blocks:
-            rendered = fragment.render()
-            return [
-                Chunk(
-                    chunk_id="",
-                    text=rendered,
-                    token_count=self.tokenizer.count(rendered),
-                    headings=fragment.headings,
-                    section_level=fragment.section_level,
-                    start_line=self._first_line(blocks=fragment.blocks),
-                    end_line=self._last_line(blocks=fragment.blocks),
-                )
-            ]
+            return [self._draft_from_entry(self._entry_from_fragment(fragment), fragment.render())]
 
         for block in fragment.blocks:
             block_tokens = self.tokenizer.count(block.text)
@@ -202,68 +149,84 @@ class MarkdownSplitter(SplitterProtocol):
                 and current_tokens + block_tokens > max_tokens
             ):
                 chunks.append(
-                    Chunk(
-                        chunk_id="",
-                        text=join_markdown(current_parts),
+                    _ChunkDraft(
+                        entries=[
+                            _Entry(
+                                headings=fragment.headings,
+                                body=join_markdown(current_parts),
+                                section_level=fragment.section_level,
+                                start_line=current_start_line,
+                                end_line=current_end_line,
+                            )
+                        ],
                         token_count=current_tokens,
-                        headings=fragment.headings,
-                        section_level=fragment.section_level,
-                        start_line=self._first_line(blocks=fragment.blocks),
-                        end_line=self._last_line(blocks=fragment.blocks),
                     )
                 )
-                current_parts = [fragment.prefix] if fragment.prefix else []
+                current_parts = []
                 current_tokens = prefix_tokens
+                current_start_line = None
+                current_end_line = None
 
             if prefix_tokens + block_tokens <= max_tokens:
                 current_parts.append(block.text)
                 current_tokens += block_tokens
+                current_start_line = self._coalesce_min(current_start_line, block.start_line)
+                current_end_line = self._coalesce_max(current_end_line, block.end_line)
                 continue
 
             if block.kind == "code_fence":
-                oversized_parts = [fragment.prefix, block.text] if fragment.prefix else [block.text]
                 chunks.append(
-                    Chunk(
-                        chunk_id="",
-                        text=join_markdown(oversized_parts),
+                    _ChunkDraft(
+                        entries=[
+                            _Entry(
+                                headings=fragment.headings,
+                                body=block.text,
+                                section_level=fragment.section_level,
+                                start_line=block.start_line,
+                                end_line=block.end_line,
+                            )
+                        ],
                         token_count=prefix_tokens + block_tokens,
-                        headings=fragment.headings,
-                        section_level=fragment.section_level,
-                        start_line=block.start_line,
-                        end_line=block.end_line,
                     )
                 )
-                current_parts = [fragment.prefix] if fragment.prefix else []
+                current_parts = []
                 current_tokens = prefix_tokens
+                current_start_line = None
+                current_end_line = None
                 continue
 
             for piece in self._split_text(block.text, max_tokens=budget):
                 piece_tokens = self.tokenizer.count(piece)
                 chunks.append(
-                    Chunk(
-                        chunk_id="",
-                        text=join_markdown([fragment.prefix, piece]) if fragment.prefix else piece,
+                    _ChunkDraft(
+                        entries=[
+                            _Entry(
+                                headings=fragment.headings,
+                                body=piece,
+                                section_level=fragment.section_level,
+                                start_line=block.start_line,
+                                end_line=block.end_line,
+                            )
+                        ],
                         token_count=prefix_tokens + piece_tokens,
-                        headings=fragment.headings,
-                        section_level=fragment.section_level,
-                        start_line=block.start_line,
-                        end_line=block.end_line,
                     )
                 )
 
-        minimum_parts = 1 if fragment.prefix else 0
-        if current_parts and len(current_parts) > minimum_parts:
+        if current_parts:
             rendered = join_markdown(current_parts)
             if rendered:
                 chunks.append(
-                    Chunk(
-                        chunk_id="",
-                        text=rendered,
+                    _ChunkDraft(
+                        entries=[
+                            _Entry(
+                                headings=fragment.headings,
+                                body=rendered,
+                                section_level=fragment.section_level,
+                                start_line=current_start_line,
+                                end_line=current_end_line,
+                            )
+                        ],
                         token_count=current_tokens,
-                        headings=fragment.headings,
-                        section_level=fragment.section_level,
-                        start_line=self._first_line(blocks=fragment.blocks),
-                        end_line=self._last_line(blocks=fragment.blocks),
                     )
                 )
 
@@ -322,50 +285,150 @@ class MarkdownSplitter(SplitterProtocol):
             parts.append(current)
         return [part.strip() for part in parts if part.strip()]
 
-    def _merge_small_chunks(self, chunks: list[Chunk], options: SplitOptions) -> list[Chunk]:
+    def _merge_small_chunks(
+        self,
+        chunks: list[_ChunkDraft],
+        options: SplitOptions,
+    ) -> list[_ChunkDraft]:
         if not chunks:
             return chunks
 
-        merged: list[Chunk] = [chunks[0]]
+        merged: list[_ChunkDraft] = [chunks[0]]
         for chunk in chunks[1:]:
             previous = merged[-1]
             if (
                 chunk.token_count < options.min_tokens
                 and previous.token_count + chunk.token_count <= options.max_tokens
             ):
-                merged[-1] = Chunk(
-                    chunk_id=previous.chunk_id,
-                    text=join_markdown([previous.text, chunk.text]),
+                merged[-1] = _ChunkDraft(
+                    entries=[*previous.entries, *chunk.entries],
                     token_count=previous.token_count + chunk.token_count,
-                    headings=previous.headings or chunk.headings,
-                    section_level=previous.section_level or chunk.section_level,
-                    document_title=previous.document_title or chunk.document_title,
-                    document_path=previous.document_path or chunk.document_path,
-                    start_line=self._coalesce_min(previous.start_line, chunk.start_line),
-                    end_line=self._coalesce_max(previous.end_line, chunk.end_line),
                 )
             else:
                 merged.append(chunk)
         return merged
 
-    def _finalize_chunks(self, chunks: list[Chunk], document: DocumentAST) -> list[Chunk]:
+    def _finalize_chunks(
+        self,
+        chunks: list[_ChunkDraft],
+        document: DocumentAST,
+        *,
+        retain_headings: bool,
+    ) -> list[Chunk]:
         finalized: list[Chunk] = []
         document_path = self._document_path(document)
         for index, chunk in enumerate(chunks, start=1):
+            headings = self._common_heading_path(entry.headings for entry in chunk.entries)
+            text = self._render_chunk_entries(
+                chunk.entries,
+                common_headings=headings,
+                retain_headings=retain_headings,
+            )
             finalized.append(
                 Chunk(
                     chunk_id=f"chunk-{index:04d}",
-                    text=chunk.text,
-                    token_count=chunk.token_count,
-                    headings=chunk.headings,
-                    section_level=chunk.section_level,
+                    text=text,
+                    token_count=self.tokenizer.count(text),
+                    headings=headings,
+                    section_level=headings[-1][0] if headings else 0,
                     document_title=document.title,
                     document_path=document_path,
-                    start_line=chunk.start_line,
-                    end_line=chunk.end_line,
+                    start_line=self._coalesce_min(
+                        None,
+                        min(
+                            (entry.start_line for entry in chunk.entries if entry.start_line is not None),
+                            default=None,
+                        ),
+                    ),
+                    end_line=self._coalesce_max(
+                        None,
+                        max(
+                            (entry.end_line for entry in chunk.entries if entry.end_line is not None),
+                            default=None,
+                        ),
+                    ),
                 )
             )
         return finalized
+
+    def _entry_from_fragment(self, fragment: _Fragment) -> _Entry:
+        return _Entry(
+            headings=fragment.headings,
+            body=join_markdown([block.text for block in fragment.blocks]),
+            section_level=fragment.section_level,
+            start_line=self._first_line(blocks=fragment.blocks),
+            end_line=self._last_line(blocks=fragment.blocks),
+        )
+
+    def _draft_from_entry(self, entry: _Entry, rendered: str) -> _ChunkDraft:
+        return _ChunkDraft(entries=[entry], token_count=self.tokenizer.count(rendered))
+
+    def _render_chunk_entries(
+        self,
+        entries: list[_Entry],
+        *,
+        common_headings: HeadingPath,
+        retain_headings: bool,
+    ) -> str:
+        if not entries:
+            return ""
+
+        visible_common_headings = self._visible_heading_path(
+            common_headings,
+            retain_headings=retain_headings,
+        )
+        parts: list[str] = []
+        if visible_common_headings:
+            parts.append(render_heading_path(visible_common_headings))
+
+        previous_visible_headings = visible_common_headings
+        for entry in entries:
+            entry_visible_headings = self._visible_heading_path(
+                entry.headings,
+                retain_headings=retain_headings,
+            )
+            shared_headings = self._common_heading_path(
+                (previous_visible_headings, entry_visible_headings)
+            )
+            if len(shared_headings) < len(visible_common_headings):
+                shared_headings = visible_common_headings
+            relative_headings = entry_visible_headings[len(shared_headings) :]
+
+            entry_parts: list[str] = []
+            if relative_headings:
+                entry_parts.append(render_heading_path(relative_headings))
+            if entry.body:
+                entry_parts.append(entry.body)
+            rendered = join_markdown(entry_parts)
+            if rendered:
+                parts.append(rendered)
+            previous_visible_headings = entry_visible_headings
+
+        return join_markdown(parts)
+
+    def _visible_heading_path(
+        self,
+        headings: HeadingPath,
+        *,
+        retain_headings: bool,
+    ) -> HeadingPath:
+        if retain_headings:
+            return headings
+        return headings[1:] if len(headings) > 1 else ()
+
+    def _common_heading_path(self, paths: Iterable[HeadingPath]) -> HeadingPath:
+        iterator = iter(paths)
+        first = tuple(next(iterator, ()))
+        common = first
+        for path in iterator:
+            limit = min(len(common), len(path))
+            index = 0
+            while index < limit and common[index] == path[index]:
+                index += 1
+            common = common[:index]
+            if not common:
+                break
+        return common
 
     def _document_path(self, document: DocumentAST) -> str | None:
         path = document.metadata.get("path")

@@ -6,6 +6,22 @@ from lumberjack import chunk_to_dict, parse_markdown, split_markdown_file, split
 
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md"
 FIXTURE = FIXTURE_PATH.read_text(encoding="utf-8")
+MERGED_SECTION_FIXTURE = """# Development Guide
+
+## Current Scope
+
+Scope body.
+
+## Milestones
+
+### M0
+
+M0 body.
+
+### M1
+
+M1 body.
+"""
 
 
 def test_parse_markdown_uses_document_title() -> None:
@@ -54,3 +70,16 @@ def test_split_markdown_file_populates_chunk_metadata() -> None:
     assert chunk.document_path == str(FIXTURE_PATH.resolve())
     assert chunk.start_line == 1
     assert chunk.end_line == 5
+
+
+def test_chunk_to_dict_uses_common_heading_path_for_merged_sections() -> None:
+    chunk = split_markdown_text(
+        MERGED_SECTION_FIXTURE,
+        document_title="development.md",
+        max_tokens=1000,
+    )[0]
+
+    payload = chunk_to_dict(chunk)
+
+    assert payload["headings"] == [[1, "Development Guide"]]
+    assert payload["section_level"] == 1

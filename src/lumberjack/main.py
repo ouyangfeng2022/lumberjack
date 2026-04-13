@@ -35,6 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--max-tokens", type=int, default=1200)
     parser.add_argument("--min-tokens", type=int, default=50)
+    parser.add_argument("--retain-headings", action="store_true")
     return parser
 
 
@@ -54,6 +55,7 @@ def main() -> None:
         input_path,
         max_tokens=args.max_tokens,
         min_tokens=args.min_tokens,
+        retain_headings=args.retain_headings,
         tokenizer=args.tokenizer,
         parser=args.parser,
     )
