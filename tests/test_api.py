@@ -51,7 +51,7 @@ def test_chunk_to_dict_serializes_heading_path() -> None:
 
     payload = chunk_to_dict(chunk)
 
-    assert payload["chunk_id"] == "chunk-0004"
+    assert payload["chunk_id"] == "chunk-0005"
     assert payload["text"] == chunk.text
     assert payload["token_count"] == chunk.token_count
     assert payload["headings"] == [[1, "Overview"], [2, "Details"], [3, "Notes"]]
@@ -69,7 +69,7 @@ def test_split_markdown_file_populates_chunk_metadata() -> None:
     assert chunk.document_title == "sample.md"
     assert chunk.document_path == str(FIXTURE_PATH.resolve())
     assert chunk.start_line == 1
-    assert chunk.end_line == 5
+    assert chunk.end_line == 1
 
 
 def test_chunk_to_dict_uses_common_heading_path_for_merged_sections() -> None:

@@ -32,6 +32,45 @@ M1 body.
 Workflow body.
 """
 
+RECURSIVE_SECTION_FIXTURE = """# Alpha
+
+Alpha summary.
+
+# Beta
+
+## Beta One
+
+This subsection stays comfortably under the budget.
+
+## Beta Two
+
+This subsection also stays under the budget by itself.
+"""
+
+MULTI_ROOT_FIXTURE = """# First
+
+First body.
+
+# Second
+
+Second body.
+"""
+
+GREEDY_SIBLING_FIXTURE = """# Parent
+
+## One
+
+One body.
+
+## Two
+
+Two body.
+
+## Three
+
+Three body is a little longer.
+"""
+
 
 def test_splitter_preserves_heading_context() -> None:
     """Test that splitter preserves heading hierarchy in chunks."""
@@ -96,3 +135,53 @@ def test_splitter_omits_headings_from_text_when_disabled() -> None:
     assert without_headings[0].headings == ((1, "Development Guide"),)
     assert without_headings[0].token_count == len(without_headings[0].text)
     assert without_headings[0].token_count < with_headings[0].token_count
+
+
+def test_splitter_recursively_descends_heading_levels_when_section_is_oversized() -> None:
+    document = MarkdownParser().parse(RECURSIVE_SECTION_FIXTURE, document_title="recursive.md")
+    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
+
+    chunks = splitter.split(
+        document,
+        SplitOptions(max_tokens=90, min_tokens=80, retain_headings=True),
+    )
+
+    assert len(chunks) == 3
+    assert chunks[0].text == "# Alpha\n\nAlpha summary."
+    assert (
+        chunks[1].text
+        == "# Beta\n\n## Beta One\n\nThis subsection stays comfortably under the budget."
+    )
+    assert (
+        chunks[2].text
+        == "# Beta\n\n## Beta Two\n\nThis subsection also stays under the budget by itself."
+    )
+    assert all(chunk.token_count <= 90 for chunk in chunks)
+
+
+def test_splitter_checks_whole_document_before_splitting_by_top_level_headings() -> None:
+    document = MarkdownParser().parse(MULTI_ROOT_FIXTURE, document_title="multi-root.md")
+    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
+
+    chunks = splitter.split(
+        document,
+        SplitOptions(max_tokens=200, min_tokens=20, retain_headings=True),
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0].text == "# First\n\nFirst body.\n\n# Second\n\nSecond body."
+
+
+def test_splitter_greedily_merges_same_level_siblings_before_descending() -> None:
+    document = MarkdownParser().parse(GREEDY_SIBLING_FIXTURE, document_title="siblings.md")
+    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
+
+    chunks = splitter.split(
+        document,
+        SplitOptions(max_tokens=60, min_tokens=20, retain_headings=True),
+    )
+
+    assert len(chunks) == 2
+    assert chunks[0].text == "# Parent\n\n## One\n\nOne body.\n\n## Two\n\nTwo body."
+    assert chunks[1].text == "# Parent\n\n## Three\n\nThree body is a little longer."
+    assert all(chunk.token_count <= 60 for chunk in chunks)
