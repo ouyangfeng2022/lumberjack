@@ -13,7 +13,6 @@ class MarkdownBlock:
     text: str
     start_line: int | None = None
     end_line: int | None = None
-    token_count: int = 0
 
 
 @dataclass(slots=True)
