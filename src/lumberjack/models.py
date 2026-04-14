@@ -8,11 +8,22 @@ type HeadingPath = tuple[HeadingKey, ...]
 
 
 @dataclass(slots=True)
+class MarkdownInline:
+    kind: str
+    text: str = ""
+    children: list[MarkdownInline] = field(default_factory=list)
+    attrs: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class MarkdownBlock:
     kind: str
     text: str
     start_line: int | None = None
     end_line: int | None = None
+    children: list[MarkdownBlock] = field(default_factory=list)
+    inlines: list[MarkdownInline] = field(default_factory=list)
+    attrs: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -24,6 +35,7 @@ class SectionNode:
     children: list[SectionNode] = field(default_factory=list)
     index: int = 0
     start_line: int | None = None
+    title_inlines: list[MarkdownInline] = field(default_factory=list)
 
     @property
     def heading_key(self) -> HeadingKey:
@@ -42,6 +54,7 @@ class DocumentAST:
     source: str
     root: SectionNode
     metadata: dict[str, Any] = field(default_factory=dict)
+    reference_definitions: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

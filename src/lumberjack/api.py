@@ -14,11 +14,12 @@ def parse_markdown(
     text: str,
     *,
     document_title: str = "document.md",
-    parser: str | MarkdownParserProtocol = "simple",
+    parser: str | MarkdownParserProtocol = "default",
     document_metadata: dict[str, object] | None = None,
 ) -> DocumentAST:
     """Parse markdown text into the internal AST."""
-    return _resolve_parser(parser).parse(
+    parser_impl = _resolve_parser(parser)
+    return parser_impl.parse(
         text,
         document_title=document_title,
         document_metadata=document_metadata,
@@ -34,7 +35,7 @@ def split_markdown_text(
     retain_headings: bool = True,
     merge_small_chunks: bool = True,
     tokenizer: str | TokenizerProtocol = "simple",
-    parser: str | MarkdownParserProtocol = "simple",
+    parser: str | MarkdownParserProtocol = "default",
     document_metadata: dict[str, object] | None = None,
 ) -> list[Chunk]:
     """Split markdown text into semantic chunks."""

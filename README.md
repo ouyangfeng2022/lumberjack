@@ -1,93 +1,152 @@
 # lumberjack
 
-`lumberjack` 是一个面向长文档检索与 RAG 预处理场景的文档切分工具。当前版本聚焦 Markdown，并以“先解析 AST，再基于结构切分”为核心设计原则。
+`lumberjack` is an AST-driven Markdown splitter for long-document retrieval and RAG preprocessing.
+It parses Markdown into a section-aware document tree first, then splits by structure instead of by
+plain character windows.
 
-当前仓库已经从 `demo.py` 里的实验代码整理为一个可持续开发的基础版本：
+The current implementation targets [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/).
+The parser follows CommonMark parsing rules via a normalized CommonMark AST pipeline, so links,
+images, emphasis, code, block quotes, lists, thematic breaks, HTML blocks, reference links, and
+headings are all preserved in the internal model.
 
-- 不再依赖 `langchain_text_splitters`
-- 使用项目内自研的 Markdown block/section AST
-- 以标题层级为主干，保留正文、代码块等 block 结构
-- 提供可扩展的 tokenizer、parser、splitter 接口
+## Install
 
-## 当前目标
+For development:
 
-v0.1 只支持 Markdown，先把下面这条链路打稳：
+```bash
+uv sync --group test --extra tokenizers
+```
 
-1. 读取 Markdown 文本
-2. 解析为文档树
-3. 基于 AST 生成带层级上下文的 chunk
-4. 按 token 上限合并或拆分 chunk
+## CLI
 
-## 项目结构
+```bash
+lumberjack path/to/file.md --max-tokens 1200 --min-tokens 200 --format json
+```
+
+## Project Goals
+
+`lumberjack` is intentionally focused on Markdown only.
+
+The core pipeline is:
 
 ```text
-lumberjack/
-├─ demo.py
-├─ docs/
-│  ├─ architecture.md
-│  └─ development.md
-├─ src/lumberjack/
-│  ├─ base/
-│  │  ├─ __init__.py
-│  │  └─ interfaces.py
-│  ├─ core/
-│  │  ├─ __init__.py
-│  │  ├─ parser.py
-│  │  ├─ splitter.py
-│  │  ├─ tokenizers.py
-│  │  └─ visitor.py
-│  ├─ __init__.py
-│  ├─ main.py
-│  ├─ models.py
-│  └─ utils.py
-└─ tests/
-   ├─ fixtures/markdown/
-   │  └─ sample.md
-   ├─ __init__.py
-   ├─ test_parser.py
-   └─ test_splitter.py
+Markdown text -> Markdown parser -> DocumentAST -> Markdown splitter -> Chunk[]
 ```
 
-## 快速开始
+Key design constraints:
 
-安装为本地开发包后可以直接使用 CLI：
+- Markdown only. No PDF, HTML, or DOCX ingestion is planned in the core package.
+- `demo.py` is reference material, not production code.
+- Code fences are never split across chunks.
+- Business logic stays in `src/lumberjack/core/`; `main.py` is CLI orchestration only.
+
+## Parser
+
+The parser is now a single built-in CommonMark parser.
+It builds lumberjack's internal AST from a CommonMark parse tree and preserves richer syntax
+metadata for downstream tooling.
+
+### CommonMark coverage
+
+Block-level structures currently normalized into the internal AST:
+
+- ATX headings
+- Paragraphs
+- Block quotes
+- Ordered and unordered lists
+- Fenced code blocks
+- Indented code blocks
+- HTML blocks
+- Thematic breaks
+- Link reference definitions
+
+Inline structures currently captured inside headings and paragraphs:
+
+- Text
+- Links
+- Images
+- Autolinks
+- Code spans
+- Emphasis
+- Strong emphasis
+- Inline HTML
+- Soft and hard line breaks
+
+### Internal AST shape
+
+The parser produces a `DocumentAST` with:
+
+- A heading tree (`SectionNode`)
+- Section-local blocks (`MarkdownBlock`)
+- Inline syntax nodes (`MarkdownInline`) for heading content and paragraph content
+- Reference link definitions in `DocumentAST.reference_definitions`
+
+This richer model lets the splitter keep working with rendered Markdown text while exposing more
+semantic detail for future metadata or downstream transformations.
+
+## Splitting Strategy
+
+Splitting still follows the same three-tier fallback:
+
+1. Split by heading sections.
+2. If a section is too large, split by block boundaries.
+3. If a block is still too large, degrade to paragraph / line / sentence / word / hard split.
+
+Important behavior:
+
+- Heading context is preserved in chunks.
+- Shared parent headings are deduplicated when sibling sections are merged.
+- Oversized code fences stay intact even if they exceed the token budget.
+
+## Usage From Python
+
+```python
+from lumberjack import parse_markdown, split_markdown_text
+
+document = parse_markdown(markdown_text, document_title="guide.md")
+chunks = split_markdown_text(markdown_text, document_title="guide.md", max_tokens=1200)
+```
+
+## Repository Layout
+
+```text
+src/lumberjack/base/      Protocol interfaces
+src/lumberjack/core/      Parser, splitter, tokenizer implementations
+src/lumberjack/models.py  Internal data models
+src/lumberjack/main.py    CLI entrypoint
+tests/                    Parser, splitter, and API tests
+docs/                     Architecture and development notes
+```
+
+## Testing
+
+Run the full test suite:
 
 ```bash
-python -m pip install -e .
-lumberjack path/to/file.md --max-tokens 1200 --min-tokens 200
+uv run pytest
 ```
 
-输出 JSON：
+Run individual files:
 
 ```bash
-lumberjack path/to/file.md --format json --output chunks.json
+uv run pytest tests/test_parser.py
+uv run pytest tests/test_splitter.py
 ```
 
-如果你想使用 `tiktoken` 进行更接近模型实际行为的 token 统计：
+## Current Limits
 
-```bash
-python -m pip install -e .[tokenizers]
-lumberjack path/to/file.md --tokenizer tiktoken
-```
+`lumberjack` now follows CommonMark for parsing, but the product goal is still semantic splitting,
+not lossless Markdown round-tripping.
 
-## 实现说明
+That means:
 
-目前的 parser 是一个“面向切分场景”的 Markdown AST，不追求完整覆盖整个 Markdown 规范，而是优先保证：
+- The internal AST is richer than before, but still normalized for splitting use cases.
+- Some rendered block text may be normalized rather than byte-for-byte identical to the source.
+- GFM-only extensions such as tables are not part of the CommonMark target unless added separately.
 
-- 正确识别 `#` 到 `######` 标题层级
-- 正确跳过 fenced code block 内部的伪标题
-- 保留段落、列表、引用、表格、代码块等 block 边界
-- 让 splitter 能按 section 和 block 两层语义切分
+## Roadmap
 
-后续如果需要更强的 Markdown 兼容性，可以在现有接口之上增加 `marko` 适配层，而不用重写 splitter。
-
-## 与 `demo.py` 的关系
-
-`demo.py` 保留为思路参考，不作为正式实现的一部分。正式代码不再依赖 `langchain_text_splitters`，后续开发请以 `src/lumberjack/` 为准。
-
-## 下一步建议
-
-- 增加 `marko` 适配实现，对照自研 AST 做兼容性验证
-- 引入 chunk metadata，例如 section path、chunk index、source line range
-- 为代码块、表格、超长列表设计更细的降级切分策略
-- 加入针对真实语料的 golden tests
+- M1: Markdown AST splitting
+- M2: Chunk metadata such as line ranges and section paths
+- M3: Additional downstream AST consumers and metadata features
+- M4: Production hardening, golden tests, and benchmarks

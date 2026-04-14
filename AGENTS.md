@@ -44,6 +44,11 @@ When adding features:
 2. Implement parser/splitter code
 3. Add assertions in `tests/test_*.py`
 
+After every code change:
+1. Run `ruff check --fix`
+2. Review the output and decide whether it is necessary and safe to run `ruff check --fix --unsafe-fixes`
+3. Run `ruff format` after linting is complete
+
 Regression fixtures should cover: FAQ docs, API docs, tutorials with code blocks, mixed CJK/English.
 
 ## Code Organization
