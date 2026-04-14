@@ -82,24 +82,6 @@ def split_markdown_file(
     )
 
 
-def chunk_to_dict(chunk: Chunk) -> dict[str, object]:
-    return {
-        "chunk_id": chunk.chunk_id,
-        "text": chunk.text,
-        "token_count": chunk.token_count,
-        "headings": [list(heading) for heading in chunk.headings],
-        "section_level": chunk.section_level,
-        "document_title": chunk.document_title,
-        "document_path": chunk.document_path,
-        "start_line": chunk.start_line,
-        "end_line": chunk.end_line,
-    }
-
-
-def chunks_to_dicts(chunks: list[Chunk]) -> list[dict[str, object]]:
-    return [chunk_to_dict(chunk) for chunk in chunks]
-
-
 def _resolve_tokenizer(tokenizer: str | TokenizerProtocol) -> TokenizerProtocol:
     if isinstance(tokenizer, str):
         return create_tokenizer(tokenizer)

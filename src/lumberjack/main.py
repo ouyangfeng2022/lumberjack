@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .api import chunk_to_dict, split_markdown_file
+from .api import split_markdown_file
 
 if TYPE_CHECKING:
     from .models import Chunk
@@ -67,7 +68,7 @@ def main() -> None:
             {
                 "document": input_path.name,
                 "chunk_count": len(chunks),
-                "chunks": [chunk_to_dict(chunk) for chunk in chunks],
+                "chunks": [asdict(chunk) for chunk in chunks],
             },
             ensure_ascii=False,
             indent=2,

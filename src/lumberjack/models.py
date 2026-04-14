@@ -69,7 +69,8 @@ class SplitOptions:
 class Chunk:
     chunk_id: str
     text: str
-    token_count: int
+    body: str = ""
+    token_count: int = 0
     headings: HeadingPath = ()
     section_level: int = 0
     document_title: str = ""

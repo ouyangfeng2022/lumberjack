@@ -6,6 +6,7 @@ from lumberjack.core.parser import MarkdownParser
 from lumberjack.core.splitter import MarkdownSplitter
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 from lumberjack.models import SplitOptions
+from lumberjack.utils import join_markdown, render_heading_path
 
 FIXTURE = (Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md").read_text(
     encoding="utf-8"
@@ -71,6 +72,19 @@ Two body.
 Three body is a little longer.
 """
 
+THIRD_LEVEL_FIXTURE = """# Root
+
+## Scope
+
+### A
+
+Alpha body.
+
+### B
+
+Beta body.
+"""
+
 
 def test_splitter_preserves_heading_context() -> None:
     """Test that splitter preserves heading hierarchy in chunks."""
@@ -132,6 +146,7 @@ def test_splitter_omits_headings_from_text_when_disabled() -> None:
     assert "## Milestones" in without_headings[0].text
     assert "Scope body." in without_headings[0].text
     assert "M0 body." in without_headings[0].text
+    assert without_headings[0].body == without_headings[0].text
     assert without_headings[0].headings == ((1, "Development Guide"),)
     assert without_headings[0].token_count == len(without_headings[0].text)
     assert without_headings[0].token_count < with_headings[0].token_count
@@ -185,3 +200,64 @@ def test_splitter_greedily_merges_same_level_siblings_before_descending() -> Non
     assert chunks[0].text == "# Parent\n\n## One\n\nOne body.\n\n## Two\n\nTwo body."
     assert chunks[1].text == "# Parent\n\n## Three\n\nThree body is a little longer."
     assert all(chunk.token_count <= 60 for chunk in chunks)
+
+
+def test_splitter_exposes_body_without_common_headings_for_single_leaf_chunk() -> None:
+    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
+    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
+
+    chunks = splitter.split(
+        document,
+        SplitOptions(max_tokens=35, min_tokens=0, retain_headings=True),
+    )
+
+    assert chunks[0].headings == ((1, "Root"), (2, "Scope"), (3, "A"))
+    assert chunks[0].body == "Alpha body."
+    assert (
+        join_markdown([render_heading_path(chunks[0].headings), chunks[0].body]) == chunks[0].text
+    )
+
+
+def test_splitter_exposes_body_without_common_headings_for_multi_entry_chunk() -> None:
+    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
+    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
+
+    chunks = splitter.split(
+        document,
+        SplitOptions(max_tokens=60, min_tokens=0, retain_headings=True),
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0].headings == ((1, "Root"), (2, "Scope"))
+    assert chunks[0].body == "### A\n\nAlpha body.\n\n### B\n\nBeta body."
+    assert (
+        join_markdown([render_heading_path(chunks[0].headings), chunks[0].body]) == chunks[0].text
+    )
+
+
+def test_splitter_body_matches_visible_text_when_headings_are_hidden() -> None:
+    document = MarkdownParser().parse(MULTI_ROOT_FIXTURE, document_title="multi-root.md")
+    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
+
+    chunks = splitter.split(
+        document,
+        SplitOptions(max_tokens=200, min_tokens=0, retain_headings=False),
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0].text == "First body.\n\nSecond body."
+    assert chunks[0].body == chunks[0].text
+
+
+def test_splitter_body_drops_only_visible_common_headings_when_headings_are_hidden() -> None:
+    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
+    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
+
+    chunks = splitter.split(
+        document,
+        SplitOptions(max_tokens=60, min_tokens=0, retain_headings=False),
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0].text == "## Scope\n\n### A\n\nAlpha body.\n\n### B\n\nBeta body."
+    assert chunks[0].body == "### A\n\nAlpha body.\n\n### B\n\nBeta body."

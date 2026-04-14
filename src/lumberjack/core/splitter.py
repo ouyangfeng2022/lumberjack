@@ -380,10 +380,17 @@ class MarkdownSplitter(SplitterProtocol):
                 common_headings=headings,
                 retain_headings=retain_headings,
             )
+            body = self._render_chunk_entries(
+                chunk.entries,
+                common_headings=headings,
+                retain_headings=retain_headings,
+                include_common_headings=False,
+            )
             finalized.append(
                 Chunk(
                     chunk_id=f"chunk-{index:04d}",
                     text=text,
+                    body=body,
                     token_count=self.tokenizer.count(text),
                     headings=headings,
                     section_level=headings[-1][0] if headings else 0,
@@ -466,19 +473,21 @@ class MarkdownSplitter(SplitterProtocol):
         *,
         common_headings: HeadingPath,
         retain_headings: bool,
+        include_common_headings: bool = True,
     ) -> str:
         if not entries:
             return ""
 
-        visible_common_headings = self._visible_heading_path(
+        full_common_headings = self._visible_heading_path(
             common_headings,
             retain_headings=retain_headings,
         )
+        visible_common_headings = full_common_headings if include_common_headings else ()
         parts: list[str] = []
         if visible_common_headings:
             parts.append(render_heading_path(visible_common_headings))
 
-        previous_visible_headings = visible_common_headings
+        previous_visible_headings = full_common_headings
         for entry in entries:
             entry_visible_headings = self._visible_heading_path(
                 entry.headings,
