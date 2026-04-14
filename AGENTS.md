@@ -2,65 +2,180 @@
 
 ## Project
 
-AST-driven markdown document splitter for RAG preprocessing. Python 3.13+, src-layout package built with hatchling.
+AST-driven Markdown document splitter for RAG preprocessing. Python 3.13+, `src/` layout, built with `hatchling` + `hatch-vcs`.
+
+Current runtime dependency:
+
+- `marko` for CommonMark AST generation
+
+Optional dependency:
+
+- `tiktoken` for model-based token counting
 
 ## Commands
 
 ```bash
-# Install for development (with test dependencies and tiktoken support)
-uv sync --group test --extra tokenizers
+# Install dev, test, and optional tokenizer dependencies
+uv sync --group dev --group test --extra tokenizers
 
 # Run CLI
-lumberjack path/to/file.md --max-tokens 1200 --min-tokens 200 --format json
+uv run lumberjack path/to/file.md --max-tokens 1200 --min-tokens 50 --format json
+
+# Show CLI help
+uv run lumberjack --help
 
 # Run tests
 uv run pytest
-uv run pytest tests/test_parser.py  # individual test file
+uv run pytest tests/test_parser.py
+uv run pytest tests/test_splitter.py
+
+# Lint and format
+uv run ruff check --fix
+uv run ruff format
 ```
 
 ## Architecture
 
-Core pipeline: `Markdown text → MarkdownParser → DocumentAST → MarkdownSplitter → Chunk[]`
+Core pipeline:
 
-- **Parser**: Custom AST, heading-tree based. Ignores headings inside fenced code blocks.
-- **Splitter**: Three-tier fallback - sections → blocks → paragraph/line/sentence/word
-- **Tokenizer**: Pluggable via `TokenizerProtocol` (simple char count or tiktoken)
+`Markdown text -> marko AST -> DocumentAST -> MarkdownSplitter -> Chunk[]`
 
-Protocol interfaces in `src/lumberjack/base/interfaces.py`. Data models use `@dataclass(slots=True)`.
+Main components:
+
+- **Parser**: `src/lumberjack/core/parser.py`
+  - `MarkdownParser` currently aliases `CommonMarkASTParser`
+  - Uses `marko.ast_renderer.ASTRenderer`
+  - Normalizes CommonMark nodes into the internal AST
+  - Preserves heading hierarchy, block content, inline structure, reference definitions, and line ranges
+- **Splitter**: `src/lumberjack/core/splitter.py`
+  - Splits by whole document first, then section tree, then block/text fallback
+  - Preserves heading context when enabled
+  - Deduplicates shared parent headings in merged chunks
+  - Never splits fenced code blocks, even when oversized
+- **Tokenizer**: `src/lumberjack/core/tokenizers.py`
+  - `SimpleCharTokenizer` is the default
+  - `TiktokenTokenizer` is optional
+- **Public API**: `src/lumberjack/api.py`
+  - `parse_markdown`
+  - `split_markdown_text`
+  - `split_markdown_file`
+
+Protocol interfaces live in `src/lumberjack/base/interfaces.py`. Data models use `@dataclass(slots=True)`.
+
+## Data Model
+
+Defined in `src/lumberjack/models.py`:
+
+- `MarkdownInline`: normalized inline node with `kind`, `text`, `children`, and `attrs`
+- `MarkdownBlock`: block node with rendered text, line range, inline children, nested blocks, and attrs
+- `SectionNode`: heading-tree node with `path`, `blocks`, `children`, and title inline nodes
+- `DocumentAST`: parsed document with `root`, raw `source`, `metadata`, and `reference_definitions`
+- `SplitOptions`: `max_tokens`, `min_tokens`, `retain_headings`, `merge_small_chunks`
+- `Chunk`: final chunk payload with `text`, `body`, `token_count`, `headings`, document metadata, and line range
+
+## CLI Behavior
+
+Implemented in `src/lumberjack/main.py`.
+
+- Input is a Markdown file path
+- Output formats: `json` or `markdown`
+- Tokenizers: `simple`, `tiktoken`
+- Parser choices exposed by CLI: `simple`, `marko`
+- Current implementation note: both parser names resolve to the same CommonMark parser today
+- `--retain-headings` is opt-in on the CLI
+- JSON output serializes dataclasses with `dataclasses.asdict`
+
+## Current Parsing Coverage
+
+The parser currently normalizes these block-level structures:
+
+- headings
+- paragraphs
+- block quotes
+- lists and list items
+- fenced code blocks
+- indented code blocks
+- HTML blocks
+- thematic breaks
+- link reference definitions
+
+The parser currently captures these inline structures in headings and paragraphs:
+
+- text
+- links
+- images
+- autolinks
+- code spans
+- emphasis / strong emphasis
+- inline HTML
+- soft and hard line breaks
+
+## Splitting Rules
+
+- Whole document is kept as one chunk when it already fits the budget
+- Otherwise the splitter descends through heading sections before falling back to block/text splitting
+- Text fallback order is paragraph break -> line break -> sentence -> word -> hard split
+- `retain_headings=True` includes heading context in `Chunk.text`
+- `Chunk.body` excludes the common heading prefix that is already represented by `Chunk.headings`
+- Small chunks are merged only when they share the same heading path and still fit within `max_tokens`
 
 ## Constraints
 
-- **Only Markdown** - no PDF/HTML/DOCX planned
-- **demo.py is reference only** - not part of the actual implementation
-- **Code fences are never split** - kept intact even when oversized
-- **No langchain dependency** - custom AST, not third-party splitters
+- Markdown only; no PDF/HTML/DOCX ingestion pipeline is planned here
+- `demo.py` is reference material, not production implementation
+- Fenced code blocks are preserved intact even when they exceed `max_tokens`
+- CLI should stay orchestration-only; parsing/splitting logic belongs in `src/lumberjack/core/`
+- There is no LangChain dependency
 
 ## Testing
 
-Tests use `pytest`. Project root is added to `sys.path` via `tests/conftest.py`.
+Tests use `pytest`. `tests/conftest.py` adds `src/` to `sys.path`.
 
-When adding features:
-1. Update fixtures in `tests/fixtures/markdown/`
-2. Implement parser/splitter code
-3. Add assertions in `tests/test_*.py`
+Current test areas:
 
-After every code change:
-1. Run `ruff check --fix`
-2. Review the output and decide whether it is necessary and safe to run `ruff check --fix --unsafe-fixes`
-3. Run `ruff format` after linting is complete
+- parser heading-tree construction
+- ignoring heading-like text inside fenced code
+- CommonMark block and inline normalization
+- line-range preservation
+- section-aware chunking
+- whole-document fit checks
+- recursive descent into child sections
+- merged heading deduplication
+- hidden-heading rendering behavior
+- chunk metadata from file and text APIs
 
-Regression fixtures should cover: FAQ docs, API docs, tutorials with code blocks, mixed CJK/English.
+When changing parser or splitter behavior:
+
+1. Update or add fixtures in `tests/fixtures/markdown/`
+2. Update implementation in `src/lumberjack/core/` and public API if needed
+3. Add or update assertions in `tests/test_parser.py`, `tests/test_splitter.py`, and `tests/test_api.py`
+
+After Python code changes:
+
+1. Run `uv run ruff check --fix`
+2. Review whether `--unsafe-fixes` is actually needed before using it
+3. Run `uv run ruff format`
+4. Run the relevant `pytest` scope
 
 ## Code Organization
 
-- `src/lumberjack/base/` - Protocol interfaces
-- `src/lumberjack/core/` - Parser, splitter, tokenizer implementations
-- `src/lumberjack/models.py` - Data models (DocumentAST, SectionNode, MarkdownBlock, Chunk)
-- `src/lumberjack/main.py` - CLI orchestration only (no business logic)
+- `src/lumberjack/base/` - protocol interfaces
+- `src/lumberjack/core/parser.py` - CommonMark AST normalization
+- `src/lumberjack/core/splitter.py` - section/block/text chunking
+- `src/lumberjack/core/tokenizers.py` - tokenizer implementations
+- `src/lumberjack/core/visitor.py` - lightweight AST visitor hooks
+- `src/lumberjack/api.py` - public Python API
+- `src/lumberjack/models.py` - internal data models
+- `src/lumberjack/utils.py` - Markdown rendering helpers
+- `src/lumberjack/main.py` - CLI orchestration only
 
-## Roadmap
+## Documentation Notes
 
-- **M1**: Markdown AST splitting (current focus)
-- **M2**: Chunk metadata (line ranges, section paths)
-- **M3**: `marko` adapter as alternative parser
-- **M4**: Production hardening (error handling, golden tests, benchmarks)
+Keep docs aligned with the code, especially when any of these change:
+
+- CLI flags or defaults
+- parser coverage
+- tokenizer names
+- chunk metadata fields
+- test commands or dependency groups
+- parser implementation strategy

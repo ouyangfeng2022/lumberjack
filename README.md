@@ -1,121 +1,221 @@
 # lumberjack
 
-`lumberjack` is an AST-driven Markdown splitter for long-document retrieval and RAG preprocessing.
-It parses Markdown into a section-aware document tree first, then splits by structure instead of by
-plain character windows.
+`lumberjack` is a structure-aware Markdown splitter for long-document retrieval and RAG preprocessing.
+It parses Markdown into an internal AST first, then splits by document structure instead of fixed text windows.
 
-The current implementation targets [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/).
-The parser follows CommonMark parsing rules via a normalized CommonMark AST pipeline, so links,
-images, emphasis, code, block quotes, lists, thematic breaks, HTML blocks, reference links, and
-headings are all preserved in the internal model.
+The current implementation uses [`marko`](https://github.com/frostming/marko) to build a CommonMark-style AST,
+normalizes that tree into lumberjack's own data model, and then produces semantic chunks with heading context,
+line ranges, and document metadata.
+
+## What It Does
+
+Core pipeline:
+
+```text
+Markdown text -> marko AST -> DocumentAST -> MarkdownSplitter -> Chunk[]
+```
+
+Current behavior:
+
+- Builds a heading tree with section-local blocks
+- Preserves block structure for paragraphs, lists, block quotes, code blocks, HTML blocks, and thematic breaks
+- Captures inline nodes for headings and paragraphs
+- Tracks link reference definitions in the document model
+- Preserves line ranges for headings and blocks when source matching is possible
+- Splits by whole document -> section tree -> block/text fallback
+- Keeps fenced code blocks intact even when they exceed the token budget
 
 ## Install
 
-For development:
+Runtime install:
 
 ```bash
-uv sync --group test --extra tokenizers
+uv sync
+```
+
+Development install with tests, linting, and optional `tiktoken` support:
+
+```bash
+uv sync --group dev --group test --extra tokenizers
 ```
 
 ## CLI
 
+Basic usage:
+
 ```bash
-lumberjack path/to/file.md --max-tokens 1200 --min-tokens 200 --format json
+uv run lumberjack path/to/file.md --max-tokens 1200 --min-tokens 50 --format json
 ```
 
-## Project Goals
+Show help:
 
-`lumberjack` is intentionally focused on Markdown only.
-
-The core pipeline is:
-
-```text
-Markdown text -> Markdown parser -> DocumentAST -> Markdown splitter -> Chunk[]
+```bash
+uv run lumberjack --help
 ```
 
-Key design constraints:
+Supported CLI options today:
 
-- Markdown only. No PDF, HTML, or DOCX ingestion is planned in the core package.
-- `demo.py` is reference material, not production code.
-- Code fences are never split across chunks.
-- Business logic stays in `src/lumberjack/core/`; `main.py` is CLI orchestration only.
+- `input`: Markdown file path
+- `--output`: write output to a file instead of stdout
+- `--format {json,markdown}`: output format, default `json`
+- `--tokenizer {simple,tiktoken}`: token counting strategy, default `simple`
+- `--parser {simple,marko}`: parser selector exposed by the CLI
+- `--max-tokens`: maximum chunk budget, default `1200`
+- `--min-tokens`: threshold used by small-chunk merging, default `50`
+- `--retain-headings`: include heading context in rendered chunk text
 
-## Parser
+Parser note:
 
-The parser is now a single built-in CommonMark parser.
-It builds lumberjack's internal AST from a CommonMark parse tree and preserves richer syntax
-metadata for downstream tooling.
+- The CLI still exposes `simple` and `marko`, but both names currently resolve to the same CommonMark parser implementation in `src/lumberjack/core/parser.py`.
 
-### CommonMark coverage
+### JSON Output
 
-Block-level structures currently normalized into the internal AST:
+The JSON CLI output contains:
+
+- `document`
+- `chunk_count`
+- `chunks`
+
+Each chunk is serialized from the `Chunk` dataclass and includes fields such as:
+
+- `chunk_id`
+- `text`
+- `body`
+- `token_count`
+- `headings`
+- `section_level`
+- `document_title`
+- `document_path`
+- `start_line`
+- `end_line`
+
+### Markdown Output
+
+`--format markdown` renders each chunk as Markdown and prefixes it with an HTML comment showing the chunk index and token count.
+
+## Python API
+
+The public API lives in [`src/lumberjack/api.py`](/D:/coding/Python/lumberjack/src/lumberjack/api.py).
+
+```python
+from lumberjack import parse_markdown, split_markdown_file, split_markdown_text
+
+document = parse_markdown(
+    markdown_text,
+    document_title="guide.md",
+    document_metadata={"path": "/abs/path/guide.md"},
+)
+
+chunks = split_markdown_text(
+    markdown_text,
+    document_title="guide.md",
+    max_tokens=1200,
+    min_tokens=50,
+    retain_headings=True,
+    merge_small_chunks=True,
+    tokenizer="simple",
+)
+
+file_chunks = split_markdown_file(
+    "docs/guide.md",
+    max_tokens=1200,
+    min_tokens=50,
+)
+```
+
+Public types exported from [`src/lumberjack/__init__.py`](/D:/coding/Python/lumberjack/src/lumberjack/__init__.py):
+
+- `Chunk`
+- `DocumentAST`
+- `MarkdownBlock`
+- `MarkdownInline`
+- `SectionNode`
+- `SplitOptions`
+- `MarkdownParser`
+- `MarkdownSplitter`
+- `SimpleCharTokenizer`
+- `TiktokenTokenizer`
+
+## Internal Model
+
+Main dataclasses in [`src/lumberjack/models.py`](/D:/coding/Python/lumberjack/src/lumberjack/models.py):
+
+- `MarkdownInline`: normalized inline node with `kind`, `text`, `children`, and `attrs`
+- `MarkdownBlock`: block node with rendered text, nested blocks, inline children, line range, and attrs
+- `SectionNode`: heading-tree node with `path`, `blocks`, `children`, `start_line`, and `title_inlines`
+- `DocumentAST`: root document object with `source`, `metadata`, and `reference_definitions`
+- `Chunk`: finalized split unit with visible text, body-only text, heading path, and source metadata
+
+## Parsing Coverage
+
+The current parser normalizes these block-level structures:
 
 - ATX headings
-- Paragraphs
-- Block quotes
-- Ordered and unordered lists
-- Fenced code blocks
-- Indented code blocks
+- paragraphs
+- block quotes
+- ordered and unordered lists
+- fenced code blocks
+- indented code blocks
 - HTML blocks
-- Thematic breaks
-- Link reference definitions
+- thematic breaks
+- link reference definitions
 
-Inline structures currently captured inside headings and paragraphs:
+The current parser captures these inline structures inside headings and paragraphs:
 
-- Text
-- Links
-- Images
-- Autolinks
-- Code spans
-- Emphasis
-- Strong emphasis
-- Inline HTML
-- Soft and hard line breaks
+- text
+- links
+- images
+- autolinks
+- code spans
+- emphasis
+- strong emphasis
+- inline HTML
+- soft and hard line breaks
 
-### Internal AST shape
+The parser also preserves:
 
-The parser produces a `DocumentAST` with:
-
-- A heading tree (`SectionNode`)
-- Section-local blocks (`MarkdownBlock`)
-- Inline syntax nodes (`MarkdownInline`) for heading content and paragraph content
-- Reference link definitions in `DocumentAST.reference_definitions`
-
-This richer model lets the splitter keep working with rendered Markdown text while exposing more
-semantic detail for future metadata or downstream transformations.
+- heading title inlines
+- reference link definitions in `DocumentAST.reference_definitions`
+- source line ranges for headings and rendered blocks
 
 ## Splitting Strategy
 
-Splitting still follows the same three-tier fallback:
+Splitting is structure-first and budget-aware:
 
-1. Split by heading sections.
-2. If a section is too large, split by block boundaries.
-3. If a block is still too large, degrade to paragraph / line / sentence / word / hard split.
+1. Keep the whole document as one chunk if it already fits.
+2. Otherwise split by heading sections.
+3. If a section is too large, split by block boundaries.
+4. If a block is still too large, fall back to paragraph, line, sentence, word, and finally hard splitting.
 
-Important behavior:
+Important details:
 
-- Heading context is preserved in chunks.
-- Shared parent headings are deduplicated when sibling sections are merged.
-- Oversized code fences stay intact even if they exceed the token budget.
+- Heading context is preserved in `Chunk.text` when `retain_headings=True`
+- Shared parent headings are deduplicated when sibling sections are merged into one chunk
+- `Chunk.body` excludes the common heading prefix already represented by `Chunk.headings`
+- Small-chunk merging only happens for adjacent chunks with the same heading path
+- Fenced code blocks are emitted intact even when they exceed `max_tokens`
 
-## Usage From Python
+## Tokenizers
 
-```python
-from lumberjack import parse_markdown, split_markdown_text
+Available tokenizer implementations in [`src/lumberjack/core/tokenizers.py`](/D:/coding/Python/lumberjack/src/lumberjack/core/tokenizers.py):
 
-document = parse_markdown(markdown_text, document_title="guide.md")
-chunks = split_markdown_text(markdown_text, document_title="guide.md", max_tokens=1200)
-```
+- `SimpleCharTokenizer`: counts characters
+- `TiktokenTokenizer`: counts model tokens via `tiktoken`
+
+If `tiktoken` is not installed and `TiktokenTokenizer` is requested, the library raises a runtime error with installation guidance.
 
 ## Repository Layout
 
 ```text
 src/lumberjack/base/      Protocol interfaces
-src/lumberjack/core/      Parser, splitter, tokenizer implementations
+src/lumberjack/core/      Parser, splitter, tokenizer, and visitor implementations
+src/lumberjack/api.py     Public Python API
 src/lumberjack/models.py  Internal data models
-src/lumberjack/main.py    CLI entrypoint
+src/lumberjack/utils.py   Markdown rendering helpers
+src/lumberjack/main.py    CLI orchestration
 tests/                    Parser, splitter, and API tests
 docs/                     Architecture and development notes
+demo.py                   Reference-only prototype material
 ```
 
 ## Testing
@@ -126,27 +226,39 @@ Run the full test suite:
 uv run pytest
 ```
 
-Run individual files:
+Run individual modules:
 
 ```bash
 uv run pytest tests/test_parser.py
 uv run pytest tests/test_splitter.py
+uv run pytest tests/test_api.py
+```
+
+Lint and format:
+
+```bash
+uv run ruff check --fix
+uv run ruff format
 ```
 
 ## Current Limits
 
-`lumberjack` now follows CommonMark for parsing, but the product goal is still semantic splitting,
-not lossless Markdown round-tripping.
+`lumberjack` is intentionally focused on semantic splitting, not perfect Markdown round-tripping.
 
-That means:
+Current limits and notes:
 
-- The internal AST is richer than before, but still normalized for splitting use cases.
-- Some rendered block text may be normalized rather than byte-for-byte identical to the source.
-- GFM-only extensions such as tables are not part of the CommonMark target unless added separately.
+- Markdown only; no PDF, HTML, or DOCX ingestion pipeline is planned in this package
+- The parser is CommonMark-oriented, not a full GitHub-Flavored Markdown implementation
+- Some rendered block text is normalized rather than preserved byte-for-byte
+- `demo.py` is not part of the production package
+- The CLI parser selector is currently a compatibility surface, not multiple real parser backends
 
-## Roadmap
+## Status
 
-- M1: Markdown AST splitting
-- M2: Chunk metadata such as line ranges and section paths
-- M3: Additional downstream AST consumers and metadata features
-- M4: Production hardening, golden tests, and benchmarks
+The current repository already includes:
+
+- parser tests for heading-tree construction, code-fence heading safety, CommonMark block/inline normalization, and line-range preservation
+- splitter tests for whole-document fits, recursive section descent, heading deduplication, heading-hidden rendering, and chunk body behavior
+- API tests for file/text parity and metadata propagation
+
+That makes the project a solid base for section-aware Markdown chunking, while leaving room for future work on richer metadata and additional Markdown dialect support.
