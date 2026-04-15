@@ -35,6 +35,12 @@ def split_markdown_text(
     overlap_tokens: int = 0,
     retain_headings: bool = True,
     merge_small_chunks: bool = True,
+    split_oversized_blocks: tuple[str, ...] = (
+        "paragraph",
+        "blockquote",
+        "html_block",
+        "link_reference_definition",
+    ),
     tokenizer: str | TokenizerProtocol = "simple",
     parser: str | MarkdownParserProtocol = "default",
     document_metadata: dict[str, object] | None = None,
@@ -54,6 +60,7 @@ def split_markdown_text(
         overlap_tokens=overlap_tokens,
         retain_headings=retain_headings,
         merge_small_chunks=merge_small_chunks,
+        split_oversized_blocks=split_oversized_blocks,
     )
     return splitter.split(document, options)
 
@@ -66,6 +73,12 @@ def split_markdown_file(
     overlap_tokens: int = 0,
     retain_headings: bool = True,
     merge_small_chunks: bool = True,
+    split_oversized_blocks: tuple[str, ...] = (
+        "paragraph",
+        "blockquote",
+        "html_block",
+        "link_reference_definition",
+    ),
     tokenizer: str | TokenizerProtocol = "simple",
     parser: str | MarkdownParserProtocol = "default",
 ) -> list[Chunk]:
@@ -80,6 +93,7 @@ def split_markdown_file(
         overlap_tokens=overlap_tokens,
         retain_headings=retain_headings,
         merge_small_chunks=merge_small_chunks,
+        split_oversized_blocks=split_oversized_blocks,
         tokenizer=tokenizer,
         parser=parser,
         document_metadata={"path": str(input_path.resolve())},

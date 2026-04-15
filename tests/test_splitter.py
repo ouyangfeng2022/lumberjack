@@ -85,6 +85,21 @@ Alpha body.
 Beta body.
 """
 
+LIST_FIXTURE = """- alpha alpha alpha alpha
+- beta beta beta beta
+- gamma gamma gamma gamma
+"""
+
+CODE_FENCE_FIXTURE = """```python
+print("alpha")
+print("beta")
+print("gamma")
+```"""
+
+LONG_URL_FIXTURE = (
+    "See https://example.com/really/long/path/that/should/not/be/split/in/chunks for details."
+)
+
 
 def test_splitter_preserves_heading_context() -> None:
     """Test that splitter preserves heading hierarchy in chunks."""
@@ -303,3 +318,85 @@ def test_splitter_rejects_overlap_budget_that_consumes_the_whole_chunk() -> None
         assert str(exc) == "overlap_tokens must be smaller than max_tokens"
     else:
         raise AssertionError("Expected overlap validation to fail")
+
+
+def test_splitter_keeps_oversized_lists_intact_by_default() -> None:
+    document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
+    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
+
+    chunks = splitter.split(
+        document,
+        SplitOptions(max_tokens=20, min_tokens=0, retain_headings=False),
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0].text == LIST_FIXTURE.strip()
+    assert chunks[0].token_count > 20
+
+
+def test_splitter_can_split_oversized_lists_when_enabled() -> None:
+    document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
+    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
+
+    chunks = splitter.split(
+        document,
+        SplitOptions(
+            max_tokens=20,
+            min_tokens=0,
+            retain_headings=False,
+            merge_small_chunks=False,
+            split_oversized_blocks=("list",),
+        ),
+    )
+
+    assert [chunk.text for chunk in chunks] == [
+        "- alpha alpha alpha",
+        "alpha",
+        "- beta beta beta",
+        "beta",
+        "- gamma gamma gamma",
+        "gamma",
+    ]
+    assert all(chunk.token_count <= 20 for chunk in chunks)
+
+
+def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
+    document = MarkdownParser().parse(CODE_FENCE_FIXTURE, document_title="code.md")
+    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
+
+    chunks = splitter.split(
+        document,
+        SplitOptions(
+            max_tokens=28,
+            min_tokens=0,
+            retain_headings=False,
+            merge_small_chunks=False,
+            split_oversized_blocks=("code_fence",),
+        ),
+    )
+
+    assert [chunk.text for chunk in chunks] == [
+        '```python\nprint("alpha")\n```',
+        '```python\nprint("beta")\n```',
+        '```python\nprint("gamma")\n```',
+    ]
+    assert all(chunk.token_count <= 28 for chunk in chunks)
+
+
+def test_splitter_never_splits_oversized_urls() -> None:
+    document = MarkdownParser().parse(LONG_URL_FIXTURE, document_title="url.md")
+    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
+
+    chunks = splitter.split(
+        document,
+        SplitOptions(
+            max_tokens=30,
+            min_tokens=0,
+            retain_headings=False,
+            merge_small_chunks=False,
+        ),
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0].text == LONG_URL_FIXTURE
+    assert chunks[0].token_count > 30

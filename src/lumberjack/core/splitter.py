@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?\u3002\uFF01\uFF1F])\s+")
+PROTECTED_SPAN_RE = re.compile(r"<https?://[^\s>]+>|https?://[^\s)>\]]+")
 
 
 @dataclass(slots=True)
@@ -21,6 +22,7 @@ class _Fragment:
     prefix: str
     blocks: list[MarkdownBlock]
     section_level: int
+    split_oversized_blocks: tuple[str, ...]
 
     def render(self) -> str:
         parts = [self.prefix] if self.prefix else []
@@ -95,6 +97,7 @@ class MarkdownSplitter(SplitterProtocol):
 
         return self._split_section_body(
             section,
+            split_oversized_blocks=options.split_oversized_blocks,
             max_tokens=options.max_tokens,
             overlap_tokens=options.overlap_tokens,
             retain_headings=options.retain_headings,
@@ -145,6 +148,7 @@ class MarkdownSplitter(SplitterProtocol):
                 chunks.extend(
                     self._split_section_body(
                         section,
+                        split_oversized_blocks=options.split_oversized_blocks,
                         max_tokens=options.max_tokens,
                         overlap_tokens=options.overlap_tokens,
                         retain_headings=options.retain_headings,
@@ -174,6 +178,7 @@ class MarkdownSplitter(SplitterProtocol):
         self,
         section: SectionNode,
         *,
+        split_oversized_blocks: tuple[str, ...],
         max_tokens: int,
         overlap_tokens: int,
         retain_headings: bool,
@@ -184,6 +189,7 @@ class MarkdownSplitter(SplitterProtocol):
             prefix=prefix,
             blocks=section.blocks.copy(),
             section_level=section.level,
+            split_oversized_blocks=tuple(kind.strip().lower() for kind in split_oversized_blocks),
         )
         return self._split_fragment(fragment, max_tokens, overlap_tokens=overlap_tokens)
 
@@ -242,7 +248,13 @@ class MarkdownSplitter(SplitterProtocol):
                 current_end_line = self._coalesce_max(current_end_line, block.end_line)
                 continue
 
-            if block.kind == "code_fence":
+            block_pieces = self._split_oversized_block(
+                block,
+                split_oversized_blocks=fragment.split_oversized_blocks,
+                max_tokens=budget,
+                overlap_tokens=overlap_tokens,
+            )
+            if block_pieces is None:
                 chunks.append(
                     _ChunkDraft(
                         entries=[
@@ -263,11 +275,7 @@ class MarkdownSplitter(SplitterProtocol):
                 current_end_line = None
                 continue
 
-            for piece in self._split_text(
-                block.text,
-                max_tokens=budget,
-                overlap_tokens=overlap_tokens,
-            ):
+            for piece in block_pieces:
                 piece_tokens = self.tokenizer.count(piece)
                 chunks.append(
                     _ChunkDraft(
@@ -304,6 +312,107 @@ class MarkdownSplitter(SplitterProtocol):
 
         return chunks
 
+    def _split_oversized_block(
+        self,
+        block: MarkdownBlock,
+        *,
+        split_oversized_blocks: tuple[str, ...],
+        max_tokens: int,
+        overlap_tokens: int,
+    ) -> list[str] | None:
+        if not self._can_split_block(block, split_oversized_blocks=split_oversized_blocks):
+            return None
+
+        if block.kind in {"code_block", "code_fence"}:
+            return self._split_code_block(
+                block,
+                max_tokens=max_tokens,
+                overlap_tokens=overlap_tokens,
+            )
+
+        if block.kind == "list" and block.children:
+            return self._split_list_block(
+                block,
+                max_tokens=max_tokens,
+                overlap_tokens=overlap_tokens,
+            )
+
+        return self._split_text(
+            block.text,
+            max_tokens=max_tokens,
+            overlap_tokens=overlap_tokens,
+        )
+
+    def _can_split_block(
+        self,
+        block: MarkdownBlock,
+        *,
+        split_oversized_blocks: tuple[str, ...],
+    ) -> bool:
+        return block.kind.lower() in split_oversized_blocks
+
+    def _split_code_block(
+        self,
+        block: MarkdownBlock,
+        *,
+        max_tokens: int,
+        overlap_tokens: int,
+    ) -> list[str]:
+        info = str(block.attrs.get("info") or block.attrs.get("language") or "").strip()
+        literal = str(block.attrs.get("literal") or "")
+        open_fence = f"```{info}".rstrip()
+        close_fence = "```"
+        empty_render = f"{open_fence}\n{close_fence}"
+        wrapper_tokens = self.tokenizer.count(empty_render)
+        if wrapper_tokens >= max_tokens:
+            return [block.text]
+
+        code_budget = max_tokens - wrapper_tokens
+        pieces = self._split_text(
+            literal,
+            max_tokens=code_budget,
+            overlap_tokens=overlap_tokens,
+        )
+        return [f"{open_fence}\n{piece}\n{close_fence}" for piece in pieces]
+
+    def _split_list_block(
+        self,
+        block: MarkdownBlock,
+        *,
+        max_tokens: int,
+        overlap_tokens: int,
+    ) -> list[str]:
+        items = [child.text for child in block.children if child.text]
+        if len(items) <= 1:
+            return self._split_text(
+                block.text,
+                max_tokens=max_tokens,
+                overlap_tokens=overlap_tokens,
+            )
+
+        packed = self._pack_parts(
+            items,
+            max_tokens,
+            separator="\n",
+            overlap_tokens=0,
+        )
+        if all(self.tokenizer.count(part) <= max_tokens for part in packed):
+            return packed
+
+        pieces: list[str] = []
+        for item in items:
+            if self.tokenizer.count(item) <= max_tokens:
+                pieces.append(item)
+                continue
+            pieces.extend(
+                self._split_text(
+                    item,
+                    max_tokens=max_tokens,
+                    overlap_tokens=overlap_tokens,
+                )
+            )
+        return pieces
+
     def _split_text(
         self,
         text: str,
@@ -312,6 +421,9 @@ class MarkdownSplitter(SplitterProtocol):
         overlap_tokens: int,
     ) -> list[str]:
         if self.tokenizer.count(text) <= max_tokens:
+            return [text]
+
+        if self._contains_oversized_protected_span(text, max_tokens=max_tokens):
             return [text]
 
         for separator in ("\n\n", "\n"):
@@ -428,9 +540,22 @@ class MarkdownSplitter(SplitterProtocol):
 
         for start in range(1, len(text)):
             suffix = text[start:]
+            if self._ends_inside_protected_span(text, start):
+                continue
             if self.tokenizer.count(suffix) <= max_tokens:
                 return suffix
         return ""
+
+    def _contains_oversized_protected_span(self, text: str, *, max_tokens: int) -> bool:
+        return any(
+            self.tokenizer.count(match.group(0)) > max_tokens
+            for match in PROTECTED_SPAN_RE.finditer(text)
+        )
+
+    def _ends_inside_protected_span(self, text: str, start: int) -> bool:
+        return any(
+            match.start() < start < match.end() for match in PROTECTED_SPAN_RE.finditer(text)
+        )
 
     def _merge_small_chunks(
         self,

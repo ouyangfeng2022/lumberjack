@@ -64,6 +64,12 @@ class SplitOptions:
     overlap_tokens: int = 0
     retain_headings: bool = True
     merge_small_chunks: bool = True
+    split_oversized_blocks: tuple[str, ...] = (
+        "paragraph",
+        "blockquote",
+        "html_block",
+        "link_reference_definition",
+    )
 
 
 @dataclass(slots=True)

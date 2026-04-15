@@ -46,6 +46,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--retain-headings", action="store_true", help="Retain headings in each chunk"
     )
+    parser.add_argument(
+        "--split-oversized-block",
+        action="append",
+        default=[],
+        choices=(
+            "paragraph",
+            "blockquote",
+            "list",
+            "table",
+            "code_block",
+            "code_fence",
+            "html_block",
+            "link_reference_definition",
+        ),
+        help="Allow splitting oversized blocks of the given kind; repeat the flag to enable multiple kinds",
+    )
     return parser
 
 
@@ -67,6 +83,7 @@ def main() -> None:
         min_tokens=args.min_tokens,
         overlap_tokens=args.overlap_tokens,
         retain_headings=args.retain_headings,
+        split_oversized_blocks=tuple(args.split_oversized_block),
         tokenizer=args.tokenizer,
         parser=args.parser,
     )

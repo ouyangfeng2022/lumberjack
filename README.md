@@ -64,6 +64,7 @@ Supported CLI options today:
 - `--min-tokens`: threshold used by small-chunk merging, default `50`
 - `--overlap-tokens`: optional token overlap used only for text fallback splits, default `0`
 - `--retain-headings`: include heading context in rendered chunk text
+- `--split-oversized-block <kind>`: opt in to splitting oversized `list`, `code_block`, `code_fence`, `table`, and other supported block kinds
 
 Parser note:
 
@@ -115,6 +116,7 @@ chunks = split_markdown_text(
     overlap_tokens=0,
     retain_headings=True,
     merge_small_chunks=True,
+    split_oversized_blocks=("list", "code_fence"),
     tokenizer="simple",
 )
 
@@ -197,7 +199,8 @@ Important details:
 - `Chunk.body` excludes the common heading prefix already represented by `Chunk.headings`
 - Small-chunk merging only happens for adjacent chunks with the same heading path
 - Optional overlap is only applied when a single oversized block must be split by paragraph, line, sentence, word, or hard boundaries
-- Fenced code blocks are emitted intact even when they exceed `max_tokens`
+- Oversized lists and code blocks stay intact by default, but can be made splittable via `split_oversized_blocks`
+- Long URL-like spans are treated as unsplittable and will not be hard-split across chunks
 
 ## Tokenizers
 
