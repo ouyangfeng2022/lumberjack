@@ -64,7 +64,7 @@ def split_markdown_file(
     retain_headings: bool = True,
     merge_small_chunks: bool = True,
     tokenizer: str | TokenizerProtocol = "simple",
-    parser: str | MarkdownParserProtocol = "simple",
+    parser: str | MarkdownParserProtocol = "default",
 ) -> list[Chunk]:
     """Read a markdown file from disk and split it into semantic chunks."""
     input_path = Path(path)

@@ -15,8 +15,9 @@ if TYPE_CHECKING:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="AST-driven markdown splitter")
     parser.add_argument("input", help="Path to a markdown file")
-    parser.add_argument("--output", help="Optional output file path")
+    parser.add_argument("-o", "--output", help="Optional output file path")
     parser.add_argument(
+        "-f",
         "--format",
         choices=("json", "markdown"),
         default="json",
@@ -30,13 +31,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--parser",
-        choices=("simple", "marko"),
-        default="simple",
+        choices=("default", "marko"),
+        default="default",
         help="Markdown parser implementation",
     )
-    parser.add_argument("--max-tokens", type=int, default=1200)
-    parser.add_argument("--min-tokens", type=int, default=50)
-    parser.add_argument("--retain-headings", action="store_true")
+    parser.add_argument("--max-tokens", type=int, default=1200, help="Maximum tokens per chunk")
+    parser.add_argument("--min-tokens", type=int, default=50, help="Minimum tokens per chunk")
+    parser.add_argument("--retain-headings", action="store_true", help="Retain headings in each chunk")
     return parser
 
 

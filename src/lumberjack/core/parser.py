@@ -3,6 +3,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from marko import Markdown
+from marko.ast_renderer import ASTRenderer
+
 from ..base.interfaces import MarkdownParserProtocol
 from ..models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
 
@@ -249,14 +252,6 @@ class CommonMarkASTParser(MarkdownParserProtocol):
         )
 
     def _parse_to_ast(self, text: str) -> dict[str, Any]:
-        try:
-            from marko import Markdown
-            from marko.ast_renderer import ASTRenderer
-        except ImportError as exc:
-            raise RuntimeError(
-                "marko is not installed. Install dependencies with `uv sync --extra parsers`."
-            ) from exc
-
         ast = Markdown(renderer=ASTRenderer).convert(text)
         if not isinstance(ast, dict):
             raise TypeError("marko AST renderer returned an unexpected payload")
