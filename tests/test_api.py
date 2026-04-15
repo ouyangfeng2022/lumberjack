@@ -55,6 +55,27 @@ def test_split_markdown_text_matches_file_api() -> None:
     ]
 
 
+def test_split_markdown_text_matches_file_api_with_overlap() -> None:
+    chunks_from_text = split_markdown_text(
+        FIXTURE,
+        document_title="sample.md",
+        max_tokens=120,
+        min_tokens=0,
+        overlap_tokens=12,
+        merge_small_chunks=False,
+    )
+    chunks_from_file = split_markdown_file(
+        FIXTURE_PATH,
+        max_tokens=120,
+        min_tokens=0,
+        overlap_tokens=12,
+        merge_small_chunks=False,
+    )
+
+    assert [chunk.text for chunk in chunks_from_text] == [chunk.text for chunk in chunks_from_file]
+    assert [chunk.body for chunk in chunks_from_text] == [chunk.body for chunk in chunks_from_file]
+
+
 def test_chunk_to_dict_serializes_heading_path() -> None:
     chunk = split_markdown_text(FIXTURE, document_title="sample.md", max_tokens=180)[-1]
 

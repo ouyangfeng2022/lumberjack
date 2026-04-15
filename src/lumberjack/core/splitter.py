@@ -70,8 +70,12 @@ class MarkdownSplitter(SplitterProtocol):
             raise ValueError("max_tokens must be greater than 0")
         if options.min_tokens < 0:
             raise ValueError("min_tokens must be non-negative")
+        if options.overlap_tokens < 0:
+            raise ValueError("overlap_tokens must be non-negative")
         if options.min_tokens >= options.max_tokens:
             raise ValueError("min_tokens must be smaller than max_tokens")
+        if options.overlap_tokens >= options.max_tokens:
+            raise ValueError("overlap_tokens must be smaller than max_tokens")
 
     def _split_section(
         self,
@@ -92,6 +96,7 @@ class MarkdownSplitter(SplitterProtocol):
         return self._split_section_body(
             section,
             max_tokens=options.max_tokens,
+            overlap_tokens=options.overlap_tokens,
             retain_headings=options.retain_headings,
         )
 
@@ -141,6 +146,7 @@ class MarkdownSplitter(SplitterProtocol):
                     self._split_section_body(
                         section,
                         max_tokens=options.max_tokens,
+                        overlap_tokens=options.overlap_tokens,
                         retain_headings=options.retain_headings,
                     )
                 )
@@ -169,6 +175,7 @@ class MarkdownSplitter(SplitterProtocol):
         section: SectionNode,
         *,
         max_tokens: int,
+        overlap_tokens: int,
         retain_headings: bool,
     ) -> list[_ChunkDraft]:
         prefix = render_heading_path(section.path) if retain_headings and section.level > 0 else ""
@@ -178,9 +185,15 @@ class MarkdownSplitter(SplitterProtocol):
             blocks=section.blocks.copy(),
             section_level=section.level,
         )
-        return self._split_fragment(fragment, max_tokens)
+        return self._split_fragment(fragment, max_tokens, overlap_tokens=overlap_tokens)
 
-    def _split_fragment(self, fragment: _Fragment, max_tokens: int) -> list[_ChunkDraft]:
+    def _split_fragment(
+        self,
+        fragment: _Fragment,
+        max_tokens: int,
+        *,
+        overlap_tokens: int,
+    ) -> list[_ChunkDraft]:
         prefix_tokens = self.tokenizer.count(fragment.prefix) if fragment.prefix else 0
         if prefix_tokens >= max_tokens:
             return [self._draft_from_entry(self._entry_from_fragment(fragment), fragment.render())]
@@ -250,7 +263,11 @@ class MarkdownSplitter(SplitterProtocol):
                 current_end_line = None
                 continue
 
-            for piece in self._split_text(block.text, max_tokens=budget):
+            for piece in self._split_text(
+                block.text,
+                max_tokens=budget,
+                overlap_tokens=overlap_tokens,
+            ):
                 piece_tokens = self.tokenizer.count(piece)
                 chunks.append(
                     _ChunkDraft(
@@ -287,58 +304,133 @@ class MarkdownSplitter(SplitterProtocol):
 
         return chunks
 
-    def _split_text(self, text: str, *, max_tokens: int) -> list[str]:
+    def _split_text(
+        self,
+        text: str,
+        *,
+        max_tokens: int,
+        overlap_tokens: int,
+    ) -> list[str]:
         if self.tokenizer.count(text) <= max_tokens:
             return [text]
 
         for separator in ("\n\n", "\n"):
             parts = [part.strip() for part in text.split(separator) if part.strip()]
             if len(parts) > 1:
-                packed = self._pack_parts(parts, max_tokens, separator=separator)
+                packed = self._pack_parts(
+                    parts,
+                    max_tokens,
+                    separator=separator,
+                    overlap_tokens=overlap_tokens,
+                )
                 if all(self.tokenizer.count(part) <= max_tokens for part in packed):
                     return packed
 
         sentence_parts = [part.strip() for part in SENTENCE_BREAK_RE.split(text) if part.strip()]
         if len(sentence_parts) > 1:
-            packed = self._pack_parts(sentence_parts, max_tokens, separator=" ")
+            packed = self._pack_parts(
+                sentence_parts,
+                max_tokens,
+                separator=" ",
+                overlap_tokens=overlap_tokens,
+            )
             if all(self.tokenizer.count(part) <= max_tokens for part in packed):
                 return packed
 
         word_parts = [part for part in text.split(" ") if part]
         if len(word_parts) > 1:
-            packed = self._pack_parts(word_parts, max_tokens, separator=" ")
+            packed = self._pack_parts(
+                word_parts,
+                max_tokens,
+                separator=" ",
+                overlap_tokens=overlap_tokens,
+            )
             if all(self.tokenizer.count(part) <= max_tokens for part in packed):
                 return packed
 
-        return self._hard_split(text, max_tokens)
+        return self._hard_split(text, max_tokens, overlap_tokens=overlap_tokens)
 
-    def _pack_parts(self, parts: list[str], max_tokens: int, *, separator: str) -> list[str]:
+    def _pack_parts(
+        self,
+        parts: list[str],
+        max_tokens: int,
+        *,
+        separator: str,
+        overlap_tokens: int,
+    ) -> list[str]:
         packed: list[str] = []
-        current = ""
+        current_parts: list[str] = []
         for part in parts:
-            candidate = part if not current else f"{current}{separator}{part}"
-            if current and self.tokenizer.count(candidate) > max_tokens:
-                packed.append(current)
-                current = part
+            candidate_parts = [*current_parts, part]
+            candidate = separator.join(candidate_parts)
+            if current_parts and self.tokenizer.count(candidate) > max_tokens:
+                packed.append(separator.join(current_parts))
+                overlap_parts = self._tail_parts_within_budget(
+                    current_parts,
+                    separator=separator,
+                    max_tokens=overlap_tokens,
+                )
+                current_parts = [*overlap_parts, part]
+                if self.tokenizer.count(separator.join(current_parts)) > max_tokens:
+                    current_parts = [part]
             else:
-                current = candidate
-        if current:
-            packed.append(current)
+                current_parts = candidate_parts
+        if current_parts:
+            packed.append(separator.join(current_parts))
         return packed
 
-    def _hard_split(self, text: str, max_tokens: int) -> list[str]:
+    def _hard_split(
+        self,
+        text: str,
+        max_tokens: int,
+        *,
+        overlap_tokens: int,
+    ) -> list[str]:
         parts: list[str] = []
         current = ""
         for character in text:
             candidate = f"{current}{character}"
             if current and self.tokenizer.count(candidate) > max_tokens:
                 parts.append(current)
-                current = character
+                overlap = self._suffix_within_budget(current, overlap_tokens)
+                current = f"{overlap}{character}" if overlap else character
+                if self.tokenizer.count(current) > max_tokens:
+                    current = character
             else:
                 current = candidate
         if current:
             parts.append(current)
         return [part.strip() for part in parts if part.strip()]
+
+    def _tail_parts_within_budget(
+        self,
+        parts: list[str],
+        *,
+        separator: str,
+        max_tokens: int,
+    ) -> list[str]:
+        if max_tokens <= 0 or not parts:
+            return []
+
+        tail: list[str] = []
+        for part in reversed(parts):
+            candidate = [part, *tail]
+            if self.tokenizer.count(separator.join(candidate)) > max_tokens:
+                break
+            tail = candidate
+        return tail
+
+    def _suffix_within_budget(self, text: str, max_tokens: int) -> str:
+        if max_tokens <= 0 or not text:
+            return ""
+        if self.tokenizer.count(text) <= max_tokens:
+            return text
+
+        for start in range(1, len(text)):
+            suffix = text[start:]
+            if self.tokenizer.count(suffix) <= max_tokens:
+                return suffix
+        return ""
 
     def _merge_small_chunks(
         self,

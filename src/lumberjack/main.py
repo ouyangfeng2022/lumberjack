@@ -37,7 +37,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--max-tokens", type=int, default=1200, help="Maximum tokens per chunk")
     parser.add_argument("--min-tokens", type=int, default=50, help="Minimum tokens per chunk")
-    parser.add_argument("--retain-headings", action="store_true", help="Retain headings in each chunk")
+    parser.add_argument(
+        "--overlap-tokens",
+        type=int,
+        default=0,
+        help="Token overlap for text fallback splits",
+    )
+    parser.add_argument(
+        "--retain-headings", action="store_true", help="Retain headings in each chunk"
+    )
     return parser
 
 
@@ -57,6 +65,7 @@ def main() -> None:
         input_path,
         max_tokens=args.max_tokens,
         min_tokens=args.min_tokens,
+        overlap_tokens=args.overlap_tokens,
         retain_headings=args.retain_headings,
         tokenizer=args.tokenizer,
         parser=args.parser,

@@ -32,6 +32,7 @@ def split_markdown_text(
     document_title: str = "document.md",
     max_tokens: int = 1200,
     min_tokens: int = 50,
+    overlap_tokens: int = 0,
     retain_headings: bool = True,
     merge_small_chunks: bool = True,
     tokenizer: str | TokenizerProtocol = "simple",
@@ -50,6 +51,7 @@ def split_markdown_text(
     options = SplitOptions(
         max_tokens=max_tokens,
         min_tokens=min_tokens,
+        overlap_tokens=overlap_tokens,
         retain_headings=retain_headings,
         merge_small_chunks=merge_small_chunks,
     )
@@ -61,6 +63,7 @@ def split_markdown_file(
     *,
     max_tokens: int = 1200,
     min_tokens: int = 50,
+    overlap_tokens: int = 0,
     retain_headings: bool = True,
     merge_small_chunks: bool = True,
     tokenizer: str | TokenizerProtocol = "simple",
@@ -74,6 +77,7 @@ def split_markdown_file(
         document_title=input_path.name,
         max_tokens=max_tokens,
         min_tokens=min_tokens,
+        overlap_tokens=overlap_tokens,
         retain_headings=retain_headings,
         merge_small_chunks=merge_small_chunks,
         tokenizer=tokenizer,

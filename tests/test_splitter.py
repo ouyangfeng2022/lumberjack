@@ -261,3 +261,45 @@ def test_splitter_body_drops_only_visible_common_headings_when_headings_are_hidd
     assert len(chunks) == 1
     assert chunks[0].text == "## Scope\n\n### A\n\nAlpha body.\n\n### B\n\nBeta body."
     assert chunks[0].body == "### A\n\nAlpha body.\n\n### B\n\nBeta body."
+
+
+def test_splitter_adds_overlap_only_for_text_fallback_splits() -> None:
+    document = MarkdownParser().parse(
+        "alpha beta gamma delta epsilon zeta",
+        document_title="overlap.md",
+    )
+    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
+
+    chunks = splitter.split(
+        document,
+        SplitOptions(
+            max_tokens=16,
+            min_tokens=0,
+            overlap_tokens=5,
+            retain_headings=False,
+            merge_small_chunks=False,
+        ),
+    )
+
+    assert [chunk.body for chunk in chunks] == [
+        "alpha beta gamma",
+        "gamma delta",
+        "delta epsilon",
+        "zeta",
+    ]
+    assert [chunk.text for chunk in chunks] == [chunk.body for chunk in chunks]
+
+
+def test_splitter_rejects_overlap_budget_that_consumes_the_whole_chunk() -> None:
+    document = MarkdownParser().parse("alpha beta", document_title="invalid.md")
+    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
+
+    try:
+        splitter.split(
+            document,
+            SplitOptions(max_tokens=10, min_tokens=0, overlap_tokens=10),
+        )
+    except ValueError as exc:
+        assert str(exc) == "overlap_tokens must be smaller than max_tokens"
+    else:
+        raise AssertionError("Expected overlap validation to fail")

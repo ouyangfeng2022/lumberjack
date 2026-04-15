@@ -61,6 +61,7 @@ class DocumentAST:
 class SplitOptions:
     max_tokens: int = 1200
     min_tokens: int = 50
+    overlap_tokens: int = 0
     retain_headings: bool = True
     merge_small_chunks: bool = True
 

@@ -62,6 +62,7 @@ Supported CLI options today:
 - `--parser {simple,marko}`: parser selector exposed by the CLI
 - `--max-tokens`: maximum chunk budget, default `1200`
 - `--min-tokens`: threshold used by small-chunk merging, default `50`
+- `--overlap-tokens`: optional token overlap used only for text fallback splits, default `0`
 - `--retain-headings`: include heading context in rendered chunk text
 
 Parser note:
@@ -111,6 +112,7 @@ chunks = split_markdown_text(
     document_title="guide.md",
     max_tokens=1200,
     min_tokens=50,
+    overlap_tokens=0,
     retain_headings=True,
     merge_small_chunks=True,
     tokenizer="simple",
@@ -120,6 +122,7 @@ file_chunks = split_markdown_file(
     "docs/guide.md",
     max_tokens=1200,
     min_tokens=50,
+    overlap_tokens=0,
 )
 ```
 
@@ -193,6 +196,7 @@ Important details:
 - Shared parent headings are deduplicated when sibling sections are merged into one chunk
 - `Chunk.body` excludes the common heading prefix already represented by `Chunk.headings`
 - Small-chunk merging only happens for adjacent chunks with the same heading path
+- Optional overlap is only applied when a single oversized block must be split by paragraph, line, sentence, word, or hard boundaries
 - Fenced code blocks are emitted intact even when they exceed `max_tokens`
 
 ## Tokenizers
