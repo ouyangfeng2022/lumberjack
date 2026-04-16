@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lumberjack.core.parser import MarkdownParser
+from markdown_it.token import Token
+from mdit_py_plugins.footnote import footnote_plugin
+from mdit_py_plugins.tasklists import tasklists_plugin
+
+from lumberjack.core.parser import MarkdownItParser, MarkdownParser, create_parser
 
 FIXTURE = (Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md").read_text(
     encoding="utf-8"
@@ -46,6 +50,22 @@ print("fenced")
     print("indented")
 """
 
+MARKDOWN_IT_FIXTURE = """Title
+=====
+
+| A | B |
+| - | - |
+| 1 | 2 |
+
+~~gone~~ and github.com and <https://example.com>
+
+[ref]: /target "Title"
+"""
+
+COMPREHENSIVE_FIXTURE = (
+    Path(__file__).resolve().parent / "fixtures" / "markdown" / "commonmark-spec.md"
+).read_text(encoding="utf-8")
+
 
 def test_parser_builds_heading_tree() -> None:
     """Test that parser builds correct heading tree structure."""
@@ -71,6 +91,11 @@ def test_parser_ignores_headings_inside_code_fence() -> None:
     assert len(details.children) == 1
 
 
+def test_create_parser_routes_default_and_fallback_names() -> None:
+    assert isinstance(create_parser("default"), MarkdownItParser)
+    assert isinstance(create_parser("markdown-it"), MarkdownItParser)
+
+
 def test_parser_captures_commonmark_blocks_and_inlines() -> None:
     document = MarkdownParser().parse(COMMONMARK_FIXTURE, document_title="commonmark.md")
     heading = document.root.children[0]
@@ -87,7 +112,6 @@ def test_parser_captures_commonmark_blocks_and_inlines() -> None:
         "code_fence",
         "code_block",
         "paragraph",
-        "link_reference_definition",
     ]
 
     paragraph = heading.blocks[0]
@@ -134,12 +158,162 @@ def test_parser_captures_commonmark_blocks_and_inlines() -> None:
     indented = heading.blocks[5]
     assert indented.kind == "code_block"
     assert indented.attrs["literal"] == 'print("indented")'
-
-    reference = heading.blocks[-1]
-    assert reference.attrs["label"] == "item-ref"
     assert document.reference_definitions == {
         "item-ref": {"destination": "/target", "title": "Reference Title"}
     }
+
+
+def test_markdown_it_parser_supports_setext_tables_and_extended_inlines() -> None:
+    document = MarkdownParser().parse(MARKDOWN_IT_FIXTURE, document_title="markdown-it.md")
+    heading = document.root.children[0]
+
+    assert heading.title == "Title"
+    assert heading.start_line == 1
+    assert [block.kind for block in heading.blocks] == ["table", "paragraph"]
+
+    table = heading.blocks[0]
+    assert table.start_line == 4
+    assert table.end_line == 6
+    assert table.text == "| A | B |\n| - | - |\n| 1 | 2 |"
+
+    paragraph = heading.blocks[1]
+    assert [inline.kind for inline in paragraph.inlines] == [
+        "strikethrough",
+        "text",
+        "autolink",
+        "text",
+        "autolink",
+    ]
+    assert paragraph.inlines[0].children[0].text == "gone"
+    assert paragraph.inlines[2].attrs["destination"] == "http://github.com"
+    assert paragraph.inlines[2].attrs["syntax"] == "linkify"
+    assert paragraph.inlines[4].attrs["destination"] == "https://example.com"
+    assert paragraph.inlines[4].attrs["syntax"] == "autolink"
+    assert all(block.kind != "link_reference_definition" for block in heading.blocks)
+    assert document.reference_definitions == {"ref": {"destination": "/target", "title": "Title"}}
+
+
+def test_markdown_it_parser_handles_all_block_and_inline_tokens_in_comprehensive_fixture() -> None:
+    parser = MarkdownItParser()
+    env: dict[str, object] = {}
+    tokens = parser._parser.parse(COMPREHENSIVE_FIXTURE, env)
+
+    block_types = {token.type for token in tokens}
+    inline_types = {
+        child.type for token in tokens if token.type == "inline" for child in (token.children or [])
+    }
+
+    assert block_types == {
+        "blockquote_close",
+        "blockquote_open",
+        "bullet_list_close",
+        "bullet_list_open",
+        "code_block",
+        "fence",
+        "heading_close",
+        "heading_open",
+        "hr",
+        "html_block",
+        "inline",
+        "list_item_close",
+        "list_item_open",
+        "ordered_list_close",
+        "ordered_list_open",
+        "paragraph_close",
+        "paragraph_open",
+        "table_close",
+        "table_open",
+        "tbody_close",
+        "tbody_open",
+        "td_close",
+        "td_open",
+        "th_close",
+        "th_open",
+        "thead_close",
+        "thead_open",
+        "tr_close",
+        "tr_open",
+    }
+    assert inline_types == {
+        "code_inline",
+        "em_close",
+        "em_open",
+        "hardbreak",
+        "html_inline",
+        "image",
+        "link_close",
+        "link_open",
+        "s_close",
+        "s_open",
+        "softbreak",
+        "strong_close",
+        "strong_open",
+        "text",
+    }
+
+
+def test_markdown_it_parser_preserves_unknown_block_tokens_as_raw_markdown() -> None:
+    parser = MarkdownItParser()
+    parser._parser.parse = lambda _text, _env: [
+        Token("mystery_block", "", 0, map=[0, 1], content="@@ mystery @@")
+    ]
+
+    document = parser.parse("@@ mystery @@", document_title="mystery.md")
+
+    assert len(document.root.blocks) == 1
+    assert document.root.blocks[0].kind == "mystery_block"
+    assert document.root.blocks[0].text == "@@ mystery @@"
+    assert document.root.blocks[0].attrs["source_token_type"] == "mystery_block"
+
+
+def test_markdown_it_parser_supports_task_list_plugin() -> None:
+    parser = MarkdownItParser(plugins=(tasklists_plugin,))
+    markdown = "- [x] done\n- [ ] todo"
+
+    document = parser.parse(markdown, document_title="tasks.md")
+
+    assert len(document.root.blocks) == 1
+    task_list = document.root.blocks[0]
+    assert task_list.kind == "list"
+    assert task_list.text == markdown
+    assert task_list.children[0].text == "- [x] done"
+    assert task_list.children[1].text == "- [ ] todo"
+    assert task_list.children[0].children[0].inlines[0].kind == "inline_html"
+
+
+def test_markdown_it_parser_supports_footnote_plugin() -> None:
+    parser = MarkdownItParser(plugins=(footnote_plugin,))
+    markdown = "Footnote ref[^1].\n\n[^1]: Footnote body\n    continued"
+
+    document = parser.parse(markdown, document_title="footnotes.md")
+
+    assert [block.kind for block in document.root.blocks] == ["paragraph", "footnote_block"]
+    assert document.root.blocks[0].text == "Footnote ref[^1]."
+    assert [inline.kind for inline in document.root.blocks[0].inlines] == [
+        "text",
+        "footnote_ref",
+        "text",
+    ]
+    assert document.root.blocks[0].inlines[1].text == "[^1]"
+    assert document.root.blocks[1].text == "[^1]: Footnote body\n    continued"
+    assert document.root.blocks[1].children[0].kind == "footnote"
+
+
+def test_parser_distinguishes_tight_and_loose_lists() -> None:
+    tight_md = "- a\n- b\n- c"
+    loose_md = "- a\n\n- b\n\n- c"
+
+    tight_doc = MarkdownParser().parse(tight_md, document_title="tight.md")
+    loose_doc = MarkdownParser().parse(loose_md, document_title="loose.md")
+
+    tight_list = tight_doc.root.blocks[0]
+    loose_list = loose_doc.root.blocks[0]
+
+    assert tight_list.kind == "list"
+    assert tight_list.attrs["tight"] is True
+
+    assert loose_list.kind == "list"
+    assert loose_list.attrs["tight"] is False
 
 
 def test_parser_preserves_line_ranges_for_normalized_block_syntax() -> None:

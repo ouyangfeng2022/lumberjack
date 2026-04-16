@@ -1,9 +1,9 @@
-from .parser import CommonMarkASTParser, MarkdownParser, create_parser
+from .parser import MarkdownItParser, MarkdownParser, create_parser
 from .splitter import MarkdownSplitter
 from .tokenizers import SimpleCharTokenizer, TiktokenTokenizer, create_tokenizer
 
 __all__ = [
-    "CommonMarkASTParser",
+    "MarkdownItParser",
     "MarkdownParser",
     "MarkdownSplitter",
     "SimpleCharTokenizer",

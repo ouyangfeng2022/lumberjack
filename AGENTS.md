@@ -6,7 +6,7 @@ AST-driven Markdown document splitter for RAG preprocessing. Python 3.13+, `src/
 
 Current runtime dependency:
 
-- `marko` for CommonMark AST generation
+- `markdown-it-py` for the default GFM-like parser
 
 Optional dependency:
 
@@ -38,14 +38,13 @@ uv run ruff format
 
 Core pipeline:
 
-`Markdown text -> marko AST -> DocumentAST -> MarkdownSplitter -> Chunk[]`
+`Markdown text -> parser tokens/AST -> DocumentAST -> MarkdownSplitter -> Chunk[]`
 
 Main components:
 
 - **Parser**: `src/lumberjack/core/parser.py`
-  - `MarkdownParser` currently aliases `CommonMarkASTParser`
-  - Uses `marko.ast_renderer.ASTRenderer`
-  - Normalizes CommonMark nodes into the internal AST
+  - `MarkdownParser` currently aliases `MarkdownItParser`
+  - Uses `MarkdownIt("gfm-like")` token streams for the default parser
   - Preserves heading hierarchy, block content, inline structure, reference definitions, and line ranges
 - **Splitter**: `src/lumberjack/core/splitter.py`
   - Splits by whole document first, then section tree, then block/text fallback
@@ -80,8 +79,7 @@ Implemented in `src/lumberjack/main.py`.
 - Input is a Markdown file path
 - Output formats: `json` or `markdown`
 - Tokenizers: `simple`, `tiktoken`
-- Parser choices exposed by CLI: `simple`, `marko`
-- Current implementation note: both parser names resolve to the same CommonMark parser today
+- Parser choices exposed by CLI: `default`, `markdown-it`
 - `--retain-headings` is opt-in on the CLI
 - JSON output serializes dataclasses with `dataclasses.asdict`
 
@@ -93,11 +91,12 @@ The parser currently normalizes these block-level structures:
 - paragraphs
 - block quotes
 - lists and list items
+- tables
 - fenced code blocks
 - indented code blocks
 - HTML blocks
 - thematic breaks
-- link reference definitions
+- link reference definitions metadata
 
 The parser currently captures these inline structures in headings and paragraphs:
 
@@ -107,6 +106,7 @@ The parser currently captures these inline structures in headings and paragraphs
 - autolinks
 - code spans
 - emphasis / strong emphasis
+- strikethrough
 - inline HTML
 - soft and hard line breaks
 
@@ -135,7 +135,9 @@ Current test areas:
 
 - parser heading-tree construction
 - ignoring heading-like text inside fenced code
+- default parser routing
 - CommonMark block and inline normalization
+- markdown-it parser coverage for Setext headings, tables, strikethrough, and linkify autolinks
 - line-range preservation
 - section-aware chunking
 - whole-document fit checks
@@ -160,7 +162,7 @@ After Python code changes:
 ## Code Organization
 
 - `src/lumberjack/base/` - protocol interfaces
-- `src/lumberjack/core/parser.py` - CommonMark AST normalization
+- `src/lumberjack/core/parser.py` - parser factory and default parser alias
 - `src/lumberjack/core/splitter.py` - section/block/text chunking
 - `src/lumberjack/core/tokenizers.py` - tokenizer implementations
 - `src/lumberjack/core/visitor.py` - lightweight AST visitor hooks

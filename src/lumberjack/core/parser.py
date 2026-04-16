@@ -1,438 +1,26 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from marko import Markdown
-from marko.ast_renderer import ASTRenderer
+from markdown_it import MarkdownIt
 
-from ..base.interfaces import MarkdownParserProtocol
+from ..utils import join_markdown
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+
+    from markdown_it.token import Token
+
+    from ..base.interfaces import MarkdownParserProtocol
+    from ..models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
+
 from ..models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
 
-ATX_HEADING_RE = re.compile(r"^[ ]{0,3}(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$")
-OPEN_FENCE_RE = re.compile(r"^[ ]{0,3}(`{3,}|~{3,})(.*)$")
-THEMATIC_BREAK_RE = re.compile(r"^[ ]{0,3}(?:(?:\*\s*){3,}|(?:-\s*){3,}|(?:_\s*){3,})[ \t]*$")
+LINK_REFERENCE_DEFINITION_RE = re.compile(r"^[ ]{0,3}\[([^\]]+)\]:")
 
 
-class _SourceLocator:
-    def __init__(self, text: str):
-        self.lines = text.splitlines()
-        self.cursor = 0
-
-    def find_heading(self, level: int, title: str) -> int | None:
-        for index in range(self.cursor, len(self.lines)):
-            match = ATX_HEADING_RE.match(self.lines[index])
-            if match and len(match.group(1)) == level and match.group(2).strip() == title:
-                self.cursor = index + 1
-                return index + 1
-        return None
-
-    def find_block(
-        self,
-        *,
-        kind: str,
-        block_text: str,
-        literal: str = "",
-    ) -> tuple[int | None, int | None]:
-        if not block_text.strip():
-            return (None, None)
-
-        specialized_matchers = {
-            "code_block": lambda: self._find_indented_code_block(literal),
-            "code_fence": lambda: self._find_fenced_code_block(literal),
-            "thematic_break": self._find_thematic_break,
-        }
-        specialized_matcher = specialized_matchers.get(kind)
-        if specialized_matcher is not None:
-            matched = specialized_matcher()
-            if matched is not None:
-                return matched
-
-        target_lines = block_text.splitlines()
-        for index in range(self.cursor, len(self.lines)):
-            matched = self._match_block_at(index, target_lines)
-            if matched is not None:
-                start, end = matched
-                self.cursor = end
-                return (start + 1, end)
-        return (None, None)
-
-    def _match_block_at(self, start_index: int, target_lines: list[str]) -> tuple[int, int] | None:
-        source_index = start_index
-        target_index = 0
-
-        while source_index < len(self.lines) and target_index < len(target_lines):
-            if self.lines[source_index].rstrip() != target_lines[target_index].rstrip():
-                return None
-            source_index += 1
-            target_index += 1
-
-        if target_index != len(target_lines):
-            return None
-        return (start_index, source_index)
-
-    def _find_thematic_break(self) -> tuple[int, int] | None:
-        for index in range(self.cursor, len(self.lines)):
-            if THEMATIC_BREAK_RE.match(self.lines[index]):
-                self.cursor = index + 1
-                return (index + 1, index + 1)
-        return None
-
-    def _find_fenced_code_block(self, literal: str) -> tuple[int, int] | None:
-        body_lines = literal.splitlines()
-        for index in range(self.cursor, len(self.lines)):
-            opening_match = OPEN_FENCE_RE.match(self.lines[index])
-            if opening_match is None:
-                continue
-
-            closing_pattern = re.compile(
-                rf"^[ ]{{0,3}}{re.escape(opening_match.group(1)[0])}"
-                rf"{{{len(opening_match.group(1))},}}[ \t]*$"
-            )
-            source_index = index + 1
-            target_index = 0
-
-            while source_index < len(self.lines) and target_index < len(body_lines):
-                if self.lines[source_index].rstrip() != body_lines[target_index].rstrip():
-                    break
-                source_index += 1
-                target_index += 1
-
-            if target_index != len(body_lines):
-                continue
-            if source_index >= len(self.lines) or not closing_pattern.match(
-                self.lines[source_index]
-            ):
-                continue
-
-            self.cursor = source_index + 1
-            return (index + 1, source_index + 1)
-        return None
-
-    def _find_indented_code_block(self, literal: str) -> tuple[int, int] | None:
-        literal_lines = literal.splitlines()
-        if not literal_lines:
-            return None
-
-        for index in range(self.cursor, len(self.lines)):
-            if not self._looks_like_indented_code_line(self.lines[index]):
-                continue
-
-            source_index = index
-            target_index = 0
-            while source_index < len(self.lines) and target_index < len(literal_lines):
-                if (
-                    self._deindent_code_line(self.lines[source_index])
-                    != literal_lines[target_index]
-                ):
-                    break
-                source_index += 1
-                target_index += 1
-
-            if target_index != len(literal_lines):
-                continue
-
-            self.cursor = source_index
-            return (index + 1, source_index)
-        return None
-
-    def _looks_like_indented_code_line(self, line: str) -> bool:
-        return line.startswith("    ") or line.startswith("\t")
-
-    def _deindent_code_line(self, line: str) -> str:
-        if line.startswith("\t"):
-            return line[1:]
-        if line.startswith("    "):
-            return line[4:]
-        if not line.strip():
-            return ""
-        return line
-
-
-class CommonMarkASTParser(MarkdownParserProtocol):
-    """Normalize a CommonMark AST into lumberjack's internal document model."""
-
-    def parse(
-        self,
-        text: str,
-        *,
-        document_title: str = "document.md",
-        document_metadata: dict[str, object] | None = None,
-    ) -> DocumentAST:
-        ast = self._parse_to_ast(text)
-        root = SectionNode(level=0, title=document_title)
-        section_stack: list[SectionNode] = [root]
-        locator = _SourceLocator(text)
-
-        for child in ast.get("children", []):
-            if not isinstance(child, dict) or child.get("element") == "blank_line":
-                continue
-
-            if child.get("element") == "heading":
-                section = self._build_section(child, locator, section_stack)
-                section_stack[-1].add_child(section)
-                section_stack.append(section)
-                continue
-
-            block = self._build_block(child, locator=locator)
-            if block is not None:
-                section_stack[-1].add_block(block)
-
-        return DocumentAST(
-            title=document_title,
-            source=text,
-            root=root,
-            metadata=document_metadata or {},
-            reference_definitions=self._extract_reference_definitions(ast),
-        )
-
-    def _build_section(
-        self,
-        node: dict[str, Any],
-        locator: _SourceLocator,
-        section_stack: list[SectionNode],
-    ) -> SectionNode:
-        level = int(node.get("level", 1))
-        title_inlines = self._normalize_inlines(node.get("children", []))
-        title = self._render_inlines(title_inlines).strip()
-        line_number = locator.find_heading(level, title)
-
-        while section_stack and section_stack[-1].level >= level:
-            section_stack.pop()
-        parent = section_stack[-1]
-        return SectionNode(
-            level=level,
-            title=title,
-            path=(*parent.path, (level, title)),
-            index=len(parent.children),
-            start_line=line_number,
-            title_inlines=title_inlines,
-        )
-
-    def _build_block(
-        self,
-        node: dict[str, Any],
-        *,
-        locator: _SourceLocator | None = None,
-    ) -> MarkdownBlock | None:
-        kind = self._classify_element(node)
-        children = [
-            child_block
-            for child in self._iter_children(node)
-            if isinstance(child, dict) and child.get("element") != "blank_line"
-            if (child_block := self._build_block(child)) is not None
-        ]
-        inlines = (
-            self._normalize_inlines(node.get("children", []))
-            if self._supports_inlines(kind)
-            else []
-        )
-        text = self._render_block(node, children=children, inlines=inlines).strip()
-        if not text:
-            return None
-
-        start_line = None
-        end_line = None
-        literal = self._extract_literal_text(node).rstrip("\n")
-        if locator is not None:
-            start_line, end_line = locator.find_block(
-                kind=kind,
-                block_text=text,
-                literal=literal,
-            )
-
-        return MarkdownBlock(
-            kind=kind,
-            text=text,
-            start_line=start_line,
-            end_line=end_line,
-            children=children,
-            inlines=inlines,
-            attrs=self._extract_block_attrs(node),
-        )
-
-    def _parse_to_ast(self, text: str) -> dict[str, Any]:
-        ast = Markdown(renderer=ASTRenderer).convert(text)
-        if not isinstance(ast, dict):
-            raise TypeError("marko AST renderer returned an unexpected payload")
-        return ast
-
-    def _extract_reference_definitions(self, ast: dict[str, Any]) -> dict[str, dict[str, str]]:
-        definitions: dict[str, dict[str, str]] = {}
-        for child in ast.get("children", []):
-            if not isinstance(child, dict) or child.get("element") != "link_ref_def":
-                continue
-            label = str(child.get("label", "")).strip()
-            if not label:
-                continue
-            definitions[label] = {
-                "destination": str(child.get("dest", "")),
-                "title": self._normalize_reference_title(child.get("title")),
-            }
-        return definitions
-
-    def _normalize_reference_title(self, title: Any) -> str:
-        value = str(title or "").strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
-            return value[1:-1]
-        return value
-
-    def _classify_element(self, node: dict[str, Any]) -> str:
-        element = str(node.get("element", "paragraph"))
-        if element == "quote":
-            return "blockquote"
-        if element == "fenced_code":
-            return "code_fence"
-        if element == "link_ref_def":
-            return "link_reference_definition"
-        if element in {
-            "paragraph",
-            "list",
-            "list_item",
-            "code_block",
-            "html_block",
-            "thematic_break",
-        }:
-            return element
-        return "paragraph"
-
-    def _extract_block_attrs(self, node: dict[str, Any]) -> dict[str, Any]:
-        kind = self._classify_element(node)
-        attrs: dict[str, Any] = {}
-        if kind == "list":
-            attrs["ordered"] = bool(node.get("ordered"))
-            attrs["start"] = int(node.get("start") or 1)
-            attrs["tight"] = bool(node.get("tight"))
-            attrs["bullet"] = str(node.get("bullet") or ("1." if attrs["ordered"] else "-"))
-        elif kind == "code_fence":
-            attrs["language"] = str(node.get("lang") or "")
-            attrs["info"] = " ".join(
-                part for part in (str(node.get("lang") or ""), str(node.get("extra") or "")) if part
-            ).strip()
-            attrs["literal"] = self._extract_literal_text(node).rstrip("\n")
-        elif kind in ["code_block", "html_block"]:
-            attrs["literal"] = self._extract_literal_text(node).rstrip("\n")
-        elif kind == "link_reference_definition":
-            attrs["label"] = str(node.get("label") or "")
-            attrs["destination"] = str(node.get("dest") or "")
-            attrs["title"] = self._normalize_reference_title(node.get("title"))
-        return attrs
-
-    def _supports_inlines(self, kind: str) -> bool:
-        return kind in {"paragraph", "link_reference_definition"}
-
-    def _render_block(
-        self,
-        node: dict[str, Any],
-        *,
-        children: list[MarkdownBlock],
-        inlines: list[MarkdownInline],
-    ) -> str:
-        kind = self._classify_element(node)
-
-        if kind == "paragraph":
-            return self._render_inlines(inlines)
-        if kind == "blockquote":
-            content = "\n\n".join(child.text for child in children if child.text)
-            return "\n".join(f"> {line}" if line else ">" for line in content.splitlines())
-        if kind == "list":
-            return "\n".join(child.text for child in children if child.text)
-        if kind == "list_item":
-            ordered = False
-            start = 1
-            bullet = "-"
-            if isinstance(node.get("_parent"), dict):
-                ordered = bool(node["_parent"].get("ordered"))
-                start = int(node["_parent"].get("start") or 1)
-            if ordered:
-                bullet = f"{start + int(node.get('_list_index', 0))}."
-            content = "\n\n".join(child.text for child in children if child.text).strip()
-            if not content:
-                return bullet
-            lines = content.splitlines()
-            rendered_lines = [f"{bullet} {lines[0]}"]
-            rendered_lines.extend(f"  {line}" if line else "" for line in lines[1:])
-            return "\n".join(rendered_lines)
-        if kind == "code_fence":
-            info = " ".join(
-                part for part in (str(node.get("lang") or ""), str(node.get("extra") or "")) if part
-            ).strip()
-            body = self._extract_literal_text(node).rstrip("\n")
-            fence = f"```{info}".rstrip()
-            return f"{fence}\n{body}\n```"
-        if kind == "code_block":
-            body = self._extract_literal_text(node).rstrip("\n")
-            return f"```\n{body}\n```"
-        if kind == "html_block":
-            return self._extract_literal_text(node).strip()
-        if kind == "thematic_break":
-            return "---"
-        if kind == "link_reference_definition":
-            label = str(node.get("label") or "")
-            destination = str(node.get("dest") or "")
-            title = self._normalize_reference_title(node.get("title"))
-            title_suffix = f' "{title}"' if title else ""
-            return f"[{label}]: {destination}{title_suffix}"
-
-        return "\n\n".join(child.text for child in children if child.text)
-
-    def _normalize_inlines(self, nodes: Any) -> list[MarkdownInline]:
-        if isinstance(nodes, list):
-            raw_nodes = nodes
-        elif isinstance(nodes, dict):
-            raw_nodes = [nodes]
-        else:
-            return []
-
-        normalized: list[MarkdownInline] = []
-        for node in raw_nodes:
-            inline = self._normalize_inline(node)
-            if inline is not None:
-                normalized.append(inline)
-        return normalized
-
-    def _normalize_inline(self, node: Any) -> MarkdownInline | None:
-        if isinstance(node, str):
-            return MarkdownInline(kind="text", text=node)
-        if not isinstance(node, dict):
-            return None
-
-        element = str(node.get("element", "text"))
-        if element == "raw_text":
-            return MarkdownInline(kind="text", text=str(node.get("children", "")))
-        if element == "code_span":
-            return MarkdownInline(
-                kind="code_span",
-                text=self._extract_literal_text(node),
-                attrs={"literal": self._extract_literal_text(node)},
-            )
-        if element in {"emphasis", "strong_emphasis"}:
-            return MarkdownInline(
-                kind="emphasis" if element == "emphasis" else "strong",
-                children=self._normalize_inlines(node.get("children", [])),
-            )
-        if element in {"link", "image", "auto_link"}:
-            kind = "autolink" if element == "auto_link" else element
-            return MarkdownInline(
-                kind=kind,
-                children=self._normalize_inlines(node.get("children", [])),
-                attrs={
-                    "destination": str(node.get("dest", "")),
-                    "title": str(node.get("title") or ""),
-                },
-            )
-        if element == "inline_html":
-            return MarkdownInline(kind="inline_html", text=self._extract_literal_text(node))
-        if element == "line_break":
-            soft = bool(node.get("soft", False))
-            return MarkdownInline(kind="soft_break" if soft else "hard_break", text="\n")
-
-        return MarkdownInline(
-            kind=element,
-            text=self._extract_literal_text(node),
-            children=self._normalize_inlines(node.get("children", [])),
-        )
-
+class _InlineRenderingMixin:
     def _render_inlines(self, inlines: list[MarkdownInline]) -> str:
         return "".join(self._render_inline(inline) for inline in inlines)
 
@@ -445,16 +33,27 @@ class CommonMarkASTParser(MarkdownParserProtocol):
             return f"*{self._render_inlines(node.children)}*"
         if node.kind == "strong":
             return f"**{self._render_inlines(node.children)}**"
+        if node.kind == "strikethrough":
+            return f"~~{self._render_inlines(node.children)}~~"
         if node.kind == "link":
             title = str(node.attrs.get("title") or "").strip()
             title_suffix = f' "{title}"' if title else ""
-            return f"[{self._render_inlines(node.children)}]({node.attrs.get('destination', '')}{title_suffix})"
+            return (
+                f"[{self._render_inlines(node.children)}]"
+                f"({node.attrs.get('destination', '')}{title_suffix})"
+            )
         if node.kind == "image":
             title = str(node.attrs.get("title") or "").strip()
             title_suffix = f' "{title}"' if title else ""
-            return f"![{self._render_inlines(node.children)}]({node.attrs.get('destination', '')}{title_suffix})"
+            return (
+                f"![{self._render_inlines(node.children)}]"
+                f"({node.attrs.get('destination', '')}{title_suffix})"
+            )
         if node.kind == "autolink":
-            return f"<{node.attrs.get('destination', self._render_inlines(node.children))}>"
+            literal = str(node.attrs.get("literal") or self._render_inlines(node.children))
+            if node.attrs.get("syntax") == "autolink":
+                return f"<{literal}>"
+            return literal or str(node.attrs.get("destination", ""))
         if node.kind == "inline_html":
             return node.text
         if node.kind in {"soft_break", "hard_break"}:
@@ -463,43 +62,558 @@ class CommonMarkASTParser(MarkdownParserProtocol):
             return self._render_inlines(node.children)
         return node.text
 
-    def _extract_literal_text(self, node: Any) -> str:
-        if isinstance(node, str):
-            return node
-        if isinstance(node, list):
-            return "".join(self._extract_literal_text(child) for child in node)
-        if not isinstance(node, dict):
+
+class MarkdownItParser(_InlineRenderingMixin):
+    """Parse Markdown with markdown-it-py and normalize tokens into lumberjack's AST."""
+
+    def __init__(
+        self,
+        preset: str = "gfm-like",
+        *,
+        plugins: Iterable[Callable[..., None]] = (),
+        options_update: dict[str, Any] | None = None,
+    ) -> None:
+        self._parser = MarkdownIt(preset, options_update=options_update)
+        for plugin in plugins:
+            self._parser.use(plugin)
+
+    def parse(
+        self,
+        text: str,
+        *,
+        document_title: str = "document.md",
+        document_metadata: dict[str, object] | None = None,
+    ) -> DocumentAST:
+        env: dict[str, Any] = {}
+        tokens = self._parser.parse(text, env)
+        source_lines = text.splitlines()
+
+        root = SectionNode(level=0, title=document_title)
+        section_stack: list[SectionNode] = [root]
+        index = 0
+
+        while index < len(tokens):
+            token = tokens[index]
+            if token.type == "heading_open":
+                section, index = self._build_section(tokens, index, section_stack)
+                section_stack[-1].add_child(section)
+                section_stack.append(section)
+                continue
+
+            block, index = self._build_block(tokens, index, source_lines)
+            if block is not None:
+                section_stack[-1].add_block(block)
+
+        return DocumentAST(
+            title=document_title,
+            source=text,
+            root=root,
+            metadata=document_metadata or {},
+            reference_definitions=self._extract_reference_definitions(env, source_lines),
+        )
+
+    def _build_section(
+        self,
+        tokens: list[Token],
+        index: int,
+        section_stack: list[SectionNode],
+    ) -> tuple[SectionNode, int]:
+        token = tokens[index]
+        close_index = self._find_matching_close(tokens, index)
+        inline_token = tokens[index + 1] if index + 1 < len(tokens) else None
+        title_inlines = self._inline_token_to_inlines(inline_token)
+        title = self._render_inlines(title_inlines).strip()
+        level = int(token.tag[1:]) if token.tag.startswith("h") else 1
+        start_line = self._start_line(token)
+
+        while section_stack and section_stack[-1].level >= level:
+            section_stack.pop()
+        parent = section_stack[-1]
+        return (
+            SectionNode(
+                level=level,
+                title=title,
+                path=(*parent.path, (level, title)),
+                index=len(parent.children),
+                start_line=start_line,
+                title_inlines=title_inlines,
+            ),
+            close_index + 1,
+        )
+
+    def _build_block(
+        self,
+        tokens: list[Token],
+        index: int,
+        source_lines: list[str],
+        *,
+        allow_headings: bool = False,
+    ) -> tuple[MarkdownBlock | None, int]:
+        token = tokens[index]
+
+        if token.type == "heading_open":
+            close_index = self._find_matching_close(tokens, index)
+            if not allow_headings:
+                inline_token = tokens[index + 1] if index + 1 < len(tokens) else None
+                inlines = self._inline_token_to_inlines(inline_token)
+                return (
+                    MarkdownBlock(
+                        kind="paragraph",
+                        text=self._slice_source(source_lines, token.map),
+                        start_line=self._start_line(token),
+                        end_line=self._end_line(token),
+                        inlines=inlines,
+                    ),
+                    close_index + 1,
+                )
+            return (None, close_index + 1)
+
+        if token.type == "paragraph_open":
+            close_index = self._find_matching_close(tokens, index)
+            inline_token = tokens[index + 1] if index + 1 < len(tokens) else None
+            inlines = self._inline_token_to_inlines(inline_token)
+            return (
+                MarkdownBlock(
+                    kind="paragraph",
+                    text=self._slice_source(source_lines, token.map),
+                    start_line=self._start_line(token),
+                    end_line=self._end_line(token),
+                    inlines=inlines,
+                ),
+                close_index + 1,
+            )
+
+        if token.type == "blockquote_open":
+            close_index = self._find_matching_close(tokens, index)
+            children = self._parse_blocks(tokens, index + 1, close_index, source_lines)
+            return (
+                MarkdownBlock(
+                    kind="blockquote",
+                    text=self._slice_source(source_lines, token.map),
+                    start_line=self._start_line(token),
+                    end_line=self._end_line(token),
+                    children=children,
+                ),
+                close_index + 1,
+            )
+
+        if token.type in {"bullet_list_open", "ordered_list_open"}:
+            close_index = self._find_matching_close(tokens, index)
+            children = self._parse_blocks(tokens, index + 1, close_index, source_lines)
+            attrs = {
+                "ordered": token.type == "ordered_list_open",
+                "start": int((token.attrs or {}).get("start") or 1),
+                "tight": self._is_tight_list(tokens, index, close_index),
+                "bullet": f"{token.markup or '-'}",
+            }
+            return (
+                MarkdownBlock(
+                    kind="list",
+                    text=self._slice_source(source_lines, token.map),
+                    start_line=self._start_line(token),
+                    end_line=self._end_line(token),
+                    children=children,
+                    attrs=attrs,
+                ),
+                close_index + 1,
+            )
+
+        if token.type == "list_item_open":
+            close_index = self._find_matching_close(tokens, index)
+            children = self._parse_blocks(tokens, index + 1, close_index, source_lines)
+            return (
+                MarkdownBlock(
+                    kind="list_item",
+                    text=self._slice_source(source_lines, token.map),
+                    start_line=self._start_line(token),
+                    end_line=self._end_line(token),
+                    children=children,
+                ),
+                close_index + 1,
+            )
+
+        if token.type == "fence":
+            info = token.info.strip()
+            language = info.split(maxsplit=1)[0] if info else ""
+            return (
+                MarkdownBlock(
+                    kind="code_fence",
+                    text=self._slice_source(source_lines, token.map),
+                    start_line=self._start_line(token),
+                    end_line=self._end_line(token),
+                    attrs={
+                        "language": language,
+                        "info": info,
+                        "literal": token.content.rstrip("\n"),
+                    },
+                ),
+                index + 1,
+            )
+
+        if token.type == "code_block":
+            return (
+                MarkdownBlock(
+                    kind="code_block",
+                    text=self._slice_source(source_lines, token.map),
+                    start_line=self._start_line(token),
+                    end_line=self._end_line(token),
+                    attrs={"literal": token.content.rstrip("\n")},
+                ),
+                index + 1,
+            )
+
+        if token.type == "html_block":
+            return (
+                MarkdownBlock(
+                    kind="html_block",
+                    text=self._slice_source(source_lines, token.map),
+                    start_line=self._start_line(token),
+                    end_line=self._end_line(token),
+                    attrs={"literal": token.content.rstrip("\n")},
+                ),
+                index + 1,
+            )
+
+        if token.type == "hr":
+            return (
+                MarkdownBlock(
+                    kind="thematic_break",
+                    text=self._slice_source(source_lines, token.map) or "---",
+                    start_line=self._start_line(token),
+                    end_line=self._end_line(token),
+                ),
+                index + 1,
+            )
+
+        if token.type == "table_open":
+            close_index = self._find_matching_close(tokens, index)
+            return (
+                MarkdownBlock(
+                    kind="table",
+                    text=self._slice_source(source_lines, token.map),
+                    start_line=self._start_line(token),
+                    end_line=self._end_line(token),
+                ),
+                close_index + 1,
+            )
+
+        return self._build_fallback_block(token, tokens, index, source_lines)
+
+    def _parse_blocks(
+        self,
+        tokens: list[Token],
+        start: int,
+        end: int,
+        source_lines: list[str],
+    ) -> list[MarkdownBlock]:
+        blocks: list[MarkdownBlock] = []
+        index = start
+        while index < end:
+            block, index = self._build_block(tokens, index, source_lines, allow_headings=False)
+            if block is not None and block.text:
+                blocks.append(block)
+        return blocks
+
+    def _find_matching_close(self, tokens: list[Token], index: int) -> int:
+        token = tokens[index]
+        if not token.type.endswith("_open"):
+            return index
+
+        close_type = f"{token.type[:-5]}_close"
+        depth = 0
+        for current in range(index, len(tokens)):
+            current_token = tokens[current]
+            if current_token.type == token.type:
+                depth += 1
+            elif current_token.type == close_type:
+                depth -= 1
+                if depth == 0:
+                    return current
+        raise ValueError(f"Unbalanced token stream: missing {close_type}")
+
+    def _build_fallback_block(
+        self,
+        token: Token,
+        tokens: list[Token],
+        index: int,
+        source_lines: list[str],
+    ) -> tuple[MarkdownBlock | None, int]:
+        if token.type.endswith("_close") or token.type == "inline":
+            return (None, index + 1)
+
+        close_index = (
+            self._find_matching_close(tokens, index) if token.type.endswith("_open") else index
+        )
+        children = (
+            self._parse_blocks(tokens, index + 1, close_index, source_lines)
+            if token.type.endswith("_open")
+            else []
+        )
+        text = self._slice_source(source_lines, token.map)
+        if not text and children:
+            text = join_markdown([child.text for child in children if child.text])
+        if not text.strip():
+            return (None, close_index + 1)
+
+        return (
+            MarkdownBlock(
+                kind=token.type.removesuffix("_open"),
+                text=text,
+                start_line=self._start_line(token),
+                end_line=self._end_line(token),
+                children=children,
+                attrs={
+                    "source_token_type": token.type,
+                    "markup": str(token.markup or ""),
+                    "meta": dict(token.meta) if isinstance(token.meta, dict) else token.meta,
+                },
+            ),
+            close_index + 1,
+        )
+
+    def _inline_token_to_inlines(self, token: Token | None) -> list[MarkdownInline]:
+        if token is None:
+            return []
+        return self._normalize_inline_tokens(token.children or [])
+
+    def _normalize_inline_tokens(self, tokens: list[Token]) -> list[MarkdownInline]:
+        inlines, _ = self._collect_inline_tokens(tokens, 0)
+        return inlines
+
+    def _collect_inline_tokens(
+        self,
+        tokens: list[Token],
+        index: int,
+        *,
+        stop_types: set[str] | None = None,
+    ) -> tuple[list[MarkdownInline], int]:
+        normalized: list[MarkdownInline] = []
+        while index < len(tokens):
+            token = tokens[index]
+            if stop_types is not None and token.type in stop_types:
+                break
+
+            if token.type.endswith("_close"):
+                index += 1
+                continue
+
+            if token.type == "text":
+                normalized.append(MarkdownInline(kind="text", text=token.content))
+                index += 1
+                continue
+
+            if token.type == "code_inline":
+                normalized.append(
+                    MarkdownInline(
+                        kind="code_span",
+                        text=token.content,
+                        attrs={"literal": token.content},
+                    )
+                )
+                index += 1
+                continue
+
+            if token.type == "html_inline":
+                normalized.append(MarkdownInline(kind="inline_html", text=token.content))
+                index += 1
+                continue
+
+            if token.type in {"softbreak", "hardbreak"}:
+                normalized.append(
+                    MarkdownInline(
+                        kind="soft_break" if token.type == "softbreak" else "hard_break",
+                        text="\n",
+                    )
+                )
+                index += 1
+                continue
+
+            if token.type == "image":
+                normalized.append(
+                    MarkdownInline(
+                        kind="image",
+                        children=self._normalize_inline_tokens(token.children or []),
+                        attrs={
+                            "destination": str((token.attrs or {}).get("src") or ""),
+                            "title": str((token.attrs or {}).get("title") or ""),
+                        },
+                    )
+                )
+                index += 1
+                continue
+
+            if token.type == "footnote_ref":
+                normalized.append(
+                    MarkdownInline(
+                        kind="footnote_ref",
+                        text=f"[^{token.meta.get('label', '')}]",
+                        attrs={
+                            "source_token_type": token.type,
+                            "meta": dict(token.meta)
+                            if isinstance(token.meta, dict)
+                            else token.meta,
+                        },
+                    )
+                )
+                index += 1
+                continue
+
+            if token.type == "footnote_anchor":
+                normalized.append(
+                    MarkdownInline(
+                        kind="footnote_anchor",
+                        text="",
+                        attrs={
+                            "source_token_type": token.type,
+                            "meta": dict(token.meta)
+                            if isinstance(token.meta, dict)
+                            else token.meta,
+                        },
+                    )
+                )
+                index += 1
+                continue
+
+            if token.type in {"em_open", "strong_open", "s_open", "link_open"}:
+                kind_map = {
+                    "em_open": "emphasis",
+                    "strong_open": "strong",
+                    "s_open": "strikethrough",
+                    "link_open": "autolink" if token.markup in {"autolink", "linkify"} else "link",
+                }
+                close_type_map = {
+                    "em_open": "em_close",
+                    "strong_open": "strong_close",
+                    "s_open": "s_close",
+                    "link_open": "link_close",
+                }
+                children, index = self._collect_inline_tokens(
+                    tokens,
+                    index + 1,
+                    stop_types={close_type_map[token.type]},
+                )
+                if index < len(tokens):
+                    index += 1
+
+                attrs = {
+                    "destination": str((token.attrs or {}).get("href") or ""),
+                    "title": str((token.attrs or {}).get("title") or ""),
+                }
+                if token.type == "link_open" and token.markup in {"autolink", "linkify"}:
+                    attrs["literal"] = self._render_inlines(children)
+                    attrs["syntax"] = str(token.markup or "link")
+                normalized.append(
+                    MarkdownInline(
+                        kind=kind_map[token.type],
+                        children=children,
+                        attrs=attrs,
+                    )
+                )
+                continue
+
+            if token.type.endswith("_open"):
+                close_type = f"{token.type.removesuffix('_open')}_close"
+                children, index = self._collect_inline_tokens(
+                    tokens,
+                    index + 1,
+                    stop_types={close_type},
+                )
+                if index < len(tokens):
+                    index += 1
+                normalized.append(
+                    MarkdownInline(
+                        kind=token.type.removesuffix("_open"),
+                        children=children,
+                        attrs={
+                            "source_token_type": token.type,
+                            "markup": str(token.markup or ""),
+                            "meta": dict(token.meta)
+                            if isinstance(token.meta, dict)
+                            else token.meta,
+                        },
+                    )
+                )
+                continue
+
+            if token.children:
+                normalized.extend(self._normalize_inline_tokens(token.children))
+                index += 1
+                continue
+
+            normalized.append(MarkdownInline(kind=token.type, text=token.content))
+            index += 1
+
+        return (normalized, index)
+
+    def _extract_reference_definitions(
+        self,
+        env: dict[str, Any],
+        source_lines: list[str],
+    ) -> dict[str, dict[str, str]]:
+        references = env.get("references")
+        if not isinstance(references, dict):
+            return {}
+
+        definitions: dict[str, dict[str, str]] = {}
+        for normalized_label, payload in references.items():
+            if not isinstance(payload, dict):
+                continue
+            label = self._recover_reference_label(
+                payload.get("map"),
+                source_lines,
+                fallback=str(normalized_label),
+            )
+            definitions[label] = {
+                "destination": str(payload.get("href") or ""),
+                "title": str(payload.get("title") or ""),
+            }
+        return definitions
+
+    def _recover_reference_label(
+        self,
+        line_map: Any,
+        source_lines: list[str],
+        *,
+        fallback: str,
+    ) -> str:
+        if isinstance(line_map, list) and len(line_map) == 2:
+            excerpt = self._slice_source(source_lines, line_map)
+            for line in excerpt.splitlines():
+                match = LINK_REFERENCE_DEFINITION_RE.match(line)
+                if match:
+                    return match.group(1)
+        return fallback
+
+    def _slice_source(self, source_lines: list[str], line_map: Any) -> str:
+        if not isinstance(line_map, list) or len(line_map) != 2:
             return ""
+        start, end = int(line_map[0]), int(line_map[1])
+        if start < 0 or end < start:
+            return ""
+        return "\n".join(source_lines[start:end])
 
-        if "body" in node and isinstance(node["body"], str):
-            return node["body"]
+    def _start_line(self, token: Token) -> int | None:
+        if token.map is None:
+            return None
+        return int(token.map[0]) + 1
 
-        children = node.get("children", [])
-        if isinstance(children, str):
-            return children
-        return "".join(self._extract_literal_text(child) for child in self._iter_children(node))
+    def _end_line(self, token: Token) -> int | None:
+        if token.map is None:
+            return None
+        return int(token.map[1])
 
-    def _iter_children(self, node: Any) -> list[Any]:
-        if not isinstance(node, dict):
-            return []
-        children = node.get("children", [])
-        if isinstance(children, list):
-            prepared: list[Any] = []
-            for index, child in enumerate(children):
-                if isinstance(child, dict):
-                    child["_parent"] = node
-                    child["_list_index"] = index
-                prepared.append(child)
-            return prepared
-        if children in {"", None}:
-            return []
-        return [children]
+    def _is_tight_list(self, tokens: list[Token], start: int, end: int) -> bool:
+        return any(
+            token.type == "paragraph_open" and token.hidden for token in tokens[start : end + 1]
+        )
 
 
-class MarkdownParser(CommonMarkASTParser):
-    """Default parser that normalizes CommonMark into lumberjack's internal AST."""
+class MarkdownParser(MarkdownItParser):
+    """Default parser that normalizes Markdown into lumberjack's internal AST."""
 
 
 def create_parser(name: str) -> MarkdownParserProtocol:
-    print(f"Resolving parser for: {name}")
-    return CommonMarkASTParser()
+    normalized = name.strip().lower()
+    if normalized in {"default", "markdown-it"}:
+        return MarkdownItParser()
+    raise ValueError(f"Unsupported parser: {name}")

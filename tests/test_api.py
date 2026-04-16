@@ -4,8 +4,11 @@ import os
 import shutil
 from pathlib import Path
 
+from mdit_py_plugins.tasklists import tasklists_plugin
+
 from lumberjack import (
     Chunk,
+    MarkdownItParser,
     chunk_to_dict,
     parse_markdown,
     split_markdown_file,
@@ -175,3 +178,19 @@ def test_split_markdown_text_does_not_write_debug_document_dump() -> None:
     finally:
         os.chdir(previous_cwd)
         shutil.rmtree(tmp_path, ignore_errors=True)
+
+
+def test_split_markdown_text_accepts_markdown_it_parser_with_plugins() -> None:
+    parser = MarkdownItParser(plugins=(tasklists_plugin,))
+    markdown = "- [x] done\n- [ ] todo"
+
+    chunks = split_markdown_text(
+        markdown,
+        document_title="tasks.md",
+        max_tokens=500,
+        parser=parser,
+        retain_headings=False,
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0].text == markdown

@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .api import split_markdown_file
+from .api import chunk_to_dict, split_markdown_file
 
 if TYPE_CHECKING:
     from .models import Chunk
@@ -31,7 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--parser",
-        choices=("default", "marko"),
+        choices=("default", "markdown-it"),
         default="default",
         help="Markdown parser implementation",
     )
@@ -58,7 +57,6 @@ def build_parser() -> argparse.ArgumentParser:
             "code_block",
             "code_fence",
             "html_block",
-            "link_reference_definition",
         ),
         help="Allow splitting oversized blocks of the given kind; repeat the flag to enable multiple kinds",
     )
@@ -95,7 +93,7 @@ def main() -> None:
             {
                 "document": input_path.name,
                 "chunk_count": len(chunks),
-                "chunks": [asdict(chunk) for chunk in chunks],
+                "chunks": [chunk_to_dict(chunk) for chunk in chunks],
             },
             ensure_ascii=False,
             indent=2,

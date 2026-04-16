@@ -39,7 +39,6 @@ def split_markdown_text(
         "paragraph",
         "blockquote",
         "html_block",
-        "link_reference_definition",
     ),
     tokenizer: str | TokenizerProtocol = "simple",
     parser: str | MarkdownParserProtocol = "default",
@@ -77,7 +76,6 @@ def split_markdown_file(
         "paragraph",
         "blockquote",
         "html_block",
-        "link_reference_definition",
     ),
     tokenizer: str | TokenizerProtocol = "simple",
     parser: str | MarkdownParserProtocol = "default",
@@ -110,3 +108,19 @@ def _resolve_parser(parser: str | MarkdownParserProtocol) -> MarkdownParserProto
     if isinstance(parser, str):
         return create_parser(parser)
     return parser
+
+
+def chunk_to_dict(chunk: Chunk) -> dict[str, object]:
+    """Serialize a chunk into a JSON-friendly dictionary."""
+    return {
+        "chunk_id": chunk.chunk_id,
+        "text": chunk.text,
+        "body": chunk.body,
+        "token_count": chunk.token_count,
+        "headings": [list(heading) for heading in chunk.headings],
+        "section_level": chunk.section_level,
+        "document_title": chunk.document_title,
+        "document_path": chunk.document_path,
+        "start_line": chunk.start_line,
+        "end_line": chunk.end_line,
+    }

@@ -68,7 +68,6 @@ class SplitOptions:
         "paragraph",
         "blockquote",
         "html_block",
-        "link_reference_definition",
     )
 
 
@@ -84,3 +83,32 @@ class Chunk:
     document_path: str | None = None
     start_line: int | None = None
     end_line: int | None = None
+
+    def __post_init__(self) -> None:
+        # Backward compatibility for the legacy positional signature:
+        # Chunk(chunk_id, text, token_count, headings, section_level, document_title, ...)
+        if (
+            isinstance(self.body, int)
+            and isinstance(self.token_count, tuple)
+            and isinstance(self.headings, int)
+            and isinstance(self.section_level, str)
+            and not self.document_title
+        ):
+            import warnings
+
+            warnings.warn(
+                "Positional Chunk() signature without 'body' is deprecated; "
+                "use keyword arguments or include body=''.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            legacy_token_count = self.body
+            legacy_headings = self.token_count
+            legacy_section_level = self.headings
+            legacy_document_title = self.section_level
+
+            self.body = ""
+            self.token_count = legacy_token_count
+            self.headings = legacy_headings
+            self.section_level = legacy_section_level
+            self.document_title = legacy_document_title

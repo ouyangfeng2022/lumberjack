@@ -3,16 +3,15 @@
 `lumberjack` is a structure-aware Markdown splitter for long-document retrieval and RAG preprocessing.
 It parses Markdown into an internal AST first, then splits by document structure instead of fixed text windows.
 
-The current implementation uses [`marko`](https://github.com/frostming/marko) to build a CommonMark-style AST,
-normalizes that tree into lumberjack's own data model, and then produces semantic chunks with heading context,
-line ranges, and document metadata.
+The parser uses [`markdown-it-py`](https://markdown-it-py.readthedocs.io/en/latest/) in `gfm-like`
+mode and normalizes its token stream into lumberjack's internal data model before chunking.
 
 ## What It Does
 
 Core pipeline:
 
 ```text
-Markdown text -> marko AST -> DocumentAST -> MarkdownSplitter -> Chunk[]
+Markdown text -> parser tokens/AST -> DocumentAST -> MarkdownSplitter -> Chunk[]
 ```
 
 Current behavior:
@@ -59,7 +58,7 @@ Supported CLI options today:
 - `--output`: write output to a file instead of stdout
 - `--format {json,markdown}`: output format, default `json`
 - `--tokenizer {simple,tiktoken}`: token counting strategy, default `simple`
-- `--parser {simple,marko}`: parser selector exposed by the CLI
+- `--parser {default,markdown-it}`: parser selector exposed by the CLI
 - `--max-tokens`: maximum chunk budget, default `1200`
 - `--min-tokens`: threshold used by small-chunk merging, default `50`
 - `--overlap-tokens`: optional token overlap used only for text fallback splits, default `0`
@@ -68,7 +67,8 @@ Supported CLI options today:
 
 Parser note:
 
-- The CLI still exposes `simple` and `marko`, but both names currently resolve to the same CommonMark parser implementation in `src/lumberjack/core/parser.py`.
+- `default` and `markdown-it` both resolve to the `markdown-it-py` parser
+- `MarkdownItParser` also supports `markdown-it-py` plugins through its constructor
 
 ### JSON Output
 
@@ -126,6 +126,15 @@ file_chunks = split_markdown_file(
     min_tokens=50,
     overlap_tokens=0,
 )
+
+from mdit_py_plugins.tasklists import tasklists_plugin
+from lumberjack import MarkdownItParser
+
+plugin_chunks = split_markdown_text(
+    markdown_text,
+    document_title="tasks.md",
+    parser=MarkdownItParser(plugins=(tasklists_plugin,)),
+)
 ```
 
 Public types exported from [`src/lumberjack/__init__.py`](/D:/coding/Python/lumberjack/src/lumberjack/__init__.py):
@@ -134,6 +143,7 @@ Public types exported from [`src/lumberjack/__init__.py`](/D:/coding/Python/lumb
 - `DocumentAST`
 - `MarkdownBlock`
 - `MarkdownInline`
+- `MarkdownItParser`
 - `SectionNode`
 - `SplitOptions`
 - `MarkdownParser`
@@ -156,14 +166,16 @@ Main dataclasses in [`src/lumberjack/models.py`](/D:/coding/Python/lumberjack/sr
 The current parser normalizes these block-level structures:
 
 - ATX headings
+- Setext headings
 - paragraphs
 - block quotes
 - ordered and unordered lists
+- tables
 - fenced code blocks
 - indented code blocks
 - HTML blocks
 - thematic breaks
-- link reference definitions
+- link reference definitions metadata
 
 The current parser captures these inline structures inside headings and paragraphs:
 
@@ -174,6 +186,7 @@ The current parser captures these inline structures inside headings and paragrap
 - code spans
 - emphasis
 - strong emphasis
+- strikethrough
 - inline HTML
 - soft and hard line breaks
 
@@ -182,6 +195,12 @@ The parser also preserves:
 - heading title inlines
 - reference link definitions in `DocumentAST.reference_definitions`
 - source line ranges for headings and rendered blocks
+
+Parser behavior note:
+
+- `markdown-it-py` does not emit reference definition lines as visible `link_reference_definition` blocks
+- plugin-generated block tokens are preserved as plugin-specific block kinds or raw markdown fallback blocks
+- plugin-generated inline tokens are preserved when possible, with unknown inline containers keeping their child text intact
 
 ## Splitting Strategy
 
@@ -255,10 +274,9 @@ uv run ruff format
 Current limits and notes:
 
 - Markdown only; no PDF, HTML, or DOCX ingestion pipeline is planned in this package
-- The parser is CommonMark-oriented, not a full GitHub-Flavored Markdown implementation
-- Some rendered block text is normalized rather than preserved byte-for-byte
+- The parser targets a GFM-like surface rather than a strict multi-backend compatibility layer
 - `demo.py` is not part of the production package
-- The CLI parser selector is currently a compatibility surface, not multiple real parser backends
+- The CLI parser selector is retained only as an explicit route to the markdown-it implementation
 
 ## Status
 
