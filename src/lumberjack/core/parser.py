@@ -4,6 +4,7 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from markdown_it import MarkdownIt
+from mdit_py_plugins.dollarmath import dollarmath_plugin
 
 from ..utils import join_markdown
 
@@ -29,6 +30,8 @@ class _InlineRenderingMixin:
             return node.text
         if node.kind == "code_span":
             return f"`{node.attrs.get('literal', node.text)}`"
+        if node.kind == "math_inline":
+            return f"${node.attrs.get('literal', node.text)}$"
         if node.kind == "emphasis":
             return f"*{self._render_inlines(node.children)}*"
         if node.kind == "strong":
@@ -74,6 +77,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         options_update: dict[str, Any] | None = None,
     ) -> None:
         self._parser = MarkdownIt(preset, options_update=options_update)
+        self._parser.use(dollarmath_plugin)
         for plugin in plugins:
             self._parser.use(plugin)
 
@@ -250,6 +254,18 @@ class MarkdownItParser(_InlineRenderingMixin):
                 index + 1,
             )
 
+        if token.type == "math_block":
+            return (
+                MarkdownBlock(
+                    kind="math_block",
+                    text=self._slice_source(source_lines, token.map),
+                    start_line=self._start_line(token),
+                    end_line=self._end_line(token),
+                    attrs={"literal": token.content.rstrip("\n")},
+                ),
+                index + 1,
+            )
+
         if token.type == "code_block":
             return (
                 MarkdownBlock(
@@ -406,6 +422,17 @@ class MarkdownItParser(_InlineRenderingMixin):
                 normalized.append(
                     MarkdownInline(
                         kind="code_span",
+                        text=token.content,
+                        attrs={"literal": token.content},
+                    )
+                )
+                index += 1
+                continue
+
+            if token.type == "math_inline":
+                normalized.append(
+                    MarkdownInline(
+                        kind="math_inline",
                         text=token.content,
                         attrs={"literal": token.content},
                     )
