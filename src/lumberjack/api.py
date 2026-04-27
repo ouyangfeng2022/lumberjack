@@ -17,7 +17,7 @@ def parse_markdown(
     parser: str | MarkdownParserProtocol = "default",
     document_metadata: dict[str, object] | None = None,
 ) -> DocumentAST:
-    """Parse markdown text into the internal AST."""
+    """Parse markdown text into the internal document model."""
     parser_impl = _resolve_parser(parser)
     return parser_impl.parse(
         text,

@@ -1,7 +1,7 @@
 # lumberjack
 
 `lumberjack` is a structure-aware Markdown splitter for long-document retrieval and RAG preprocessing.
-It parses Markdown into an internal AST first, then splits by document structure instead of fixed text windows.
+It splits Markdown by document structure instead of fixed text windows.
 
 The parser uses [`markdown-it-py`](https://markdown-it-py.readthedocs.io/en/latest/) in `gfm-like`
 mode and normalizes its token stream into lumberjack's internal data model before chunking.
@@ -11,7 +11,7 @@ mode and normalizes its token stream into lumberjack's internal data model befor
 Core pipeline:
 
 ```text
-Markdown text -> parser tokens/AST -> DocumentAST -> MarkdownSplitter -> Chunk[]
+Markdown text -> parser tokens -> DocumentAST -> MarkdownSplitter -> Chunk[]
 ```
 
 Current behavior:

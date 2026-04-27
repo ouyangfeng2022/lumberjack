@@ -7,7 +7,7 @@ if TYPE_CHECKING:
 
 
 class MarkdownAstVisitor:
-    """Small visitor hook set for future AST-based extensions."""
+    """Small visitor hook set for future extensions."""
 
     def visit_document(self, document: DocumentAST):
         self.walk_section(document.root)

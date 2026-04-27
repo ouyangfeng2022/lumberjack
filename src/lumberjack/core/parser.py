@@ -67,7 +67,7 @@ class _InlineRenderingMixin:
 
 
 class MarkdownItParser(_InlineRenderingMixin):
-    """Parse Markdown with markdown-it-py and normalize tokens into lumberjack's AST."""
+    """Parse Markdown with markdown-it-py and normalize tokens into lumberjack's document model."""
 
     def __init__(
         self,
@@ -636,7 +636,7 @@ class MarkdownItParser(_InlineRenderingMixin):
 
 
 class MarkdownParser(MarkdownItParser):
-    """Default parser that normalizes Markdown into lumberjack's internal AST."""
+    """Default parser that normalizes Markdown into lumberjack's internal document model."""
 
 
 def create_parser(name: str) -> MarkdownParserProtocol:

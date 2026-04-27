@@ -1,7 +1,7 @@
 [project]
 name = "lumberjack"
 dynamic = ["version"]
-description = "AST-driven markdown document splitter"
+description = "Markdown document splitter"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

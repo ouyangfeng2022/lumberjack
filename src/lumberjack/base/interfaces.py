@@ -15,7 +15,7 @@ class TokenizerProtocol(Protocol):
 
 
 class MarkdownParserProtocol(Protocol):
-    """Turn markdown text into an internal AST."""
+    """Turn markdown text into the internal document model."""
 
     def parse(
         self,

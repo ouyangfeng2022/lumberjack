@@ -2,7 +2,7 @@
 
 ## Project
 
-AST-driven Markdown document splitter for RAG preprocessing. Python 3.13+, `src/` layout, built with `hatchling` + `hatch-vcs`.
+Markdown document splitter for RAG preprocessing. Python 3.13+, `src/` layout, built with `hatchling` + `hatch-vcs`.
 
 Current runtime dependency:
 
@@ -49,7 +49,7 @@ uv run ruff format
 
 Core pipeline:
 
-`Markdown text -> parser tokens/AST -> DocumentAST -> MarkdownSplitter -> Chunk[]`
+`Markdown text -> parser tokens -> DocumentAST -> MarkdownSplitter -> Chunk[]`
 
 Main components:
 
@@ -211,7 +211,7 @@ After Python code changes:
 - `src/lumberjack/core/parser.py` - parser factory and default parser alias
 - `src/lumberjack/core/splitter.py` - section/block/text chunking
 - `src/lumberjack/core/tokenizers.py` - tokenizer implementations
-- `src/lumberjack/core/visitor.py` - lightweight AST visitor hooks
+- `src/lumberjack/core/visitor.py` - lightweight visitor hooks
 - `src/lumberjack/api.py` - public Python API
 - `src/lumberjack/models.py` - internal data models
 - `src/lumberjack/utils.py` - Markdown rendering helpers

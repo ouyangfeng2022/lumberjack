@@ -118,7 +118,7 @@ export default function App() {
     <div className={styles.page}>
       <header className={styles.header}>
         <h1 className={styles.title}>Lumberjack</h1>
-        <p className={styles.subtitle}>AST-driven Markdown document splitter</p>
+        <p className={styles.subtitle}>Markdown document splitter</p>
       </header>
 
       <main className={styles.main}>

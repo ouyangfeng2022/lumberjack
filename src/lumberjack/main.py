@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="AST-driven markdown splitter")
+    parser = argparse.ArgumentParser(description="Markdown splitter")
     parser.add_argument("input", help="Path to a markdown file")
     parser.add_argument("-o", "--output", help="Optional output file path")
     parser.add_argument(
