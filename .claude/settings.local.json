@@ -6,7 +6,8 @@
       "Bash(git commit -m ':*)",
       "Bash(gh pr *)",
       "Bash(pip list *)",
-      "Bash(python*)"
+      "Bash(python*)",
+      "Bash(grep -E \"\\\\.py$|^d\")"
     ]
   }
 }
