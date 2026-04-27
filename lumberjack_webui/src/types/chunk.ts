@@ -1,0 +1,29 @@
+export interface ChunkData {
+  chunk_id: string;
+  text: string;
+  body: string;
+  token_count: number;
+  headings: [number, string][];
+  section_level: number;
+  document_title: string;
+  document_path: string | null;
+  start_line: number | null;
+  end_line: number | null;
+}
+
+export interface SplitResponse {
+  document: string;
+  chunk_count: number;
+  chunks: ChunkData[];
+}
+
+export interface SplitOptions {
+  max_tokens: number;
+  min_tokens: number;
+  overlap_tokens: number;
+  retain_headings: boolean;
+  merge_small_chunks: boolean;
+  split_oversized_blocks: string;
+  tokenizer: string;
+  document_title: string;
+}
