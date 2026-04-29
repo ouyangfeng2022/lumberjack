@@ -4,6 +4,8 @@ from ..base.interfaces import TokenizerProtocol
 
 
 class TiktokenTokenizer(TokenizerProtocol):
+    """Tokenizer backed by the tiktoken library for model-aware BPE token counting."""
+
     def __init__(self, model: str = "gpt-4o-mini"):
         try:
             import tiktoken
@@ -22,6 +24,8 @@ class TiktokenTokenizer(TokenizerProtocol):
 
 
 class SimpleCharTokenizer:
+    """Character-level tokenizer that counts each character as one token."""
+
     def encode(self, text: str) -> list[int]:
         return [ord(c) for c in text]
 
@@ -30,6 +34,7 @@ class SimpleCharTokenizer:
 
 
 def create_tokenizer(name: str) -> TokenizerProtocol:
+    """Instantiate a tokenizer by name (``"simple"`` or ``"tiktoken"``)."""
     normalized = name.strip().lower()
     if normalized == "simple":
         return SimpleCharTokenizer()

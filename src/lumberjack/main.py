@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser with all split options."""
     parser = argparse.ArgumentParser(description="Markdown splitter")
     parser.add_argument("input", help="Path to a markdown file")
     parser.add_argument("-o", "--output", help="Optional output file path")
@@ -64,6 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def render_markdown(chunks: list[Chunk]) -> str:
+    """Render chunks as Markdown with HTML comment metadata delimiters."""
     rendered: list[str] = []
     for index, chunk in enumerate(chunks, start=1):
         rendered.append(f"<!-- chunk {index} tokens={chunk.token_count} -->")
@@ -72,6 +74,7 @@ def render_markdown(chunks: list[Chunk]) -> str:
 
 
 def main() -> None:
+    """CLI entry point: parse arguments, split a Markdown file, and output results."""
     parser = build_parser()
     args = parser.parse_args()
     input_path = Path(args.input)

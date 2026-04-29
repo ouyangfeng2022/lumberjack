@@ -34,6 +34,7 @@ async def split(
     tokenizer: str = Form("simple"),
     document_title: str = Form("document.md"),
 ) -> dict:
+    """Split Markdown text or an uploaded file into chunks and return JSON results."""
     if file is not None:
         content = (await file.read()).decode("utf-8")
         title = file.filename or document_title

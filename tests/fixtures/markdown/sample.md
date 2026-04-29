@@ -6,7 +6,7 @@ This is the overview section.
 
 ## Details
 
-These details are intentionally long enough to require multiple chunks when the
+    These details are intentionally long enough to require multiple chunks when the
 token budget is set very low.
 
 ```python

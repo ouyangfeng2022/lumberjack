@@ -88,6 +88,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         document_title: str = "document.md",
         document_metadata: dict[str, object] | None = None,
     ) -> DocumentAST:
+        """Parse raw Markdown text into a ``DocumentAST`` with section tree and reference definitions."""
         env: dict[str, Any] = {}
         tokens = self._parser.parse(text, env)
         source_lines = text.splitlines()
@@ -122,6 +123,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         index: int,
         section_stack: list[SectionNode],
     ) -> tuple[SectionNode, int]:
+        """Build a ``SectionNode`` from a heading_open token, adjusting the stack for hierarchy."""
         token = tokens[index]
         close_index = self._find_matching_close(tokens, index)
         inline_token = tokens[index + 1] if index + 1 < len(tokens) else None
@@ -153,6 +155,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         *,
         allow_headings: bool = False,
     ) -> tuple[MarkdownBlock | None, int]:
+        """Normalize the token at *index* into a ``MarkdownBlock``, returning the next token index."""
         token = tokens[index]
 
         if token.type == "heading_open":
@@ -322,6 +325,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         end: int,
         source_lines: list[str],
     ) -> list[MarkdownBlock]:
+        """Parse tokens in the half-open range [start, end) into a list of blocks."""
         blocks: list[MarkdownBlock] = []
         index = start
         while index < end:
@@ -331,6 +335,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         return blocks
 
     def _find_matching_close(self, tokens: list[Token], index: int) -> int:
+        """Return the index of the matching *_close token for an *_open token at *index*."""
         token = tokens[index]
         if not token.type.endswith("_open"):
             return index
@@ -354,6 +359,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         index: int,
         source_lines: list[str],
     ) -> tuple[MarkdownBlock | None, int]:
+        """Handle unrecognized token types by capturing source text and children."""
         if token.type.endswith("_close") or token.type == "inline":
             return (None, index + 1)
 
@@ -388,11 +394,13 @@ class MarkdownItParser(_InlineRenderingMixin):
         )
 
     def _inline_token_to_inlines(self, token: Token | None) -> list[MarkdownInline]:
+        """Convert an inline token's children to normalized ``MarkdownInline`` nodes."""
         if token is None:
             return []
         return self._normalize_inline_tokens(token.children or [])
 
     def _normalize_inline_tokens(self, tokens: list[Token]) -> list[MarkdownInline]:
+        """Recursively normalize markdown-it inline tokens into lumberjack inline nodes."""
         inlines, _ = self._collect_inline_tokens(tokens, 0)
         return inlines
 
@@ -403,6 +411,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         *,
         stop_types: set[str] | None = None,
     ) -> tuple[list[MarkdownInline], int]:
+        """Walk inline tokens from *index* until *stop_types* or end, returning normalized nodes."""
         normalized: list[MarkdownInline] = []
         while index < len(tokens):
             token = tokens[index]
@@ -577,6 +586,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         env: dict[str, Any],
         source_lines: list[str],
     ) -> dict[str, dict[str, str]]:
+        """Extract link reference definitions from the markdown-it parse environment."""
         references = env.get("references")
         if not isinstance(references, dict):
             return {}
@@ -603,6 +613,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         *,
         fallback: str,
     ) -> str:
+        """Recover the original bracket label for a link reference definition."""
         if isinstance(line_map, list) and len(line_map) == 2:
             excerpt = self._slice_source(source_lines, line_map)
             for line in excerpt.splitlines():
@@ -612,6 +623,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         return fallback
 
     def _slice_source(self, source_lines: list[str], line_map: Any) -> str:
+        """Extract source text for a half-open [start, end) line range."""
         if not isinstance(line_map, list) or len(line_map) != 2:
             return ""
         start, end = int(line_map[0]), int(line_map[1])
@@ -640,6 +652,7 @@ class MarkdownParser(MarkdownItParser):
 
 
 def create_parser(name: str) -> MarkdownParserProtocol:
+    """Instantiate a parser by name (``"default"`` or ``"markdown-it"``)."""
     normalized = name.strip().lower()
     if normalized in {"default", "markdown-it"}:
         return MarkdownItParser()

@@ -9,6 +9,8 @@ type HeadingPath = tuple[HeadingKey, ...]
 
 @dataclass(slots=True)
 class MarkdownInline:
+    """Normalized inline node (text, link, code, emphasis, etc.)."""
+
     kind: str
     text: str = ""
     children: list[MarkdownInline] = field(default_factory=list)
@@ -17,6 +19,8 @@ class MarkdownInline:
 
 @dataclass(slots=True)
 class MarkdownBlock:
+    """Block-level node with rendered text, line range, inline children, and nested blocks."""
+
     kind: str
     text: str
     start_line: int | None = None
@@ -28,6 +32,8 @@ class MarkdownBlock:
 
 @dataclass(slots=True)
 class SectionNode:
+    """Heading-tree node representing a section and its children."""
+
     level: int
     title: str
     path: HeadingPath = ()
@@ -50,6 +56,8 @@ class SectionNode:
 
 @dataclass(slots=True)
 class DocumentAST:
+    """Parsed document with root section tree, raw source, and metadata."""
+
     title: str
     source: str
     root: SectionNode
@@ -59,6 +67,8 @@ class DocumentAST:
 
 @dataclass(slots=True)
 class SplitOptions:
+    """Parameters controlling how documents are split into chunks."""
+
     max_tokens: int = 1200
     min_tokens: int = 50
     overlap_tokens: int = 0
@@ -73,6 +83,8 @@ class SplitOptions:
 
 @dataclass(slots=True)
 class Chunk:
+    """Final chunk payload with text, token count, heading breadcrumbs, and line range."""
+
     chunk_id: str
     text: str
     body: str = ""

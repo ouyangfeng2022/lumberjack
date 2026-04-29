@@ -11,6 +11,7 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 def create_app() -> FastAPI:
+    """Create the FastAPI application with API routes and static file serving."""
     app = FastAPI(title="Lumberjack Markdown Splitter")
 
     app.include_router(api_router, prefix="/api")

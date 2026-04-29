@@ -46,10 +46,13 @@ class _ChunkDraft:
 
 
 class MarkdownSplitter(SplitterProtocol):
+    """Split a parsed Markdown document into token-bounded chunks."""
+
     def __init__(self, tokenizer: TokenizerProtocol | None = None):
         self.tokenizer = tokenizer or SimpleCharTokenizer()
 
     def split(self, document: DocumentAST, options: SplitOptions) -> list[Chunk]:
+        """Split *document* into chunks respecting token limits and merge preferences."""
         self._validate_options(options)
         chunks = self._split_document(document, options)
         if options.merge_small_chunks:
@@ -57,6 +60,7 @@ class MarkdownSplitter(SplitterProtocol):
         return self._finalize_chunks(chunks, document, retain_headings=options.retain_headings)
 
     def _split_document(self, document: DocumentAST, options: SplitOptions) -> list[_ChunkDraft]:
+        """Return whole-document draft if it fits, otherwise descend into section tree."""
         entries = self._collect_section_entries(document.root)
         if not entries:
             return []
@@ -68,6 +72,7 @@ class MarkdownSplitter(SplitterProtocol):
         return self._split_section(document.root, options)
 
     def _validate_options(self, options: SplitOptions) -> None:
+        """Raise ``ValueError`` if split options contain illegal values."""
         if options.max_tokens <= 0:
             raise ValueError("max_tokens must be greater than 0")
         if options.min_tokens < 0:
@@ -84,6 +89,7 @@ class MarkdownSplitter(SplitterProtocol):
         section: SectionNode,
         options: SplitOptions,
     ) -> list[_ChunkDraft]:
+        """Recursively split a section into chunk drafts."""
         entries = self._collect_section_entries(section)
         if not entries:
             return []
@@ -108,6 +114,7 @@ class MarkdownSplitter(SplitterProtocol):
         section: SectionNode,
         options: SplitOptions,
     ) -> list[_ChunkDraft]:
+        """Split a section's body blocks and child sections, packing adjacent entries that fit."""
         chunks: list[_ChunkDraft] = []
         current_entries: list[_Entry] = []
 
@@ -183,6 +190,7 @@ class MarkdownSplitter(SplitterProtocol):
         overlap_tokens: int,
         retain_headings: bool,
     ) -> list[_ChunkDraft]:
+        """Split a section's own blocks into fragments, then into chunk drafts."""
         prefix = render_heading_path(section.path) if retain_headings and section.level > 0 else ""
         fragment = _Fragment(
             headings=section.path,
@@ -200,6 +208,7 @@ class MarkdownSplitter(SplitterProtocol):
         *,
         overlap_tokens: int,
     ) -> list[_ChunkDraft]:
+        """Greedy block-level split of a fragment into chunk drafts within token budget."""
         prefix_tokens = self.tokenizer.count(fragment.prefix) if fragment.prefix else 0
         if prefix_tokens >= max_tokens:
             return [self._draft_from_entry(self._entry_from_fragment(fragment), fragment.render())]
@@ -320,6 +329,7 @@ class MarkdownSplitter(SplitterProtocol):
         max_tokens: int,
         overlap_tokens: int,
     ) -> list[str] | None:
+        """Split an oversized block if its kind is allowed, otherwise return ``None``."""
         if not self._can_split_block(block, split_oversized_blocks=split_oversized_blocks):
             return None
 
@@ -358,6 +368,7 @@ class MarkdownSplitter(SplitterProtocol):
         max_tokens: int,
         overlap_tokens: int,
     ) -> list[str]:
+        """Split a fenced/indented code block, preserving fence wrappers in each piece."""
         info = str(block.attrs.get("info") or block.attrs.get("language") or "").strip()
         literal = str(block.attrs.get("literal") or "")
         open_fence = f"```{info}".rstrip()
@@ -382,6 +393,7 @@ class MarkdownSplitter(SplitterProtocol):
         max_tokens: int,
         overlap_tokens: int,
     ) -> list[str]:
+        """Split a list block by packing list items, falling back to text splitting."""
         items = [child.text for child in block.children if child.text]
         if len(items) <= 1:
             return self._split_text(
@@ -420,6 +432,7 @@ class MarkdownSplitter(SplitterProtocol):
         max_tokens: int,
         overlap_tokens: int,
     ) -> list[str]:
+        """Split text through paragraph -> line -> sentence -> word -> hard-split fallback."""
         if self.tokenizer.count(text) <= max_tokens:
             return [text]
 
@@ -470,6 +483,7 @@ class MarkdownSplitter(SplitterProtocol):
         separator: str,
         overlap_tokens: int,
     ) -> list[str]:
+        """Greedily pack parts into groups that fit within *max_tokens*, with optional overlap."""
         packed: list[str] = []
         current_parts: list[str] = []
         for part in parts:
@@ -498,6 +512,7 @@ class MarkdownSplitter(SplitterProtocol):
         *,
         overlap_tokens: int,
     ) -> list[str]:
+        """Character-level split when no higher-level boundary is available."""
         parts: list[str] = []
         current = ""
         for character in text:
@@ -562,6 +577,7 @@ class MarkdownSplitter(SplitterProtocol):
         chunks: list[_ChunkDraft],
         options: SplitOptions,
     ) -> list[_ChunkDraft]:
+        """Merge adjacent chunks that share a heading path and fall below *min_tokens*."""
         if not chunks:
             return chunks
 
@@ -588,6 +604,7 @@ class MarkdownSplitter(SplitterProtocol):
         *,
         retain_headings: bool,
     ) -> list[Chunk]:
+        """Convert chunk drafts into final ``Chunk`` objects with rendered text and metadata."""
         finalized: list[Chunk] = []
         document_path = self._document_path(document)
         for index, chunk in enumerate(chunks, start=1):
@@ -649,6 +666,7 @@ class MarkdownSplitter(SplitterProtocol):
         )
 
     def _collect_section_entries(self, section: SectionNode) -> list[_Entry]:
+        """Recursively collect entries from a section and all its descendants."""
         entries: list[_Entry] = []
         if section.blocks or (not section.children and section.level > 0):
             entries.append(self._entry_from_section(section))
@@ -692,6 +710,7 @@ class MarkdownSplitter(SplitterProtocol):
         retain_headings: bool,
         include_common_headings: bool = True,
     ) -> str:
+        """Render entries into Markdown, deduplicating shared heading prefixes."""
         if not entries:
             return ""
 
@@ -740,6 +759,7 @@ class MarkdownSplitter(SplitterProtocol):
         return headings[1:] if len(headings) > 1 else ()
 
     def _common_heading_path(self, paths: Iterable[HeadingPath]) -> HeadingPath:
+        """Return the longest shared heading prefix across all given paths."""
         iterator = iter(paths)
         first = tuple(next(iterator, ()))
         common = first
