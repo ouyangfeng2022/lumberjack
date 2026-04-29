@@ -54,22 +54,10 @@ class MarkdownSplitter(SplitterProtocol):
     def split(self, document: DocumentAST, options: SplitOptions) -> list[Chunk]:
         """Split *document* into chunks respecting token limits and merge preferences."""
         self._validate_options(options)
-        chunks = self._split_document(document, options)
+        chunks = self._split_section(document.root, options)
         if options.merge_small_chunks:
             chunks = self._merge_small_chunks(chunks, options)
         return self._finalize_chunks(chunks, document, retain_headings=options.retain_headings)
-
-    def _split_document(self, document: DocumentAST, options: SplitOptions) -> list[_ChunkDraft]:
-        """Return whole-document draft if it fits, otherwise descend into section tree."""
-        entries = self._collect_section_entries(document.root)
-        if not entries:
-            return []
-
-        whole_document = self._draft_from_entries(entries, retain_headings=options.retain_headings)
-        if whole_document.token_count <= options.max_tokens:
-            return [whole_document]
-
-        return self._split_section(document.root, options)
 
     def _validate_options(self, options: SplitOptions) -> None:
         """Raise ``ValueError`` if split options contain illegal values."""
