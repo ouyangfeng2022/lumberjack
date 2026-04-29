@@ -96,23 +96,6 @@ def test_chunk_to_dict_serializes_heading_path() -> None:
     assert payload["end_line"] == 19
 
 
-def test_chunk_to_dict_supports_chunks_constructed_with_legacy_signature() -> None:
-    chunk = Chunk(
-        "chunk-0001",
-        "Body text",
-        9,
-        ((1, "Overview"),),
-        1,
-        "sample.md",
-    )
-
-    payload = chunk_to_dict(chunk)
-
-    assert chunk.body == ""
-    assert payload["body"] == ""
-    assert payload["headings"] == [[1, "Overview"]]
-
-
 def test_split_markdown_file_populates_chunk_metadata() -> None:
     chunk = split_markdown_file(FIXTURE_PATH, max_tokens=180)[0]
 

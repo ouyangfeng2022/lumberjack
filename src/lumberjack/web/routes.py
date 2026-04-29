@@ -44,7 +44,7 @@ async def split(
     else:
         return {"error": "Provide either markdown text or upload a file"}
 
-    blocks = tuple(
+    blocks = frozenset(
         b.strip() for b in split_oversized_blocks.split(",") if b.strip() in _VALID_SPLIT_BLOCKS
     )
 

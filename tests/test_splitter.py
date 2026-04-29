@@ -104,8 +104,11 @@ LONG_URL_FIXTURE = (
 def test_splitter_preserves_heading_context() -> None:
     """Test that splitter preserves heading hierarchy in chunks."""
     document = MarkdownParser().parse(FIXTURE, document_title="sample.md")
-    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
-    chunks = splitter.split(document, SplitOptions(max_tokens=140, min_tokens=20))
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=140, min_tokens=20),
+    )
+    chunks = splitter.split(document)
 
     assert len(chunks) >= 2
     assert any("# Overview" in chunk.text for chunk in chunks)
@@ -115,8 +118,11 @@ def test_splitter_preserves_heading_context() -> None:
 def test_splitter_respects_budget_except_unsplittable_code_fence() -> None:
     """Test that splitter respects token budget except for code fences."""
     document = MarkdownParser().parse(FIXTURE, document_title="sample.md")
-    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
-    chunks = splitter.split(document, SplitOptions(max_tokens=180, min_tokens=20))
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=180, min_tokens=20),
+    )
+    chunks = splitter.split(document)
 
     oversized = [chunk for chunk in chunks if chunk.token_count > 180]
     if oversized:
@@ -125,8 +131,11 @@ def test_splitter_respects_budget_except_unsplittable_code_fence() -> None:
 
 def test_splitter_deduplicates_shared_parent_heading_in_merged_chunk() -> None:
     document = MarkdownParser().parse(MERGED_SECTION_FIXTURE, document_title="development.md")
-    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
-    chunks = splitter.split(document, SplitOptions(max_tokens=1000, min_tokens=20))
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=1000, min_tokens=20),
+    )
+    chunks = splitter.split(document)
 
     assert len(chunks) == 1
     assert chunks[0].text.count("# Development Guide") == 1
@@ -141,16 +150,15 @@ def test_splitter_deduplicates_shared_parent_heading_in_merged_chunk() -> None:
 
 def test_splitter_omits_headings_from_text_when_disabled() -> None:
     document = MarkdownParser().parse(MERGED_SECTION_FIXTURE, document_title="development.md")
-    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
 
-    with_headings = splitter.split(
-        document,
-        SplitOptions(max_tokens=1000, min_tokens=20, retain_headings=True),
-    )
-    without_headings = splitter.split(
-        document,
-        SplitOptions(max_tokens=1000, min_tokens=20, retain_headings=False),
-    )
+    with_headings = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=1000, min_tokens=20, retain_headings=True),
+    ).split(document)
+    without_headings = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=1000, min_tokens=20, retain_headings=False),
+    ).split(document)
 
     assert len(with_headings) == 1
     assert len(without_headings) == 1
@@ -169,12 +177,12 @@ def test_splitter_omits_headings_from_text_when_disabled() -> None:
 
 def test_splitter_recursively_descends_heading_levels_when_section_is_oversized() -> None:
     document = MarkdownParser().parse(RECURSIVE_SECTION_FIXTURE, document_title="recursive.md")
-    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
-
-    chunks = splitter.split(
-        document,
-        SplitOptions(max_tokens=90, min_tokens=80, retain_headings=True),
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=90, min_tokens=80, retain_headings=True),
     )
+
+    chunks = splitter.split(document)
 
     assert len(chunks) == 3
     assert chunks[0].text == "# Alpha\n\nAlpha summary."
@@ -191,12 +199,12 @@ def test_splitter_recursively_descends_heading_levels_when_section_is_oversized(
 
 def test_splitter_checks_whole_document_before_splitting_by_top_level_headings() -> None:
     document = MarkdownParser().parse(MULTI_ROOT_FIXTURE, document_title="multi-root.md")
-    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
-
-    chunks = splitter.split(
-        document,
-        SplitOptions(max_tokens=200, min_tokens=20, retain_headings=True),
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=200, min_tokens=20, retain_headings=True),
     )
+
+    chunks = splitter.split(document)
 
     assert len(chunks) == 1
     assert chunks[0].text == "# First\n\nFirst body.\n\n# Second\n\nSecond body."
@@ -204,12 +212,12 @@ def test_splitter_checks_whole_document_before_splitting_by_top_level_headings()
 
 def test_splitter_greedily_merges_same_level_siblings_before_descending() -> None:
     document = MarkdownParser().parse(GREEDY_SIBLING_FIXTURE, document_title="siblings.md")
-    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
-
-    chunks = splitter.split(
-        document,
-        SplitOptions(max_tokens=60, min_tokens=20, retain_headings=True),
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=60, min_tokens=20, retain_headings=True),
     )
+
+    chunks = splitter.split(document)
 
     assert len(chunks) == 2
     assert chunks[0].text == "# Parent\n\n## One\n\nOne body.\n\n## Two\n\nTwo body."
@@ -219,12 +227,12 @@ def test_splitter_greedily_merges_same_level_siblings_before_descending() -> Non
 
 def test_splitter_exposes_body_without_common_headings_for_single_leaf_chunk() -> None:
     document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
-    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
-
-    chunks = splitter.split(
-        document,
-        SplitOptions(max_tokens=35, min_tokens=0, retain_headings=True),
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=35, min_tokens=0, retain_headings=True),
     )
+
+    chunks = splitter.split(document)
 
     assert chunks[0].headings == ((1, "Root"), (2, "Scope"), (3, "A"))
     assert chunks[0].body == "Alpha body."
@@ -235,12 +243,12 @@ def test_splitter_exposes_body_without_common_headings_for_single_leaf_chunk() -
 
 def test_splitter_exposes_body_without_common_headings_for_multi_entry_chunk() -> None:
     document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
-    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
-
-    chunks = splitter.split(
-        document,
-        SplitOptions(max_tokens=60, min_tokens=0, retain_headings=True),
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=60, min_tokens=0, retain_headings=True),
     )
+
+    chunks = splitter.split(document)
 
     assert len(chunks) == 1
     assert chunks[0].headings == ((1, "Root"), (2, "Scope"))
@@ -252,12 +260,12 @@ def test_splitter_exposes_body_without_common_headings_for_multi_entry_chunk() -
 
 def test_splitter_body_matches_visible_text_when_headings_are_hidden() -> None:
     document = MarkdownParser().parse(MULTI_ROOT_FIXTURE, document_title="multi-root.md")
-    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
-
-    chunks = splitter.split(
-        document,
-        SplitOptions(max_tokens=200, min_tokens=0, retain_headings=False),
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=200, min_tokens=0, retain_headings=False),
     )
+
+    chunks = splitter.split(document)
 
     assert len(chunks) == 1
     assert chunks[0].text == "First body.\n\nSecond body."
@@ -266,12 +274,12 @@ def test_splitter_body_matches_visible_text_when_headings_are_hidden() -> None:
 
 def test_splitter_body_drops_only_visible_common_headings_when_headings_are_hidden() -> None:
     document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
-    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
-
-    chunks = splitter.split(
-        document,
-        SplitOptions(max_tokens=60, min_tokens=0, retain_headings=False),
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=60, min_tokens=0, retain_headings=False),
     )
+
+    chunks = splitter.split(document)
 
     assert len(chunks) == 1
     assert chunks[0].text == "## Scope\n\n### A\n\nAlpha body.\n\n### B\n\nBeta body."
@@ -283,11 +291,9 @@ def test_splitter_adds_overlap_only_for_text_fallback_splits() -> None:
         "alpha beta gamma delta epsilon zeta",
         document_title="overlap.md",
     )
-    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
-
-    chunks = splitter.split(
-        document,
-        SplitOptions(
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
             max_tokens=16,
             min_tokens=0,
             overlap_tokens=5,
@@ -295,6 +301,8 @@ def test_splitter_adds_overlap_only_for_text_fallback_splits() -> None:
             merge_small_chunks=False,
         ),
     )
+
+    chunks = splitter.split(document)
 
     assert [chunk.body for chunk in chunks] == [
         "alpha beta gamma",
@@ -307,13 +315,13 @@ def test_splitter_adds_overlap_only_for_text_fallback_splits() -> None:
 
 def test_splitter_rejects_overlap_budget_that_consumes_the_whole_chunk() -> None:
     document = MarkdownParser().parse("alpha beta", document_title="invalid.md")
-    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=10, min_tokens=0, overlap_tokens=10),
+    )
 
     try:
-        splitter.split(
-            document,
-            SplitOptions(max_tokens=10, min_tokens=0, overlap_tokens=10),
-        )
+        splitter.split(document)
     except ValueError as exc:
         assert str(exc) == "overlap_tokens must be smaller than max_tokens"
     else:
@@ -322,12 +330,12 @@ def test_splitter_rejects_overlap_budget_that_consumes_the_whole_chunk() -> None
 
 def test_splitter_keeps_oversized_lists_intact_by_default() -> None:
     document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
-    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
-
-    chunks = splitter.split(
-        document,
-        SplitOptions(max_tokens=20, min_tokens=0, retain_headings=False),
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=20, min_tokens=0, retain_headings=False),
     )
+
+    chunks = splitter.split(document)
 
     assert len(chunks) == 1
     assert chunks[0].text == LIST_FIXTURE.strip()
@@ -336,11 +344,9 @@ def test_splitter_keeps_oversized_lists_intact_by_default() -> None:
 
 def test_splitter_can_split_oversized_lists_when_enabled() -> None:
     document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
-    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
-
-    chunks = splitter.split(
-        document,
-        SplitOptions(
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
             max_tokens=20,
             min_tokens=0,
             retain_headings=False,
@@ -348,6 +354,8 @@ def test_splitter_can_split_oversized_lists_when_enabled() -> None:
             split_oversized_blocks=("list",),
         ),
     )
+
+    chunks = splitter.split(document)
 
     assert [chunk.text for chunk in chunks] == [
         "- alpha alpha alpha",
@@ -362,11 +370,9 @@ def test_splitter_can_split_oversized_lists_when_enabled() -> None:
 
 def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
     document = MarkdownParser().parse(CODE_FENCE_FIXTURE, document_title="code.md")
-    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
-
-    chunks = splitter.split(
-        document,
-        SplitOptions(
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
             max_tokens=28,
             min_tokens=0,
             retain_headings=False,
@@ -374,6 +380,8 @@ def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
             split_oversized_blocks=("code_fence",),
         ),
     )
+
+    chunks = splitter.split(document)
 
     assert [chunk.text for chunk in chunks] == [
         '```python\nprint("alpha")\n```',
@@ -385,17 +393,17 @@ def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
 
 def test_splitter_never_splits_oversized_urls() -> None:
     document = MarkdownParser().parse(LONG_URL_FIXTURE, document_title="url.md")
-    splitter = MarkdownSplitter(tokenizer=SimpleCharTokenizer())
-
-    chunks = splitter.split(
-        document,
-        SplitOptions(
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
             max_tokens=30,
             min_tokens=0,
             retain_headings=False,
             merge_small_chunks=False,
         ),
     )
+
+    chunks = splitter.split(document)
 
     assert len(chunks) == 1
     assert chunks[0].text == LONG_URL_FIXTURE

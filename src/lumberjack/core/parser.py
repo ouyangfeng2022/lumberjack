@@ -22,7 +22,7 @@ LINK_REFERENCE_DEFINITION_RE = re.compile(r"^[ ]{0,3}\[([^\]]+)\]:")
 
 
 class _InlineRenderingMixin:
-    def _render_inlines(self, inlines: list[MarkdownInline]) -> str:
+    def _render_inlines(self, inlines: Iterable[MarkdownInline]) -> str:
         return "".join(self._render_inline(inline) for inline in inlines)
 
     def _render_inline(self, node: MarkdownInline) -> str:
@@ -324,15 +324,15 @@ class MarkdownItParser(_InlineRenderingMixin):
         start: int,
         end: int,
         source_lines: list[str],
-    ) -> list[MarkdownBlock]:
-        """Parse tokens in the half-open range [start, end) into a list of blocks."""
+    ) -> tuple[MarkdownBlock, ...]:
+        """Parse tokens in the half-open range [start, end) into a tuple of blocks."""
         blocks: list[MarkdownBlock] = []
         index = start
         while index < end:
             block, index = self._build_block(tokens, index, source_lines, allow_headings=False)
             if block is not None and block.text:
                 blocks.append(block)
-        return blocks
+        return tuple(blocks)
 
     def _find_matching_close(self, tokens: list[Token], index: int) -> int:
         """Return the index of the matching *_close token for an *_open token at *index*."""
@@ -369,7 +369,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         children = (
             self._parse_blocks(tokens, index + 1, close_index, source_lines)
             if token.type.endswith("_open")
-            else []
+            else ()
         )
         text = self._slice_source(source_lines, token.map)
         if not text and children:
@@ -393,13 +393,13 @@ class MarkdownItParser(_InlineRenderingMixin):
             close_index + 1,
         )
 
-    def _inline_token_to_inlines(self, token: Token | None) -> list[MarkdownInline]:
+    def _inline_token_to_inlines(self, token: Token | None) -> tuple[MarkdownInline, ...]:
         """Convert an inline token's children to normalized ``MarkdownInline`` nodes."""
         if token is None:
-            return []
+            return ()
         return self._normalize_inline_tokens(token.children or [])
 
-    def _normalize_inline_tokens(self, tokens: list[Token]) -> list[MarkdownInline]:
+    def _normalize_inline_tokens(self, tokens: list[Token]) -> tuple[MarkdownInline, ...]:
         """Recursively normalize markdown-it inline tokens into lumberjack inline nodes."""
         inlines, _ = self._collect_inline_tokens(tokens, 0)
         return inlines
@@ -410,7 +410,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         index: int,
         *,
         stop_types: set[str] | None = None,
-    ) -> tuple[list[MarkdownInline], int]:
+    ) -> tuple[tuple[MarkdownInline, ...], int]:
         """Walk inline tokens from *index* until *stop_types* or end, returning normalized nodes."""
         normalized: list[MarkdownInline] = []
         while index < len(tokens):
@@ -579,7 +579,7 @@ class MarkdownItParser(_InlineRenderingMixin):
             normalized.append(MarkdownInline(kind=token.type, text=token.content))
             index += 1
 
-        return (normalized, index)
+        return (tuple(normalized), index)
 
     def _extract_reference_definitions(
         self,

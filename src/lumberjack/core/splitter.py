@@ -22,7 +22,6 @@ class _Fragment:
     prefix: str
     blocks: list[MarkdownBlock]
     section_level: int
-    split_oversized_blocks: tuple[str, ...]
 
     def render(self) -> str:
         parts = [self.prefix] if self.prefix else []
@@ -48,59 +47,64 @@ class _ChunkDraft:
 class MarkdownSplitter(SplitterProtocol):
     """Split a parsed Markdown document into token-bounded chunks."""
 
-    def __init__(self, tokenizer: TokenizerProtocol | None = None):
+    def __init__(
+        self,
+        tokenizer: TokenizerProtocol | None = None,
+        options: SplitOptions | None = None,
+    ):
+        """Initialise the splitter.
+
+        Args:
+            tokenizer: Token counter used to measure chunk sizes.
+                Defaults to :class:`~lumberjack.core.tokenizers.SimpleCharTokenizer`.
+            options: Split parameters (token budget, merge behaviour, etc.).
+                Defaults to a zero-customised :class:`~lumberjack.models.SplitOptions`.
+        """
         self.tokenizer = tokenizer or SimpleCharTokenizer()
+        self.options = options or SplitOptions()
 
-    def split(self, document: DocumentAST, options: SplitOptions) -> list[Chunk]:
+    def split(self, document: DocumentAST) -> list[Chunk]:
         """Split *document* into chunks respecting token limits and merge preferences."""
-        self._validate_options(options)
-        chunks = self._split_section(document.root, options)
-        if options.merge_small_chunks:
-            chunks = self._merge_small_chunks(chunks, options)
-        return self._finalize_chunks(chunks, document, retain_headings=options.retain_headings)
+        self._validate_options()
+        chunks = self._split_section(document.root)
+        if self.options.merge_small_chunks:
+            chunks = self._merge_small_chunks(chunks)
+        return self._finalize_chunks(chunks, document)
 
-    def _validate_options(self, options: SplitOptions) -> None:
+    def _validate_options(self) -> None:
         """Raise ``ValueError`` if split options contain illegal values."""
-        if options.max_tokens <= 0:
+        if self.options.max_tokens <= 0:
             raise ValueError("max_tokens must be greater than 0")
-        if options.min_tokens < 0:
+        if self.options.min_tokens < 0:
             raise ValueError("min_tokens must be non-negative")
-        if options.overlap_tokens < 0:
+        if self.options.overlap_tokens < 0:
             raise ValueError("overlap_tokens must be non-negative")
-        if options.min_tokens >= options.max_tokens:
+        if self.options.min_tokens >= self.options.max_tokens:
             raise ValueError("min_tokens must be smaller than max_tokens")
-        if options.overlap_tokens >= options.max_tokens:
+        if self.options.overlap_tokens >= self.options.max_tokens:
             raise ValueError("overlap_tokens must be smaller than max_tokens")
 
     def _split_section(
         self,
         section: SectionNode,
-        options: SplitOptions,
     ) -> list[_ChunkDraft]:
         """Recursively split a section into chunk drafts."""
         entries = self._collect_section_entries(section)
         if not entries:
             return []
 
-        draft = self._draft_from_entries(entries, retain_headings=options.retain_headings)
-        if draft.token_count <= options.max_tokens:
+        draft = self._draft_from_entries(entries)
+        if draft.token_count <= self.options.max_tokens:
             return [draft]
 
         if section.children:
-            return self._split_section_children(section, options)
+            return self._split_section_children(section)
 
-        return self._split_section_body(
-            section,
-            split_oversized_blocks=options.split_oversized_blocks,
-            max_tokens=options.max_tokens,
-            overlap_tokens=options.overlap_tokens,
-            retain_headings=options.retain_headings,
-        )
+        return self._split_section_body(section)
 
     def _split_section_children(
         self,
         section: SectionNode,
-        options: SplitOptions,
     ) -> list[_ChunkDraft]:
         """Split a section's body blocks and child sections, packing adjacent entries that fit."""
         chunks: list[_ChunkDraft] = []
@@ -110,61 +114,39 @@ class MarkdownSplitter(SplitterProtocol):
             nonlocal current_entries
             if not current_entries:
                 return
-            chunks.append(
-                self._draft_from_entries(
-                    current_entries,
-                    retain_headings=options.retain_headings,
-                )
-            )
+            chunks.append(self._draft_from_entries(current_entries))
             current_entries = []
 
         def add_packable(draft: _ChunkDraft) -> None:
             nonlocal current_entries
             candidate_entries = [*current_entries, *draft.entries]
-            candidate = self._draft_from_entries(
-                candidate_entries,
-                retain_headings=options.retain_headings,
-            )
-            if current_entries and candidate.token_count > options.max_tokens:
+            candidate = self._draft_from_entries(candidate_entries)
+            if current_entries and candidate.token_count > self.options.max_tokens:
                 flush_current()
                 current_entries = draft.entries.copy()
                 return
             current_entries = candidate_entries
 
         if section.blocks:
-            body_draft = self._draft_from_entries(
-                [self._entry_from_section(section)],
-                retain_headings=options.retain_headings,
-            )
-            if body_draft.token_count <= options.max_tokens:
+            body_draft = self._draft_from_entries([self._entry_from_section(section)])
+            if body_draft.token_count <= self.options.max_tokens:
                 add_packable(body_draft)
             else:
                 flush_current()
-                chunks.extend(
-                    self._split_section_body(
-                        section,
-                        split_oversized_blocks=options.split_oversized_blocks,
-                        max_tokens=options.max_tokens,
-                        overlap_tokens=options.overlap_tokens,
-                        retain_headings=options.retain_headings,
-                    )
-                )
+                chunks.extend(self._split_section_body(section))
 
         for child in section.children:
             child_entries = self._collect_section_entries(child)
             if not child_entries:
                 continue
 
-            child_draft = self._draft_from_entries(
-                child_entries,
-                retain_headings=options.retain_headings,
-            )
-            if child_draft.token_count <= options.max_tokens:
+            child_draft = self._draft_from_entries(child_entries)
+            if child_draft.token_count <= self.options.max_tokens:
                 add_packable(child_draft)
                 continue
 
             flush_current()
-            chunks.extend(self._split_section(child, options))
+            chunks.extend(self._split_section(child))
 
         flush_current()
         return chunks
@@ -172,31 +154,27 @@ class MarkdownSplitter(SplitterProtocol):
     def _split_section_body(
         self,
         section: SectionNode,
-        *,
-        split_oversized_blocks: tuple[str, ...],
-        max_tokens: int,
-        overlap_tokens: int,
-        retain_headings: bool,
     ) -> list[_ChunkDraft]:
         """Split a section's own blocks into fragments, then into chunk drafts."""
-        prefix = render_heading_path(section.path) if retain_headings and section.level > 0 else ""
+        prefix = (
+            render_heading_path(section.path)
+            if self.options.retain_headings and section.level > 0
+            else ""
+        )
         fragment = _Fragment(
             headings=section.path,
             prefix=prefix,
             blocks=section.blocks.copy(),
             section_level=section.level,
-            split_oversized_blocks=tuple(kind.strip().lower() for kind in split_oversized_blocks),
         )
-        return self._split_fragment(fragment, max_tokens, overlap_tokens=overlap_tokens)
+        return self._split_fragment(fragment)
 
     def _split_fragment(
         self,
         fragment: _Fragment,
-        max_tokens: int,
-        *,
-        overlap_tokens: int,
     ) -> list[_ChunkDraft]:
         """Greedy block-level split of a fragment into chunk drafts within token budget."""
+        max_tokens = self.options.max_tokens
         prefix_tokens = self.tokenizer.count(fragment.prefix) if fragment.prefix else 0
         if prefix_tokens >= max_tokens:
             return [self._draft_from_entry(self._entry_from_fragment(fragment), fragment.render())]
@@ -245,12 +223,7 @@ class MarkdownSplitter(SplitterProtocol):
                 current_end_line = self._coalesce_max(current_end_line, block.end_line)
                 continue
 
-            block_pieces = self._split_oversized_block(
-                block,
-                split_oversized_blocks=fragment.split_oversized_blocks,
-                max_tokens=budget,
-                overlap_tokens=overlap_tokens,
-            )
+            block_pieces = self._split_oversized_block(block, max_tokens=budget)
             if block_pieces is None:
                 chunks.append(
                     _ChunkDraft(
@@ -312,49 +285,24 @@ class MarkdownSplitter(SplitterProtocol):
     def _split_oversized_block(
         self,
         block: MarkdownBlock,
-        *,
-        split_oversized_blocks: tuple[str, ...],
         max_tokens: int,
-        overlap_tokens: int,
     ) -> list[str] | None:
         """Split an oversized block if its kind is allowed, otherwise return ``None``."""
-        if not self._can_split_block(block, split_oversized_blocks=split_oversized_blocks):
+        if block.kind.lower() not in self.options.split_oversized_blocks:
             return None
 
         if block.kind in {"code_block", "code_fence"}:
-            return self._split_code_block(
-                block,
-                max_tokens=max_tokens,
-                overlap_tokens=overlap_tokens,
-            )
+            return self._split_code_block(block, max_tokens=max_tokens)
 
         if block.kind == "list" and block.children:
-            return self._split_list_block(
-                block,
-                max_tokens=max_tokens,
-                overlap_tokens=overlap_tokens,
-            )
+            return self._split_list_block(block, max_tokens=max_tokens)
 
-        return self._split_text(
-            block.text,
-            max_tokens=max_tokens,
-            overlap_tokens=overlap_tokens,
-        )
-
-    def _can_split_block(
-        self,
-        block: MarkdownBlock,
-        *,
-        split_oversized_blocks: tuple[str, ...],
-    ) -> bool:
-        return block.kind.lower() in split_oversized_blocks
+        return self._split_text(block.text, max_tokens=max_tokens)
 
     def _split_code_block(
         self,
         block: MarkdownBlock,
-        *,
         max_tokens: int,
-        overlap_tokens: int,
     ) -> list[str]:
         """Split a fenced/indented code block, preserving fence wrappers in each piece."""
         info = str(block.attrs.get("info") or block.attrs.get("language") or "").strip()
@@ -367,19 +315,13 @@ class MarkdownSplitter(SplitterProtocol):
             return [block.text]
 
         code_budget = max_tokens - wrapper_tokens
-        pieces = self._split_text(
-            literal,
-            max_tokens=code_budget,
-            overlap_tokens=overlap_tokens,
-        )
+        pieces = self._split_text(literal, max_tokens=code_budget)
         return [f"{open_fence}\n{piece}\n{close_fence}" for piece in pieces]
 
     def _split_list_block(
         self,
         block: MarkdownBlock,
-        *,
         max_tokens: int,
-        overlap_tokens: int,
     ) -> list[str]:
         """Split a list block by packing list items, falling back to text splitting."""
         items = [child.text for child in block.children if child.text]
@@ -387,7 +329,6 @@ class MarkdownSplitter(SplitterProtocol):
             return self._split_text(
                 block.text,
                 max_tokens=max_tokens,
-                overlap_tokens=overlap_tokens,
             )
 
         packed = self._pack_parts(
@@ -408,7 +349,6 @@ class MarkdownSplitter(SplitterProtocol):
                 self._split_text(
                     item,
                     max_tokens=max_tokens,
-                    overlap_tokens=overlap_tokens,
                 )
             )
         return pieces
@@ -416,11 +356,10 @@ class MarkdownSplitter(SplitterProtocol):
     def _split_text(
         self,
         text: str,
-        *,
         max_tokens: int,
-        overlap_tokens: int,
     ) -> list[str]:
         """Split text through paragraph -> line -> sentence -> word -> hard-split fallback."""
+        overlap_tokens = self.options.overlap_tokens
         if self.tokenizer.count(text) <= max_tokens:
             return [text]
 
@@ -563,7 +502,6 @@ class MarkdownSplitter(SplitterProtocol):
     def _merge_small_chunks(
         self,
         chunks: list[_ChunkDraft],
-        options: SplitOptions,
     ) -> list[_ChunkDraft]:
         """Merge adjacent chunks that share a heading path and fall below *min_tokens*."""
         if not chunks:
@@ -574,8 +512,8 @@ class MarkdownSplitter(SplitterProtocol):
             previous = merged[-1]
             if (
                 self._can_merge_small_chunks(previous, chunk)
-                and previous.token_count + chunk.token_count <= options.max_tokens
-                and chunk.token_count < options.min_tokens
+                and previous.token_count + chunk.token_count <= self.options.max_tokens
+                and chunk.token_count < self.options.min_tokens
             ):
                 merged[-1] = _ChunkDraft(
                     entries=[*previous.entries, *chunk.entries],
@@ -589,8 +527,6 @@ class MarkdownSplitter(SplitterProtocol):
         self,
         chunks: list[_ChunkDraft],
         document: DocumentAST,
-        *,
-        retain_headings: bool,
     ) -> list[Chunk]:
         """Convert chunk drafts into final ``Chunk`` objects with rendered text and metadata."""
         finalized: list[Chunk] = []
@@ -600,12 +536,10 @@ class MarkdownSplitter(SplitterProtocol):
             text = self._render_chunk_entries(
                 chunk.entries,
                 common_headings=headings,
-                retain_headings=retain_headings,
             )
             body = self._render_chunk_entries(
                 chunk.entries,
                 common_headings=headings,
-                retain_headings=retain_headings,
                 include_common_headings=False,
             )
             finalized.append(
@@ -679,14 +613,11 @@ class MarkdownSplitter(SplitterProtocol):
     def _draft_from_entries(
         self,
         entries: list[_Entry],
-        *,
-        retain_headings: bool,
     ) -> _ChunkDraft:
         headings = self._common_heading_path(entry.headings for entry in entries)
         rendered = self._render_chunk_entries(
             entries,
             common_headings=headings,
-            retain_headings=retain_headings,
         )
         return _ChunkDraft(entries=entries.copy(), token_count=self.tokenizer.count(rendered))
 
@@ -695,17 +626,13 @@ class MarkdownSplitter(SplitterProtocol):
         entries: list[_Entry],
         *,
         common_headings: HeadingPath,
-        retain_headings: bool,
         include_common_headings: bool = True,
     ) -> str:
         """Render entries into Markdown, deduplicating shared heading prefixes."""
         if not entries:
             return ""
 
-        full_common_headings = self._visible_heading_path(
-            common_headings,
-            retain_headings=retain_headings,
-        )
+        full_common_headings = self._visible_heading_path(common_headings)
         visible_common_headings = full_common_headings if include_common_headings else ()
         parts: list[str] = []
         if visible_common_headings:
@@ -713,10 +640,7 @@ class MarkdownSplitter(SplitterProtocol):
 
         previous_visible_headings = full_common_headings
         for entry in entries:
-            entry_visible_headings = self._visible_heading_path(
-                entry.headings,
-                retain_headings=retain_headings,
-            )
+            entry_visible_headings = self._visible_heading_path(entry.headings)
             shared_headings = self._common_heading_path(
                 (previous_visible_headings, entry_visible_headings)
             )
@@ -739,10 +663,8 @@ class MarkdownSplitter(SplitterProtocol):
     def _visible_heading_path(
         self,
         headings: HeadingPath,
-        *,
-        retain_headings: bool,
     ) -> HeadingPath:
-        if retain_headings:
+        if self.options.retain_headings:
             return headings
         return headings[1:] if len(headings) > 1 else ()
 

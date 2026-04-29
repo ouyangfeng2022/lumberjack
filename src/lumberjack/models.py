@@ -7,17 +7,17 @@ type HeadingKey = tuple[int, str]
 type HeadingPath = tuple[HeadingKey, ...]
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class MarkdownInline:
     """Normalized inline node (text, link, code, emphasis, etc.)."""
 
     kind: str
     text: str = ""
-    children: list[MarkdownInline] = field(default_factory=list)
+    children: tuple[MarkdownInline, ...] = ()
     attrs: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class MarkdownBlock:
     """Block-level node with rendered text, line range, inline children, and nested blocks."""
 
@@ -25,8 +25,8 @@ class MarkdownBlock:
     text: str
     start_line: int | None = None
     end_line: int | None = None
-    children: list[MarkdownBlock] = field(default_factory=list)
-    inlines: list[MarkdownInline] = field(default_factory=list)
+    children: tuple[MarkdownBlock, ...] = ()
+    inlines: tuple[MarkdownInline, ...] = ()
     attrs: dict[str, Any] = field(default_factory=dict)
 
 
@@ -41,7 +41,7 @@ class SectionNode:
     children: list[SectionNode] = field(default_factory=list)
     index: int = 0
     start_line: int | None = None
-    title_inlines: list[MarkdownInline] = field(default_factory=list)
+    title_inlines: tuple[MarkdownInline, ...] = ()
 
     @property
     def heading_key(self) -> HeadingKey:
@@ -54,7 +54,7 @@ class SectionNode:
         self.children.append(child)
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class DocumentAST:
     """Parsed document with root section tree, raw source, and metadata."""
 
@@ -65,23 +65,36 @@ class DocumentAST:
     reference_definitions: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class SplitOptions:
-    """Parameters controlling how documents are split into chunks."""
+    """Parameters controlling how documents are split into chunks.
+
+    Attributes:
+        max_tokens: Target maximum token count per chunk.
+        min_tokens: Minimum size before a chunk becomes a merge candidate.
+        overlap_tokens: Number of tokens to duplicate between adjacent chunks.
+        retain_headings: Include heading breadcrumbs in :attr:`Chunk.text`.
+        merge_small_chunks: Combine adjacent chunks that share the same heading path.
+        split_oversized_blocks: Block kinds to split when they exceed ``max_tokens``.
+            Must be a frozenset of lowercase strings matching :attr:`MarkdownBlock.kind`
+            values.
+    """
 
     max_tokens: int = 1200
     min_tokens: int = 50
     overlap_tokens: int = 0
     retain_headings: bool = True
     merge_small_chunks: bool = True
-    split_oversized_blocks: tuple[str, ...] = (
-        "paragraph",
-        "blockquote",
-        "html_block",
+    split_oversized_blocks: frozenset[str] = frozenset(
+        {
+            "paragraph",
+            "blockquote",
+            "html_block",
+        }
     )
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class Chunk:
     """Final chunk payload with text, token count, heading breadcrumbs, and line range."""
 
@@ -95,32 +108,3 @@ class Chunk:
     document_path: str | None = None
     start_line: int | None = None
     end_line: int | None = None
-
-    def __post_init__(self) -> None:
-        # Backward compatibility for the legacy positional signature:
-        # Chunk(chunk_id, text, token_count, headings, section_level, document_title, ...)
-        if (
-            isinstance(self.body, int)
-            and isinstance(self.token_count, tuple)
-            and isinstance(self.headings, int)
-            and isinstance(self.section_level, str)
-            and not self.document_title
-        ):
-            import warnings
-
-            warnings.warn(
-                "Positional Chunk() signature without 'body' is deprecated; "
-                "use keyword arguments or include body=''.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            legacy_token_count = self.body
-            legacy_headings = self.token_count
-            legacy_section_level = self.headings
-            legacy_document_title = self.section_level
-
-            self.body = ""
-            self.token_count = legacy_token_count
-            self.headings = legacy_headings
-            self.section_level = legacy_section_level
-            self.document_title = legacy_document_title

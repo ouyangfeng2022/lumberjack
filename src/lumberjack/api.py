@@ -35,7 +35,7 @@ def split_markdown_text(
     overlap_tokens: int = 0,
     retain_headings: bool = True,
     merge_small_chunks: bool = True,
-    split_oversized_blocks: tuple[str, ...] = (
+    split_oversized_blocks: frozenset[str] = (
         "paragraph",
         "blockquote",
         "html_block",
@@ -52,16 +52,18 @@ def split_markdown_text(
         parser=parser,
         document_metadata=document_metadata,
     )
-    splitter = MarkdownSplitter(tokenizer=tokenizer_impl)
-    options = SplitOptions(
-        max_tokens=max_tokens,
-        min_tokens=min_tokens,
-        overlap_tokens=overlap_tokens,
-        retain_headings=retain_headings,
-        merge_small_chunks=merge_small_chunks,
-        split_oversized_blocks=split_oversized_blocks,
+    splitter = MarkdownSplitter(
+        tokenizer=tokenizer_impl,
+        options=SplitOptions(
+            max_tokens=max_tokens,
+            min_tokens=min_tokens,
+            overlap_tokens=overlap_tokens,
+            retain_headings=retain_headings,
+            merge_small_chunks=merge_small_chunks,
+            split_oversized_blocks=split_oversized_blocks,
+        ),
     )
-    return splitter.split(document, options)
+    return splitter.split(document)
 
 
 def split_markdown_file(
@@ -72,7 +74,7 @@ def split_markdown_file(
     overlap_tokens: int = 0,
     retain_headings: bool = True,
     merge_small_chunks: bool = True,
-    split_oversized_blocks: tuple[str, ...] = (
+    split_oversized_blocks: frozenset[str] = (
         "paragraph",
         "blockquote",
         "html_block",

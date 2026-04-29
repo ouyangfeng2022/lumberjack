@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from ..models import Chunk, DocumentAST, SplitOptions
+    from ..models import Chunk, DocumentAST
 
 
 class TokenizerProtocol(Protocol):
@@ -29,4 +29,4 @@ class MarkdownParserProtocol(Protocol):
 class SplitterProtocol(Protocol):
     """Split a parsed document into chunks."""
 
-    def split(self, document: DocumentAST, options: SplitOptions) -> list[Chunk]: ...
+    def split(self, document: DocumentAST) -> list[Chunk]: ...
