@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import styles from './MarkdownInput.module.css';
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function MarkdownInput({ text, file, onTextChange, onFileChange }: Props) {
+  const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -23,17 +25,17 @@ export default function MarkdownInput({ text, file, onTextChange, onFileChange }
 
   return (
     <div className={styles.container}>
-      <label className={styles.label}>Markdown Input</label>
+      <label className={styles.label}>{t('md_label')}</label>
       <textarea
         className={styles.textarea}
         value={file ? '' : text}
         disabled={!!file}
         onChange={(e) => onTextChange(e.target.value)}
-        placeholder="Paste your Markdown here..."
+        placeholder={t('md_placeholder')}
       />
       <div className={styles.fileRow}>
         <label className={styles.fileLabel}>
-          {file ? file.name : 'Upload .md file'}
+          {file ? file.name : t('md_upload')}
           <input
             ref={inputRef}
             type="file"
@@ -44,7 +46,7 @@ export default function MarkdownInput({ text, file, onTextChange, onFileChange }
         </label>
         {file && (
           <button className={styles.clearBtn} onClick={clearFile}>
-            Clear
+            {t('md_clear')}
           </button>
         )}
       </div>

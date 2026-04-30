@@ -7,7 +7,8 @@
       "Bash(gh pr *)",
       "Bash(pip list *)",
       "Bash(python*)",
-      "Bash(grep *)"
+      "Bash(grep *)",
+      "Bash(npm run *)"
     ]
   }
 }

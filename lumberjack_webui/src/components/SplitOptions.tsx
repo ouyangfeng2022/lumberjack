@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { SplitOptions as Options } from '../types/chunk';
 import styles from './SplitOptions.module.css';
 
@@ -18,7 +19,18 @@ const SPLIT_BLOCK_OPTIONS = [
 ];
 
 export default function SplitOptions({ options, onChange }: Props) {
+  const { t } = useTranslation();
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const BLOCK_LABELS: Record<string, string> = {
+    paragraph: t('opts_block_paragraph'),
+    blockquote: t('opts_block_blockquote'),
+    list: t('opts_block_list'),
+    table: t('opts_block_table'),
+    code_block: t('opts_block_code_block'),
+    code_fence: t('opts_block_code_fence'),
+    html_block: t('opts_block_html_block'),
+  };
 
   const update = <K extends keyof Options>(key: K, value: Options[K]) => {
     onChange({ ...options, [key]: value });
@@ -41,11 +53,11 @@ export default function SplitOptions({ options, onChange }: Props) {
 
   return (
     <div className={styles.container}>
-      <label className={styles.label}>Split Options</label>
+      <label className={styles.label}>{t('opts_label')}</label>
 
       <div className={styles.row}>
         <label className={styles.field}>
-          <span className={styles.fieldLabel}>Max Tokens</span>
+          <span className={styles.fieldLabel}>{t('opts_max_tokens')}</span>
           <input
             type="number"
             className={styles.numberInput}
@@ -59,7 +71,7 @@ export default function SplitOptions({ options, onChange }: Props) {
             checked={options.retain_headings}
             onChange={(e) => update('retain_headings', e.target.checked)}
           />
-          <span>Retain Headings</span>
+          <span>{t('opts_retain_headings')}</span>
         </label>
       </div>
 
@@ -67,14 +79,14 @@ export default function SplitOptions({ options, onChange }: Props) {
         className={styles.toggleBtn}
         onClick={() => setShowAdvanced(!showAdvanced)}
       >
-        {showAdvanced ? '- Hide' : '+ Show'} Advanced Options
+        {showAdvanced ? t('opts_hide_advanced') : t('opts_show_advanced')}
       </button>
 
       {showAdvanced && (
         <div className={styles.advanced}>
           <div className={styles.row}>
             <label className={styles.field}>
-              <span className={styles.fieldLabel}>Min Tokens</span>
+              <span className={styles.fieldLabel}>{t('opts_min_tokens')}</span>
               <input
                 type="number"
                 className={styles.numberInput}
@@ -83,7 +95,7 @@ export default function SplitOptions({ options, onChange }: Props) {
               />
             </label>
             <label className={styles.field}>
-              <span className={styles.fieldLabel}>Overlap Tokens</span>
+              <span className={styles.fieldLabel}>{t('opts_overlap_tokens')}</span>
               <input
                 type="number"
                 className={styles.numberInput}
@@ -99,23 +111,23 @@ export default function SplitOptions({ options, onChange }: Props) {
               checked={options.merge_small_chunks}
               onChange={(e) => update('merge_small_chunks', e.target.checked)}
             />
-            <span>Merge Small Chunks</span>
+            <span>{t('opts_merge_small')}</span>
           </label>
 
           <div className={styles.field}>
-            <span className={styles.fieldLabel}>Tokenizer</span>
+            <span className={styles.fieldLabel}>{t('opts_tokenizer')}</span>
             <select
               className={styles.select}
               value={options.tokenizer}
               onChange={(e) => update('tokenizer', e.target.value)}
             >
-              <option value="simple">Simple</option>
-              <option value="tiktoken">Tiktoken</option>
+              <option value="simple">{t('opts_tokenizer_simple')}</option>
+              <option value="tiktoken">{t('opts_tokenizer_tiktoken')}</option>
             </select>
           </div>
 
           <div className={styles.field}>
-            <span className={styles.fieldLabel}>Split Oversized Blocks</span>
+            <span className={styles.fieldLabel}>{t('opts_split_oversized')}</span>
             <div className={styles.checkGroup}>
               {SPLIT_BLOCK_OPTIONS.map((block) => (
                 <label key={block} className={styles.checkField}>
@@ -124,7 +136,7 @@ export default function SplitOptions({ options, onChange }: Props) {
                     checked={selectedBlocks.has(block)}
                     onChange={(e) => toggleBlock(block, e.target.checked)}
                   />
-                  <span>{block}</span>
+                  <span>{BLOCK_LABELS[block]}</span>
                 </label>
               ))}
             </div>

@@ -1,9 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import MarkdownInput from './components/MarkdownInput';
 import SplitOptions from './components/SplitOptions';
 import ChunkList from './components/ChunkList';
+import PipelineView from './components/PipelineView';
+import LanguageSwitcher from './components/LanguageSwitcher';
 import { splitMarkdown } from './api/split';
+import { fetchPipeline } from './api/pipeline';
 import type { SplitResponse, SplitOptions as Options } from './types/chunk';
+import type { PipelineResponse } from './types/pipeline';
 import styles from './App.module.css';
 
 const DEFAULT_OPTIONS: Options = {
@@ -82,30 +87,51 @@ If you encounter issues, check the following:
 For more help, consult the FAQ or open a GitHub issue.
 `;
 
+type View = 'split' | 'pipeline';
+
 export default function App() {
+  const { t, i18n } = useTranslation();
+  const [view, setView] = useState<View>('split');
   const [text, setText] = useState(SAMPLE_MD);
   const [file, setFile] = useState<File | null>(null);
   const [options, setOptions] = useState<Options>(DEFAULT_OPTIONS);
   const [result, setResult] = useState<SplitResponse | null>(null);
+  const [pipelineResult, setPipelineResult] = useState<PipelineResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const canSplit = !!file || text.trim().length > 0;
+  useEffect(() => {
+    document.documentElement.lang = i18n.language;
+    document.title = t('html_title');
+  }, [i18n.language, t]);
 
-  const handleSplit = async () => {
+  const canSubmit = !!file || text.trim().length > 0;
+
+  const handleSubmit = async () => {
     setError(null);
-    setResult(null);
+    if (view === 'split') {
+      setResult(null);
+    } else {
+      setPipelineResult(null);
+    }
     setLoading(true);
 
     try {
-      const data = await splitMarkdown(text, file, {
-        ...options,
-        document_title: file?.name ?? options.document_title,
-      });
-      if ('error' in data) {
-        setError((data as { error: string }).error);
+      const opts = { ...options, document_title: file?.name ?? options.document_title };
+      if (view === 'split') {
+        const data = await splitMarkdown(text, file, opts);
+        if ('error' in data) {
+          setError((data as { error: string }).error);
+        } else {
+          setResult(data as SplitResponse);
+        }
       } else {
-        setResult(data as SplitResponse);
+        const data = await fetchPipeline(text, file, opts);
+        if ('error' in data) {
+          setError((data as { error: string }).error);
+        } else {
+          setPipelineResult(data as PipelineResponse);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -114,14 +140,35 @@ export default function App() {
     }
   };
 
+  const handleViewChange = (v: View) => {
+    setView(v);
+    setError(null);
+  };
+
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Lumberjack</h1>
-        <p className={styles.subtitle}>Markdown document splitter</p>
+        <h1 className={styles.title}>{t('app_title')}</h1>
+        <p className={styles.subtitle}>{t('app_subtitle')}</p>
+        <LanguageSwitcher />
       </header>
 
       <main className={styles.main}>
+        <div className={styles.tabBar}>
+          <button
+            className={`${styles.tab} ${view === 'split' ? styles.tabActive : ''}`}
+            onClick={() => handleViewChange('split')}
+          >
+            {t('tab_split')}
+          </button>
+          <button
+            className={`${styles.tab} ${view === 'pipeline' ? styles.tabActive : ''}`}
+            onClick={() => handleViewChange('pipeline')}
+          >
+            {t('tab_pipeline')}
+          </button>
+        </div>
+
         <section className={styles.inputSection}>
           <MarkdownInput
             text={text}
@@ -134,15 +181,22 @@ export default function App() {
 
         <button
           className={styles.splitBtn}
-          disabled={!canSplit || loading}
-          onClick={handleSplit}
+          disabled={!canSubmit || loading}
+          onClick={handleSubmit}
         >
-          {loading ? 'Splitting...' : 'Split Document'}
+          {loading
+            ? view === 'split'
+              ? t('btn_splitting')
+              : t('btn_running')
+            : view === 'split'
+              ? t('btn_split')
+              : t('btn_pipeline')}
         </button>
 
         {error && <div className={styles.error}>{error}</div>}
 
-        {result && <ChunkList result={result} />}
+        {view === 'split' && result && <ChunkList result={result} />}
+        {view === 'pipeline' && pipelineResult && <PipelineView data={pipelineResult} />}
       </main>
     </div>
   );

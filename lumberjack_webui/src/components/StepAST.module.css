@@ -1,0 +1,97 @@
+.tree {
+  padding: 0;
+}
+
+.node {
+  margin-bottom: 2px;
+}
+
+.nodeHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.nodeHeader:hover {
+  background: #f1f5f9;
+}
+
+.toggle {
+  font-size: 10px;
+  color: #94a3b8;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.toggleOpen {
+  transform: rotate(90deg);
+}
+
+.levelBadge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.nodeTitle {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1e293b;
+}
+
+.nodeMeta {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.nodeContent {
+  margin-top: 2px;
+  margin-left: 28px;
+}
+
+.blockCard {
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.blockKind {
+  display: inline-block;
+  padding: 1px 6px;
+  background: #f1f5f9;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #475569;
+  flex-shrink: 0;
+}
+
+.blockLines {
+  font-size: 11px;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.blockPreview {
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}

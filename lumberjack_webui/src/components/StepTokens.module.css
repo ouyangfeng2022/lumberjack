@@ -1,0 +1,110 @@
+.summary {
+  padding: 10px 16px;
+  background: #f0f9ff;
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+
+.summaryText {
+  font-size: 14px;
+  color: #475569;
+}
+
+.tableWrap {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow-x: auto;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  background: #f8fafc;
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 2px solid #e2e8f0;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.table td {
+  padding: 6px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.rowFlat {
+  background: #fafbfc;
+}
+
+.colIdx {
+  width: 50px;
+  color: #94a3b8;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.colType {
+  min-width: 140px;
+}
+
+.colTag {
+  width: 70px;
+  color: #64748b;
+}
+
+.colNesting {
+  width: 70px;
+  text-align: center;
+}
+
+.colContent {
+  min-width: 120px;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  color: #475569;
+}
+
+.colLines {
+  width: 80px;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+
+.typeBadge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.nestingSymbol {
+  margin-right: 4px;
+  font-size: 11px;
+}
+
+.empty {
+  color: #cbd5e1;
+}
