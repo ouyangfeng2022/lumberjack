@@ -35,10 +35,12 @@ def split_markdown_text(
     overlap_tokens: int = 0,
     retain_headings: bool = True,
     merge_small_chunks: bool = True,
-    split_oversized_blocks: frozenset[str] = (
-        "paragraph",
-        "blockquote",
-        "html_block",
+    split_oversized_blocks: frozenset[str] = frozenset(
+        {
+            "paragraph",
+            "blockquote",
+            "html_block",
+        }
     ),
     tokenizer: str | TokenizerProtocol = "simple",
     parser: str | MarkdownParserProtocol = "default",
@@ -74,10 +76,12 @@ def split_markdown_file(
     overlap_tokens: int = 0,
     retain_headings: bool = True,
     merge_small_chunks: bool = True,
-    split_oversized_blocks: frozenset[str] = (
-        "paragraph",
-        "blockquote",
-        "html_block",
+    split_oversized_blocks: frozenset[str] = frozenset(
+        {
+            "paragraph",
+            "blockquote",
+            "html_block",
+        }
     ),
     tokenizer: str | TokenizerProtocol = "simple",
     parser: str | MarkdownParserProtocol = "default",
@@ -112,17 +116,4 @@ def _resolve_parser(parser: str | MarkdownParserProtocol) -> MarkdownParserProto
     return parser
 
 
-def chunk_to_dict(chunk: Chunk) -> dict[str, object]:
-    """Serialize a chunk into a JSON-friendly dictionary."""
-    return {
-        "chunk_id": chunk.chunk_id,
-        "text": chunk.text,
-        "body": chunk.body,
-        "token_count": chunk.token_count,
-        "headings": [list(heading) for heading in chunk.headings],
-        "section_level": chunk.section_level,
-        "document_title": chunk.document_title,
-        "document_path": chunk.document_path,
-        "start_line": chunk.start_line,
-        "end_line": chunk.end_line,
-    }
+__all__ = ["parse_markdown", "split_markdown_file", "split_markdown_text"]

@@ -1,5 +1,4 @@
 from .api import (
-    chunk_to_dict,
     parse_markdown,
     split_markdown_file,
     split_markdown_text,
@@ -25,7 +24,6 @@ __all__ = [
     "SimpleCharTokenizer",
     "SplitOptions",
     "TiktokenTokenizer",
-    "chunk_to_dict",
     "parse_markdown",
     "split_markdown_file",
     "split_markdown_text",

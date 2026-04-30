@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import os
 import shutil
+from dataclasses import asdict
 from pathlib import Path
 
 from mdit_py_plugins.tasklists import tasklists_plugin
 
 from lumberjack import (
-    Chunk,
     MarkdownItParser,
-    chunk_to_dict,
     parse_markdown,
     split_markdown_file,
     split_markdown_text,
@@ -82,13 +81,13 @@ def test_split_markdown_text_matches_file_api_with_overlap() -> None:
 def test_chunk_to_dict_serializes_heading_path() -> None:
     chunk = split_markdown_text(FIXTURE, document_title="sample.md", max_tokens=180)[-1]
 
-    payload = chunk_to_dict(chunk)
+    payload = asdict(chunk)
 
     assert payload["chunk_id"] == "chunk-0005"
     assert payload["text"] == chunk.text
     assert payload["body"] == chunk.body
     assert payload["token_count"] == chunk.token_count
-    assert payload["headings"] == [[1, "Overview"], [2, "Details"], [3, "Notes"]]
+    assert payload["headings"] == ((1, "Overview"), (2, "Details"), (3, "Notes"))
     assert payload["section_level"] == 3
     assert payload["document_title"] == "sample.md"
     assert payload["document_path"] is None
@@ -113,9 +112,9 @@ def test_chunk_to_dict_uses_common_heading_path_for_merged_sections() -> None:
         max_tokens=1000,
     )[0]
 
-    payload = chunk_to_dict(chunk)
+    payload = asdict(chunk)
 
-    assert payload["headings"] == [[1, "Development Guide"]]
+    assert payload["headings"] == ((1, "Development Guide"),)
     assert payload["section_level"] == 1
 
 

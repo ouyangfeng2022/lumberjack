@@ -48,6 +48,7 @@ class SectionNode:
         return (self.level, self.title)
 
     def add_block(self, block: MarkdownBlock) -> None:
+        """Append a block (roughly one paragraph) to this section."""
         self.blocks.append(block)
 
     def add_child(self, child: SectionNode) -> None:
