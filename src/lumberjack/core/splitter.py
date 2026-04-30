@@ -188,10 +188,10 @@ class MarkdownSplitter(SplitterProtocol):
         if not fragment.blocks:
             return [self._draft_from_entry(self._entry_from_fragment(fragment), fragment.render())]
 
+        budget = max_tokens - prefix_tokens
+
         for block in fragment.blocks:
             block_tokens = self.tokenizer.count(block.text)
-            budget = max_tokens - prefix_tokens
-
             if (
                 current_parts
                 and current_tokens > prefix_tokens
@@ -217,6 +217,8 @@ class MarkdownSplitter(SplitterProtocol):
                 current_end_line = None
 
             if prefix_tokens + block_tokens <= max_tokens:
+                # The flush makes `prefix_tokens + block_tokens <= max_tokens`
+                # equivalent to `current_tokens + block_tokens <= max_tokens`.
                 current_parts.append(block.text)
                 current_tokens += block_tokens
                 current_start_line = self._coalesce_min(current_start_line, block.start_line)
