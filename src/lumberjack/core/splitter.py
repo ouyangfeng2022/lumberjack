@@ -87,13 +87,17 @@ class MarkdownSplitter(SplitterProtocol):
     def _split_section(
         self,
         section: SectionNode,
+        entries: list[_Entry] | None = None,
+        draft: _ChunkDraft | None = None,
     ) -> list[_ChunkDraft]:
         """Recursively split a section into chunk drafts."""
-        entries = self._collect_section_entries(section)
+        if entries is None:
+            entries = self._collect_section_entries(section)
         if not entries:
             return []
 
-        draft = self._draft_from_entries(entries)
+        if draft is None:
+            draft = self._draft_from_entries(entries)
         if draft.token_count <= self.options.max_tokens:
             return [draft]
 
@@ -146,7 +150,7 @@ class MarkdownSplitter(SplitterProtocol):
                 continue
 
             flush_current()
-            chunks.extend(self._split_section(child))
+            chunks.extend(self._split_section(child, entries=child_entries, draft=child_draft))
 
         flush_current()
         return chunks
@@ -616,6 +620,7 @@ class MarkdownSplitter(SplitterProtocol):
         self,
         entries: list[_Entry],
     ) -> _ChunkDraft:
+        """Build a chunk draft by rendering entries and counting their tokens."""
         headings = self._common_heading_path(entry.headings for entry in entries)
         rendered = self._render_chunk_entries(
             entries,
