@@ -18,12 +18,12 @@ const zh = {
 
   // Split Options
   opts_label: '拆分选项',
-  opts_max_tokens: '最大 Token 数',
+  opts_max_tokens: '最大词元数',
   opts_retain_headings: '保留标题',
   opts_show_advanced: '+ 显示高级选项',
   opts_hide_advanced: '- 隐藏高级选项',
-  opts_min_tokens: '最小 Token 数',
-  opts_overlap_tokens: '重叠 Token 数',
+  opts_min_tokens: '最小词元数',
+  opts_overlap_tokens: '重叠词元数',
   opts_merge_small: '合并小块',
   opts_tokenizer: '分词器',
   opts_tokenizer_simple: '简易',
@@ -38,14 +38,14 @@ const zh = {
   opts_block_html_block: 'HTML 块',
 
   // Chunk Result
-  chunk_tokens: '{{count}} 个 token',
+  chunk_tokens: '{{count}} 个词元',
   chunk_lines: '第 {{from}}–{{to}} 行',
   chunk_show_full: '显示完整文本',
   chunk_show_body: '仅显示正文',
 
   // Chunk List
   chunks_count: '{{count}} 个块',
-  chunks_total_tokens: '共 {{count}} 个 token',
+  chunks_total_tokens: '共 {{count}} 个词元',
 
   // Pipeline View
   step_raw_text: '原始文本',
@@ -62,7 +62,7 @@ const zh = {
   stats_words: '词',
 
   // Step Tokens
-  tokens_produced_suffix: '个 token（由 markdown-it 解析器生成）',
+  tokens_produced_suffix: '个词元（由 markdown-it 解析器生成）',
   tok_col_index: '#',
   tok_col_type: '类型',
   tok_col_tag: '标签',
@@ -76,7 +76,7 @@ const zh = {
 
   // Step Split
   split_budget: '预算',
-  split_tokens: '个 token',
+  split_tokens: '个词元',
   split_overlap: '重叠',
   split_entries: '条目',
   split_draft_chunks: '草稿块',
@@ -86,7 +86,7 @@ const zh = {
 
   // Step Chunks
   step_chunks_label: '块',
-  step_total_tokens: '总 Token 数',
+  step_total_tokens: '总词元数',
   step_document: '文档',
 };
 
