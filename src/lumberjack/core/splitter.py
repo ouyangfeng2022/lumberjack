@@ -18,6 +18,8 @@ PROTECTED_SPAN_RE = re.compile(r"<https?://[^\s>]+>|https?://[^\s)>\]]+")
 
 @dataclass(slots=True)
 class _Fragment:
+    """Section body holding raw blocks and heading prefix for block-level splitting."""
+
     headings: HeadingPath
     prefix: str
     blocks: list[MarkdownBlock]
@@ -31,6 +33,8 @@ class _Fragment:
 
 @dataclass(slots=True)
 class _Entry:
+    """Rendered content unit with heading context and line range, a flattened SectionNode."""
+
     headings: HeadingPath
     body: str
     section_level: int
@@ -40,6 +44,8 @@ class _Entry:
 
 @dataclass(slots=True)
 class _ChunkDraft:
+    """Intermediate chunk holding grouped entries and their combined token count."""
+
     entries: list[_Entry]
     token_count: int
 
@@ -102,37 +108,56 @@ class MarkdownSplitter(SplitterProtocol):
             return [draft]
 
         if section.children:
-            return self._split_section_children(section)
+            return self._split_section_children(section, entries=entries)
 
         return self._split_section_body(section)
 
     def _split_section_children(
         self,
         section: SectionNode,
+        entries: list[_Entry] | None = None,
     ) -> list[_ChunkDraft]:
         """Split a section's body blocks and child sections, packing adjacent entries that fit."""
         chunks: list[_ChunkDraft] = []
         current_entries: list[_Entry] = []
+        current_draft: _ChunkDraft | None = None
 
         def flush_current() -> None:
-            nonlocal current_entries
+            nonlocal current_entries, current_draft
             if not current_entries:
                 return
-            chunks.append(self._draft_from_entries(current_entries))
+            if current_draft is not None:
+                chunks.append(current_draft)
+            else:
+                chunks.append(self._draft_from_entries(current_entries))
             current_entries = []
+            current_draft = None
 
         def add_packable(draft: _ChunkDraft) -> None:
-            nonlocal current_entries
+            """Add a draft whose tokens are already guaranteed not to exceed max_tokens."""
+            nonlocal current_entries, current_draft
+            if current_draft is None:
+                current_entries = draft.entries.copy()
+                current_draft = draft
+                return
             candidate_entries = [*current_entries, *draft.entries]
             candidate = self._draft_from_entries(candidate_entries)
-            if current_entries and candidate.token_count > self.options.max_tokens:
+            if candidate.token_count > self.options.max_tokens:
                 flush_current()
                 current_entries = draft.entries.copy()
+                current_draft = draft
                 return
             current_entries = candidate_entries
+            current_draft = candidate
 
         if section.blocks:
-            body_draft = self._draft_from_entries([self._entry_from_section(section)])
+            # The first element of entries is body_entry `if section.blocks`.
+            body_entry = (
+                entries[0]
+                if entries and entries[0].section_level == section.level
+                else self._make_entry(section.path, section.blocks, section.level)
+            )
+            body_draft = self._draft_from_entries([body_entry])
             if body_draft.token_count <= self.options.max_tokens:
                 add_packable(body_draft)
             else:
@@ -181,7 +206,12 @@ class MarkdownSplitter(SplitterProtocol):
         max_tokens = self.options.max_tokens
         prefix_tokens = self.tokenizer.count(fragment.prefix) if fragment.prefix else 0
         if prefix_tokens >= max_tokens:
-            return [self._draft_from_entry(self._entry_from_fragment(fragment), fragment.render())]
+            return [
+                self._draft_from_entry(
+                    self._make_entry(fragment.headings, fragment.blocks, fragment.section_level),
+                    fragment.render(),
+                )
+            ]
 
         chunks: list[_ChunkDraft] = []
         current_parts: list[str] = []
@@ -190,7 +220,12 @@ class MarkdownSplitter(SplitterProtocol):
         current_end_line: int | None = None
 
         if not fragment.blocks:
-            return [self._draft_from_entry(self._entry_from_fragment(fragment), fragment.render())]
+            return [
+                self._draft_from_entry(
+                    self._make_entry(fragment.headings, fragment.blocks, fragment.section_level),
+                    fragment.render(),
+                )
+            ]
 
         budget = max_tokens - prefix_tokens
 
@@ -584,34 +619,30 @@ class MarkdownSplitter(SplitterProtocol):
             )
         return finalized
 
-    def _entry_from_fragment(self, fragment: _Fragment) -> _Entry:
+    def _make_entry(
+        self,
+        headings: HeadingPath,
+        blocks: list[MarkdownBlock],
+        section_level: int,
+    ) -> _Entry:
         return _Entry(
-            headings=fragment.headings,
-            body=join_markdown([block.text for block in fragment.blocks]),
-            section_level=fragment.section_level,
-            start_line=self._first_line(blocks=fragment.blocks),
-            end_line=self._last_line(blocks=fragment.blocks),
+            headings=headings,
+            body=join_markdown([block.text for block in blocks]),
+            section_level=section_level,
+            start_line=self._first_line(blocks=blocks),
+            end_line=self._last_line(blocks=blocks),
         )
 
     def _collect_section_entries(self, section: SectionNode) -> list[_Entry]:
-        """Recursively collect entries from a section and all its descendants."""
+        """Recursively flatten a section and its descendants into an entry list."""
         entries: list[_Entry] = []
         if section.blocks or (not section.children and section.level > 0):
-            entries.append(self._entry_from_section(section))
+            entries.append(self._make_entry(section.path, section.blocks, section.level))
 
         for child in section.children:
             entries.extend(self._collect_section_entries(child))
 
         return entries
-
-    def _entry_from_section(self, section: SectionNode) -> _Entry:
-        return _Entry(
-            headings=section.path,
-            body=join_markdown([block.text for block in section.blocks]),
-            section_level=section.level,
-            start_line=self._first_line(blocks=section.blocks),
-            end_line=self._last_line(blocks=section.blocks),
-        )
 
     def _draft_from_entry(self, entry: _Entry, rendered: str) -> _ChunkDraft:
         return _ChunkDraft(entries=[entry], token_count=self.tokenizer.count(rendered))
@@ -620,7 +651,7 @@ class MarkdownSplitter(SplitterProtocol):
         self,
         entries: list[_Entry],
     ) -> _ChunkDraft:
-        """Build a chunk draft by rendering entries and counting their tokens."""
+        """Build a chunk draft; for a single entry just count tokens, otherwise merge then count."""
         headings = self._common_heading_path(entry.headings for entry in entries)
         rendered = self._render_chunk_entries(
             entries,
@@ -702,38 +733,12 @@ class MarkdownSplitter(SplitterProtocol):
         right_headings = {entry.headings for entry in right.entries}
         return len(left_headings) == 1 and left_headings == right_headings
 
-    def _first_line(
-        self,
-        *,
-        blocks: list[MarkdownBlock] | None = None,
-        fragments: list[_Fragment] | None = None,
-    ) -> int | None:
-        line_numbers: list[int] = []
-        if blocks is not None:
-            line_numbers.extend(
-                block.start_line for block in blocks if block.start_line is not None
-            )
-        if fragments is not None:
-            for fragment in fragments:
-                line_numbers.extend(
-                    block.start_line for block in fragment.blocks if block.start_line is not None
-                )
+    def _first_line(self, *, blocks: list[MarkdownBlock]) -> int | None:
+        line_numbers = [block.start_line for block in blocks if block.start_line is not None]
         return min(line_numbers) if line_numbers else None
 
-    def _last_line(
-        self,
-        *,
-        blocks: list[MarkdownBlock] | None = None,
-        fragments: list[_Fragment] | None = None,
-    ) -> int | None:
-        line_numbers: list[int] = []
-        if blocks is not None:
-            line_numbers.extend(block.end_line for block in blocks if block.end_line is not None)
-        if fragments is not None:
-            for fragment in fragments:
-                line_numbers.extend(
-                    block.end_line for block in fragment.blocks if block.end_line is not None
-                )
+    def _last_line(self, *, blocks: list[MarkdownBlock]) -> int | None:
+        line_numbers = [block.end_line for block in blocks if block.end_line is not None]
         return max(line_numbers) if line_numbers else None
 
     def _coalesce_min(self, left: int | None, right: int | None) -> int | None:

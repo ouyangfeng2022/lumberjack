@@ -351,7 +351,7 @@ def test_splitter_can_split_oversized_lists_when_enabled() -> None:
             min_tokens=0,
             retain_headings=False,
             merge_small_chunks=False,
-            split_oversized_blocks=("list",),
+            split_oversized_blocks=frozenset({"list"}),
         ),
     )
 
@@ -377,7 +377,7 @@ def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
             min_tokens=0,
             retain_headings=False,
             merge_small_chunks=False,
-            split_oversized_blocks=("code_fence",),
+            split_oversized_blocks=frozenset({"code_fence"}),
         ),
     )
 
