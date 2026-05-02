@@ -25,6 +25,7 @@ const zh = {
   opts_min_tokens: '最小词元数',
   opts_overlap_tokens: '重叠词元数',
   opts_merge_small: '合并小块',
+  opts_isolate_front_matter: '独立前置元数据',
   opts_tokenizer: '分词器',
   opts_tokenizer_simple: '简易',
   opts_tokenizer_tiktoken: 'Tiktoken',

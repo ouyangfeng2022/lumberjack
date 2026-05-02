@@ -72,10 +72,14 @@ class MarkdownSplitter(SplitterProtocol):
     def split(self, document: DocumentAST) -> list[Chunk]:
         """Split *document* into chunks respecting token limits and merge preferences."""
         self._validate_options()
+        front_matter_block = self._extract_front_matter(document.root)
         chunks = self._split_section(document.root)
         if self.options.merge_small_chunks:
             chunks = self._merge_small_chunks(chunks)
-        return self._finalize_chunks(chunks, document)
+        finalized = self._finalize_chunks(chunks, document)
+        if front_matter_block is not None:
+            finalized.insert(0, self._make_front_matter_chunk(front_matter_block, document))
+        return finalized
 
     def _validate_options(self) -> None:
         """Raise ``ValueError`` if split options contain illegal values."""
@@ -90,32 +94,58 @@ class MarkdownSplitter(SplitterProtocol):
         if self.options.overlap_tokens >= self.options.max_tokens:
             raise ValueError("overlap_tokens must be smaller than max_tokens")
 
+    def _extract_front_matter(self, root: SectionNode) -> MarkdownBlock | None:
+        """Remove and return the front_matter block from the root section, if present."""
+        if (
+            self.options.isolate_front_matter
+            and root.blocks
+            and root.blocks[0].kind == "front_matter"
+        ):
+            return root.blocks.pop(0)
+        return None
+
+    def _make_front_matter_chunk(self, block: MarkdownBlock, document: DocumentAST) -> Chunk:
+        """Create a chunk from an isolated front_matter block."""
+        return Chunk(
+            chunk_id="chunk-0000",
+            text=block.text,
+            body=block.text,
+            token_count=self.tokenizer.count(block.text),
+            headings=(),
+            section_level=0,
+            document_title=document.title,
+            document_path=self._document_path(document),
+            start_line=block.start_line,
+            end_line=block.end_line,
+        )
+
     def _split_section(
         self,
         section: SectionNode,
-        entries: list[_Entry] | None = None,
         draft: _ChunkDraft | None = None,
     ) -> list[_ChunkDraft]:
         """Recursively split a section into chunk drafts."""
-        if entries is None:
+
+        if draft is not None:
+            entries = draft.entries
+        else:
             entries = self._collect_section_entries(section)
+            draft = self._draft_from_entries(entries)
+
         if not entries:
             return []
 
-        if draft is None:
-            draft = self._draft_from_entries(entries)
         if draft.token_count <= self.options.max_tokens:
             return [draft]
 
         if section.children:
-            return self._split_section_children(section, entries=entries)
+            return self._split_section_children(section)
 
         return self._split_section_body(section)
 
     def _split_section_children(
         self,
         section: SectionNode,
-        entries: list[_Entry] | None = None,
     ) -> list[_ChunkDraft]:
         """Split a section's body blocks and child sections, packing adjacent entries that fit."""
         chunks: list[_ChunkDraft] = []
@@ -152,11 +182,7 @@ class MarkdownSplitter(SplitterProtocol):
 
         if section.blocks:
             # The first element of entries is body_entry `if section.blocks`.
-            body_entry = (
-                entries[0]
-                if entries and entries[0].section_level == section.level
-                else self._make_entry(section.path, section.blocks, section.level)
-            )
+            body_entry = self._make_entry(section.path, section.blocks, section.level)
             body_draft = self._draft_from_entries([body_entry])
             if body_draft.token_count <= self.options.max_tokens:
                 add_packable(body_draft)
@@ -175,7 +201,7 @@ class MarkdownSplitter(SplitterProtocol):
                 continue
 
             flush_current()
-            chunks.extend(self._split_section(child, entries=child_entries, draft=child_draft))
+            chunks.extend(self._split_section(child, draft=child_draft))
 
         flush_current()
         return chunks
@@ -634,6 +660,7 @@ class MarkdownSplitter(SplitterProtocol):
         )
 
     def _collect_section_entries(self, section: SectionNode) -> list[_Entry]:
+        # TODO: 不需要每次都遍历, 可以按照 headings + index + start_line 来构建一个全局的索引, 在这里直接查表获取对应的 entry 列表
         """Recursively flatten a section and its descendants into an entry list."""
         entries: list[_Entry] = []
         if section.blocks or (not section.children and section.level > 0):

@@ -55,6 +55,7 @@ async def split(
     overlap_tokens: int = Form(0),
     retain_headings: bool = Form(True),
     merge_small_chunks: bool = Form(True),
+    isolate_front_matter: bool = Form(True),
     split_oversized_blocks: str = Form("paragraph,blockquote,html_block"),
     tokenizer: str = Form("simple"),
     document_title: str = Form("document.md"),
@@ -75,6 +76,7 @@ async def split(
         overlap_tokens=overlap_tokens,
         retain_headings=retain_headings,
         merge_small_chunks=merge_small_chunks,
+        isolate_front_matter=isolate_front_matter,
         split_oversized_blocks=blocks,
         tokenizer=tokenizer,
     )
@@ -95,6 +97,7 @@ async def pipeline(
     overlap_tokens: int = Form(0),
     retain_headings: bool = Form(True),
     merge_small_chunks: bool = Form(True),
+    isolate_front_matter: bool = Form(True),
     split_oversized_blocks: str = Form("paragraph,blockquote,html_block"),
     tokenizer: str = Form("simple"),
     document_title: str = Form("document.md"),
@@ -127,6 +130,7 @@ async def pipeline(
             overlap_tokens=overlap_tokens,
             retain_headings=retain_headings,
             merge_small_chunks=merge_small_chunks,
+            isolate_front_matter=isolate_front_matter,
             split_oversized_blocks=blocks,
         ),
     )

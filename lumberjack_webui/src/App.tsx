@@ -17,6 +17,7 @@ const DEFAULT_OPTIONS: Options = {
   overlap_tokens: 0,
   retain_headings: true,
   merge_small_chunks: true,
+  isolate_front_matter: true,
   split_oversized_blocks: 'paragraph,blockquote,html_block',
   tokenizer: 'simple',
   document_title: 'document.md',

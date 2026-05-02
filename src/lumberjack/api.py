@@ -35,6 +35,7 @@ def split_markdown_text(
     overlap_tokens: int = 0,
     retain_headings: bool = True,
     merge_small_chunks: bool = True,
+    isolate_front_matter: bool = True,
     split_oversized_blocks: frozenset[str] = frozenset(
         {
             "paragraph",
@@ -62,6 +63,7 @@ def split_markdown_text(
             overlap_tokens=overlap_tokens,
             retain_headings=retain_headings,
             merge_small_chunks=merge_small_chunks,
+            isolate_front_matter=isolate_front_matter,
             split_oversized_blocks=split_oversized_blocks,
         ),
     )
@@ -76,6 +78,7 @@ def split_markdown_file(
     overlap_tokens: int = 0,
     retain_headings: bool = True,
     merge_small_chunks: bool = True,
+    isolate_front_matter: bool = True,
     split_oversized_blocks: frozenset[str] = frozenset(
         {
             "paragraph",
@@ -97,6 +100,7 @@ def split_markdown_file(
         overlap_tokens=overlap_tokens,
         retain_headings=retain_headings,
         merge_small_chunks=merge_small_chunks,
+        isolate_front_matter=isolate_front_matter,
         split_oversized_blocks=split_oversized_blocks,
         tokenizer=tokenizer,
         parser=parser,

@@ -408,3 +408,75 @@ def test_splitter_never_splits_oversized_urls() -> None:
     assert len(chunks) == 1
     assert chunks[0].text == LONG_URL_FIXTURE
     assert chunks[0].token_count > 30
+
+
+FRONT_MATTER_FIXTURE = """---
+title: Test Document
+author: Alice
+date: 2024-01-01
+---
+
+# Introduction
+
+This is the introduction.
+
+# Body
+
+Body content here.
+"""
+
+
+def test_front_matter_isolated_as_first_chunk_by_default() -> None:
+    document = MarkdownParser().parse(FRONT_MATTER_FIXTURE, document_title="doc.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=500,
+            min_tokens=0,
+            isolate_front_matter=True,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) >= 2
+    assert chunks[0].chunk_id == "chunk-0000"
+    assert chunks[0].text == "---\ntitle: Test Document\nauthor: Alice\ndate: 2024-01-01\n---"
+    assert chunks[0].headings == ()
+    assert chunks[0].section_level == 0
+    assert chunks[0].start_line == 1
+    assert chunks[0].end_line == 5
+
+
+def test_front_matter_included_normally_when_isolation_disabled() -> None:
+    document = MarkdownParser().parse(FRONT_MATTER_FIXTURE, document_title="doc.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=500,
+            min_tokens=0,
+            isolate_front_matter=False,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert chunks[0].chunk_id == "chunk-0001"
+    assert chunks[0].chunk_id != "chunk-0000"
+
+
+def test_no_front_matter_works_normally() -> None:
+    document = MarkdownParser().parse("# Just a heading\n\nSome text.", document_title="doc.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=500,
+            min_tokens=0,
+            isolate_front_matter=True,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert chunks[0].chunk_id == "chunk-0001"
+    assert "Just a heading" in chunks[0].text

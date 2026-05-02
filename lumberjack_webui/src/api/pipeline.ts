@@ -19,6 +19,7 @@ export async function fetchPipeline(
   formData.append('overlap_tokens', String(options.overlap_tokens));
   formData.append('retain_headings', String(options.retain_headings));
   formData.append('merge_small_chunks', String(options.merge_small_chunks));
+  formData.append('isolate_front_matter', String(options.isolate_front_matter));
   formData.append('split_oversized_blocks', options.split_oversized_blocks);
   formData.append('tokenizer', options.tokenizer);
   formData.append('document_title', options.document_title);

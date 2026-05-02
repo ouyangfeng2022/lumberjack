@@ -45,6 +45,7 @@ class WebSplitter(MarkdownSplitter):
     def split_with_steps(self, document: DocumentAST) -> PipelineSteps:
         """Split and return intermediate pipeline data for visualization."""
         self._validate_options()
+        front_matter_block = self._extract_front_matter(document.root)
         entries = self._collect_section_entries(document.root)
         drafts_before = self._split_section(document.root)
         drafts_after = (
@@ -53,6 +54,8 @@ class WebSplitter(MarkdownSplitter):
             else drafts_before
         )
         chunks = self._finalize_chunks(drafts_after, document)
+        if front_matter_block is not None:
+            chunks.insert(0, self._make_front_matter_chunk(front_matter_block, document))
         return PipelineSteps(
             entries=entries,
             drafts_after_merge=drafts_after,

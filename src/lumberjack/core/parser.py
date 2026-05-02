@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from markdown_it import MarkdownIt
 from mdit_py_plugins.dollarmath import dollarmath_plugin
+from mdit_py_plugins.front_matter import front_matter_plugin
 
 from ..utils import join_markdown
 
@@ -78,6 +79,7 @@ class MarkdownItParser(_InlineRenderingMixin):
     ) -> None:
         self._parser = MarkdownIt(preset, options_update=options_update)
         self._parser.use(dollarmath_plugin)
+        self._parser.use(front_matter_plugin)
         for plugin in plugins:
             self._parser.use(plugin)
 

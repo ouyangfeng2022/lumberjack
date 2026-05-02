@@ -114,6 +114,15 @@ export default function SplitOptions({ options, onChange }: Props) {
             <span>{t('opts_merge_small')}</span>
           </label>
 
+          <label className={styles.checkField}>
+            <input
+              type="checkbox"
+              checked={options.isolate_front_matter}
+              onChange={(e) => update('isolate_front_matter', e.target.checked)}
+            />
+            <span>{t('opts_isolate_front_matter')}</span>
+          </label>
+
           <div className={styles.field}>
             <span className={styles.fieldLabel}>{t('opts_tokenizer')}</span>
             <select

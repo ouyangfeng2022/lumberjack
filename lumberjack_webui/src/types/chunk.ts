@@ -23,6 +23,7 @@ export interface SplitOptions {
   overlap_tokens: number;
   retain_headings: boolean;
   merge_small_chunks: boolean;
+  isolate_front_matter: boolean;
   split_oversized_blocks: string;
   tokenizer: string;
   document_title: string;

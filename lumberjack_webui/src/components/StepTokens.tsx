@@ -15,6 +15,7 @@ const TYPE_COLORS: Record<string, string> = {
   table: '#ec4899',
   hr: '#94a3b8',
   html: '#ef4444',
+  front_matter: '#f59e0b',
 };
 
 function getTokenColor(type: string): string {

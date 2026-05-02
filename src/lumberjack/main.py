@@ -48,6 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--retain-headings", action="store_true", help="Retain headings in each chunk"
     )
     parser.add_argument(
+        "--no-isolate-front-matter",
+        action="store_true",
+        help="Do not isolate front matter as the first chunk",
+    )
+    parser.add_argument(
         "--split-oversized-block",
         action="append",
         default=[],
@@ -85,6 +90,7 @@ def main() -> None:
         min_tokens=args.min_tokens,
         overlap_tokens=args.overlap_tokens,
         retain_headings=args.retain_headings,
+        isolate_front_matter=not args.no_isolate_front_matter,
         split_oversized_blocks=tuple(args.split_oversized_block),
         tokenizer=args.tokenizer,
         parser=args.parser,

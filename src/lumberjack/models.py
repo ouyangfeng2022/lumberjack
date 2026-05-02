@@ -76,6 +76,7 @@ class SplitOptions:
         overlap_tokens: Number of tokens to duplicate between adjacent chunks.
         retain_headings: Include heading breadcrumbs in :attr:`Chunk.text`.
         merge_small_chunks: Combine adjacent chunks that share the same heading path.
+        isolate_front_matter: Always emit front matter as the first chunk.
         split_oversized_blocks: Block kinds to split when they exceed ``max_tokens``.
             Must be a frozenset of lowercase strings matching :attr:`MarkdownBlock.kind`
             values.
@@ -86,6 +87,7 @@ class SplitOptions:
     overlap_tokens: int = 0
     retain_headings: bool = True
     merge_small_chunks: bool = True
+    isolate_front_matter: bool = True
     split_oversized_blocks: frozenset[str] = frozenset(
         {
             "paragraph",

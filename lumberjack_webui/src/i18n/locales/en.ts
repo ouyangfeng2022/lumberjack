@@ -25,6 +25,7 @@ const en = {
   opts_min_tokens: 'Min Tokens',
   opts_overlap_tokens: 'Overlap Tokens',
   opts_merge_small: 'Merge Small Chunks',
+  opts_isolate_front_matter: 'Isolate Front Matter',
   opts_tokenizer: 'Tokenizer',
   opts_tokenizer_simple: 'Simple',
   opts_tokenizer_tiktoken: 'Tiktoken',
