@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ChunkData } from '../types/chunk';
 import styles from './ChunkResult.module.css';
@@ -10,7 +9,6 @@ interface Props {
 
 export default function ChunkResult({ chunk, index }: Props) {
   const { t } = useTranslation();
-  const [showBody, setShowBody] = useState(false);
 
   const headingBreadcrumb = chunk.headings
     .map(([, title]) => title)
@@ -29,18 +27,12 @@ export default function ChunkResult({ chunk, index }: Props) {
           <span className={styles.tokenBadge}>{t('chunk_tokens', { count: chunk.token_count })}</span>
           {lineRange && <span className={styles.lineRange}>{lineRange}</span>}
         </div>
-        <button
-          className={styles.toggleBtn}
-          onClick={() => setShowBody(!showBody)}
-        >
-          {showBody ? t('chunk_show_full') : t('chunk_show_body')}
-        </button>
       </div>
       {headingBreadcrumb && (
         <div className={styles.breadcrumb}>{headingBreadcrumb}</div>
       )}
       <pre className={styles.content}>
-        {showBody ? chunk.body || chunk.text : chunk.text}
+        {chunk.body}
       </pre>
     </div>
   );

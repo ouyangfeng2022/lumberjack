@@ -48,6 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--retain-headings", action="store_true", help="Retain headings in each chunk"
     )
     parser.add_argument(
+        "--no-include-common-headings",
+        action="store_true",
+        help="Exclude common heading prefix from chunk body (only effective with --retain-headings)",
+    )
+    parser.add_argument(
         "--no-isolate-front-matter",
         action="store_true",
         help="Do not isolate front matter as the first chunk",
@@ -75,7 +80,7 @@ def render_markdown(chunks: list[Chunk]) -> str:
     rendered: list[str] = []
     for index, chunk in enumerate(chunks, start=1):
         rendered.append(f"<!-- chunk {index} tokens={chunk.token_count} -->")
-        rendered.append(chunk.text)
+        rendered.append(chunk.body)
     return "\n\n".join(rendered).strip()
 
 
@@ -90,6 +95,7 @@ def main() -> None:
         min_tokens=args.min_tokens,
         overlap_tokens=args.overlap_tokens,
         retain_headings=args.retain_headings,
+        include_common_headings=not args.no_include_common_headings,
         isolate_front_matter=not args.no_isolate_front_matter,
         split_oversized_blocks=tuple(args.split_oversized_block),
         tokenizer=args.tokenizer,

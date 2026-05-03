@@ -20,6 +20,7 @@ const en = {
   opts_label: 'Split Options',
   opts_max_tokens: 'Max Tokens',
   opts_retain_headings: 'Retain Headings',
+  opts_include_common_headings: 'Include Common Headings',
   opts_show_advanced: '+ Show Advanced Options',
   opts_hide_advanced: '- Hide Advanced Options',
   opts_min_tokens: 'Min Tokens',
@@ -41,8 +42,6 @@ const en = {
   // Chunk Result
   chunk_tokens: '{{count}} tokens',
   chunk_lines: 'Lines {{from}}–{{to}}',
-  chunk_show_full: 'Show full text',
-  chunk_show_body: 'Show body only',
 
   // Chunk List
   chunks_count: '{{count}} chunk',

@@ -20,6 +20,7 @@ const zh = {
   opts_label: '拆分选项',
   opts_max_tokens: '最大词元数',
   opts_retain_headings: '保留标题',
+  opts_include_common_headings: '包含公共标题',
   opts_show_advanced: '+ 显示高级选项',
   opts_hide_advanced: '- 隐藏高级选项',
   opts_min_tokens: '最小词元数',
@@ -41,8 +42,6 @@ const zh = {
   // Chunk Result
   chunk_tokens: '{{count}} 个词元',
   chunk_lines: '第 {{from}}–{{to}} 行',
-  chunk_show_full: '显示完整文本',
-  chunk_show_body: '仅显示正文',
 
   // Chunk List
   chunks_count: '{{count}} 个块',

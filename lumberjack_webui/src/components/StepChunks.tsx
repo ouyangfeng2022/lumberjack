@@ -69,7 +69,7 @@ export default function StepChunks({ data }: Props) {
               </div>
               {isExpanded && (
                 <div className={styles.chunkBody}>
-                  <pre className={styles.chunkText}>{chunk.text}</pre>
+                  <pre className={styles.chunkText}>{chunk.body}</pre>
                 </div>
               )}
             </div>

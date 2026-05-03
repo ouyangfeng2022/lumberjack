@@ -13,7 +13,6 @@ from lumberjack import (
     split_markdown_file,
     split_markdown_text,
 )
-from lumberjack.utils import join_markdown, render_heading_path
 
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md"
 FIXTURE = FIXTURE_PATH.read_text(encoding="utf-8")
@@ -51,7 +50,7 @@ def test_split_markdown_text_matches_file_api() -> None:
     chunks_from_text = split_markdown_text(FIXTURE, document_title="sample.md", max_tokens=180)
     chunks_from_file = split_markdown_file(FIXTURE_PATH, max_tokens=180)
 
-    assert [chunk.text for chunk in chunks_from_text] == [chunk.text for chunk in chunks_from_file]
+    assert [chunk.body for chunk in chunks_from_text] == [chunk.body for chunk in chunks_from_file]
     assert [chunk.token_count for chunk in chunks_from_text] == [
         chunk.token_count for chunk in chunks_from_file
     ]
@@ -74,7 +73,6 @@ def test_split_markdown_text_matches_file_api_with_overlap() -> None:
         merge_small_chunks=False,
     )
 
-    assert [chunk.text for chunk in chunks_from_text] == [chunk.text for chunk in chunks_from_file]
     assert [chunk.body for chunk in chunks_from_text] == [chunk.body for chunk in chunks_from_file]
 
 
@@ -84,7 +82,6 @@ def test_chunk_to_dict_serializes_heading_path() -> None:
     payload = asdict(chunk)
 
     assert payload["chunk_id"] == "chunk-0005"
-    assert payload["text"] == chunk.text
     assert payload["body"] == chunk.body
     assert payload["token_count"] == chunk.token_count
     assert payload["headings"] == ((1, "Overview"), (2, "Details"), (3, "Notes"))
@@ -139,11 +136,7 @@ def test_parse_markdown_and_split_preserve_line_ranges_with_single_parser() -> N
     assert chunks[0].start_line == 1
     assert chunks[0].end_line == 1
     assert chunks[-1].headings == ((1, "Overview"), (2, "Details"), (3, "Notes"))
-    assert chunks[-1].body == "Final notes live here."
-    assert (
-        join_markdown([render_heading_path(chunks[-1].headings), chunks[-1].body])
-        == chunks[-1].text
-    )
+    assert chunks[-1].body == "# Overview\n\n## Details\n\n### Notes\n\nFinal notes live here."
     assert chunks[-1].start_line == 19
     assert chunks[-1].end_line == 19
 
@@ -175,4 +168,4 @@ def test_split_markdown_text_accepts_markdown_it_parser_with_plugins() -> None:
     )
 
     assert len(chunks) == 1
-    assert chunks[0].text == markdown
+    assert chunks[0].body == markdown

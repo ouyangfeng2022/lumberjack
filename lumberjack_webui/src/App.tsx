@@ -16,6 +16,7 @@ const DEFAULT_OPTIONS: Options = {
   min_tokens: 50,
   overlap_tokens: 0,
   retain_headings: true,
+  include_common_headings: true,
   merge_small_chunks: true,
   isolate_front_matter: true,
   split_oversized_blocks: 'paragraph,blockquote,html_block',

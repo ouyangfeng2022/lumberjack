@@ -34,6 +34,7 @@ def split_markdown_text(
     min_tokens: int = 50,
     overlap_tokens: int = 0,
     retain_headings: bool = True,
+    include_common_headings: bool = True,
     merge_small_chunks: bool = True,
     isolate_front_matter: bool = True,
     split_oversized_blocks: frozenset[str] = frozenset(
@@ -62,6 +63,7 @@ def split_markdown_text(
             min_tokens=min_tokens,
             overlap_tokens=overlap_tokens,
             retain_headings=retain_headings,
+            include_common_headings=include_common_headings,
             merge_small_chunks=merge_small_chunks,
             isolate_front_matter=isolate_front_matter,
             split_oversized_blocks=split_oversized_blocks,
@@ -77,6 +79,7 @@ def split_markdown_file(
     min_tokens: int = 50,
     overlap_tokens: int = 0,
     retain_headings: bool = True,
+    include_common_headings: bool = True,
     merge_small_chunks: bool = True,
     isolate_front_matter: bool = True,
     split_oversized_blocks: frozenset[str] = frozenset(
@@ -99,6 +102,7 @@ def split_markdown_file(
         min_tokens=min_tokens,
         overlap_tokens=overlap_tokens,
         retain_headings=retain_headings,
+        include_common_headings=include_common_headings,
         merge_small_chunks=merge_small_chunks,
         isolate_front_matter=isolate_front_matter,
         split_oversized_blocks=split_oversized_blocks,

@@ -91,8 +91,8 @@ Defined in `src/lumberjack/models.py`:
 - `MarkdownBlock`: block node with rendered text, line range, inline children, nested blocks, and attrs
 - `SectionNode`: heading-tree node with `path`, `blocks`, `children`, and title inline nodes
 - `DocumentAST`: parsed document with `root`, raw `source`, `metadata`, and `reference_definitions`
-- `SplitOptions`: `max_tokens`, `min_tokens`, `retain_headings`, `merge_small_chunks`, `overlap_tokens`, `split_oversized_blocks`
-- `Chunk`: final chunk payload with `text`, `body`, `token_count`, `headings`, document metadata, and line range
+- `SplitOptions`: `max_tokens`, `min_tokens`, `retain_headings`, `include_common_headings`, `merge_small_chunks`, `overlap_tokens`, `split_oversized_blocks`
+- `Chunk`: final chunk payload with `body`, `token_count`, `headings`, document metadata, and line range
 
 ## Web API
 
@@ -100,7 +100,7 @@ Implemented in `src/lumberjack/web/`.
 
 - Endpoint: `POST /api/split`
 - Input: form data with `text` (string) or `file` (upload), plus split options
-- Split options: `max_tokens`, `min_tokens`, `overlap_tokens`, `retain_headings`, `merge_small_chunks`, `split_oversized_blocks`, `tokenizer`, `document_title`
+- Split options: `max_tokens`, `min_tokens`, `overlap_tokens`, `retain_headings`, `include_common_headings`, `merge_small_chunks`, `split_oversized_blocks`, `tokenizer`, `document_title`
 - Response: JSON with `document`, `chunk_count`, and `chunks` array
 - Valid block types for `split_oversized_blocks`: `paragraph`, `blockquote`, `list`, `table`, `code_block`, `code_fence`, `html_block`
 - Server CLI: `lumberjack-serve` with `--host` (default `127.0.0.1`), `--port` (default `8000`), `--reload`
@@ -160,8 +160,9 @@ The parser currently captures these inline structures in headings and paragraphs
 - Whole document is kept as one chunk when it already fits the budget
 - Otherwise the splitter descends through heading sections before falling back to block/text splitting
 - Text fallback order is paragraph break -> line break -> sentence -> word -> hard split
-- `retain_headings=True` includes heading context in `Chunk.text`
-- `Chunk.body` excludes the common heading prefix that is already represented by `Chunk.headings`
+- `retain_headings=True` prepends rendered heading breadcrumbs to `Chunk.body`
+- `include_common_headings=True` includes the shared common heading prefix in `Chunk.body` (only effective with `retain_headings=True`); when False, `body` contains only relative sub-headings and content
+- `retain_headings=False` makes `Chunk.body` pure content without any headings; use `render_heading_path(Chunk.headings)` + `Chunk.body` to reconstruct
 - Small chunks are merged only when they share the same heading path and still fit within `max_tokens`
 
 ## Constraints

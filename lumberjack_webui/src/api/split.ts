@@ -17,6 +17,7 @@ export async function splitMarkdown(
   formData.append('min_tokens', String(options.min_tokens));
   formData.append('overlap_tokens', String(options.overlap_tokens));
   formData.append('retain_headings', String(options.retain_headings));
+  formData.append('include_common_headings', String(options.include_common_headings));
   formData.append('merge_small_chunks', String(options.merge_small_chunks));
   formData.append('isolate_front_matter', String(options.isolate_front_matter));
   formData.append('split_oversized_blocks', options.split_oversized_blocks);

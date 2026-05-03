@@ -1,6 +1,5 @@
 export interface ChunkData {
   chunk_id: string;
-  text: string;
   body: string;
   token_count: number;
   headings: [number, string][];
@@ -22,6 +21,7 @@ export interface SplitOptions {
   min_tokens: number;
   overlap_tokens: number;
   retain_headings: boolean;
+  include_common_headings: boolean;
   merge_small_chunks: boolean;
   isolate_front_matter: boolean;
   split_oversized_blocks: string;

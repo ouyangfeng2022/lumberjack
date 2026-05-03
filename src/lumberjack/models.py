@@ -74,7 +74,10 @@ class SplitOptions:
         max_tokens: Target maximum token count per chunk.
         min_tokens: Minimum size before a chunk becomes a merge candidate.
         overlap_tokens: Number of tokens to duplicate between adjacent chunks.
-        retain_headings: Include heading breadcrumbs in :attr:`Chunk.text`.
+        retain_headings: Prepend rendered heading breadcrumbs to :attr:`Chunk.body`.
+        include_common_headings: When ``retain_headings`` is True, include the shared
+            common heading prefix in :attr:`Chunk.body`.  Only effective when
+            ``retain_headings`` is also True.
         merge_small_chunks: Combine adjacent chunks that share the same heading path.
         isolate_front_matter: Always emit front matter as the first chunk.
         split_oversized_blocks: Block kinds to split when they exceed ``max_tokens``.
@@ -86,6 +89,7 @@ class SplitOptions:
     min_tokens: int = 50
     overlap_tokens: int = 0
     retain_headings: bool = True
+    include_common_headings: bool = True
     merge_small_chunks: bool = True
     isolate_front_matter: bool = True
     split_oversized_blocks: frozenset[str] = frozenset(
@@ -99,10 +103,9 @@ class SplitOptions:
 
 @dataclass(slots=True, frozen=True)
 class Chunk:
-    """Final chunk payload with text, token count, heading breadcrumbs, and line range."""
+    """Final chunk payload with body content, token count, heading breadcrumbs, and line range."""
 
     chunk_id: str
-    text: str
     body: str = ""
     token_count: int = 0
     headings: HeadingPath = ()

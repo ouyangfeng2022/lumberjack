@@ -6,7 +6,6 @@ from lumberjack.core.parser import MarkdownParser
 from lumberjack.core.splitter import MarkdownSplitter
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 from lumberjack.models import SplitOptions
-from lumberjack.utils import join_markdown, render_heading_path
 
 FIXTURE = (Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md").read_text(
     encoding="utf-8"
@@ -111,8 +110,8 @@ def test_splitter_preserves_heading_context() -> None:
     chunks = splitter.split(document)
 
     assert len(chunks) >= 2
-    assert any("# Overview" in chunk.text for chunk in chunks)
-    assert any("## Details" in chunk.text for chunk in chunks)
+    assert any("# Overview" in chunk.body for chunk in chunks)
+    assert any("## Details" in chunk.body for chunk in chunks)
 
 
 def test_splitter_respects_budget_except_unsplittable_code_fence() -> None:
@@ -126,7 +125,7 @@ def test_splitter_respects_budget_except_unsplittable_code_fence() -> None:
 
     oversized = [chunk for chunk in chunks if chunk.token_count > 180]
     if oversized:
-        assert all("```" in chunk.text for chunk in oversized)
+        assert all("```" in chunk.body for chunk in oversized)
 
 
 def test_splitter_deduplicates_shared_parent_heading_in_merged_chunk() -> None:
@@ -138,17 +137,17 @@ def test_splitter_deduplicates_shared_parent_heading_in_merged_chunk() -> None:
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].text.count("# Development Guide") == 1
-    assert "## Current Scope" in chunks[0].text
-    assert "## Milestones" in chunks[0].text
-    assert "### M0" in chunks[0].text
-    assert "### M1" in chunks[0].text
-    assert "## Suggested Workflow" in chunks[0].text
+    assert chunks[0].body.count("# Development Guide") == 1
+    assert "## Current Scope" in chunks[0].body
+    assert "## Milestones" in chunks[0].body
+    assert "### M0" in chunks[0].body
+    assert "### M1" in chunks[0].body
+    assert "## Suggested Workflow" in chunks[0].body
     assert chunks[0].headings == ((1, "Development Guide"),)
     assert chunks[0].section_level == 1
 
 
-def test_splitter_omits_headings_from_text_when_disabled() -> None:
+def test_splitter_omits_headings_from_body_when_disabled() -> None:
     document = MarkdownParser().parse(MERGED_SECTION_FIXTURE, document_title="development.md")
 
     with_headings = MarkdownSplitter(
@@ -162,16 +161,15 @@ def test_splitter_omits_headings_from_text_when_disabled() -> None:
 
     assert len(with_headings) == 1
     assert len(without_headings) == 1
-    assert "# Development Guide" in with_headings[0].text
-    assert "## Current Scope" in with_headings[0].text
-    assert "# Development Guide" not in without_headings[0].text
-    assert "## Current Scope" in without_headings[0].text
-    assert "## Milestones" in without_headings[0].text
-    assert "Scope body." in without_headings[0].text
-    assert "M0 body." in without_headings[0].text
-    assert without_headings[0].body == without_headings[0].text
+    assert "# Development Guide" in with_headings[0].body
+    assert "## Current Scope" in with_headings[0].body
+    assert "# Development Guide" not in without_headings[0].body
+    assert "## Current Scope" not in without_headings[0].body
+    assert "## Milestones" not in without_headings[0].body
+    assert "Scope body." in without_headings[0].body
+    assert "M0 body." in without_headings[0].body
     assert without_headings[0].headings == ((1, "Development Guide"),)
-    assert without_headings[0].token_count == len(without_headings[0].text)
+    assert without_headings[0].token_count == len(without_headings[0].body)
     assert without_headings[0].token_count < with_headings[0].token_count
 
 
@@ -185,13 +183,13 @@ def test_splitter_recursively_descends_heading_levels_when_section_is_oversized(
     chunks = splitter.split(document)
 
     assert len(chunks) == 3
-    assert chunks[0].text == "# Alpha\n\nAlpha summary."
+    assert chunks[0].body == "# Alpha\n\nAlpha summary."
     assert (
-        chunks[1].text
+        chunks[1].body
         == "# Beta\n\n## Beta One\n\nThis subsection stays comfortably under the budget."
     )
     assert (
-        chunks[2].text
+        chunks[2].body
         == "# Beta\n\n## Beta Two\n\nThis subsection also stays under the budget by itself."
     )
     assert all(chunk.token_count <= 90 for chunk in chunks)
@@ -207,7 +205,7 @@ def test_splitter_checks_whole_document_before_splitting_by_top_level_headings()
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].text == "# First\n\nFirst body.\n\n# Second\n\nSecond body."
+    assert chunks[0].body == "# First\n\nFirst body.\n\n# Second\n\nSecond body."
 
 
 def test_splitter_greedily_merges_same_level_siblings_before_descending() -> None:
@@ -220,8 +218,8 @@ def test_splitter_greedily_merges_same_level_siblings_before_descending() -> Non
     chunks = splitter.split(document)
 
     assert len(chunks) == 2
-    assert chunks[0].text == "# Parent\n\n## One\n\nOne body.\n\n## Two\n\nTwo body."
-    assert chunks[1].text == "# Parent\n\n## Three\n\nThree body is a little longer."
+    assert chunks[0].body == "# Parent\n\n## One\n\nOne body.\n\n## Two\n\nTwo body."
+    assert chunks[1].body == "# Parent\n\n## Three\n\nThree body is a little longer."
     assert all(chunk.token_count <= 60 for chunk in chunks)
 
 
@@ -235,10 +233,7 @@ def test_splitter_exposes_body_without_common_headings_for_single_leaf_chunk() -
     chunks = splitter.split(document)
 
     assert chunks[0].headings == ((1, "Root"), (2, "Scope"), (3, "A"))
-    assert chunks[0].body == "Alpha body."
-    assert (
-        join_markdown([render_heading_path(chunks[0].headings), chunks[0].body]) == chunks[0].text
-    )
+    assert chunks[0].body == "# Root\n\n## Scope\n\n### A\n\nAlpha body."
 
 
 def test_splitter_exposes_body_without_common_headings_for_multi_entry_chunk() -> None:
@@ -252,13 +247,56 @@ def test_splitter_exposes_body_without_common_headings_for_multi_entry_chunk() -
 
     assert len(chunks) == 1
     assert chunks[0].headings == ((1, "Root"), (2, "Scope"))
-    assert chunks[0].body == "### A\n\nAlpha body.\n\n### B\n\nBeta body."
-    assert (
-        join_markdown([render_heading_path(chunks[0].headings), chunks[0].body]) == chunks[0].text
+    assert chunks[0].body == "# Root\n\n## Scope\n\n### A\n\nAlpha body.\n\n### B\n\nBeta body."
+
+
+def test_splitter_exclude_common_headings_drops_shared_prefix() -> None:
+    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=60, min_tokens=0, retain_headings=True, include_common_headings=False
+        ),
     )
 
+    chunks = splitter.split(document)
 
-def test_splitter_body_matches_visible_text_when_headings_are_hidden() -> None:
+    assert len(chunks) == 1
+    assert chunks[0].headings == ((1, "Root"), (2, "Scope"))
+    assert chunks[0].body == "### A\n\nAlpha body.\n\n### B\n\nBeta body."
+
+
+def test_splitter_exclude_common_headings_single_entry() -> None:
+    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=35, min_tokens=0, retain_headings=True, include_common_headings=False
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert chunks[0].headings == ((1, "Root"), (2, "Scope"), (3, "A"))
+    assert chunks[0].body == "Alpha body."
+
+
+def test_splitter_exclude_common_headings_ignored_when_retain_headings_false() -> None:
+    document = MarkdownParser().parse(MULTI_ROOT_FIXTURE, document_title="multi-root.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=200, min_tokens=0, retain_headings=False, include_common_headings=False
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].body == "First body.\n\nSecond body."
+
+
+def test_splitter_body_is_pure_content_when_headings_are_hidden() -> None:
     document = MarkdownParser().parse(MULTI_ROOT_FIXTURE, document_title="multi-root.md")
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
@@ -268,11 +306,10 @@ def test_splitter_body_matches_visible_text_when_headings_are_hidden() -> None:
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].text == "First body.\n\nSecond body."
-    assert chunks[0].body == chunks[0].text
+    assert chunks[0].body == "First body.\n\nSecond body."
 
 
-def test_splitter_body_drops_only_visible_common_headings_when_headings_are_hidden() -> None:
+def test_splitter_body_drops_all_headings_when_headings_are_hidden() -> None:
     document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
@@ -282,8 +319,7 @@ def test_splitter_body_drops_only_visible_common_headings_when_headings_are_hidd
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].text == "## Scope\n\n### A\n\nAlpha body.\n\n### B\n\nBeta body."
-    assert chunks[0].body == "### A\n\nAlpha body.\n\n### B\n\nBeta body."
+    assert chunks[0].body == "Alpha body.\n\nBeta body."
 
 
 def test_splitter_adds_overlap_only_for_text_fallback_splits() -> None:
@@ -310,7 +346,6 @@ def test_splitter_adds_overlap_only_for_text_fallback_splits() -> None:
         "delta epsilon",
         "zeta",
     ]
-    assert [chunk.text for chunk in chunks] == [chunk.body for chunk in chunks]
 
 
 def test_splitter_rejects_overlap_budget_that_consumes_the_whole_chunk() -> None:
@@ -338,7 +373,7 @@ def test_splitter_keeps_oversized_lists_intact_by_default() -> None:
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].text == LIST_FIXTURE.strip()
+    assert chunks[0].body == LIST_FIXTURE.strip()
     assert chunks[0].token_count > 20
 
 
@@ -357,7 +392,7 @@ def test_splitter_can_split_oversized_lists_when_enabled() -> None:
 
     chunks = splitter.split(document)
 
-    assert [chunk.text for chunk in chunks] == [
+    assert [chunk.body for chunk in chunks] == [
         "- alpha alpha alpha",
         "alpha",
         "- beta beta beta",
@@ -383,7 +418,7 @@ def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
 
     chunks = splitter.split(document)
 
-    assert [chunk.text for chunk in chunks] == [
+    assert [chunk.body for chunk in chunks] == [
         '```python\nprint("alpha")\n```',
         '```python\nprint("beta")\n```',
         '```python\nprint("gamma")\n```',
@@ -406,7 +441,7 @@ def test_splitter_never_splits_oversized_urls() -> None:
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].text == LONG_URL_FIXTURE
+    assert chunks[0].body == LONG_URL_FIXTURE
     assert chunks[0].token_count > 30
 
 
@@ -441,7 +476,7 @@ def test_front_matter_isolated_as_first_chunk_by_default() -> None:
 
     assert len(chunks) >= 2
     assert chunks[0].chunk_id == "chunk-0000"
-    assert chunks[0].text == "---\ntitle: Test Document\nauthor: Alice\ndate: 2024-01-01\n---"
+    assert chunks[0].body == "---\ntitle: Test Document\nauthor: Alice\ndate: 2024-01-01\n---"
     assert chunks[0].headings == ()
     assert chunks[0].section_level == 0
     assert chunks[0].start_line == 1
@@ -479,4 +514,4 @@ def test_no_front_matter_works_normally() -> None:
     chunks = splitter.split(document)
 
     assert chunks[0].chunk_id == "chunk-0001"
-    assert "Just a heading" in chunks[0].text
+    assert "Just a heading" in chunks[0].body

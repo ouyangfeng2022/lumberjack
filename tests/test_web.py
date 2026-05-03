@@ -28,7 +28,7 @@ def test_split_with_text(client: TestClient) -> None:
     assert len(body["chunks"]) == body["chunk_count"]
     chunk = body["chunks"][0]
     assert "chunk_id" in chunk
-    assert "text" in chunk
+    assert "body" in chunk
     assert "token_count" in chunk
     assert "headings" in chunk
 

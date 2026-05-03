@@ -108,7 +108,6 @@ class MarkdownSplitter(SplitterProtocol):
         """Create a chunk from an isolated front_matter block."""
         return Chunk(
             chunk_id="chunk-0000",
-            text=block.text,
             body=block.text,
             token_count=self.tokenizer.count(block.text),
             headings=(),
@@ -211,11 +210,12 @@ class MarkdownSplitter(SplitterProtocol):
         section: SectionNode,
     ) -> list[_ChunkDraft]:
         """Split a section's own blocks into fragments, then into chunk drafts."""
-        prefix = (
-            render_heading_path(section.path)
-            if self.options.retain_headings and section.level > 0
-            else ""
+        include_prefix = (
+            self.options.retain_headings
+            and self.options.include_common_headings
+            and section.level > 0
         )
+        prefix = render_heading_path(section.path) if include_prefix else ""
         fragment = _Fragment(
             headings=section.path,
             prefix=prefix,
@@ -595,26 +595,17 @@ class MarkdownSplitter(SplitterProtocol):
         chunks: list[_ChunkDraft],
         document: DocumentAST,
     ) -> list[Chunk]:
-        """Convert chunk drafts into final ``Chunk`` objects with rendered text and metadata."""
+        """Convert chunk drafts into final ``Chunk`` objects with rendered body and metadata."""
         finalized: list[Chunk] = []
         document_path = self._document_path(document)
         for index, chunk in enumerate(chunks, start=1):
             headings = self._common_heading_path(entry.headings for entry in chunk.entries)
-            text = self._render_chunk_entries(
-                chunk.entries,
-                common_headings=headings,
-            )
-            body = self._render_chunk_entries(
-                chunk.entries,
-                common_headings=headings,
-                include_common_headings=False,
-            )
+            body = self._render_body(chunk.entries, common_headings=headings)
             finalized.append(
                 Chunk(
                     chunk_id=f"chunk-{index:04d}",
-                    text=text,
                     body=body,
-                    token_count=self.tokenizer.count(text),
+                    token_count=self.tokenizer.count(body),
                     headings=headings,
                     section_level=headings[-1][0] if headings else 0,
                     document_title=document.title,
@@ -680,38 +671,38 @@ class MarkdownSplitter(SplitterProtocol):
     ) -> _ChunkDraft:
         """Build a chunk draft; for a single entry just count tokens, otherwise merge then count."""
         headings = self._common_heading_path(entry.headings for entry in entries)
-        rendered = self._render_chunk_entries(
-            entries,
-            common_headings=headings,
-        )
+        rendered = self._render_body(entries, common_headings=headings)
         return _ChunkDraft(entries=entries.copy(), token_count=self.tokenizer.count(rendered))
 
-    def _render_chunk_entries(
+    def _render_body(
         self,
         entries: list[_Entry],
         *,
         common_headings: HeadingPath,
-        include_common_headings: bool = True,
     ) -> str:
-        """Render entries into Markdown, deduplicating shared heading prefixes."""
+        """Render entries into Markdown body content.
+
+        When ``retain_headings`` is True the rendered heading prefix is prepended;
+        otherwise only the pure entry body text is included.
+        """
         if not entries:
             return ""
 
-        full_common_headings = self._visible_heading_path(common_headings)
-        visible_common_headings = full_common_headings if include_common_headings else ()
-        parts: list[str] = []
-        if visible_common_headings:
-            parts.append(render_heading_path(visible_common_headings))
+        if not self.options.retain_headings:
+            parts = [entry.body for entry in entries if entry.body]
+            return join_markdown(parts)
 
-        previous_visible_headings = full_common_headings
+        parts: list[str] = []
+        include_common = self.options.include_common_headings
+        if include_common and common_headings:
+            parts.append(render_heading_path(common_headings))
+
+        previous_headings = common_headings
         for entry in entries:
-            entry_visible_headings = self._visible_heading_path(entry.headings)
-            shared_headings = self._common_heading_path(
-                (previous_visible_headings, entry_visible_headings)
-            )
-            if len(shared_headings) < len(visible_common_headings):
-                shared_headings = visible_common_headings
-            relative_headings = entry_visible_headings[len(shared_headings) :]
+            shared_headings = self._common_heading_path((previous_headings, entry.headings))
+            if len(shared_headings) < len(common_headings):
+                shared_headings = common_headings
+            relative_headings = entry.headings[len(shared_headings) :]
 
             entry_parts: list[str] = []
             if relative_headings:
@@ -721,17 +712,9 @@ class MarkdownSplitter(SplitterProtocol):
             rendered = join_markdown(entry_parts)
             if rendered:
                 parts.append(rendered)
-            previous_visible_headings = entry_visible_headings
+            previous_headings = entry.headings
 
         return join_markdown(parts)
-
-    def _visible_heading_path(
-        self,
-        headings: HeadingPath,
-    ) -> HeadingPath:
-        if self.options.retain_headings:
-            return headings
-        return headings[1:] if len(headings) > 1 else ()
 
     def _common_heading_path(self, paths: Iterable[HeadingPath]) -> HeadingPath:
         """Return the longest shared heading prefix across all given paths."""

@@ -151,6 +151,87 @@ Public types exported from [`src/lumberjack/__init__.py`](/D:/coding/Python/lumb
 - `SimpleCharTokenizer`
 - `TiktokenTokenizer`
 
+## Batch Processing
+
+The `script/download_and_split.py` script downloads Markdown datasets from Hugging Face and splits every document through the same lumberjack pipeline.
+
+### Presets
+
+Built-in presets configure the dataset name, subset, field mappings, and whether to filter for Markdown-like content:
+
+| Preset | Dataset | Notes |
+|---|---|---|
+| `open-markdown` | [`open-index/open-markdown`](https://huggingface.co/datasets/open-index/open-markdown) | Pure Markdown, no filtering needed |
+| `fineweb` | [`HuggingFaceFW/fineweb`](https://huggingface.co/datasets/HuggingFaceFW/fineweb) | General web text, filters for Markdown content |
+
+### Usage
+
+```bash
+# Install the extra dataset dependency
+uv sync --group scripts
+
+# open-markdown preset (streaming)
+uv run script/download_and_split.py --preset open-markdown --max-samples 100
+
+# open-markdown from pre-downloaded parquet files
+uv run script/download_and_split.py --preset open-markdown --local-dir ./open-index/
+
+# FineWeb preset
+uv run script/download_and_split.py --preset fineweb
+
+# Any Hugging Face dataset
+uv run script/download_and_split.py --dataset open-index/open-markdown --subset CC-MAIN-2026-17
+
+# Custom field mapping
+uv run script/download_and_split.py --dataset my/repo --text-field content --title-field url
+```
+
+### Options
+
+- `--preset {open-markdown,fineweb}`: use a built-in preset
+- `--dataset`: Hugging Face dataset name (mutually exclusive with `--preset`)
+- `--subset`: dataset configuration/subset name
+- `--split`: dataset split, default `train`
+- `--max-samples`: maximum number of samples to process, default `50`
+- `--max-tokens` / `--min-tokens`: chunk size controls passed to lumberjack
+- `--filter-markdown` / `--no-filter-markdown`: enable or disable Markdown content detection
+- `--local-dir`: load from local parquet files instead of streaming from Hugging Face
+- `--text-field`: override auto-detected text column name
+- `--title-field`: override auto-detected title column name
+- `--output`: output root directory, default `output/`
+
+### Output Structure
+
+```text
+output/
+└── open_index_open_markdown/
+    ├── metadata.json
+    ├── 0000_my_page.json
+    ├── 0001_another_page.json
+    └── ...
+```
+
+Each JSON file contains:
+
+```json
+{
+  "source_title": "my_page",
+  "source_length": 3240,
+  "chunk_count": 3,
+  "chunks": [
+    {
+      "chunk_id": "...",
+      "body": "...",
+      "token_count": 1100,
+      "headings": [[1, "Introduction"]],
+      ...
+    }
+  ]
+}
+```
+
+`metadata.json` records the dataset name, subset, split options, and processing statistics.
+
 ## Internal Model
 
 Main dataclasses in [`src/lumberjack/models.py`](/D:/coding/Python/lumberjack/src/lumberjack/models.py):
@@ -239,9 +320,9 @@ src/lumberjack/api.py     Public Python API
 src/lumberjack/models.py  Internal data models
 src/lumberjack/utils.py   Markdown rendering helpers
 src/lumberjack/main.py    CLI orchestration
+script/                   Batch processing scripts (dataset download & split)
 tests/                    Parser, splitter, and API tests
 docs/                     Architecture and development notes
-demo.py                   Reference-only prototype material
 ```
 
 ## Testing
@@ -275,7 +356,6 @@ Current limits and notes:
 
 - Markdown only; no PDF, HTML, or DOCX ingestion pipeline is planned in this package
 - The parser targets a GFM-like surface rather than a strict multi-backend compatibility layer
-- `demo.py` is not part of the production package
 - The CLI parser selector is retained only as an explicit route to the markdown-it implementation
 
 ## Status
