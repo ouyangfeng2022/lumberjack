@@ -45,7 +45,7 @@ uv sync --group dev --group test --extra tokenizers
 基本用法：
 
 ```bash
-uv run lumber path/to/file.md --max-tokens 1200 --min-tokens 50 --format json
+uv run lumber path/to/file.md --max-tokens 1200 --merge-below-tokens 50 --format json
 ```
 
 查看帮助：
@@ -62,7 +62,7 @@ uv run lumber --help
 - `--tokenizer {simple,tiktoken}`：token 计数策略，默认 `simple`
 - `--parser {default,markdown-it}`：命令行暴露的解析器选择器
 - `--max-tokens`：最大分块预算，默认 `1200`
-- `--min-tokens`：小分块合并阈值，默认 `50`
+- `--merge-below-tokens`：小分块合并软阈值，默认 `50`
 - `--overlap-tokens`：仅在文本回退切分时使用的可选 token 重叠量，默认 `0`
 - `--retain-headings`：在渲染的分块文本中包含标题上下文
 - `--split-oversized-block <kind>`：允许切分超大的 `list`、`code_block`、`code_fence`、`table` 等受支持的块类型
@@ -109,7 +109,7 @@ chunks = lumber(
     markdown_text,
     document_title="guide.md",
     max_tokens=1200,
-    min_tokens=50,
+    merge_below_tokens=50,
     overlap_tokens=0,
     retain_headings=True,
     merge_small_chunks=True,
@@ -173,7 +173,7 @@ uv run script/download_and_split.py --dataset my/repo --text-field content --tit
 - `--subset`：数据集配置/子集名称
 - `--split`：数据集划分，默认 `train`
 - `--max-samples`：最大处理样本数，默认 `50`
-- `--max-tokens` / `--min-tokens`：传递给 lumberjack 的分块大小控制参数
+- `--max-tokens` / `--merge-below-tokens`：传递给 lumberjack 的分块预算和小块合并阈值
 - `--filter-markdown` / `--no-filter-markdown`：启用或禁用 Markdown 内容检测
 - `--local-dir`：从本地 parquet 文件加载而非从 Hugging Face 流式加载
 - `--text-field`：覆盖自动检测的文本列名
@@ -278,7 +278,7 @@ output/
 - 当 `retain_headings=True` 时，标题上下文保留在 `Chunk.text` 中
 - 当同级章节合并为一个分块时，共享的父标题会去重
 - `Chunk.body` 不包含已由 `Chunk.headings` 表示的公共标题前缀
-- 小分块合并仅发生在具有相同标题路径的相邻分块之间
+- `merge_below_tokens` 不是最终分块的最小 token 数，而是小块合并软阈值：低于该值的相邻分块只会在标题路径相同且合并后仍不超过 `max_tokens` 时被合并。
 - 可选重叠仅在单个超大块必须按段落、行、句子、单词或硬边界切分时应用
 - 超大列表和代码块默认保持完整，但可通过 `split_oversized_blocks` 设为可切分
 - 长的 URL 样式文本被视为不可切分，不会跨分块硬切分

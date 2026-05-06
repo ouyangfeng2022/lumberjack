@@ -23,7 +23,7 @@ const zh = {
   opts_include_common_headings: '包含公共标题',
   opts_show_advanced: '+ 显示高级选项',
   opts_hide_advanced: '- 隐藏高级选项',
-  opts_min_tokens: '最小词元数',
+  opts_merge_below_tokens: '低于此词元数时合并',
   opts_overlap_tokens: '重叠词元数',
   opts_merge_small: '合并小块',
   opts_isolate_front_matter: '独立前置元数据',

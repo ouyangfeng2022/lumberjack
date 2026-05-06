@@ -99,12 +99,12 @@ export default function SplitOptions({ options, onChange }: Props) {
         <div className={styles.advanced}>
           <div className={styles.row}>
             <label className={styles.field}>
-              <span className={styles.fieldLabel}>{t('opts_min_tokens')}</span>
+              <span className={styles.fieldLabel}>{t('opts_merge_below_tokens')}</span>
               <input
                 type="number"
                 className={styles.numberInput}
-                value={options.min_tokens}
-                onChange={(e) => update('min_tokens', Number(e.target.value))}
+                value={options.merge_below_tokens}
+                onChange={(e) => update('merge_below_tokens', Number(e.target.value))}
               />
             </label>
             <label className={styles.field}>

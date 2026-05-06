@@ -59,7 +59,7 @@ def test_split_with_options(client: TestClient) -> None:
         data={
             "text": SIMPLE_MD,
             "max_tokens": "100",
-            "min_tokens": "10",
+            "merge_below_tokens": "10",
             "overlap_tokens": "5",
             "retain_headings": "true",
             "merge_small_chunks": "false",

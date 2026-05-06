@@ -72,7 +72,8 @@ class SplitOptions:
 
     Attributes:
         max_tokens: Target maximum token count per chunk.
-        min_tokens: Minimum size before a chunk becomes a merge candidate.
+        merge_below_tokens: Soft threshold for small-chunk merging. Adjacent
+            chunks below this size are merge candidates when merging is enabled.
         overlap_tokens: Number of tokens to duplicate between adjacent chunks.
         retain_headings: Prepend rendered heading breadcrumbs to :attr:`Chunk.body`.
         include_common_headings: When ``retain_headings`` is True, include the shared
@@ -86,7 +87,7 @@ class SplitOptions:
     """
 
     max_tokens: int = 1200
-    min_tokens: int = 50
+    merge_below_tokens: int = 50
     overlap_tokens: int = 0
     retain_headings: bool = True
     include_common_headings: bool = True

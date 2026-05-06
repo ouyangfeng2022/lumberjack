@@ -85,12 +85,12 @@ class MarkdownSplitter(SplitterProtocol):
         """Raise ``ValueError`` if split options contain illegal values."""
         if self.options.max_tokens <= 0:
             raise ValueError("max_tokens must be greater than 0")
-        if self.options.min_tokens < 0:
-            raise ValueError("min_tokens must be non-negative")
+        if self.options.merge_below_tokens < 0:
+            raise ValueError("merge_below_tokens must be non-negative")
         if self.options.overlap_tokens < 0:
             raise ValueError("overlap_tokens must be non-negative")
-        if self.options.min_tokens >= self.options.max_tokens:
-            raise ValueError("min_tokens must be smaller than max_tokens")
+        if self.options.merge_below_tokens >= self.options.max_tokens:
+            raise ValueError("merge_below_tokens must be smaller than max_tokens")
         if self.options.overlap_tokens >= self.options.max_tokens:
             raise ValueError("overlap_tokens must be smaller than max_tokens")
 
@@ -571,7 +571,7 @@ class MarkdownSplitter(SplitterProtocol):
         self,
         chunks: list[_ChunkDraft],
     ) -> list[_ChunkDraft]:
-        """Merge adjacent chunks that share a heading path and fall below *min_tokens*."""
+        """Merge adjacent chunks that share a heading path and fall below *merge_below_tokens*."""
         if not chunks:
             return chunks
 
@@ -580,13 +580,13 @@ class MarkdownSplitter(SplitterProtocol):
             previous = merged[-1]
             if (
                 self._can_merge_small_chunks(previous, chunk)
-                and previous.token_count + chunk.token_count <= self.options.max_tokens
-                and chunk.token_count < self.options.min_tokens
+                and chunk.token_count < self.options.merge_below_tokens
             ):
-                merged[-1] = _ChunkDraft(
-                    entries=[*previous.entries, *chunk.entries],
-                    token_count=previous.token_count + chunk.token_count,
-                )
+                candidate = self._draft_from_entries([*previous.entries, *chunk.entries])
+                if candidate.token_count > self.options.max_tokens:
+                    merged.append(chunk)
+                    continue
+                merged[-1] = candidate
             else:
                 merged.append(chunk)
         return merged

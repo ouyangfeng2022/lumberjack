@@ -76,7 +76,7 @@ export interface SplitStage {
   drafts: ChunkDraftData[];
   options: {
     max_tokens: number;
-    min_tokens: number;
+    merge_below_tokens: number;
     overlap_tokens: number;
   };
 }

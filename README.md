@@ -45,7 +45,7 @@ uv sync --group dev --group test --extra tokenizers
 Basic usage:
 
 ```bash
-uv run lumber path/to/file.md --max-tokens 1200 --min-tokens 50 --format json
+uv run lumber path/to/file.md --max-tokens 1200 --merge-below-tokens 50 --format json
 ```
 
 Show help:
@@ -62,7 +62,7 @@ Supported CLI options today:
 - `--tokenizer {simple,tiktoken}`: token counting strategy, default `simple`
 - `--parser {default,markdown-it}`: parser selector exposed by the CLI
 - `--max-tokens`: maximum chunk budget, default `1200`
-- `--min-tokens`: threshold used by small-chunk merging, default `50`
+- `--merge-below-tokens`: soft threshold for small-chunk merging, default `50`
 - `--overlap-tokens`: optional token overlap used only for text fallback splits, default `0`
 - `--retain-headings`: include heading context in rendered chunk text
 - `--split-oversized-block <kind>`: opt in to splitting oversized `list`, `code_block`, `code_fence`, `table`, and other supported block kinds
@@ -112,7 +112,7 @@ chunks = lumber(
     markdown_text,
     document_title="guide.md",
     max_tokens=1200,
-    min_tokens=50,
+    merge_below_tokens=50,
     overlap_tokens=0,
     retain_headings=True,
     merge_small_chunks=True,
@@ -175,7 +175,7 @@ uv run script/download_and_split.py --dataset my/repo --text-field content --tit
 - `--subset`: dataset configuration/subset name
 - `--split`: dataset split, default `train`
 - `--max-samples`: maximum number of samples to process, default `50`
-- `--max-tokens` / `--min-tokens`: chunk size controls passed to lumberjack
+- `--max-tokens` / `--merge-below-tokens`: chunk budget and small-chunk merge threshold passed to lumberjack
 - `--filter-markdown` / `--no-filter-markdown`: enable or disable Markdown content detection
 - `--local-dir`: load from local parquet files instead of streaming from Hugging Face
 - `--text-field`: override auto-detected text column name
@@ -280,7 +280,9 @@ Important details:
 - Heading context is preserved in `Chunk.text` when `retain_headings=True`
 - Shared parent headings are deduplicated when sibling sections are merged into one chunk
 - `Chunk.body` excludes the common heading prefix already represented by `Chunk.headings`
-- Small-chunk merging only happens for adjacent chunks with the same heading path
+- `merge_below_tokens` is not a final minimum chunk size. It is a soft merge
+  threshold: adjacent chunks below this value are merged only when they share the
+  same heading path and the merged result fits within `max_tokens`.
 - Optional overlap is only applied when a single oversized block must be split by paragraph, line, sentence, word, or hard boundaries
 - Oversized lists and code blocks stay intact by default, but can be made splittable via `split_oversized_blocks`
 - Long URL-like spans are treated as unsplittable and will not be hard-split across chunks

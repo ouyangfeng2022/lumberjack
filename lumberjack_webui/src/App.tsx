@@ -13,7 +13,7 @@ import styles from './App.module.css';
 
 const DEFAULT_OPTIONS: Options = {
   max_tokens: 1200,
-  min_tokens: 50,
+  merge_below_tokens: 50,
   overlap_tokens: 0,
   retain_headings: true,
   include_common_headings: true,

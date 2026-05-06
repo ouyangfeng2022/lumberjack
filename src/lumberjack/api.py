@@ -32,7 +32,7 @@ def lumber(
     *,
     document_title: str = "document.md",
     max_tokens: int = 1200,
-    min_tokens: int = 50,
+    merge_below_tokens: int = 50,
     overlap_tokens: int = 0,
     retain_headings: bool = True,
     include_common_headings: bool = True,
@@ -61,7 +61,7 @@ def lumber(
         tokenizer=tokenizer_impl,
         options=SplitOptions(
             max_tokens=max_tokens,
-            min_tokens=min_tokens,
+            merge_below_tokens=merge_below_tokens,
             overlap_tokens=overlap_tokens,
             retain_headings=retain_headings,
             include_common_headings=include_common_headings,

@@ -70,7 +70,7 @@ def test_lumber_accepts_overlap_options() -> None:
         FIXTURE,
         document_title="sample.md",
         max_tokens=120,
-        min_tokens=0,
+        merge_below_tokens=0,
         overlap_tokens=12,
         merge_small_chunks=False,
     )

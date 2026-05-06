@@ -23,7 +23,7 @@ uv sync --group dev --group test --extra tokenizers
 uv sync --group web
 
 # Run CLI
-uv run lumber path/to/file.md --max-tokens 1200 --min-tokens 50 --format json
+uv run lumber path/to/file.md --max-tokens 1200 --merge-below-tokens 50 --format json
 
 # Show CLI help
 uv run lumber --help
@@ -89,7 +89,7 @@ Defined in `src/lumberjack/models.py`:
 - `MarkdownBlock`: block node with rendered text, line range, inline children, nested blocks, and attrs
 - `SectionNode`: heading-tree node with `path`, `blocks`, `children`, and title inline nodes
 - `DocumentAST`: parsed document with `root`, raw `source`, `metadata`, and `reference_definitions`
-- `SplitOptions`: `max_tokens`, `min_tokens`, `retain_headings`, `include_common_headings`, `merge_small_chunks`, `overlap_tokens`, `split_oversized_blocks`
+- `SplitOptions`: `max_tokens`, `merge_below_tokens`, `retain_headings`, `include_common_headings`, `merge_small_chunks`, `overlap_tokens`, `split_oversized_blocks`
 - `Chunk`: final chunk payload with `chunk_type`, `body`, `token_count`, `headings`, document metadata, and line range
 
 ## Web API
@@ -98,7 +98,7 @@ Implemented in `src/lumberjack/web/`.
 
 - Endpoint: `POST /lumber/api/split`
 - Input: form data with `text` (string) or `file` (upload), plus split options
-- Split options: `max_tokens`, `min_tokens`, `overlap_tokens`, `retain_headings`, `include_common_headings`, `merge_small_chunks`, `split_oversized_blocks`, `tokenizer`, `document_title`
+- Split options: `max_tokens`, `merge_below_tokens`, `overlap_tokens`, `retain_headings`, `include_common_headings`, `merge_small_chunks`, `split_oversized_blocks`, `tokenizer`, `document_title`
 - Response: JSON with `document`, `chunk_count`, and `chunks` array
 - Valid block types for `split_oversized_blocks`: `paragraph`, `blockquote`, `list`, `table`, `code_block`, `code_fence`, `html_block`
 - Server CLI: `lumberjack-serve` with `--host` (default `127.0.0.1`), `--port` (default `8000`), `--reload`

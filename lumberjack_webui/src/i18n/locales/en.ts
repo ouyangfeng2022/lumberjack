@@ -23,7 +23,7 @@ const en = {
   opts_include_common_headings: 'Include Common Headings',
   opts_show_advanced: '+ Show Advanced Options',
   opts_hide_advanced: '- Hide Advanced Options',
-  opts_min_tokens: 'Min Tokens',
+  opts_merge_below_tokens: 'Merge Below Tokens',
   opts_overlap_tokens: 'Overlap Tokens',
   opts_merge_small: 'Merge Small Chunks',
   opts_isolate_front_matter: 'Isolate Front Matter',

@@ -37,7 +37,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Markdown parser implementation",
     )
     parser.add_argument("--max-tokens", type=int, default=1200, help="Maximum tokens per chunk")
-    parser.add_argument("--min-tokens", type=int, default=50, help="Minimum tokens per chunk")
+    parser.add_argument(
+        "--merge-below-tokens",
+        type=int,
+        default=50,
+        help="Merge adjacent chunks below this token threshold when possible",
+    )
     parser.add_argument(
         "--overlap-tokens",
         type=int,
@@ -94,7 +99,7 @@ def main() -> None:
         text,
         document_title=input_path.name,
         max_tokens=args.max_tokens,
-        min_tokens=args.min_tokens,
+        merge_below_tokens=args.merge_below_tokens,
         overlap_tokens=args.overlap_tokens,
         retain_headings=args.retain_headings,
         include_common_headings=not args.no_include_common_headings,

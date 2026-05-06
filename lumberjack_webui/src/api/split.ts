@@ -14,7 +14,7 @@ export async function splitMarkdown(
   }
 
   formData.append('max_tokens', String(options.max_tokens));
-  formData.append('min_tokens', String(options.min_tokens));
+  formData.append('merge_below_tokens', String(options.merge_below_tokens));
   formData.append('overlap_tokens', String(options.overlap_tokens));
   formData.append('retain_headings', String(options.retain_headings));
   formData.append('include_common_headings', String(options.include_common_headings));
@@ -24,7 +24,7 @@ export async function splitMarkdown(
   formData.append('tokenizer', options.tokenizer);
   formData.append('document_title', options.document_title);
 
-  const response = await fetch('/lumber/split', {
+  const response = await fetch('/lumber/api/split', {
     method: 'POST',
     body: formData,
   });
