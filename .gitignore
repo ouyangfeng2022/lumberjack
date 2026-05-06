@@ -13,3 +13,7 @@ wheels/
 lumberjack_webui/node_modules/
 lumberjack_webui/dist/
 src/lumberjack/web/static/
+
+# Datasets
+data/
+output/

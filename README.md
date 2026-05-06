@@ -1,5 +1,7 @@
 # lumberjack
 
+[中文文档](README.zh-CN.md)
+
 `lumberjack` is a structure-aware Markdown splitter for long-document retrieval and RAG preprocessing.
 It splits Markdown by document structure instead of fixed text windows.
 
