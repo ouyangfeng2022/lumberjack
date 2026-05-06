@@ -25,7 +25,6 @@ export default function MarkdownInput({ text, file, onTextChange, onFileChange }
 
   return (
     <div className={styles.container}>
-      <label className={styles.label}>{t('md_label')}</label>
       <textarea
         className={styles.textarea}
         value={file ? '' : text}
@@ -34,6 +33,9 @@ export default function MarkdownInput({ text, file, onTextChange, onFileChange }
         placeholder={t('md_placeholder')}
       />
       <div className={styles.fileRow}>
+        <span className={styles.fileMeta}>
+          {file ? t('md_file_ready') : t('md_text_mode')}
+        </span>
         <label className={styles.fileLabel}>
           {file ? file.name : t('md_upload')}
           <input

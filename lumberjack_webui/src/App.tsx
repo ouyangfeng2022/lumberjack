@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import MarkdownInput from './components/MarkdownInput';
 import SplitOptions from './components/SplitOptions';
@@ -108,6 +108,28 @@ export default function App() {
   }, [i18n.language, t]);
 
   const canSubmit = !!file || text.trim().length > 0;
+  const inputStats = useMemo(() => {
+    const sourceText = file ? '' : text;
+    return {
+      lines: sourceText ? sourceText.split(/\r\n|\r|\n/).length : 0,
+      characters: sourceText.length,
+      name: file?.name ?? options.document_title,
+      tokens: sourceText.trim() ? sourceText.trim().split(/\s+/).length : 0,
+    };
+  }, [file, options.document_title, text]);
+
+  const resultStats = useMemo(() => {
+    if (!result) return null;
+    const largestChunk = result.chunks.reduce(
+      (max, chunk) => Math.max(max, chunk.token_count),
+      0,
+    );
+    const budgetUse = Math.min(100, Math.round((largestChunk / options.max_tokens) * 100));
+
+    return {
+      budgetUse,
+    };
+  }, [options.max_tokens, result]);
 
   const handleSubmit = async () => {
     setError(null);
@@ -150,55 +172,118 @@ export default function App() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title}>{t('app_title')}</h1>
-        <p className={styles.subtitle}>{t('app_subtitle')}</p>
-        <LanguageSwitcher />
+        <div className={styles.brand}>
+          <span className={styles.logoMark}>L</span>
+          <div>
+            <h1 className={styles.title}>{t('app_title')}</h1>
+            <p className={styles.subtitle}>{t('app_subtitle')}</p>
+          </div>
+        </div>
+        <div className={styles.headerActions}>
+          <div className={styles.tabBar} aria-label={t('view_tabs')}>
+            <button
+              className={`${styles.tab} ${view === 'split' ? styles.tabActive : ''}`}
+              onClick={() => handleViewChange('split')}
+            >
+              {t('tab_split')}
+            </button>
+            <button
+              className={`${styles.tab} ${view === 'pipeline' ? styles.tabActive : ''}`}
+              onClick={() => handleViewChange('pipeline')}
+            >
+              {t('tab_pipeline')}
+            </button>
+          </div>
+          <LanguageSwitcher />
+        </div>
       </header>
 
       <main className={styles.main}>
-        <div className={styles.tabBar}>
-          <button
-            className={`${styles.tab} ${view === 'split' ? styles.tabActive : ''}`}
-            onClick={() => handleViewChange('split')}
-          >
-            {t('tab_split')}
-          </button>
-          <button
-            className={`${styles.tab} ${view === 'pipeline' ? styles.tabActive : ''}`}
-            onClick={() => handleViewChange('pipeline')}
-          >
-            {t('tab_pipeline')}
-          </button>
-        </div>
-
-        <section className={styles.inputSection}>
+        <section className={`${styles.panel} ${styles.inputPanel}`}>
+          <div className={styles.panelHeader}>
+            <div>
+              <p className={styles.kicker}>{t('panel_input_kicker')}</p>
+              <h2 className={styles.panelTitle}>{t('md_label')}</h2>
+            </div>
+            <div className={styles.inputStats}>
+              <span>{t('stats_lines')}: {inputStats.lines}</span>
+              <span>{t('stats_characters')}: {inputStats.characters}</span>
+            </div>
+          </div>
           <MarkdownInput
             text={text}
             file={file}
             onTextChange={setText}
             onFileChange={setFile}
           />
-          <SplitOptions options={options} onChange={setOptions} />
         </section>
 
-        <button
-          className={styles.splitBtn}
-          disabled={!canSubmit || loading}
-          onClick={handleSubmit}
-        >
-          {loading
-            ? view === 'split'
-              ? t('btn_splitting')
-              : t('btn_running')
-            : view === 'split'
-              ? t('btn_split')
-              : t('btn_pipeline')}
-        </button>
+        <aside className={`${styles.panel} ${styles.optionsPanel}`}>
+          <div className={styles.panelHeader}>
+            <div>
+              <p className={styles.kicker}>{t('panel_options_kicker')}</p>
+              <h2 className={styles.panelTitle}>{t('opts_label')}</h2>
+            </div>
+          </div>
+          <SplitOptions options={options} onChange={setOptions} />
+          <button
+            className={styles.splitBtn}
+            disabled={!canSubmit || loading}
+            onClick={handleSubmit}
+          >
+            {loading
+              ? view === 'split'
+                ? t('btn_splitting')
+                : t('btn_running')
+              : view === 'split'
+                ? t('btn_split')
+                : t('btn_pipeline')}
+          </button>
+          <div className={styles.optionHint}>
+            <span>{inputStats.name}</span>
+            <span>{inputStats.tokens.toLocaleString()} {t('split_tokens')}</span>
+          </div>
+        </aside>
 
-        {error && <div className={styles.error}>{error}</div>}
+        <section className={`${styles.panel} ${styles.resultsPanel}`}>
+          <div className={styles.panelHeader}>
+            <div>
+              <p className={styles.kicker}>{t('panel_results_kicker')}</p>
+              <h2 className={styles.panelTitle}>{t('panel_results_title')}</h2>
+            </div>
+            {resultStats && view === 'split' && (
+              <div className={styles.resultMeter} aria-label={t('result_budget_use')}>
+                <span>{resultStats.budgetUse}%</span>
+                <div className={styles.meterTrack}>
+                  <div
+                    className={styles.meterFill}
+                    style={{ width: `${resultStats.budgetUse}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
 
-        {view === 'split' && result && <ChunkList result={result} />}
-        {view === 'pipeline' && pipelineResult && <PipelineView data={pipelineResult} />}
+          {error && <div className={styles.error}>{error}</div>}
+
+          {view === 'split' && result && <ChunkList result={result} />}
+          {view === 'pipeline' && pipelineResult && <PipelineView data={pipelineResult} />}
+
+          {view === 'split' && !result && !error && (
+            <div className={styles.emptyState}>
+              <span className={styles.emptyIndex}>01</span>
+              <h3>{t('empty_split_title')}</h3>
+              <p>{t('empty_split_body')}</p>
+            </div>
+          )}
+          {view === 'pipeline' && !pipelineResult && !error && (
+            <div className={styles.emptyState}>
+              <span className={styles.emptyIndex}>05</span>
+              <h3>{t('empty_pipeline_title')}</h3>
+              <p>{t('empty_pipeline_body')}</p>
+            </div>
+          )}
+        </section>
       </main>
     </div>
   );

@@ -20,7 +20,7 @@ const SPLIT_BLOCK_OPTIONS = [
 
 export default function SplitOptions({ options, onChange }: Props) {
   const { t } = useTranslation();
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(true);
 
   const BLOCK_LABELS: Record<string, string> = {
     paragraph: t('opts_block_paragraph'),
@@ -53,8 +53,7 @@ export default function SplitOptions({ options, onChange }: Props) {
 
   return (
     <div className={styles.container}>
-      <label className={styles.label}>{t('opts_label')}</label>
-
+      <div className={styles.sectionTitle}>{t('opts_basic_section')}</div>
       <div className={styles.row}>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>{t('opts_max_tokens')}</span>
@@ -97,6 +96,7 @@ export default function SplitOptions({ options, onChange }: Props) {
 
       {showAdvanced && (
         <div className={styles.advanced}>
+          <div className={styles.sectionTitle}>{t('opts_strategy_section')}</div>
           <div className={styles.row}>
             <label className={styles.field}>
               <span className={styles.fieldLabel}>{t('opts_merge_below_tokens')}</span>
@@ -118,23 +118,25 @@ export default function SplitOptions({ options, onChange }: Props) {
             </label>
           </div>
 
-          <label className={styles.checkField}>
-            <input
-              type="checkbox"
-              checked={options.merge_small_chunks}
-              onChange={(e) => update('merge_small_chunks', e.target.checked)}
-            />
-            <span>{t('opts_merge_small')}</span>
-          </label>
+          <div className={styles.checkRow}>
+            <label className={styles.checkField}>
+              <input
+                type="checkbox"
+                checked={options.merge_small_chunks}
+                onChange={(e) => update('merge_small_chunks', e.target.checked)}
+              />
+              <span>{t('opts_merge_small')}</span>
+            </label>
 
-          <label className={styles.checkField}>
-            <input
-              type="checkbox"
-              checked={options.isolate_front_matter}
-              onChange={(e) => update('isolate_front_matter', e.target.checked)}
-            />
-            <span>{t('opts_isolate_front_matter')}</span>
-          </label>
+            <label className={styles.checkField}>
+              <input
+                type="checkbox"
+                checked={options.isolate_front_matter}
+                onChange={(e) => update('isolate_front_matter', e.target.checked)}
+              />
+              <span>{t('opts_isolate_front_matter')}</span>
+            </label>
+          </div>
 
           <div className={styles.field}>
             <span className={styles.fieldLabel}>{t('opts_tokenizer')}</span>

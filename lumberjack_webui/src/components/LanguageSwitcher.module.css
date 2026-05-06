@@ -1,34 +1,31 @@
 .switcher {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0;
-  font-size: 13px;
-}
-
-.separator {
-  color: #cbd5e1;
-  margin: 0 4px;
+  padding: 4px;
+  border: 1px solid rgba(139, 155, 179, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .langBtn {
-  background: none;
+  min-width: 54px;
+  padding: 8px 10px;
   border: none;
-  padding: 2px 6px;
+  border-radius: 6px;
+  background: transparent;
+  color: #61718d;
   font-size: 13px;
-  line-height: 1;
-  font-weight: 500;
-  color: #94a3b8;
+  font-weight: 850;
   cursor: pointer;
-  border-radius: 4px;
-  transition: color 0.2s;
-  vertical-align: middle;
+  transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .langBtn:hover {
-  color: #475569;
+  color: #1d3769;
 }
 
 .active {
-  color: #3b82f6;
-  font-weight: 700;
+  background: #fff;
+  color: #1e63f2;
+  box-shadow: 0 8px 22px rgba(45, 80, 140, 0.12);
 }

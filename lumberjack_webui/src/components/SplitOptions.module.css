@@ -1,94 +1,114 @@
 .container {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
+  padding: 16px 18px 0;
 }
 
-.label {
-  font-weight: 600;
-  font-size: 14px;
-  color: #334155;
+.sectionTitle {
+  color: #16284a;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .row {
-  display: flex;
-  gap: 16px;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .field {
   display: flex;
+  min-width: 0;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  color: #43536e;
   font-size: 13px;
-  color: #475569;
 }
 
 .fieldLabel {
+  color: #687792;
   font-size: 12px;
-  font-weight: 500;
-  color: #64748b;
+  font-weight: 750;
 }
 
 .numberInput,
 .select {
-  padding: 6px 10px;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid #cfd9e7;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #fff, #f9fbff);
+  color: #16284a;
   font-size: 13px;
-  width: 120px;
-  background: #fff;
+  font-weight: 700;
 }
 
 .numberInput:focus,
 .select:focus {
+  border-color: #2f86ff;
   outline: none;
-  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(47, 134, 255, 0.13);
 }
 
-.checkRow {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  flex-wrap: wrap;
+.checkRow,
+.checkGroup {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
 }
 
 .checkField {
   display: flex;
+  min-height: 34px;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #475569;
+  gap: 8px;
+  color: #40516d;
+  font-size: 12px;
+  font-weight: 750;
   cursor: pointer;
 }
 
-.checkGroup {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  margin-top: 4px;
+.checkField input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #1f6bff;
 }
 
 .toggleBtn {
+  display: inline-flex;
   align-self: flex-start;
-  padding: 4px 0;
+  min-height: 32px;
+  align-items: center;
+  padding: 0;
   border: none;
-  background: none;
-  font-size: 13px;
-  color: #3b82f6;
+  background: transparent;
+  color: #1e63f2;
+  font-size: 12px;
+  font-weight: 850;
   cursor: pointer;
 }
 
 .toggleBtn:hover {
-  text-decoration: underline;
+  color: #155dfc;
 }
 
 .advanced {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #f8fafc;
+  gap: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(139, 155, 179, 0.18);
+}
+
+@media (max-width: 460px) {
+  .row,
+  .checkRow,
+  .checkGroup {
+    grid-template-columns: 1fr;
+  }
 }
