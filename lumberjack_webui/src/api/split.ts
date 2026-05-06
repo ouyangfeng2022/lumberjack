@@ -24,7 +24,7 @@ export async function splitMarkdown(
   formData.append('tokenizer', options.tokenizer);
   formData.append('document_title', options.document_title);
 
-  const response = await fetch('/lumber/api/split', {
+  const response = await fetch('/lumber/split', {
     method: 'POST',
     body: formData,
   });

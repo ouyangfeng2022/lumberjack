@@ -45,7 +45,8 @@
 
 .breadcrumb {
   padding: 8px 16px;
-  font-size: 12px;
+  font-size: 22px;
+  font-weight: 700;
   color: #6366f1;
   background: #f5f3ff;
   border-bottom: 1px solid #ede9fe;

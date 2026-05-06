@@ -25,7 +25,7 @@ export async function fetchPipeline(
   formData.append('tokenizer', options.tokenizer);
   formData.append('document_title', options.document_title);
 
-  const response = await fetch('/lumber/api/pipeline', {
+  const response = await fetch('/lumber/pipeline', {
     method: 'POST',
     body: formData,
   });
