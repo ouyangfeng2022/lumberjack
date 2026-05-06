@@ -476,6 +476,7 @@ def test_front_matter_isolated_as_first_chunk_by_default() -> None:
 
     assert len(chunks) >= 2
     assert chunks[0].chunk_id == "chunk-0000"
+    assert chunks[0].chunk_type == "front_matter"
     assert chunks[0].body == "---\ntitle: Test Document\nauthor: Alice\ndate: 2024-01-01\n---"
     assert chunks[0].headings == ()
     assert chunks[0].section_level == 0
@@ -498,6 +499,7 @@ def test_front_matter_included_normally_when_isolation_disabled() -> None:
 
     assert chunks[0].chunk_id == "chunk-0001"
     assert chunks[0].chunk_id != "chunk-0000"
+    assert chunks[0].chunk_type == "paragraph"
 
 
 def test_no_front_matter_works_normally() -> None:

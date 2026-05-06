@@ -1,5 +1,6 @@
 export interface ChunkData {
   chunk_id: string;
+  chunk_type: string;
   body: string;
   token_count: number;
   headings: [number, string][];

@@ -83,6 +83,7 @@ JSON 命令行输出包含：
 每个分块从 `Chunk` 数据类序列化，包含以下字段：
 
 - `chunk_id`
+- `chunk_type`
 - `text`
 - `body`
 - `token_count`
@@ -223,6 +224,7 @@ output/
   "chunks": [
     {
       "chunk_id": "...",
+      "chunk_type": "paragraph",
       "body": "...",
       "token_count": 1100,
       "headings": [[1, "引言"]],
@@ -242,7 +244,7 @@ output/
 - `MarkdownBlock`：块级节点，含渲染文本、嵌套块、行内子节点、行范围和属性
 - `SectionNode`：标题树节点，含 `path`、`blocks`、`children`、`start_line` 和 `title_inlines`
 - `DocumentAST`：根文档对象，含 `source`、`metadata` 和 `reference_definitions`
-- `Chunk`：最终的分块单元，含可见文本、正文文本、标题路径和源元数据
+- `Chunk`：最终的分块单元，含类型、可见文本、正文文本、标题路径和源元数据
 
 ## 解析覆盖范围
 

@@ -86,6 +86,7 @@ export interface ChunksStage {
   chunk_count: number;
   chunks: {
     chunk_id: string;
+    chunk_type: string;
     body: string;
     token_count: number;
     headings: [number, string][];

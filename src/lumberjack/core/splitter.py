@@ -108,6 +108,7 @@ class MarkdownSplitter(SplitterProtocol):
         """Create a chunk from an isolated front_matter block."""
         return Chunk(
             chunk_id="chunk-0000",
+            chunk_type="front_matter",
             body=block.text,
             token_count=self.tokenizer.count(block.text),
             headings=(),

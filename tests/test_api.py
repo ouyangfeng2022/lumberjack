@@ -82,6 +82,7 @@ def test_chunk_to_dict_serializes_heading_path() -> None:
     payload = asdict(chunk)
 
     assert payload["chunk_id"] == "chunk-0005"
+    assert payload["chunk_type"] == "paragraph"
     assert payload["body"] == chunk.body
     assert payload["token_count"] == chunk.token_count
     assert payload["headings"] == ((1, "Overview"), (2, "Details"), (3, "Notes"))
@@ -96,6 +97,7 @@ def test_split_markdown_file_populates_chunk_metadata() -> None:
     chunk = split_markdown_file(FIXTURE_PATH, max_tokens=180)[0]
 
     assert chunk.chunk_id == "chunk-0001"
+    assert chunk.chunk_type == "paragraph"
     assert chunk.document_title == "sample.md"
     assert chunk.document_path == str(FIXTURE_PATH.resolve())
     assert chunk.start_line == 1

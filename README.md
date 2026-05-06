@@ -83,6 +83,7 @@ The JSON CLI output contains:
 Each chunk is serialized from the `Chunk` dataclass and includes fields such as:
 
 - `chunk_id`
+- `chunk_type`
 - `text`
 - `body`
 - `token_count`
@@ -223,6 +224,7 @@ Each JSON file contains:
   "chunks": [
     {
       "chunk_id": "...",
+      "chunk_type": "paragraph",
       "body": "...",
       "token_count": 1100,
       "headings": [[1, "Introduction"]],
@@ -242,7 +244,7 @@ Main dataclasses in [`src/lumberjack/models.py`](/D:/coding/Python/lumberjack/sr
 - `MarkdownBlock`: block node with rendered text, nested blocks, inline children, line range, and attrs
 - `SectionNode`: heading-tree node with `path`, `blocks`, `children`, `start_line`, and `title_inlines`
 - `DocumentAST`: root document object with `source`, `metadata`, and `reference_definitions`
-- `Chunk`: finalized split unit with visible text, body-only text, heading path, and source metadata
+- `Chunk`: finalized split unit with type, visible text, body-only text, heading path, and source metadata
 
 ## Parsing Coverage
 

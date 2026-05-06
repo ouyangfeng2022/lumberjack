@@ -92,7 +92,7 @@ Defined in `src/lumberjack/models.py`:
 - `SectionNode`: heading-tree node with `path`, `blocks`, `children`, and title inline nodes
 - `DocumentAST`: parsed document with `root`, raw `source`, `metadata`, and `reference_definitions`
 - `SplitOptions`: `max_tokens`, `min_tokens`, `retain_headings`, `include_common_headings`, `merge_small_chunks`, `overlap_tokens`, `split_oversized_blocks`
-- `Chunk`: final chunk payload with `body`, `token_count`, `headings`, document metadata, and line range
+- `Chunk`: final chunk payload with `chunk_type`, `body`, `token_count`, `headings`, document metadata, and line range
 
 ## Web API
 

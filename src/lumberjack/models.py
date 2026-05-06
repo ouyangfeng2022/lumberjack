@@ -103,9 +103,10 @@ class SplitOptions:
 
 @dataclass(slots=True, frozen=True)
 class Chunk:
-    """Final chunk payload with body content, token count, heading breadcrumbs, and line range."""
+    """Final chunk payload with type, body content, token count, heading breadcrumbs, and line range."""
 
     chunk_id: str
+    chunk_type: str = "paragraph"
     body: str = ""
     token_count: int = 0
     headings: HeadingPath = ()
