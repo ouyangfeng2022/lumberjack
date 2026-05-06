@@ -6,7 +6,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .api import split_markdown_file
+from .api import lumber
 
 if TYPE_CHECKING:
     from .models import Chunk
@@ -89,17 +89,20 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
     input_path = Path(args.input)
-    chunks = split_markdown_file(
-        input_path,
+    text = input_path.read_text(encoding="utf-8")
+    chunks = lumber(
+        text,
+        document_title=input_path.name,
         max_tokens=args.max_tokens,
         min_tokens=args.min_tokens,
         overlap_tokens=args.overlap_tokens,
         retain_headings=args.retain_headings,
         include_common_headings=not args.no_include_common_headings,
         isolate_front_matter=not args.no_isolate_front_matter,
-        split_oversized_blocks=tuple(args.split_oversized_block),
+        split_oversized_blocks=frozenset(args.split_oversized_block),
         tokenizer=args.tokenizer,
         parser=args.parser,
+        document_metadata={"path": str(input_path.resolve())},
     )
 
     if args.format == "markdown":

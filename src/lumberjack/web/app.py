@@ -14,6 +14,6 @@ def create_app() -> FastAPI:
     """Create the FastAPI application with API routes and static file serving."""
     app = FastAPI(title="Lumberjack Markdown Splitter")
 
-    app.include_router(api_router, prefix="/api")
+    app.include_router(api_router, prefix="/lumber/api")
     app.mount("/", StaticFiles(directory=str(_STATIC_DIR), html=True), name="static")
     return app

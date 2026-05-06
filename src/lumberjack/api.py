@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .core import MarkdownSplitter, create_parser, create_tokenizer
 from .models import Chunk, DocumentAST, SplitOptions
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from .base.interfaces import MarkdownParserProtocol, TokenizerProtocol
 
 
-def parse_markdown(
+def _parse_markdown(
     text: str,
     *,
     document_title: str = "document.md",
@@ -26,7 +27,7 @@ def parse_markdown(
     )
 
 
-def split_markdown_text(
+def lumber(
     text: str,
     *,
     document_title: str = "document.md",
@@ -37,7 +38,7 @@ def split_markdown_text(
     include_common_headings: bool = True,
     merge_small_chunks: bool = True,
     isolate_front_matter: bool = True,
-    split_oversized_blocks: frozenset[str] = frozenset(
+    split_oversized_blocks: Iterable[str] = frozenset(
         {
             "paragraph",
             "blockquote",
@@ -50,7 +51,7 @@ def split_markdown_text(
 ) -> list[Chunk]:
     """Split markdown text into semantic chunks."""
     tokenizer_impl = _resolve_tokenizer(tokenizer)
-    document = parse_markdown(
+    document = _parse_markdown(
         text,
         document_title=document_title,
         parser=parser,
@@ -66,50 +67,10 @@ def split_markdown_text(
             include_common_headings=include_common_headings,
             merge_small_chunks=merge_small_chunks,
             isolate_front_matter=isolate_front_matter,
-            split_oversized_blocks=split_oversized_blocks,
+            split_oversized_blocks=frozenset(split_oversized_blocks),
         ),
     )
     return splitter.split(document)
-
-
-def split_markdown_file(
-    path: str | Path,
-    *,
-    max_tokens: int = 1200,
-    min_tokens: int = 50,
-    overlap_tokens: int = 0,
-    retain_headings: bool = True,
-    include_common_headings: bool = True,
-    merge_small_chunks: bool = True,
-    isolate_front_matter: bool = True,
-    split_oversized_blocks: frozenset[str] = frozenset(
-        {
-            "paragraph",
-            "blockquote",
-            "html_block",
-        }
-    ),
-    tokenizer: str | TokenizerProtocol = "simple",
-    parser: str | MarkdownParserProtocol = "default",
-) -> list[Chunk]:
-    """Read a markdown file from disk and split it into semantic chunks."""
-    input_path = Path(path)
-    text = input_path.read_text(encoding="utf-8")
-    return split_markdown_text(
-        text,
-        document_title=input_path.name,
-        max_tokens=max_tokens,
-        min_tokens=min_tokens,
-        overlap_tokens=overlap_tokens,
-        retain_headings=retain_headings,
-        include_common_headings=include_common_headings,
-        merge_small_chunks=merge_small_chunks,
-        isolate_front_matter=isolate_front_matter,
-        split_oversized_blocks=split_oversized_blocks,
-        tokenizer=tokenizer,
-        parser=parser,
-        document_metadata={"path": str(input_path.resolve())},
-    )
 
 
 def _resolve_tokenizer(tokenizer: str | TokenizerProtocol) -> TokenizerProtocol:
@@ -124,4 +85,4 @@ def _resolve_parser(parser: str | MarkdownParserProtocol) -> MarkdownParserProto
     return parser
 
 
-__all__ = ["parse_markdown", "split_markdown_file", "split_markdown_text"]
+__all__ = ["lumber"]

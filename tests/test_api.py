@@ -7,12 +7,9 @@ from pathlib import Path
 
 from mdit_py_plugins.tasklists import tasklists_plugin
 
-from lumberjack import (
-    MarkdownItParser,
-    parse_markdown,
-    split_markdown_file,
-    split_markdown_text,
-)
+import lumberjack
+from lumberjack import lumber
+from lumberjack.core.parser import MarkdownItParser, create_parser
 
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md"
 FIXTURE = FIXTURE_PATH.read_text(encoding="utf-8")
@@ -34,8 +31,16 @@ M1 body.
 """
 
 
-def test_parse_markdown_uses_document_title() -> None:
-    document = parse_markdown(
+def test_package_exports_lumber_as_only_top_level_api() -> None:
+    assert lumberjack.__all__ == ["lumber"]
+    assert lumberjack.lumber is lumber
+    assert not hasattr(lumberjack, "split_markdown_file")
+    assert not hasattr(lumberjack, "split_markdown_text")
+    assert not hasattr(lumberjack, "parse_markdown")
+
+
+def test_parser_uses_document_title() -> None:
+    document = create_parser("default").parse(
         FIXTURE,
         document_title="guide.md",
         document_metadata={"path": "/tmp/guide.md"},
@@ -46,18 +51,22 @@ def test_parse_markdown_uses_document_title() -> None:
     assert document.metadata == {"path": "/tmp/guide.md"}
 
 
-def test_split_markdown_text_matches_file_api() -> None:
-    chunks_from_text = split_markdown_text(FIXTURE, document_title="sample.md", max_tokens=180)
-    chunks_from_file = split_markdown_file(FIXTURE_PATH, max_tokens=180)
+def test_lumber_uses_string_input_and_document_metadata() -> None:
+    chunks = lumber(
+        FIXTURE,
+        document_title="sample.md",
+        max_tokens=180,
+        document_metadata={"path": str(FIXTURE_PATH.resolve())},
+    )
 
-    assert [chunk.body for chunk in chunks_from_text] == [chunk.body for chunk in chunks_from_file]
-    assert [chunk.token_count for chunk in chunks_from_text] == [
-        chunk.token_count for chunk in chunks_from_file
-    ]
+    assert chunks[0].document_title == "sample.md"
+    assert chunks[0].document_path == str(FIXTURE_PATH.resolve())
+    assert chunks[0].start_line == 1
+    assert chunks[0].end_line == 1
 
 
-def test_split_markdown_text_matches_file_api_with_overlap() -> None:
-    chunks_from_text = split_markdown_text(
+def test_lumber_accepts_overlap_options() -> None:
+    chunks = lumber(
         FIXTURE,
         document_title="sample.md",
         max_tokens=120,
@@ -65,19 +74,13 @@ def test_split_markdown_text_matches_file_api_with_overlap() -> None:
         overlap_tokens=12,
         merge_small_chunks=False,
     )
-    chunks_from_file = split_markdown_file(
-        FIXTURE_PATH,
-        max_tokens=120,
-        min_tokens=0,
-        overlap_tokens=12,
-        merge_small_chunks=False,
-    )
 
-    assert [chunk.body for chunk in chunks_from_text] == [chunk.body for chunk in chunks_from_file]
+    assert chunks
+    assert all(chunk.document_title == "sample.md" for chunk in chunks)
 
 
 def test_chunk_to_dict_serializes_heading_path() -> None:
-    chunk = split_markdown_text(FIXTURE, document_title="sample.md", max_tokens=180)[-1]
+    chunk = lumber(FIXTURE, document_title="sample.md", max_tokens=180)[-1]
 
     payload = asdict(chunk)
 
@@ -93,19 +96,8 @@ def test_chunk_to_dict_serializes_heading_path() -> None:
     assert payload["end_line"] == 19
 
 
-def test_split_markdown_file_populates_chunk_metadata() -> None:
-    chunk = split_markdown_file(FIXTURE_PATH, max_tokens=180)[0]
-
-    assert chunk.chunk_id == "chunk-0001"
-    assert chunk.chunk_type == "paragraph"
-    assert chunk.document_title == "sample.md"
-    assert chunk.document_path == str(FIXTURE_PATH.resolve())
-    assert chunk.start_line == 1
-    assert chunk.end_line == 1
-
-
 def test_chunk_to_dict_uses_common_heading_path_for_merged_sections() -> None:
-    chunk = split_markdown_text(
+    chunk = lumber(
         MERGED_SECTION_FIXTURE,
         document_title="development.md",
         max_tokens=1000,
@@ -118,7 +110,7 @@ def test_chunk_to_dict_uses_common_heading_path_for_merged_sections() -> None:
 
 
 def test_parse_markdown_and_split_preserve_line_ranges_with_single_parser() -> None:
-    document = parse_markdown(FIXTURE, document_title="sample.md")
+    document = create_parser("default").parse(FIXTURE, document_title="sample.md")
 
     root = document.root
     assert root.title == "sample.md"
@@ -126,7 +118,7 @@ def test_parse_markdown_and_split_preserve_line_ranges_with_single_parser() -> N
     assert root.blocks[0].end_line == 1
     assert root.children[0].start_line == 3
 
-    chunks = split_markdown_text(
+    chunks = lumber(
         FIXTURE,
         document_title="sample.md",
         max_tokens=200,
@@ -143,25 +135,25 @@ def test_parse_markdown_and_split_preserve_line_ranges_with_single_parser() -> N
     assert chunks[-1].end_line == 19
 
 
-def test_split_markdown_text_does_not_write_debug_document_dump() -> None:
+def test_lumber_does_not_write_debug_document_dump() -> None:
     tmp_path = Path(__file__).resolve().parent / "_tmp_no_dump"
     shutil.rmtree(tmp_path, ignore_errors=True)
     tmp_path.mkdir()
     previous_cwd = Path.cwd()
     try:
         os.chdir(tmp_path)
-        split_markdown_text(FIXTURE, document_title="sample.md", max_tokens=200)
+        lumber(FIXTURE, document_title="sample.md", max_tokens=200)
         assert not (tmp_path / "document.json").exists()
     finally:
         os.chdir(previous_cwd)
         shutil.rmtree(tmp_path, ignore_errors=True)
 
 
-def test_split_markdown_text_accepts_markdown_it_parser_with_plugins() -> None:
+def test_lumber_accepts_markdown_it_parser_with_plugins() -> None:
     parser = MarkdownItParser(plugins=(tasklists_plugin,))
     markdown = "- [x] done\n- [ ] todo"
 
-    chunks = split_markdown_text(
+    chunks = lumber(
         markdown,
         document_title="tasks.md",
         max_tokens=500,

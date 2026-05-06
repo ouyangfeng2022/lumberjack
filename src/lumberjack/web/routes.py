@@ -4,7 +4,7 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, File, Form, UploadFile
 
-from lumberjack.api import parse_markdown, split_markdown_text
+from lumberjack.api import _parse_markdown, lumber
 from lumberjack.core import create_tokenizer
 from lumberjack.models import SplitOptions
 
@@ -69,7 +69,7 @@ async def split(
 
     blocks = _parse_block_types(split_oversized_blocks)
 
-    chunks = split_markdown_text(
+    chunks = lumber(
         content,
         document_title=title,
         max_tokens=max_tokens,
@@ -121,7 +121,7 @@ async def pipeline(
     tokens = parser_impl.parse_tokens(content)
 
     # Stage 3: Document AST
-    document = parse_markdown(content, document_title=title)
+    document = _parse_markdown(content, document_title=title)
 
     # Stage 4-5: Splitting with intermediate data
     tokenizer_impl = create_tokenizer(tokenizer)

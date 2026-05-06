@@ -10,7 +10,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': {
+      '/lumber': {
         target: 'http://localhost:8000',
         changeOrigin: true,
       },

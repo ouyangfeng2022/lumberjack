@@ -45,13 +45,13 @@ uv sync --group dev --group test --extra tokenizers
 基本用法：
 
 ```bash
-uv run lumberjack path/to/file.md --max-tokens 1200 --min-tokens 50 --format json
+uv run lumber path/to/file.md --max-tokens 1200 --min-tokens 50 --format json
 ```
 
 查看帮助：
 
 ```bash
-uv run lumberjack --help
+uv run lumber --help
 ```
 
 当前支持的命令行选项：
@@ -103,15 +103,9 @@ JSON 命令行输出包含：
 公共 API 位于 [`src/lumberjack/api.py`](src/lumberjack/api.py)。
 
 ```python
-from lumberjack import parse_markdown, split_markdown_file, split_markdown_text
+from lumberjack import lumber
 
-document = parse_markdown(
-    markdown_text,
-    document_title="guide.md",
-    document_metadata={"path": "/abs/path/guide.md"},
-)
-
-chunks = split_markdown_text(
+chunks = lumber(
     markdown_text,
     document_title="guide.md",
     max_tokens=1200,
@@ -123,17 +117,10 @@ chunks = split_markdown_text(
     tokenizer="simple",
 )
 
-file_chunks = split_markdown_file(
-    "docs/guide.md",
-    max_tokens=1200,
-    min_tokens=50,
-    overlap_tokens=0,
-)
-
 from mdit_py_plugins.tasklists import tasklists_plugin
-from lumberjack import MarkdownItParser
+from lumberjack.core.parser import MarkdownItParser
 
-plugin_chunks = split_markdown_text(
+plugin_chunks = lumber(
     markdown_text,
     document_title="tasks.md",
     parser=MarkdownItParser(plugins=(tasklists_plugin,)),
@@ -142,17 +129,7 @@ plugin_chunks = split_markdown_text(
 
 从 [`src/lumberjack/__init__.py`](src/lumberjack/__init__.py) 导出的公共类型：
 
-- `Chunk`
-- `DocumentAST`
-- `MarkdownBlock`
-- `MarkdownInline`
-- `MarkdownItParser`
-- `SectionNode`
-- `SplitOptions`
-- `MarkdownParser`
-- `MarkdownSplitter`
-- `SimpleCharTokenizer`
-- `TiktokenTokenizer`
+只导出 `lumber`。高级解析器、切分器、分词器和模型类型仍可从内部模块导入。
 
 ## 批量处理
 

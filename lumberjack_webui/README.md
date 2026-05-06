@@ -16,7 +16,7 @@ cd lumberjack_webui
 # 安装依赖
 npm install
 
-# 启动开发服务器（默认 localhost:5173，代理 /api -> localhost:8000）
+# 启动开发服务器（默认 localhost:5173，代理 /lumber -> localhost:8000）
 npm run dev
 
 # 生产构建（输出到 ../src/lumberjack/web/static/）

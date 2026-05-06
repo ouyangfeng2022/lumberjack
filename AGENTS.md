@@ -23,10 +23,10 @@ uv sync --group dev --group test --extra tokenizers
 uv sync --group web
 
 # Run CLI
-uv run lumberjack path/to/file.md --max-tokens 1200 --min-tokens 50 --format json
+uv run lumber path/to/file.md --max-tokens 1200 --min-tokens 50 --format json
 
 # Show CLI help
-uv run lumberjack --help
+uv run lumber --help
 
 # Run web server (development)
 uv run lumberjack-serve --reload
@@ -66,11 +66,9 @@ Main components:
   - `SimpleCharTokenizer` is the default
   - `TiktokenTokenizer` is optional
 - **Public API**: `src/lumberjack/api.py`
-  - `parse_markdown`
-  - `split_markdown_text`
-  - `split_markdown_file`
+  - `lumber`
 - **Web API**: `src/lumberjack/web/`
-  - FastAPI application with `POST /api/split` endpoint
+  - FastAPI application with `POST /lumber/api/split` endpoint
   - Accepts text input or file upload with all split options
   - Serves built frontend from `static/` in production
   - CLI: `lumberjack-serve` (`--host`, `--port`, `--reload`)
@@ -79,7 +77,7 @@ Main components:
   - Dual input: text area or file upload
   - Full split options UI (basic + advanced)
   - Chunk result visualization with token counts and heading breadcrumbs
-  - Dev proxy: `/api` -> `localhost:8000`; build output -> `src/lumberjack/web/static/`
+  - Dev proxy: `/lumber` -> `localhost:8000`; build output -> `src/lumberjack/web/static/`
 
 Protocol interfaces live in `src/lumberjack/base/interfaces.py`. Data models use `@dataclass(slots=True)`.
 
@@ -98,13 +96,13 @@ Defined in `src/lumberjack/models.py`:
 
 Implemented in `src/lumberjack/web/`.
 
-- Endpoint: `POST /api/split`
+- Endpoint: `POST /lumber/api/split`
 - Input: form data with `text` (string) or `file` (upload), plus split options
 - Split options: `max_tokens`, `min_tokens`, `overlap_tokens`, `retain_headings`, `include_common_headings`, `merge_small_chunks`, `split_oversized_blocks`, `tokenizer`, `document_title`
 - Response: JSON with `document`, `chunk_count`, and `chunks` array
 - Valid block types for `split_oversized_blocks`: `paragraph`, `blockquote`, `list`, `table`, `code_block`, `code_fence`, `html_block`
 - Server CLI: `lumberjack-serve` with `--host` (default `127.0.0.1`), `--port` (default `8000`), `--reload`
-- Thin wrapper around `split_markdown_text()` — no splitting logic in the web layer
+- Thin wrapper around `lumber()` — no splitting logic in the web layer
 
 ## Web UI
 
@@ -112,8 +110,8 @@ Implemented in `lumberjack_webui/`.
 
 - React 19 + TypeScript + Vite
 - Components: `MarkdownInput` (text/file), `SplitOptions` (basic/advanced), `ChunkList`, `ChunkResult`
-- API client: `src/api/split.ts` sends `FormData` to `POST /api/split`
-- Vite dev proxy forwards `/api` to `localhost:8000`
+- API client: `src/api/split.ts` sends `FormData` to `POST /lumber/api/split`
+- Vite dev proxy forwards `/lumber` to `localhost:8000`
 - Build output goes to `../src/lumberjack/web/static/` for production serving
 - Scripts: `npm run dev`, `npm run build`, `npm run preview`, `npm run lint`
 

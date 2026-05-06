@@ -20,7 +20,7 @@ scripts = [
 test = ["pytest>=8.0.0", "httpx>=0.28.0"]
 
 [project.scripts]
-lumberjack = "lumberjack.main:main"
+lumber = "lumberjack.main:main"
 lumberjack-serve = "lumberjack.web.__main__:main"
 
 [tool.hatch.version]

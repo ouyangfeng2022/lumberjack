@@ -488,7 +488,7 @@ Parses a markdown document and returns an abstract syntax tree (AST).
 **Example Usage:**
 
 ```python
-from lumberjack import MarkdownParser
+from lumberjack.core.parser import MarkdownParser
 
 # Initialize parser with default options
 parser = MarkdownParser()

@@ -45,13 +45,13 @@ uv sync --group dev --group test --extra tokenizers
 Basic usage:
 
 ```bash
-uv run lumberjack path/to/file.md --max-tokens 1200 --min-tokens 50 --format json
+uv run lumber path/to/file.md --max-tokens 1200 --min-tokens 50 --format json
 ```
 
 Show help:
 
 ```bash
-uv run lumberjack --help
+uv run lumber --help
 ```
 
 Supported CLI options today:
@@ -102,16 +102,13 @@ Each chunk is serialized from the `Chunk` dataclass and includes fields such as:
 
 The public API lives in [`src/lumberjack/api.py`](/D:/coding/Python/lumberjack/src/lumberjack/api.py).
 
+The top-level Python API is intentionally small: pass Markdown text to `lumberjack.lumber()`
+and receive a list of `Chunk` objects. File reading is handled by callers.
+
 ```python
-from lumberjack import parse_markdown, split_markdown_file, split_markdown_text
+from lumberjack import lumber
 
-document = parse_markdown(
-    markdown_text,
-    document_title="guide.md",
-    document_metadata={"path": "/abs/path/guide.md"},
-)
-
-chunks = split_markdown_text(
+chunks = lumber(
     markdown_text,
     document_title="guide.md",
     max_tokens=1200,
@@ -123,36 +120,18 @@ chunks = split_markdown_text(
     tokenizer="simple",
 )
 
-file_chunks = split_markdown_file(
-    "docs/guide.md",
-    max_tokens=1200,
-    min_tokens=50,
-    overlap_tokens=0,
-)
-
 from mdit_py_plugins.tasklists import tasklists_plugin
-from lumberjack import MarkdownItParser
+from lumberjack.core.parser import MarkdownItParser
 
-plugin_chunks = split_markdown_text(
+plugin_chunks = lumber(
     markdown_text,
     document_title="tasks.md",
     parser=MarkdownItParser(plugins=(tasklists_plugin,)),
 )
 ```
 
-Public types exported from [`src/lumberjack/__init__.py`](/D:/coding/Python/lumberjack/src/lumberjack/__init__.py):
-
-- `Chunk`
-- `DocumentAST`
-- `MarkdownBlock`
-- `MarkdownInline`
-- `MarkdownItParser`
-- `SectionNode`
-- `SplitOptions`
-- `MarkdownParser`
-- `MarkdownSplitter`
-- `SimpleCharTokenizer`
-- `TiktokenTokenizer`
+Only `lumber` is exported from [`src/lumberjack/__init__.py`](/D:/coding/Python/lumberjack/src/lumberjack/__init__.py).
+Advanced parser, splitter, tokenizer, and model types remain available from their internal modules.
 
 ## Batch Processing
 
