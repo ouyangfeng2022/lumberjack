@@ -10,7 +10,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 18px;
   align-items: center;
-  padding: 16px;
+  padding: 8px;
   border: 1px solid rgba(139, 155, 179, 0.22);
   border-radius: 8px;
   background: linear-gradient(135deg, #f8fbff, #eef6ff);
@@ -35,8 +35,8 @@
 }
 
 .stat {
-  min-width: 118px;
-  padding: 10px 12px;
+  min-width: 60px;
+  padding: 8px;
   border: 1px solid rgba(31, 107, 255, 0.12);
   border-radius: 7px;
   background: #fff;

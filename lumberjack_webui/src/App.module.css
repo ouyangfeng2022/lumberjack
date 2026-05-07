@@ -64,11 +64,18 @@
 
 .main {
   display: grid;
-  grid-template-columns: minmax(390px, 1.12fr) minmax(300px, 0.58fr) minmax(470px, 1.18fr);
+  grid-template-columns: minmax(704px, 1.7fr) minmax(470px, 1.18fr);
   gap: 14px;
   max-width: 1880px;
   margin: 0 auto;
   align-items: start;
+}
+
+.controlsGrid {
+  display: grid;
+  grid-template-columns: minmax(390px, 1.12fr) minmax(300px, 0.58fr);
+  gap: 14px;
+  align-items: stretch;
 }
 
 .panel {
@@ -85,6 +92,11 @@
 .resultsPanel {
   display: flex;
   flex-direction: column;
+}
+
+.inputPanel,
+.optionsPanel {
+  height: 100%;
 }
 
 .optionsPanel {
@@ -268,6 +280,10 @@
 
 @media (max-width: 1280px) {
   .main {
+    grid-template-columns: 1fr;
+  }
+
+  .controlsGrid {
     grid-template-columns: minmax(0, 1fr) 340px;
   }
 
@@ -288,6 +304,10 @@
   }
 
   .main {
+    grid-template-columns: 1fr;
+  }
+
+  .controlsGrid {
     grid-template-columns: 1fr;
   }
 

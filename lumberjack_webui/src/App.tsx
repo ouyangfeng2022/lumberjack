@@ -204,51 +204,53 @@ export default function App() {
       </header>
 
       <main className={styles.main}>
-        <section className={`${styles.panel} ${styles.inputPanel}`}>
-          <div className={styles.panelHeader}>
-            <div>
-              <p className={styles.kicker}>{t('panel_input_kicker')}</p>
-              <h2 className={styles.panelTitle}>{t('md_label')}</h2>
+        <div className={styles.controlsGrid}>
+          <section className={`${styles.panel} ${styles.inputPanel}`}>
+            <div className={styles.panelHeader}>
+              <div>
+                <p className={styles.kicker}>{t('panel_input_kicker')}</p>
+                <h2 className={styles.panelTitle}>{t('md_label')}</h2>
+              </div>
+              <div className={styles.inputStats}>
+                <span>{t('stats_lines')}: {inputStats.lines}</span>
+                <span>{t('stats_characters')}: {inputStats.characters}</span>
+              </div>
             </div>
-            <div className={styles.inputStats}>
-              <span>{t('stats_lines')}: {inputStats.lines}</span>
-              <span>{t('stats_characters')}: {inputStats.characters}</span>
-            </div>
-          </div>
-          <MarkdownInput
-            text={text}
-            file={file}
-            onTextChange={setText}
-            onFileChange={setFile}
-          />
-        </section>
+            <MarkdownInput
+              text={text}
+              file={file}
+              onTextChange={setText}
+              onFileChange={setFile}
+            />
+          </section>
 
-        <aside className={`${styles.panel} ${styles.optionsPanel}`}>
-          <div className={styles.panelHeader}>
-            <div>
-              <p className={styles.kicker}>{t('panel_options_kicker')}</p>
-              <h2 className={styles.panelTitle}>{t('opts_label')}</h2>
+          <aside className={`${styles.panel} ${styles.optionsPanel}`}>
+            <div className={styles.panelHeader}>
+              <div>
+                <p className={styles.kicker}>{t('panel_options_kicker')}</p>
+                <h2 className={styles.panelTitle}>{t('opts_label')}</h2>
+              </div>
             </div>
-          </div>
-          <SplitOptions options={options} onChange={setOptions} />
-          <button
-            className={styles.splitBtn}
-            disabled={!canSubmit || loading}
-            onClick={handleSubmit}
-          >
-            {loading
-              ? view === 'split'
-                ? t('btn_splitting')
-                : t('btn_running')
-              : view === 'split'
-                ? t('btn_split')
-                : t('btn_pipeline')}
-          </button>
-          <div className={styles.optionHint}>
-            <span>{inputStats.name}</span>
-            <span>{inputStats.tokens.toLocaleString()} {t('split_tokens')}</span>
-          </div>
-        </aside>
+            <SplitOptions options={options} onChange={setOptions} />
+            <button
+              className={styles.splitBtn}
+              disabled={!canSubmit || loading}
+              onClick={handleSubmit}
+            >
+              {loading
+                ? view === 'split'
+                  ? t('btn_splitting')
+                  : t('btn_running')
+                : view === 'split'
+                  ? t('btn_split')
+                  : t('btn_pipeline')}
+            </button>
+            <div className={styles.optionHint}>
+              <span>{inputStats.name}</span>
+              <span>{inputStats.tokens.toLocaleString()} {t('split_tokens')}</span>
+            </div>
+          </aside>
+        </div>
 
         <section className={`${styles.panel} ${styles.resultsPanel}`}>
           <div className={styles.panelHeader}>

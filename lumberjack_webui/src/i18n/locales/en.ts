@@ -61,7 +61,6 @@ const en = {
   chunks_count: '{{count}} chunk',
   chunks_count_plural: '{{count}} chunks',
   chunks_total_tokens: '{{count}} total tokens',
-  chunks_elapsed: 'Split time',
 
   // Pipeline View
   step_raw_text: 'Raw Text',

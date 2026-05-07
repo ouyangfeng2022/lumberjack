@@ -1,13 +1,13 @@
 .container {
   display: flex;
   flex: 1;
-  min-height: 720px;
+  min-height: 660px;
   flex-direction: column;
 }
 
 .textarea {
   width: 100%;
-  min-height: 650px;
+  min-height: 590px;
   flex: 1;
   padding: 20px 22px 20px 66px;
   border: 0;
@@ -50,6 +50,7 @@
   gap: 12px;
   padding: 12px 14px;
   background: rgba(248, 251, 255, 0.92);
+  border-radius: 0 0 7px 7px;
 }
 
 .fileMeta {

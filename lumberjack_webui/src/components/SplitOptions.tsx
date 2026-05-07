@@ -54,7 +54,7 @@ export default function SplitOptions({ options, onChange }: Props) {
   return (
     <div className={styles.container}>
       <div className={styles.sectionTitle}>{t('opts_basic_section')}</div>
-      <div className={styles.row}>
+      <div className={styles.basicRow}>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>{t('opts_max_tokens')}</span>
           <input
@@ -64,7 +64,7 @@ export default function SplitOptions({ options, onChange }: Props) {
             onChange={(e) => update('max_tokens', Number(e.target.value))}
           />
         </label>
-        <div className={styles.checkLine}>
+        <div className={styles.checkLine} >
           <label className={styles.checkField}>
             <input
               type="checkbox"
@@ -73,16 +73,17 @@ export default function SplitOptions({ options, onChange }: Props) {
             />
             <span>{t('opts_retain_headings')}</span>
           </label>
-          {options.retain_headings && (
-            <label className={styles.checkField}>
-              <input
-                type="checkbox"
-                checked={options.include_common_headings}
-                onChange={(e) => update('include_common_headings', e.target.checked)}
-              />
-              <span>{t('opts_include_common_headings')}</span>
-            </label>
-          )}
+          <label
+            className={`${styles.checkField} ${!options.retain_headings ? styles.checkDisabled : ''}`}
+          >
+            <input
+              type="checkbox"
+              checked={options.include_common_headings}
+              disabled={!options.retain_headings}
+              onChange={(e) => update('include_common_headings', e.target.checked)}
+            />
+            <span>{t('opts_include_common_headings')}</span>
+          </label>
         </div>
       </div>
 

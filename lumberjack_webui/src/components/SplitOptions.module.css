@@ -1,7 +1,7 @@
 .container {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
   padding: 16px 18px 0;
 }
 
@@ -19,6 +19,13 @@
   gap: 10px;
 }
 
+.basicRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: start;
+}
+
 .field {
   display: flex;
   min-width: 0;
@@ -26,6 +33,7 @@
   gap: 6px;
   color: #43536e;
   font-size: 13px;
+  flex: 1;
 }
 
 .fieldLabel {
@@ -52,6 +60,13 @@
   border-color: #2f86ff;
   outline: none;
   box-shadow: 0 0 0 3px rgba(47, 134, 255, 0.13);
+}
+
+.checkLine {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
 }
 
 .checkRow,
@@ -105,8 +120,15 @@
   border-top: 1px solid rgba(139, 155, 179, 0.18);
 }
 
+.checkDisabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 @media (max-width: 460px) {
+
   .row,
+  .basicRow,
   .checkRow,
   .checkGroup {
     grid-template-columns: 1fr;

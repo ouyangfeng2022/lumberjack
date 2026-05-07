@@ -31,7 +31,6 @@ export default function ChunkList({ result, elapsedMs }: Props) {
           <span className={styles.stat}>{t('chunks_total_tokens', { count: totalTokens })}</span>
           {elapsedMs !== null && (
             <span className={`${styles.stat} ${styles.elapsedStat}`}>
-              <span className={styles.statLabel}>{t('chunks_elapsed')}</span>
               <span>{formatElapsed(elapsedMs)}</span>
             </span>
           )}
