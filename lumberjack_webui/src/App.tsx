@@ -96,6 +96,7 @@ export default function App() {
   const [view, setView] = useState<View>('split');
   const [text, setText] = useState(SAMPLE_MD);
   const [file, setFile] = useState<File | null>(null);
+  const [fileContent, setFileContent] = useState('');
   const [options, setOptions] = useState<Options>(DEFAULT_OPTIONS);
   const [result, setResult] = useState<SplitResponse | null>(null);
   const [splitElapsedMs, setSplitElapsedMs] = useState<number | null>(null);
@@ -110,14 +111,13 @@ export default function App() {
 
   const canSubmit = !!file || text.trim().length > 0;
   const inputStats = useMemo(() => {
-    const sourceText = file ? '' : text;
+    const sourceText = file ? fileContent : text;
     return {
       lines: sourceText ? sourceText.split(/\r\n|\r|\n/).length : 0,
       characters: sourceText.length,
       name: file?.name ?? options.document_title,
-      tokens: sourceText.trim() ? sourceText.trim().split(/\s+/).length : 0,
     };
-  }, [file, options.document_title, text]);
+  }, [file, fileContent, options.document_title, text]);
 
   const resultStats = useMemo(() => {
     if (!result) return null;
@@ -221,6 +221,7 @@ export default function App() {
               file={file}
               onTextChange={setText}
               onFileChange={setFile}
+              onFileContentChange={setFileContent}
             />
           </section>
 
@@ -247,7 +248,6 @@ export default function App() {
             </button>
             <div className={styles.optionHint}>
               <span>{inputStats.name}</span>
-              <span>{inputStats.tokens.toLocaleString()} {t('split_tokens')}</span>
             </div>
           </aside>
         </div>

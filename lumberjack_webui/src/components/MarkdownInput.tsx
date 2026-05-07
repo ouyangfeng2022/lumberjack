@@ -7,20 +7,25 @@ interface Props {
   file: File | null;
   onTextChange: (text: string) => void;
   onFileChange: (file: File | null) => void;
+  onFileContentChange?: (content: string) => void;
 }
 
-export default function MarkdownInput({ text, file, onTextChange, onFileChange }: Props) {
+export default function MarkdownInput({ text, file, onTextChange, onFileChange, onFileContentChange }: Props) {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   const [fileContent, setFileContent] = useState('');
 
   useEffect(() => {
     if (file) {
-      file.text().then(setFileContent);
+      file.text().then((content) => {
+        setFileContent(content);
+        onFileContentChange?.(content);
+      });
     } else {
       setFileContent('');
+      onFileContentChange?.('');
     }
-  }, [file]);
+  }, [file, onFileContentChange]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0] ?? null;
