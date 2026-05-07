@@ -46,6 +46,21 @@
   text-align: center;
 }
 
+.elapsedStat {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  color: #0f8f6f;
+}
+
+.statLabel {
+  color: #52627a;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
 .list {
   display: flex;
   flex-direction: column;

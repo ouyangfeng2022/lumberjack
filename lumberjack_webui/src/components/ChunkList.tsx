@@ -5,9 +5,18 @@ import styles from './ChunkList.module.css';
 
 interface Props {
   result: SplitResponse;
+  elapsedMs: number | null;
 }
 
-export default function ChunkList({ result }: Props) {
+function formatElapsed(ms: number) {
+  if (ms < 1000) {
+    return `${Math.round(ms)} ms`;
+  }
+
+  return `${(ms / 1000).toFixed(2)} s`;
+}
+
+export default function ChunkList({ result, elapsedMs }: Props) {
   const { t } = useTranslation();
   const totalTokens = result.chunks.reduce((sum, c) => sum + c.token_count, 0);
 
@@ -20,6 +29,12 @@ export default function ChunkList({ result }: Props) {
             {t('chunks_count', { count: result.chunk_count })}
           </span>
           <span className={styles.stat}>{t('chunks_total_tokens', { count: totalTokens })}</span>
+          {elapsedMs !== null && (
+            <span className={`${styles.stat} ${styles.elapsedStat}`}>
+              <span className={styles.statLabel}>{t('chunks_elapsed')}</span>
+              <span>{formatElapsed(elapsedMs)}</span>
+            </span>
+          )}
         </div>
       </div>
       <div className={styles.list}>

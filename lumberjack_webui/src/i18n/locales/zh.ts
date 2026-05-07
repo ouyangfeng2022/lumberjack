@@ -60,6 +60,7 @@ const zh = {
   // Chunk List
   chunks_count: '{{count}} 个块',
   chunks_total_tokens: '共 {{count}} 个词元',
+  chunks_elapsed: '切分耗时',
 
   // Pipeline View
   step_raw_text: '原始文本',

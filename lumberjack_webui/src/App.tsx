@@ -98,6 +98,7 @@ export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [options, setOptions] = useState<Options>(DEFAULT_OPTIONS);
   const [result, setResult] = useState<SplitResponse | null>(null);
+  const [splitElapsedMs, setSplitElapsedMs] = useState<number | null>(null);
   const [pipelineResult, setPipelineResult] = useState<PipelineResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -135,6 +136,7 @@ export default function App() {
     setError(null);
     if (view === 'split') {
       setResult(null);
+      setSplitElapsedMs(null);
     } else {
       setPipelineResult(null);
     }
@@ -143,10 +145,13 @@ export default function App() {
     try {
       const opts = { ...options, document_title: file?.name ?? options.document_title };
       if (view === 'split') {
+        const startedAt = performance.now();
         const data = await splitMarkdown(text, file, opts);
+        const elapsedMs = Math.max(0, performance.now() - startedAt);
         if ('error' in data) {
           setError((data as { error: string }).error);
         } else {
+          setSplitElapsedMs(elapsedMs);
           setResult(data as SplitResponse);
         }
       } else {
@@ -266,7 +271,9 @@ export default function App() {
 
           {error && <div className={styles.error}>{error}</div>}
 
-          {view === 'split' && result && <ChunkList result={result} />}
+          {view === 'split' && result && (
+            <ChunkList result={result} elapsedMs={splitElapsedMs} />
+          )}
           {view === 'pipeline' && pipelineResult && <PipelineView data={pipelineResult} />}
 
           {view === 'split' && !result && !error && (
