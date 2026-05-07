@@ -35,7 +35,8 @@
   box-shadow: inset 0 0 0 2px rgba(47, 134, 255, 0.18);
 }
 
-.textarea:disabled {
+.textarea:disabled,
+.textarea[readonly] {
   background:
     linear-gradient(90deg, rgba(232, 239, 249, 0.95) 0 46px, transparent 46px),
     #eef3f9;

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import styles from './MarkdownInput.module.css';
 
@@ -12,6 +12,15 @@ interface Props {
 export default function MarkdownInput({ text, file, onTextChange, onFileChange }: Props) {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
+  const [fileContent, setFileContent] = useState('');
+
+  useEffect(() => {
+    if (file) {
+      file.text().then(setFileContent);
+    } else {
+      setFileContent('');
+    }
+  }, [file]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0] ?? null;
@@ -27,8 +36,8 @@ export default function MarkdownInput({ text, file, onTextChange, onFileChange }
     <div className={styles.container}>
       <textarea
         className={styles.textarea}
-        value={file ? '' : text}
-        disabled={!!file}
+        value={file ? fileContent : text}
+        readOnly={!!file}
         onChange={(e) => onTextChange(e.target.value)}
         placeholder={t('md_placeholder')}
       />
