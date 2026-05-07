@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from ..base.interfaces import SplitterProtocol, TokenizerProtocol
 from ..models import Chunk, DocumentAST, HeadingPath, MarkdownBlock, SectionNode, SplitOptions
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?\u3002\uFF01\uFF1F])\s+")
 PROTECTED_SPAN_RE = re.compile(r"<https?://[^\s>]+>|https?://[^\s)>\]]+")
+SplitOrigin = Literal["section", "fragment", "text_piece"]
 
 
 @dataclass(slots=True)
@@ -44,10 +45,11 @@ class _Entry:
 
 @dataclass(slots=True)
 class _ChunkDraft:
-    """Intermediate chunk holding grouped entries and their combined token count."""
+    """Intermediate chunk holding grouped entries, token estimate, and split source."""
 
     entries: list[_Entry]
     token_count: int
+    split_origin: SplitOrigin = "section"
 
 
 class MarkdownSplitter(SplitterProtocol):
@@ -237,6 +239,7 @@ class MarkdownSplitter(SplitterProtocol):
                 self._draft_from_entry(
                     self._make_entry(fragment.headings, fragment.blocks, fragment.section_level),
                     fragment.render(),
+                    split_origin="fragment",
                 )
             ]
 
@@ -251,6 +254,7 @@ class MarkdownSplitter(SplitterProtocol):
                 self._draft_from_entry(
                     self._make_entry(fragment.headings, fragment.blocks, fragment.section_level),
                     fragment.render(),
+                    split_origin="fragment",
                 )
             ]
 
@@ -275,6 +279,7 @@ class MarkdownSplitter(SplitterProtocol):
                             )
                         ],
                         token_count=current_tokens,
+                        split_origin="fragment",
                     )
                 )
                 current_parts = []
@@ -305,6 +310,7 @@ class MarkdownSplitter(SplitterProtocol):
                             )
                         ],
                         token_count=prefix_tokens + block_tokens,
+                        split_origin="fragment",
                     )
                 )
                 current_parts = []
@@ -327,6 +333,7 @@ class MarkdownSplitter(SplitterProtocol):
                             )
                         ],
                         token_count=prefix_tokens + piece_tokens,
+                        split_origin="text_piece",
                     )
                 )
 
@@ -345,6 +352,7 @@ class MarkdownSplitter(SplitterProtocol):
                             )
                         ],
                         token_count=current_tokens,
+                        split_origin="fragment",
                     )
                 )
 
@@ -571,7 +579,7 @@ class MarkdownSplitter(SplitterProtocol):
         self,
         chunks: list[_ChunkDraft],
     ) -> list[_ChunkDraft]:
-        """Merge adjacent chunks that share a heading path and fall below *merge_below_tokens*."""
+        """Merge adjacent fragment/text-piece tails below *merge_below_tokens*."""
         if not chunks:
             return chunks
 
@@ -580,13 +588,15 @@ class MarkdownSplitter(SplitterProtocol):
             previous = merged[-1]
             if (
                 self._can_merge_small_chunks(previous, chunk)
+                and previous.token_count + chunk.token_count + 1 <= self.options.max_tokens
                 and chunk.token_count < self.options.merge_below_tokens
+                and chunk.split_origin in {"fragment", "text_piece"}
             ):
-                candidate = self._draft_from_entries([*previous.entries, *chunk.entries])
-                if candidate.token_count > self.options.max_tokens:
-                    merged.append(chunk)
-                    continue
-                merged[-1] = candidate
+                merged[-1] = _ChunkDraft(
+                    entries=[*previous.entries, *chunk.entries],
+                    token_count=previous.token_count + chunk.token_count,
+                    split_origin=previous.split_origin,
+                )
             else:
                 merged.append(chunk)
         return merged
@@ -663,8 +673,18 @@ class MarkdownSplitter(SplitterProtocol):
 
         return entries
 
-    def _draft_from_entry(self, entry: _Entry, rendered: str) -> _ChunkDraft:
-        return _ChunkDraft(entries=[entry], token_count=self.tokenizer.count(rendered))
+    def _draft_from_entry(
+        self,
+        entry: _Entry,
+        rendered: str,
+        *,
+        split_origin: SplitOrigin = "section",
+    ) -> _ChunkDraft:
+        return _ChunkDraft(
+            entries=[entry],
+            token_count=self.tokenizer.count(rendered),
+            split_origin=split_origin,
+        )
 
     def _draft_from_entries(
         self,

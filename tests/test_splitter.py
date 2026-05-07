@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from lumberjack.core.parser import MarkdownParser
-from lumberjack.core.splitter import MarkdownSplitter
+from lumberjack.core.splitter import MarkdownSplitter, _ChunkDraft, _Entry
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 from lumberjack.models import SplitOptions
 
@@ -385,6 +385,70 @@ def test_merge_below_tokens_does_not_merge_past_rendered_budget() -> None:
     assert [chunk.token_count for chunk in chunks] == [59, 4]
     assert chunks[1].body == "x\n\ny"
     assert all(chunk.token_count <= 60 for chunk in chunks)
+
+
+def test_merge_below_tokens_only_absorbs_fragment_or_text_piece_tails() -> None:
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=100, merge_below_tokens=10),
+    )
+    heading_path = ((1, "A"),)
+    left = _ChunkDraft(
+        entries=[
+            _Entry(
+                headings=heading_path,
+                body="section body",
+                section_level=1,
+                start_line=1,
+                end_line=1,
+            )
+        ],
+        token_count=20,
+        split_origin="section",
+    )
+    section_tail = _ChunkDraft(
+        entries=[
+            _Entry(
+                headings=heading_path,
+                body="tiny section",
+                section_level=1,
+                start_line=2,
+                end_line=2,
+            )
+        ],
+        token_count=5,
+        split_origin="section",
+    )
+    fragment_tail = _ChunkDraft(
+        entries=[
+            _Entry(
+                headings=heading_path,
+                body="tiny fragment",
+                section_level=1,
+                start_line=3,
+                end_line=3,
+            )
+        ],
+        token_count=5,
+        split_origin="fragment",
+    )
+    text_piece_tail = _ChunkDraft(
+        entries=[
+            _Entry(
+                headings=heading_path,
+                body="tiny text",
+                section_level=1,
+                start_line=4,
+                end_line=4,
+            )
+        ],
+        token_count=5,
+        split_origin="text_piece",
+    )
+
+    assert splitter._merge_small_chunks([left, section_tail]) == [left, section_tail]
+    assert len(splitter._merge_small_chunks([left, fragment_tail])[0].entries) == 2
+    assert len(splitter._merge_small_chunks([left, text_piece_tail])[0].entries) == 2
 
 
 def test_splitter_keeps_oversized_lists_intact_by_default() -> None:

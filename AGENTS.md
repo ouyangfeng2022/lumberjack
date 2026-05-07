@@ -161,7 +161,7 @@ The parser currently captures these inline structures in headings and paragraphs
 - `retain_headings=True` prepends rendered heading breadcrumbs to `Chunk.body`
 - `include_common_headings=True` includes the shared common heading prefix in `Chunk.body` (only effective with `retain_headings=True`); when False, `body` contains only relative sub-headings and content
 - `retain_headings=False` makes `Chunk.body` pure content without any headings; use `render_heading_path(Chunk.headings)` + `Chunk.body` to reconstruct
-- Small chunks are merged only when they share the same heading path and still fit within `max_tokens`
+- Short tails from fragment or text fallback splitting are merged only when they share the same heading path and the estimated merged size still fits within `max_tokens`
 
 ## Constraints
 

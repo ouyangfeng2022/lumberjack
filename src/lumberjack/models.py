@@ -72,8 +72,9 @@ class SplitOptions:
 
     Attributes:
         max_tokens: Target maximum token count per chunk.
-        merge_below_tokens: Soft threshold for small-chunk merging. Adjacent
-            chunks below this size are merge candidates when merging is enabled.
+        merge_below_tokens: Soft threshold for merging short tails produced by
+            fragment or text fallback splitting. This is not a final minimum
+            chunk size.
         overlap_tokens: Number of tokens to duplicate between adjacent chunks.
         retain_headings: Prepend rendered heading breadcrumbs to :attr:`Chunk.body`.
         include_common_headings: When ``retain_headings`` is True, include the shared

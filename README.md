@@ -281,8 +281,9 @@ Important details:
 - Shared parent headings are deduplicated when sibling sections are merged into one chunk
 - `Chunk.body` excludes the common heading prefix already represented by `Chunk.headings`
 - `merge_below_tokens` is not a final minimum chunk size. It is a soft merge
-  threshold: adjacent chunks below this value are merged only when they share the
-  same heading path and the merged result fits within `max_tokens`.
+  threshold for short tails produced by fragment or text fallback splitting:
+  adjacent tails below this value are merged only when they share the same
+  heading path and the estimated merged size still fits within `max_tokens`.
 - Optional overlap is only applied when a single oversized block must be split by paragraph, line, sentence, word, or hard boundaries
 - Oversized lists and code blocks stay intact by default, but can be made splittable via `split_oversized_blocks`
 - Long URL-like spans are treated as unsplittable and will not be hard-split across chunks

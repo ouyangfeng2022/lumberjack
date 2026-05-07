@@ -278,7 +278,7 @@ output/
 - 当 `retain_headings=True` 时，标题上下文保留在 `Chunk.text` 中
 - 当同级章节合并为一个分块时，共享的父标题会去重
 - `Chunk.body` 不包含已由 `Chunk.headings` 表示的公共标题前缀
-- `merge_below_tokens` 不是最终分块的最小 token 数，而是小块合并软阈值：低于该值的相邻分块只会在标题路径相同且合并后仍不超过 `max_tokens` 时被合并。
+- `merge_below_tokens` 不是最终分块的最小 token 数，而是针对 fragment 或文本回退切分产生的短尾块的合并软阈值：低于该值的相邻短尾块只会在标题路径相同且估算合并大小仍不超过 `max_tokens` 时被合并。
 - 可选重叠仅在单个超大块必须按段落、行、句子、单词或硬边界切分时应用
 - 超大列表和代码块默认保持完整，但可通过 `split_oversized_blocks` 设为可切分
 - 长的 URL 样式文本被视为不可切分，不会跨分块硬切分
