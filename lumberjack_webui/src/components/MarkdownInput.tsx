@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import styles from './MarkdownInput.module.css';
 
@@ -15,24 +15,24 @@ export default function MarkdownInput({ text, file, onTextChange, onFileChange, 
   const inputRef = useRef<HTMLInputElement>(null);
   const [fileContent, setFileContent] = useState('');
 
-  useEffect(() => {
-    if (file) {
-      file.text().then((content) => {
-        setFileContent(content);
-        onFileContentChange?.(content);
-      });
-    } else {
-      setFileContent('');
-      onFileContentChange?.('');
-    }
-  }, [file, onFileContentChange]);
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0] ?? null;
     onFileChange(selected);
+
+    if (!selected) {
+      setFileContent('');
+      onFileContentChange?.('');
+      return;
+    }
+
+    const content = await selected.text();
+    setFileContent(content);
+    onFileContentChange?.(content);
   };
 
   const clearFile = () => {
+    setFileContent('');
+    onFileContentChange?.('');
     onFileChange(null);
     if (inputRef.current) inputRef.current.value = '';
   };

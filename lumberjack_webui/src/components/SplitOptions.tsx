@@ -9,7 +9,6 @@ interface Props {
 }
 
 const SPLIT_BLOCK_OPTIONS = [
-  'paragraph',
   'blockquote',
   'list',
   'table',

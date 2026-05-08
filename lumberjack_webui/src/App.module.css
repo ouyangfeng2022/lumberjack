@@ -65,21 +65,27 @@
 .main {
   display: grid;
   grid-template-columns: minmax(704px, 1.7fr) minmax(470px, 1.18fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 14px;
+  height: calc(100vh - 100px);
+  min-height: 660px;
   max-width: 1880px;
   margin: 0 auto;
-  align-items: start;
+  align-items: stretch;
 }
 
 .controlsGrid {
   display: grid;
   grid-template-columns: minmax(390px, 1.12fr) minmax(300px, 0.58fr);
   gap: 14px;
+  height: 100%;
   align-items: stretch;
+  min-height: 0;
 }
 
 .panel {
   min-width: 0;
+  min-height: 0;
   border: 1px solid rgba(135, 153, 180, 0.28);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.88);
@@ -88,15 +94,25 @@
 }
 
 .inputPanel,
-.optionsPanel,
+.optionsPanel {
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 16px;
+  max-height: 100%;
+  overflow-y: auto;
+  height: 100%;
+}
+
 .resultsPanel {
   display: flex;
   flex-direction: column;
-}
-
-.inputPanel,
-.optionsPanel {
+  position: sticky;
+  top: 16px;
   height: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  align-self: stretch;
 }
 
 .optionsPanel {
@@ -281,10 +297,13 @@
 @media (max-width: 1280px) {
   .main {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: 0;
   }
 
   .controlsGrid {
     grid-template-columns: minmax(0, 1fr) 340px;
+    height: auto;
   }
 
   .resultsPanel {

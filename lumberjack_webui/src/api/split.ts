@@ -20,7 +20,14 @@ export async function splitMarkdown(
   formData.append('include_common_headings', String(options.include_common_headings));
   formData.append('merge_small_chunks', String(options.merge_small_chunks));
   formData.append('isolate_front_matter', String(options.isolate_front_matter));
-  formData.append('split_oversized_blocks', options.split_oversized_blocks);
+  const blocks = options.split_oversized_blocks
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!blocks.includes('paragraph')) {
+    blocks.unshift('paragraph');
+  }
+  formData.append('split_oversized_blocks', blocks.join(','));
   formData.append('tokenizer', options.tokenizer);
   formData.append('document_title', options.document_title);
 
