@@ -560,7 +560,6 @@ def test_merge_below_tokens_only_absorbs_fragment_or_text_piece_tails() -> None:
             _Entry(
                 headings=heading_path,
                 body="section body",
-                section_level=1,
                 start_line=1,
                 end_line=1,
             )
@@ -573,7 +572,6 @@ def test_merge_below_tokens_only_absorbs_fragment_or_text_piece_tails() -> None:
             _Entry(
                 headings=heading_path,
                 body="tiny section",
-                section_level=1,
                 start_line=2,
                 end_line=2,
             )
@@ -586,7 +584,6 @@ def test_merge_below_tokens_only_absorbs_fragment_or_text_piece_tails() -> None:
             _Entry(
                 headings=heading_path,
                 body="tiny fragment",
-                section_level=1,
                 start_line=3,
                 end_line=3,
             )
@@ -599,7 +596,6 @@ def test_merge_below_tokens_only_absorbs_fragment_or_text_piece_tails() -> None:
             _Entry(
                 headings=heading_path,
                 body="tiny text",
-                section_level=1,
                 start_line=4,
                 end_line=4,
             )

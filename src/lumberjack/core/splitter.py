@@ -20,22 +20,11 @@ HEADING_TOKEN_COUNT = 1
 
 
 @dataclass(slots=True)
-class _Fragment:
-    """Section body holding raw blocks and heading prefix for block-level splitting."""
-
-    headings: HeadingPath
-    prefix: str
-    blocks: list[MarkdownBlock]
-    section_level: int
-
-
-@dataclass(slots=True)
 class _Entry:
     """Rendered content unit with heading context and line range, a flattened SectionNode."""
 
     headings: HeadingPath
     body: str
-    section_level: int
     start_line: int | None
     end_line: int | None
     body_token_count: int = 0
@@ -317,7 +306,6 @@ class MarkdownSplitter(SplitterProtocol):
             body_entry = self._make_entry(
                 section.path,
                 section.blocks,
-                section.level,
                 body_token_count=section.body_token_count,
             )
             body_draft = self._draft_from_entries([body_entry])
@@ -358,25 +346,26 @@ class MarkdownSplitter(SplitterProtocol):
             and section.level > 0
         )
         prefix = render_heading_path(section.path) if include_prefix else ""
-        fragment = _Fragment(
+        return self._split_fragment(
             headings=section.path,
             prefix=prefix,
             blocks=section.blocks.copy(),
-            section_level=section.level,
         )
-        return self._split_fragment(fragment)
 
     def _split_fragment(
         self,
-        fragment: _Fragment,
+        *,
+        headings: HeadingPath,
+        prefix: str,
+        blocks: list[MarkdownBlock],
     ) -> list[_ChunkDraft]:
         """Greedy block-level split of a fragment into chunk drafts within token budget."""
         max_tokens = self.options.max_tokens
-        prefix_tokens = self._heading_path_token_count(fragment.headings) if fragment.prefix else 0
+        prefix_tokens = self._heading_path_token_count(headings) if prefix else 0
         if prefix_tokens >= max_tokens:
             return [
                 self._draft_from_entry(
-                    self._make_entry(fragment.headings, fragment.blocks, fragment.section_level),
+                    self._make_entry(headings, blocks),
                     split_origin="fragment",
                 )
             ]
@@ -387,10 +376,10 @@ class MarkdownSplitter(SplitterProtocol):
         current_start_line: int | None = None
         current_end_line: int | None = None
 
-        if not fragment.blocks:
+        if not blocks:
             return [
                 self._draft_from_entry(
-                    self._make_entry(fragment.headings, fragment.blocks, fragment.section_level),
+                    self._make_entry(headings, blocks),
                     split_origin="fragment",
                 )
             ]
@@ -400,9 +389,8 @@ class MarkdownSplitter(SplitterProtocol):
         def draft_current() -> _ChunkDraft:
             return self._draft_from_entry(
                 _Entry(
-                    headings=fragment.headings,
+                    headings=headings,
                     body=join_markdown(current_parts),
-                    section_level=fragment.section_level,
                     start_line=current_start_line,
                     end_line=current_end_line,
                     body_token_count=current_body_tokens,
@@ -410,7 +398,7 @@ class MarkdownSplitter(SplitterProtocol):
                 split_origin="fragment",
             )
 
-        for block in fragment.blocks:
+        for block in blocks:
             block_tokens = self._block_token_count(block)
             candidate_body_tokens = self._append_token_count(current_body_tokens, block_tokens)
             candidate_total = self._joined_token_count([prefix_tokens, candidate_body_tokens])
@@ -434,9 +422,8 @@ class MarkdownSplitter(SplitterProtocol):
                 chunks.append(
                     self._draft_from_entry(
                         _Entry(
-                            headings=fragment.headings,
+                            headings=headings,
                             body=block.text,
-                            section_level=fragment.section_level,
                             start_line=block.start_line,
                             end_line=block.end_line,
                             body_token_count=block_tokens,
@@ -455,9 +442,8 @@ class MarkdownSplitter(SplitterProtocol):
                 chunks.append(
                     self._draft_from_entry(
                         _Entry(
-                            headings=fragment.headings,
+                            headings=headings,
                             body=piece,
-                            section_level=fragment.section_level,
                             start_line=block.start_line,
                             end_line=block.end_line,
                             body_token_count=piece_tokens,
@@ -794,7 +780,6 @@ class MarkdownSplitter(SplitterProtocol):
         self,
         headings: HeadingPath,
         blocks: list[MarkdownBlock],
-        section_level: int,
         *,
         body_token_count: int | None = None,
     ) -> _Entry:
@@ -802,7 +787,6 @@ class MarkdownSplitter(SplitterProtocol):
         return _Entry(
             headings=headings,
             body=body,
-            section_level=section_level,
             start_line=self._first_line(blocks=blocks),
             end_line=self._last_line(blocks=blocks),
             body_token_count=(
@@ -823,7 +807,6 @@ class MarkdownSplitter(SplitterProtocol):
                 self._make_entry(
                     section.path,
                     section.blocks,
-                    section.level,
                     body_token_count=section.body_token_count,
                 )
             )

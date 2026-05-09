@@ -83,6 +83,23 @@ def test_pipeline_uses_lumber_prefix(client: TestClient) -> None:
     assert body["stage_5_chunks"]["chunk_count"] >= 1
 
 
+def test_pipeline_split_entries_expose_only_rendering_inputs(client: TestClient) -> None:
+    response = client.post(
+        "/lumber/api/pipeline",
+        data={"text": SIMPLE_MD, "max_tokens": "500"},
+    )
+
+    assert response.status_code == 200
+    entry = response.json()["stage_4_split"]["entries"][0]
+    assert set(entry) == {
+        "headings",
+        "body",
+        "start_line",
+        "end_line",
+        "body_token_count",
+    }
+
+
 def test_unprefixed_api_path_is_not_registered(client: TestClient) -> None:
     response = client.post("/api/split", data={"text": SIMPLE_MD})
     assert response.status_code == 405

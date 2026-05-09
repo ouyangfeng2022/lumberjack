@@ -61,14 +61,15 @@ export interface ASTStage {
 export interface EntryData {
   headings: [number, string][];
   body: string;
-  section_level: number;
   start_line: number | null;
   end_line: number | null;
+  body_token_count: number;
 }
 
 export interface ChunkDraftData {
   entries: EntryData[];
   token_count: number;
+  split_origin: 'section' | 'fragment' | 'text_piece';
 }
 
 export interface SplitStage {
@@ -89,6 +90,7 @@ export interface ChunksStage {
     chunk_type: string;
     body: string;
     token_count: number;
+    estimated_token_count: number;
     headings: [number, string][];
     section_level: number;
     document_title: string;
