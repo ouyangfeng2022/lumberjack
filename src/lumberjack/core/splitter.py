@@ -264,7 +264,7 @@ class MarkdownSplitter(SplitterProtocol):
             headings=(),
             section_level=0,
             document_title=document.title,
-            document_path=self._document_path(document),
+            document_path=document.metadata.get("path"),
             start_line=block.start_line,
             end_line=block.end_line,
         )
@@ -274,7 +274,7 @@ class MarkdownSplitter(SplitterProtocol):
         section: _MeasuredSection,
     ) -> list[_ChunkDraft]:
         """Recursively split a section into chunk drafts."""
-        if not self._section_has_content(section):
+        if not (section.node.blocks or section.children or section.node.level > 0):
             return []
 
         chunk_tokens = self._section_chunk_token_count(section)
@@ -344,7 +344,7 @@ class MarkdownSplitter(SplitterProtocol):
                 chunks.extend(self._split_section_body(section))
 
         for child in section.children:
-            if not self._section_has_content(child):
+            if not (child.node.blocks or child.children or child.node.level > 0):
                 continue
 
             child_token_count = self._section_chunk_token_count(child)
@@ -391,8 +391,8 @@ class MarkdownSplitter(SplitterProtocol):
         prefix_tokens = self._heading_path_token_count(headings) if prefix else 0
         if prefix_tokens >= max_tokens:
             return [
-                self._draft_from_entry(
-                    self._make_entry(headings, blocks),
+                self._draft_from_entries(
+                    [self._make_entry(headings, blocks)],
                     split_origin="fragment",
                 )
             ]
@@ -405,23 +405,29 @@ class MarkdownSplitter(SplitterProtocol):
 
         if not blocks:
             return [
-                self._draft_from_entry(
-                    self._make_entry(headings, blocks),
+                self._draft_from_entries(
+                    [self._make_entry(headings, blocks)],
                     split_origin="fragment",
                 )
             ]
 
-        budget = self._body_budget_for_prefix(prefix_tokens, max_tokens=max_tokens)
+        budget = (
+            max(0, max_tokens - prefix_tokens - SEPARATOR_TOKEN_COUNT)
+            if prefix_tokens > 0
+            else max_tokens
+        )
 
         def draft_current() -> _ChunkDraft:
-            return self._draft_from_entry(
-                _Entry(
-                    headings=headings,
-                    body=join_markdown(current_parts),
-                    start_line=current_start_line,
-                    end_line=current_end_line,
-                    body_token_count=current_body_tokens,
-                ),
+            return self._draft_from_entries(
+                [
+                    _Entry(
+                        headings=headings,
+                        body=join_markdown(current_parts),
+                        start_line=current_start_line,
+                        end_line=current_end_line,
+                        body_token_count=current_body_tokens,
+                    )
+                ],
                 split_origin="fragment",
             )
 
@@ -440,21 +446,29 @@ class MarkdownSplitter(SplitterProtocol):
             if single_block_total <= max_tokens:
                 current_parts.append(block.text)
                 current_body_tokens = self._append_token_count(current_body_tokens, block_tokens)
-                current_start_line = self._coalesce_min(current_start_line, block.start_line)
-                current_end_line = self._coalesce_max(current_end_line, block.end_line)
+                if block.start_line is not None and (
+                    current_start_line is None or block.start_line < current_start_line
+                ):
+                    current_start_line = block.start_line
+                if block.end_line is not None and (
+                    current_end_line is None or block.end_line > current_end_line
+                ):
+                    current_end_line = block.end_line
                 continue
 
             block_pieces = self._split_oversized_block(block, max_tokens=budget)
             if block_pieces is None:
                 chunks.append(
-                    self._draft_from_entry(
-                        _Entry(
-                            headings=headings,
-                            body=block.text,
-                            start_line=block.start_line,
-                            end_line=block.end_line,
-                            body_token_count=block_tokens,
-                        ),
+                    self._draft_from_entries(
+                        [
+                            _Entry(
+                                headings=headings,
+                                body=block.text,
+                                start_line=block.start_line,
+                                end_line=block.end_line,
+                                body_token_count=block_tokens,
+                            )
+                        ],
                         split_origin="fragment",
                     )
                 )
@@ -467,14 +481,16 @@ class MarkdownSplitter(SplitterProtocol):
             for piece in block_pieces:
                 piece_tokens = self.tokenizer.count(piece)
                 chunks.append(
-                    self._draft_from_entry(
-                        _Entry(
-                            headings=headings,
-                            body=piece,
-                            start_line=block.start_line,
-                            end_line=block.end_line,
-                            body_token_count=piece_tokens,
-                        ),
+                    self._draft_from_entries(
+                        [
+                            _Entry(
+                                headings=headings,
+                                body=piece,
+                                start_line=block.start_line,
+                                end_line=block.end_line,
+                                body_token_count=piece_tokens,
+                            )
+                        ],
                         split_origin="text_piece",
                     )
                 )
@@ -485,11 +501,6 @@ class MarkdownSplitter(SplitterProtocol):
                 chunks.append(draft_current())
 
         return chunks
-
-    def _body_budget_for_prefix(self, prefix_tokens: int, *, max_tokens: int) -> int:
-        if prefix_tokens <= 0:
-            return max_tokens
-        return max(0, max_tokens - prefix_tokens - SEPARATOR_TOKEN_COUNT)
 
     def _split_oversized_block(
         self,
@@ -584,7 +595,7 @@ class MarkdownSplitter(SplitterProtocol):
                     separator=separator,
                     overlap_tokens=overlap_tokens,
                 )
-                if all(self._estimated_text_token_count(part) <= max_tokens for part in packed):
+                if all(self.tokenizer.count(part) <= max_tokens for part in packed):
                     return packed
 
         sentence_parts = [part.strip() for part in SENTENCE_BREAK_RE.split(text) if part.strip()]
@@ -595,7 +606,7 @@ class MarkdownSplitter(SplitterProtocol):
                 separator=" ",
                 overlap_tokens=overlap_tokens,
             )
-            if all(self._estimated_text_token_count(part) <= max_tokens for part in packed):
+            if all(self.tokenizer.count(part) <= max_tokens for part in packed):
                 return packed
 
         word_parts = [part for part in text.split(" ") if part]
@@ -606,7 +617,7 @@ class MarkdownSplitter(SplitterProtocol):
                 separator=" ",
                 overlap_tokens=overlap_tokens,
             )
-            if all(self._estimated_text_token_count(part) <= max_tokens for part in packed):
+            if all(self.tokenizer.count(part) <= max_tokens for part in packed):
                 return packed
 
         return self._hard_split(text, max_tokens, overlap_tokens=overlap_tokens)
@@ -653,9 +664,6 @@ class MarkdownSplitter(SplitterProtocol):
         if current_parts:
             packed.append(separator.join(current_parts))
         return packed
-
-    def _estimated_text_token_count(self, text: str) -> int:
-        return self.tokenizer.count(text)
 
     def _hard_split(
         self,
@@ -763,7 +771,8 @@ class MarkdownSplitter(SplitterProtocol):
     ) -> list[Chunk]:
         """Convert chunk drafts into final ``Chunk`` objects with rendered body and metadata."""
         finalized: list[Chunk] = []
-        document_path = self._document_path(document)
+        doc_path = document.metadata.get("path")
+        document_path = str(doc_path) if doc_path is not None else None
         for index, chunk in enumerate(chunks, start=1):
             headings = self._common_heading_path(entry.headings for entry in chunk.entries)
             body = self._render_body(chunk.entries, common_headings=headings)
@@ -777,27 +786,17 @@ class MarkdownSplitter(SplitterProtocol):
                     section_level=headings[-1][0] if headings else 0,
                     document_title=document.title,
                     document_path=document_path,
-                    start_line=self._coalesce_min(
-                        None,
-                        min(
-                            (
-                                entry.start_line
-                                for entry in chunk.entries
-                                if entry.start_line is not None
-                            ),
-                            default=None,
+                    start_line=min(
+                        (
+                            entry.start_line
+                            for entry in chunk.entries
+                            if entry.start_line is not None
                         ),
+                        default=None,
                     ),
-                    end_line=self._coalesce_max(
-                        None,
-                        max(
-                            (
-                                entry.end_line
-                                for entry in chunk.entries
-                                if entry.end_line is not None
-                            ),
-                            default=None,
-                        ),
+                    end_line=max(
+                        (entry.end_line for entry in chunk.entries if entry.end_line is not None),
+                        default=None,
                     ),
                 )
             )
@@ -811,21 +810,19 @@ class MarkdownSplitter(SplitterProtocol):
         body_token_count: int | None = None,
     ) -> _Entry:
         body = join_markdown([block.text for block in blocks])
+        start_lines = [b.start_line for b in blocks if b.start_line is not None]
+        end_lines = [b.end_line for b in blocks if b.end_line is not None]
         return _Entry(
             headings=headings,
             body=body,
-            start_line=self._first_line(blocks=blocks),
-            end_line=self._last_line(blocks=blocks),
+            start_line=min(start_lines) if start_lines else None,
+            end_line=max(end_lines) if end_lines else None,
             body_token_count=(
                 self._joined_token_count(self._block_token_count(block) for block in blocks)
                 if body_token_count is None
                 else body_token_count
             ),
         )
-
-    def _section_has_content(self, section: _MeasuredSection) -> bool:
-        node = section.node
-        return bool(node.blocks or section.children or node.level > 0)
 
     def _entries_from_section(self, section: _MeasuredSection) -> list[_Entry]:
         """Render-ready entries for a section selected as a chunk."""
@@ -845,24 +842,18 @@ class MarkdownSplitter(SplitterProtocol):
 
         return entries
 
-    def _draft_from_entry(
-        self,
-        entry: _Entry,
-        *,
-        split_origin: SplitOrigin = "section",
-    ) -> _ChunkDraft:
-        return _ChunkDraft(
-            entries=[entry],
-            token_count=self._estimate_entries([entry]),
-            split_origin=split_origin,
-        )
-
     def _draft_from_entries(
         self,
         entries: list[_Entry],
+        *,
+        split_origin: SplitOrigin = "section",
     ) -> _ChunkDraft:
         """Build a chunk draft using cached/additive token estimates."""
-        return _ChunkDraft(entries=entries.copy(), token_count=self._estimate_entries(entries))
+        return _ChunkDraft(
+            entries=entries.copy(),
+            token_count=self._estimate_entries(entries),
+            split_origin=split_origin,
+        )
 
     def _estimate_entries(self, entries: list[_Entry]) -> int:
         if not entries:
@@ -951,10 +942,6 @@ class MarkdownSplitter(SplitterProtocol):
                 break
         return common
 
-    def _document_path(self, document: DocumentAST) -> str | None:
-        path = document.metadata.get("path")
-        return str(path) if path is not None else None
-
     def _can_merge_small_chunks(self, left: _ChunkDraft, right: _ChunkDraft) -> bool:
         if not left.entries or not right.entries:
             return False
@@ -962,19 +949,3 @@ class MarkdownSplitter(SplitterProtocol):
         left_headings = {entry.headings for entry in left.entries}
         right_headings = {entry.headings for entry in right.entries}
         return len(left_headings) == 1 and left_headings == right_headings
-
-    def _first_line(self, *, blocks: list[MarkdownBlock]) -> int | None:
-        line_numbers = [block.start_line for block in blocks if block.start_line is not None]
-        return min(line_numbers) if line_numbers else None
-
-    def _last_line(self, *, blocks: list[MarkdownBlock]) -> int | None:
-        line_numbers = [block.end_line for block in blocks if block.end_line is not None]
-        return max(line_numbers) if line_numbers else None
-
-    def _coalesce_min(self, left: int | None, right: int | None) -> int | None:
-        values = [value for value in (left, right) if value is not None]
-        return min(values) if values else None
-
-    def _coalesce_max(self, left: int | None, right: int | None) -> int | None:
-        values = [value for value in (left, right) if value is not None]
-        return max(values) if values else None
