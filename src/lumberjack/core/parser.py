@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Any
 
+import yaml
 from markdown_it import MarkdownIt
 from mdit_py_plugins.dollarmath import dollarmath_plugin
 from mdit_py_plugins.front_matter import front_matter_plugin
@@ -91,6 +92,9 @@ class MarkdownItParser(_InlineRenderingMixin):
         document_metadata: dict[str, object] | None = None,
     ) -> DocumentAST:
         """Parse raw Markdown text into a ``DocumentAST`` with section tree and reference definitions."""
+        if document_metadata is None:
+            document_metadata = {}
+
         env: dict[str, Any] = {}
         tokens = self._parser.parse(text, env)
         source_lines = text.splitlines()
@@ -101,6 +105,9 @@ class MarkdownItParser(_InlineRenderingMixin):
 
         while index < len(tokens):
             token = tokens[index]
+            if token.type == "front_matter":
+                index += 1
+                continue
             if token.type == "heading_open":
                 section, index = self._build_section(tokens, index, section_stack)
                 section_stack[-1].add_child(section)
@@ -111,11 +118,19 @@ class MarkdownItParser(_InlineRenderingMixin):
             if block is not None:
                 section_stack[-1].add_block(block)
 
+        fm_metadata = self._parse_front_matter(tokens)
+        if fm_metadata is not None:
+            title = fm_metadata.get("title")
+            if isinstance(title, str) and title.strip():
+                document_title = title.strip()
+            for key, value in fm_metadata.items():
+                document_metadata.setdefault(key, value)
+
         return DocumentAST(
             title=document_title,
             source=text,
             root=root,
-            metadata=document_metadata or {},
+            metadata=document_metadata,
             reference_definitions=self._extract_reference_definitions(env, source_lines),
         )
 
@@ -582,6 +597,21 @@ class MarkdownItParser(_InlineRenderingMixin):
             index += 1
 
         return (tuple(normalized), index)
+
+    def _parse_front_matter(
+        self,
+        tokens: list[Token],
+    ) -> dict[str, object] | None:
+        """Parse YAML front matter from the first token, if it is a ``front_matter`` token."""
+        if not tokens or tokens[0].type != "front_matter":
+            return None
+        try:
+            parsed = yaml.safe_load(tokens[0].content)
+        except yaml.YAMLError:
+            return None
+        if isinstance(parsed, dict):
+            return parsed
+        return None
 
     def _extract_reference_definitions(
         self,

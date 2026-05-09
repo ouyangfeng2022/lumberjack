@@ -495,6 +495,7 @@ name = "lumberjack"
 source = { editable = "." }
 dependencies = [
     { name = "markdown-it-py", extra = ["linkify", "plugins"] },
+    { name = "pyyaml" },
 ]
 
 [package.optional-dependencies]
@@ -524,6 +525,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'web'", specifier = ">=0.115.0" },
     { name = "markdown-it-py", extras = ["linkify", "plugins"], specifier = ">=4.0.0" },
     { name = "python-multipart", marker = "extra == 'web'", specifier = ">=0.0.18" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "tiktoken", marker = "extra == 'tokenizers'", specifier = ">=0.9.0" },
     { name = "uvicorn", marker = "extra == 'web'", specifier = ">=0.34.0" },
 ]

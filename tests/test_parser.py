@@ -335,3 +335,79 @@ def test_parser_preserves_line_ranges_for_normalized_block_syntax() -> None:
     assert indented.kind == "code_block"
     assert indented.start_line == 9
     assert indented.end_line == 9
+
+
+def test_front_matter_title_overrides_external_document_title() -> None:
+    """Front matter title takes priority over externally provided document_title."""
+    md = "---\ntitle: FM Title\n---\n\n# Heading\n\nBody."
+    document = MarkdownParser().parse(md, document_title="external.md")
+
+    assert document.title == "FM Title"
+    assert document.metadata["title"] == "FM Title"
+
+
+def test_front_matter_without_title_falls_back_to_external() -> None:
+    """Front matter without a title field uses the external document_title."""
+    md = "---\nauthor: Alice\n---\n\nBody."
+    document = MarkdownParser().parse(md, document_title="external.md")
+
+    assert document.title == "external.md"
+    assert document.metadata["author"] == "Alice"
+
+
+def test_front_matter_populates_metadata() -> None:
+    """YAML front matter key-value pairs populate document.metadata."""
+    md = "---\ntitle: Guide\nauthor: Bob\nversion: 2\ntags:\n  - python\n  - markdown\n---\n\nBody."
+    document = MarkdownParser().parse(md, document_title="fallback.md")
+
+    assert document.metadata == {
+        "title": "Guide",
+        "author": "Bob",
+        "version": 2,
+        "tags": ["python", "markdown"],
+    }
+
+
+def test_no_front_matter_uses_external_values() -> None:
+    """Without front matter, external document_title and document_metadata are used."""
+    md = "# Hello\n\nWorld."
+    document = MarkdownParser().parse(
+        md,
+        document_title="hello.md",
+        document_metadata={"path": "/tmp/hello.md"},
+    )
+
+    assert document.title == "hello.md"
+    assert document.metadata == {"path": "/tmp/hello.md"}
+
+
+def test_malformed_front_matter_falls_back_gracefully() -> None:
+    """Malformed YAML front matter does not crash; external values are preserved."""
+    md = "---\n: invalid: yaml: [\n---\n\nBody."
+    document = MarkdownParser().parse(md, document_title="fallback.md")
+
+    assert document.title == "fallback.md"
+    assert document.metadata == {}
+
+
+def test_front_matter_title_empty_string_uses_external() -> None:
+    """An empty front matter title is treated as absent."""
+    md = '---\ntitle: ""\n---\n\nBody.'
+    document = MarkdownParser().parse(md, document_title="external.md")
+
+    assert document.title == "external.md"
+
+
+def test_front_matter_and_external_metadata_merge() -> None:
+    """Front matter metadata and external metadata merge, with external values winning."""
+    md = "---\ntitle: Guide\nauthor: Bob\n---\n\nBody."
+    document = MarkdownParser().parse(
+        md,
+        document_title="fallback.md",
+        document_metadata={"path": "/tmp/guide.md", "author": "Override"},
+    )
+
+    assert document.title == "Guide"
+    assert document.metadata["path"] == "/tmp/guide.md"
+    assert document.metadata["author"] == "Override"
+    assert document.metadata["title"] == "Guide"
