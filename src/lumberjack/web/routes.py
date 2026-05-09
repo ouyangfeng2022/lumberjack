@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from lumberjack.api import lumber
 from lumberjack.core import create_tokenizer
@@ -30,15 +30,14 @@ _VALID_SPLIT_BLOCKS = frozenset(
 async def _resolve_input(
     text: str | None,
     file: UploadFile | None,
-    document_title: str,
-) -> tuple[str, str] | None:
+) -> tuple[str, str]:
     """Resolve text/file input into (content, title), or None if both are missing."""
     if file is not None:
         content = (await file.read()).decode("utf-8")
-        return content, file.filename or document_title
+        return content, file.filename
     if text is not None:
-        return text, document_title
-    return None
+        return text, None
+    raise ValueError("Provide either markdown text or upload a file")
 
 
 def _parse_block_types(raw: str) -> frozenset[str]:
@@ -83,13 +82,12 @@ async def split(
     isolate_front_matter: bool = Form(True),
     split_oversized_blocks: str = Form("paragraph,blockquote,html_block"),
     tokenizer: str = Form("simple"),
-    document_title: str = Form("document.md"),
 ) -> dict:
     """Split Markdown text or an uploaded file into chunks and return JSON results."""
-    resolved = await _resolve_input(text, file, document_title)
-    if resolved is None:
-        return {"error": "Provide either markdown text or upload a file"}
-    content, title = resolved
+    try:
+        content, document_title = await _resolve_input(text, file)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     options = _build_split_options(
         max_tokens=max_tokens,
@@ -104,7 +102,7 @@ async def split(
 
     chunks = lumber(
         content,
-        document_title=title,
+        document_title=document_title,
         max_tokens=options.max_tokens,
         merge_below_tokens=options.merge_below_tokens,
         overlap_tokens=options.overlap_tokens,
@@ -117,7 +115,7 @@ async def split(
     )
 
     return {
-        "document": title,
+        "document": chunks[0].document_title if chunks else "Anonymous",
         "chunk_count": len(chunks),
         "chunks": [asdict(c) for c in chunks],
     }
@@ -136,13 +134,12 @@ async def pipeline(
     isolate_front_matter: bool = Form(True),
     split_oversized_blocks: str = Form("paragraph,blockquote,html_block"),
     tokenizer: str = Form("simple"),
-    document_title: str = Form("document.md"),
 ) -> dict:
     """Return all intermediate pipeline stages for visualization."""
-    resolved = await _resolve_input(text, file, document_title)
-    if resolved is None:
-        return {"error": "Provide either markdown text or upload a file"}
-    content, title = resolved
+    try:
+        content, document_title = await _resolve_input(text, file)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     options = _build_split_options(
         max_tokens=max_tokens,
@@ -163,7 +160,7 @@ async def pipeline(
     tokens = parser_impl.parse_tokens(content)
 
     # Stage 3: Document AST
-    document: DocumentAST = parser_impl.parse(content, document_title=title)
+    document: DocumentAST = parser_impl.parse(content, document_title=document_title)
 
     # Stage 4-5: Splitting with intermediate data
     tokenizer_impl = create_tokenizer(tokenizer)
@@ -199,7 +196,7 @@ async def pipeline(
             },
         },
         "stage_5_chunks": {
-            "document": title,
+            "document": document.title,
             "chunk_count": len(steps.chunks),
             "chunks": [asdict(c) for c in steps.chunks],
         },

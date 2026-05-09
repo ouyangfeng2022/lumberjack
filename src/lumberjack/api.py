@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 def lumber(
     text: str,
     *,
-    document_title: str = "document.md",
+    document_title: str | None = None,
     max_tokens: int = 1200,
     merge_below_tokens: int = 50,
     overlap_tokens: int = 0,

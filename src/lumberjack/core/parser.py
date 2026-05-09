@@ -88,7 +88,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         self,
         text: str,
         *,
-        document_title: str = "document.md",
+        document_title: str | None = None,
         document_metadata: dict[str, object] | None = None,
     ) -> DocumentAST:
         """Parse raw Markdown text into a ``DocumentAST`` with section tree and reference definitions."""
@@ -99,7 +99,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         tokens = self._parser.parse(text, env)
         source_lines = text.splitlines()
 
-        root = SectionNode(level=0, title=document_title)
+        root = SectionNode(level=0, title="")
         section_stack: list[SectionNode] = [root]
         index = 0
 
@@ -120,14 +120,14 @@ class MarkdownItParser(_InlineRenderingMixin):
 
         fm_metadata = self._parse_front_matter(tokens)
         if fm_metadata is not None:
-            title = fm_metadata.get("title")
-            if isinstance(title, str) and title.strip():
-                document_title = title.strip()
             for key, value in fm_metadata.items():
                 document_metadata.setdefault(key, value)
 
+        final_title = self._resolve_document_title(document_title, fm_metadata, root)
+        root.title = final_title
+
         return DocumentAST(
-            title=document_title,
+            title=final_title,
             source=text,
             root=root,
             metadata=document_metadata,
@@ -611,6 +611,32 @@ class MarkdownItParser(_InlineRenderingMixin):
             return None
         if isinstance(parsed, dict):
             return parsed
+        return None
+
+    def _resolve_document_title(
+        self,
+        document_title: str | None,
+        fm_metadata: dict[str, object] | None,
+        root: SectionNode,
+    ) -> str:
+        """Resolve document title by priority: user-provided > front_matter > first H1 > Anonymous."""
+        if document_title is not None:
+            return document_title
+        if fm_metadata is not None:
+            title = fm_metadata.get("title")
+            if isinstance(title, str) and title.strip():
+                return title.strip()
+        h1_title = self._first_h1_title(root)
+        if h1_title is not None:
+            return h1_title
+        return "Anonymous"
+
+    @staticmethod
+    def _first_h1_title(root: SectionNode) -> str | None:
+        """Return the title of the first level-1 heading section, or None."""
+        for child in root.children:
+            if child.level == 1:
+                return child.title
         return None
 
     def _extract_reference_definitions(

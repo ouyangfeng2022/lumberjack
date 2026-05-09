@@ -23,7 +23,7 @@ def test_split_with_text(client: TestClient) -> None:
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["document"] == "document.md"
+    assert body["document"] == "Hello"
     assert body["chunk_count"] >= 1
     assert len(body["chunks"]) == body["chunk_count"]
     chunk = body["chunks"][0]

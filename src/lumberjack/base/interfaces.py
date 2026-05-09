@@ -21,7 +21,7 @@ class MarkdownParserProtocol(Protocol):
         self,
         text: str,
         *,
-        document_title: str = "document.md",
+        document_title: str | None = None,
         document_metadata: dict[str, object] | None = None,
     ) -> DocumentAST: ...
 

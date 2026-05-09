@@ -337,12 +337,12 @@ def test_parser_preserves_line_ranges_for_normalized_block_syntax() -> None:
     assert indented.end_line == 9
 
 
-def test_front_matter_title_overrides_external_document_title() -> None:
-    """Front matter title takes priority over externally provided document_title."""
+def test_user_provided_title_takes_priority_over_front_matter() -> None:
+    """User-provided document_title takes priority over front matter title."""
     md = "---\ntitle: FM Title\n---\n\n# Heading\n\nBody."
     document = MarkdownParser().parse(md, document_title="external.md")
 
-    assert document.title == "FM Title"
+    assert document.title == "external.md"
     assert document.metadata["title"] == "FM Title"
 
 
@@ -407,7 +407,48 @@ def test_front_matter_and_external_metadata_merge() -> None:
         document_metadata={"path": "/tmp/guide.md", "author": "Override"},
     )
 
-    assert document.title == "Guide"
+    assert document.title == "fallback.md"
     assert document.metadata["path"] == "/tmp/guide.md"
     assert document.metadata["author"] == "Override"
     assert document.metadata["title"] == "Guide"
+
+
+def test_no_document_title_uses_front_matter_title() -> None:
+    """Without explicit document_title, front matter title is used."""
+    md = "---\ntitle: From Front Matter\n---\n\n# Heading\n\nBody."
+    document = MarkdownParser().parse(md)
+
+    assert document.title == "From Front Matter"
+    assert document.metadata["title"] == "From Front Matter"
+
+
+def test_no_document_title_no_front_matter_uses_first_h1() -> None:
+    """Without document_title and front matter, first H1 heading is used."""
+    md = "# My Document\n\nSome content.\n\n## Section\n\nMore."
+    document = MarkdownParser().parse(md)
+
+    assert document.title == "My Document"
+
+
+def test_no_document_title_no_front_matter_h2_only_uses_anonymous() -> None:
+    """Without document_title, front matter, or H1 heading, falls back to Anonymous."""
+    md = "## Section\n\nContent without H1."
+    document = MarkdownParser().parse(md)
+
+    assert document.title == "Anonymous"
+
+
+def test_no_document_title_no_headings_uses_anonymous() -> None:
+    """Without document_title, front matter, or any headings, falls back to Anonymous."""
+    md = "Just plain text.\n\nNo headings at all."
+    document = MarkdownParser().parse(md)
+
+    assert document.title == "Anonymous"
+
+
+def test_no_document_title_front_matter_empty_title_uses_first_h1() -> None:
+    """Empty front matter title is skipped, falling back to first H1."""
+    md = "---\ntitle: \"\"\n---\n\n# Real Title\n\nContent."
+    document = MarkdownParser().parse(md)
+
+    assert document.title == "Real Title"

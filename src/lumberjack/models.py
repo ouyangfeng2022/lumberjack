@@ -93,8 +93,9 @@ class DocumentAST:
     """Parsed document with root section tree, raw source, and metadata.
 
     Attributes:
-        title: Document title. Priority: front matter ``title`` field, then
-            externally provided ``document_title`` parameter, then default.
+        title: Document title.  Priority: user-provided ``document_title``,
+            then front matter ``title`` field, then first level-1 heading,
+            then ``"Anonymous"``.
         source: Raw Markdown source text.
         root: Root section node of the heading tree.
         metadata: Front matter key-value pairs parsed from YAML front matter,

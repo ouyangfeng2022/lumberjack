@@ -97,7 +97,6 @@ def main() -> None:
     text = input_path.read_text(encoding="utf-8")
     chunks = lumber(
         text,
-        document_title=input_path.name,
         max_tokens=args.max_tokens,
         merge_below_tokens=args.merge_below_tokens,
         overlap_tokens=args.overlap_tokens,
@@ -115,7 +114,7 @@ def main() -> None:
     else:
         payload = json.dumps(
             {
-                "document": input_path.name,
+                "document": chunks[0].document_title if chunks else "Anonymous",
                 "chunk_count": len(chunks),
                 "chunks": [asdict(chunk) for chunk in chunks],
             },
