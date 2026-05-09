@@ -39,6 +39,24 @@ class _ChunkDraft:
     split_origin: SplitOrigin = "section"
 
 
+@dataclass(slots=True, frozen=True)
+class _SectionTokenCounts:
+    """Token estimates for a section heading, own body, and full subtree."""
+
+    title: int
+    body: int
+    subtree: int
+
+
+@dataclass(slots=True, frozen=True)
+class _MeasuredSection:
+    """A SectionNode plus splitter-specific token counts for its measured children."""
+
+    node: SectionNode
+    counts: _SectionTokenCounts
+    children: tuple[_MeasuredSection, ...] = ()
+
+
 class MarkdownSplitter(SplitterProtocol):
     """Split a parsed Markdown document into token-bounded chunks."""
 
@@ -66,8 +84,8 @@ class MarkdownSplitter(SplitterProtocol):
         front_matter_block = self._extract_front_matter(document.root)
         self._cache_block_token_count.clear()
         self._cache_title_token_count.clear()
-        self._initialize_section_token_counts(document.root)
-        chunks = self._split_section(document.root)
+        measured_root = self._measure_section(document.root)
+        chunks = self._split_section(measured_root)
         if self.options.merge_small_chunks:
             chunks = self._merge_small_chunks(chunks)
         finalized = self._finalize_chunks(chunks, document)
@@ -88,28 +106,36 @@ class MarkdownSplitter(SplitterProtocol):
         if self.options.overlap_tokens >= self.options.max_tokens:
             raise ValueError("overlap_tokens must be smaller than max_tokens")
 
-    def _initialize_section_token_counts(self, section: SectionNode) -> None:
-        """Populate cached token estimates for *section* and all descendants."""
-        for child in section.children:
-            self._initialize_section_token_counts(child)
+    def _measure_section(self, section: SectionNode) -> _MeasuredSection:
+        """Return a measured wrapper for *section* and all descendants."""
+        children = tuple(self._measure_section(child) for child in section.children)
 
         body = join_markdown([block.text for block in section.blocks])
-        section.body_token_count = self.tokenizer.count(body) if body else 0
+        body_token_count = self.tokenizer.count(body) if body else 0
 
         if section.level > 0:
-            section.title_token_count = self._heading_title_token_count(section.title)
+            title_token_count = self._heading_title_token_count(section.title)
         else:
-            section.title_token_count = 0
+            title_token_count = 0
 
         for block in section.blocks:
             self._cache_block_token_count[id(block)] = self.tokenizer.count(block.text)
 
-        section.subtree_token_count = self._joined_token_count(
+        subtree_token_count = self._joined_token_count(
             [
-                section.title_token_count if section.level > 0 else 0,
-                section.body_token_count,
-                *(child.subtree_token_count for child in section.children),
+                title_token_count if section.level > 0 else 0,
+                body_token_count,
+                *(child.counts.subtree for child in children),
             ]
+        )
+        return _MeasuredSection(
+            node=section,
+            counts=_SectionTokenCounts(
+                title=title_token_count,
+                body=body_token_count,
+                subtree=subtree_token_count,
+            ),
+            children=children,
         )
 
     def _joined_token_count(self, token_counts: Iterable[int]) -> int:
@@ -146,7 +172,7 @@ class MarkdownSplitter(SplitterProtocol):
             heading_tokens.append(self._heading_title_token_count(title))
         return self._joined_token_count(heading_tokens)
 
-    def _section_chunk_token_count(self, section: SectionNode) -> int:
+    def _section_chunk_token_count(self, section: _MeasuredSection) -> int:
         """Estimate rendered tokens for a chunk containing this section subtree."""
         if not self.options.retain_headings:
             return self._section_content_token_count(section)
@@ -155,14 +181,15 @@ class MarkdownSplitter(SplitterProtocol):
             common_headings = self._section_entry_common_path(section)
             return self._section_relative_token_count(section, common_headings=common_headings)
 
-        ancestor_tokens = self._heading_path_token_count(section.path[:-1])
-        return self._joined_token_count([ancestor_tokens, section.subtree_token_count])
+        ancestor_tokens = self._heading_path_token_count(section.node.path[:-1])
+        return self._joined_token_count([ancestor_tokens, section.counts.subtree])
 
-    def _section_entry_common_path(self, section: SectionNode) -> HeadingPath:
+    def _section_entry_common_path(self, section: _MeasuredSection) -> HeadingPath:
         """Return the common heading prefix for renderable entries in *section*."""
+        node = section.node
         paths: list[HeadingPath] = []
-        if section.blocks or (not section.children and section.level > 0):
-            paths.append(section.path)
+        if node.blocks or (not section.children and node.level > 0):
+            paths.append(node.path)
 
         for child in section.children:
             child_common = self._section_entry_common_path(child)
@@ -173,7 +200,7 @@ class MarkdownSplitter(SplitterProtocol):
 
     def _section_relative_token_count(
         self,
-        section: SectionNode,
+        section: _MeasuredSection,
         *,
         common_headings: HeadingPath,
     ) -> int:
@@ -181,23 +208,24 @@ class MarkdownSplitter(SplitterProtocol):
         parts: list[int] = []
         previous_headings = common_headings
 
-        def visit(current: SectionNode) -> None:
+        def visit(current: _MeasuredSection) -> None:
             nonlocal previous_headings
+            node = current.node
 
-            if current.blocks or (not current.children and current.level > 0):
-                shared_headings = self._common_heading_path((previous_headings, current.path))
+            if node.blocks or (not current.children and node.level > 0):
+                shared_headings = self._common_heading_path((previous_headings, node.path))
                 if len(shared_headings) < len(common_headings):
                     shared_headings = common_headings
-                relative_headings = current.path[len(shared_headings) :]
+                relative_headings = node.path[len(shared_headings) :]
                 token_count = self._joined_token_count(
                     [
                         self._heading_path_token_count(relative_headings),
-                        current.body_token_count,
+                        current.counts.body,
                     ]
                 )
                 if token_count:
                     parts.append(token_count)
-                previous_headings = current.path
+                previous_headings = node.path
 
             for child in current.children:
                 visit(child)
@@ -205,11 +233,11 @@ class MarkdownSplitter(SplitterProtocol):
         visit(section)
         return self._joined_token_count(parts)
 
-    def _section_content_token_count(self, section: SectionNode) -> int:
+    def _section_content_token_count(self, section: _MeasuredSection) -> int:
         """Estimate a section subtree containing only rendered body content."""
         return self._joined_token_count(
             [
-                section.body_token_count,
+                section.counts.body,
                 *(self._section_content_token_count(child) for child in section.children),
             ]
         )
@@ -243,7 +271,7 @@ class MarkdownSplitter(SplitterProtocol):
 
     def _split_section(
         self,
-        section: SectionNode,
+        section: _MeasuredSection,
     ) -> list[_ChunkDraft]:
         """Recursively split a section into chunk drafts."""
 
@@ -266,9 +294,10 @@ class MarkdownSplitter(SplitterProtocol):
 
     def _split_section_children(
         self,
-        section: SectionNode,
+        section: _MeasuredSection,
     ) -> list[_ChunkDraft]:
         """Split a section's body blocks and child sections, packing adjacent entries that fit."""
+        node = section.node
         chunks: list[_ChunkDraft] = []
         current_entries: list[_Entry] = []
         current_draft: _ChunkDraft | None = None
@@ -301,12 +330,12 @@ class MarkdownSplitter(SplitterProtocol):
             current_entries = candidate_entries
             current_draft = candidate
 
-        if section.blocks:
+        if node.blocks:
             # The first element of entries is body_entry `if section.blocks`.
             body_entry = self._make_entry(
-                section.path,
-                section.blocks,
-                body_token_count=section.body_token_count,
+                node.path,
+                node.blocks,
+                body_token_count=section.counts.body,
             )
             body_draft = self._draft_from_entries([body_entry])
             if body_draft.token_count <= self.options.max_tokens:
@@ -337,19 +366,18 @@ class MarkdownSplitter(SplitterProtocol):
 
     def _split_section_body(
         self,
-        section: SectionNode,
+        section: _MeasuredSection,
     ) -> list[_ChunkDraft]:
         """Split a section's own blocks into fragments, then into chunk drafts."""
+        node = section.node
         include_prefix = (
-            self.options.retain_headings
-            and self.options.include_common_headings
-            and section.level > 0
+            self.options.retain_headings and self.options.include_common_headings and node.level > 0
         )
-        prefix = render_heading_path(section.path) if include_prefix else ""
+        prefix = render_heading_path(node.path) if include_prefix else ""
         return self._split_fragment(
-            headings=section.path,
+            headings=node.path,
             prefix=prefix,
-            blocks=section.blocks.copy(),
+            blocks=node.blocks.copy(),
         )
 
     def _split_fragment(
@@ -796,18 +824,20 @@ class MarkdownSplitter(SplitterProtocol):
             ),
         )
 
-    def _section_has_content(self, section: SectionNode) -> bool:
-        return bool(section.blocks or section.children or section.level > 0)
+    def _section_has_content(self, section: _MeasuredSection) -> bool:
+        node = section.node
+        return bool(node.blocks or section.children or node.level > 0)
 
-    def _entries_from_section(self, section: SectionNode) -> list[_Entry]:
+    def _entries_from_section(self, section: _MeasuredSection) -> list[_Entry]:
         """Render-ready entries for a section selected as a chunk."""
+        node = section.node
         entries: list[_Entry] = []
-        if section.blocks or (not section.children and section.level > 0):
+        if node.blocks or (not section.children and node.level > 0):
             entries.append(
                 self._make_entry(
-                    section.path,
-                    section.blocks,
-                    body_token_count=section.body_token_count,
+                    node.path,
+                    node.blocks,
+                    body_token_count=section.counts.body,
                 )
             )
 

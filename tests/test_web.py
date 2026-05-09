@@ -100,6 +100,19 @@ def test_pipeline_split_entries_expose_only_rendering_inputs(client: TestClient)
     }
 
 
+def test_pipeline_ast_does_not_expose_splitter_token_counts(client: TestClient) -> None:
+    response = client.post(
+        "/lumber/api/pipeline",
+        data={"text": SIMPLE_MD, "max_tokens": "500"},
+    )
+
+    assert response.status_code == 200
+    root = response.json()["stage_3_ast"]["root"]
+    assert "title_token_count" not in root
+    assert "body_token_count" not in root
+    assert "subtree_token_count" not in root
+
+
 def test_unprefixed_api_path_is_not_registered(client: TestClient) -> None:
     response = client.post("/api/split", data={"text": SIMPLE_MD})
     assert response.status_code == 405

@@ -48,9 +48,9 @@ class WebSplitter(MarkdownSplitter):
         front_matter_block = self._extract_front_matter(document.root)
         self._cache_block_token_count.clear()
         self._cache_title_token_count.clear()
-        self._initialize_section_token_counts(document.root)
-        entries = self._entries_from_section(document.root)
-        drafts_before = self._split_section(document.root)
+        measured_root = self._measure_section(document.root)
+        entries = self._entries_from_section(measured_root)
+        drafts_before = self._split_section(measured_root)
         drafts_after = (
             self._merge_small_chunks(drafts_before)
             if self.options.merge_small_chunks

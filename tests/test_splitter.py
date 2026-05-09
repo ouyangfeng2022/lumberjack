@@ -334,19 +334,25 @@ def test_splitter_body_drops_all_headings_when_headings_are_hidden() -> None:
     assert chunks[0].body == "Alpha body.\n\nBeta body."
 
 
-def test_splitter_initializes_section_token_counts_bottom_up() -> None:
+def test_splitter_measures_section_token_counts_bottom_up() -> None:
     document = MarkdownParser().parse("# A\n\nBody", document_title="tokens.md")
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(max_tokens=7, merge_below_tokens=0, retain_headings=True),
     )
 
+    measured_root = splitter._measure_section(document.root)
     chunks = splitter.split(document)
 
-    section = document.root.children[0]
-    assert section.body_token_count == len("Body")
-    assert section.title_token_count == len("A") + 1
-    assert section.subtree_token_count == section.title_token_count + section.body_token_count + 1
+    measured_section = measured_root.children[0]
+    assert measured_section.counts.body == len("Body")
+    assert measured_section.counts.title == len("A") + 1
+    assert measured_section.counts.subtree == (
+        measured_section.counts.title + measured_section.counts.body + 1
+    )
+    assert not hasattr(document.root.children[0], "body_token_count")
+    assert not hasattr(document.root.children[0], "title_token_count")
+    assert not hasattr(document.root.children[0], "subtree_token_count")
     assert len(chunks) == 1
     assert chunks[0].body == "# A\n\nBody"
     assert chunks[0].estimated_token_count == 7
@@ -376,10 +382,10 @@ def test_heading_estimate_counts_title_once_and_marker_as_one_token() -> None:
         options=SplitOptions(max_tokens=100, merge_below_tokens=0, retain_headings=True),
     )
 
-    splitter.split(document)
+    measured_root = splitter._measure_section(document.root)
 
-    section = document.root.children[0]
-    assert section.title_token_count == len("Cacheable Title") + 1
+    measured_section = measured_root.children[0]
+    assert measured_section.counts.title == len("Cacheable Title") + 1
     assert "Cacheable Title" in tokenizer.counted
     assert "### Cacheable Title" not in tokenizer.counted
 
@@ -441,21 +447,21 @@ Three body.
     assert all(chunk.estimated_token_count <= 35 for chunk in chunks)
 
 
-def test_section_chunk_estimate_uses_cached_subtree_without_entry_conversion() -> None:
+def test_section_chunk_estimate_uses_measured_subtree_without_entry_conversion() -> None:
     document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(max_tokens=100, merge_below_tokens=0, retain_headings=True),
     )
-    splitter._initialize_section_token_counts(document.root)
-    scope = document.root.children[0].children[0]
+    measured_root = splitter._measure_section(document.root)
+    measured_scope = measured_root.children[0].children[0]
 
     def fail_entries_from_section(_: object) -> list[_Entry]:
-        raise AssertionError("section budget should use cached subtree counts")
+        raise AssertionError("section budget should use measured subtree counts")
 
     splitter._entries_from_section = fail_entries_from_section  # type: ignore[method-assign]
 
-    assert splitter._section_chunk_token_count(scope) == 41
+    assert splitter._section_chunk_token_count(measured_scope) == 41
 
 
 def test_section_chunk_estimate_respects_hidden_common_headings_without_entries() -> None:
@@ -469,10 +475,10 @@ def test_section_chunk_estimate_respects_hidden_common_headings_without_entries(
             include_common_headings=False,
         ),
     )
-    splitter._initialize_section_token_counts(document.root)
-    scope = document.root.children[0].children[0]
+    measured_root = splitter._measure_section(document.root)
+    measured_scope = measured_root.children[0].children[0]
 
-    assert splitter._section_chunk_token_count(scope) == 28
+    assert splitter._section_chunk_token_count(measured_scope) == 28
 
 
 def test_section_chunk_estimate_respects_hidden_headings_without_entries() -> None:
@@ -481,10 +487,10 @@ def test_section_chunk_estimate_respects_hidden_headings_without_entries() -> No
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(max_tokens=100, merge_below_tokens=0, retain_headings=False),
     )
-    splitter._initialize_section_token_counts(document.root)
-    scope = document.root.children[0].children[0]
+    measured_root = splitter._measure_section(document.root)
+    measured_scope = measured_root.children[0].children[0]
 
-    assert splitter._section_chunk_token_count(scope) == 22
+    assert splitter._section_chunk_token_count(measured_scope) == 22
 
 
 def test_splitter_adds_overlap_only_for_text_fallback_splits() -> None:

@@ -65,9 +65,6 @@ class SectionNode:
         index: Position of this section among its siblings (0-based).
         start_line: 1-based line number where the section heading begins.
         title_inlines: Normalized inline nodes parsed from the heading text.
-        title_token_count: Estimated token count of the title plus one heading marker token.
-        body_token_count: Token count of this section's own blocks (excluding children).
-        subtree_token_count: Total token count of this section and all descendants.
     """
 
     level: int
@@ -78,9 +75,6 @@ class SectionNode:
     index: int = 0
     start_line: int | None = None
     title_inlines: tuple[MarkdownInline, ...] = ()
-    title_token_count: int = 0
-    body_token_count: int = 0
-    subtree_token_count: int = 0
 
     @property
     def heading_key(self) -> HeadingKey:
