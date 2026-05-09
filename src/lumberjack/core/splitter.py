@@ -274,7 +274,6 @@ class MarkdownSplitter(SplitterProtocol):
         section: _MeasuredSection,
     ) -> list[_ChunkDraft]:
         """Recursively split a section into chunk drafts."""
-
         if not self._section_has_content(section):
             return []
 

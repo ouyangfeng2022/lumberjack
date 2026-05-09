@@ -9,8 +9,7 @@ from ..core.parser import MarkdownItParser
 from ..core.splitter import MarkdownSplitter, _ChunkDraft, _Entry
 
 if TYPE_CHECKING:
-    from ..base.interfaces import TokenizerProtocol
-    from ..models import Chunk, DocumentAST, SplitOptions
+    from ..models import Chunk, DocumentAST
 
 
 @dataclass(slots=True)
@@ -34,13 +33,6 @@ class WebParser(MarkdownItParser):
 
 class WebSplitter(MarkdownSplitter):
     """Extended splitter that captures intermediate pipeline stages for web visualization."""
-
-    def __init__(
-        self,
-        tokenizer: TokenizerProtocol | None = None,
-        options: SplitOptions | None = None,
-    ) -> None:
-        super().__init__(tokenizer=tokenizer, options=options)
 
     def split_with_steps(self, document: DocumentAST) -> PipelineSteps:
         """Split and return intermediate pipeline data for visualization."""

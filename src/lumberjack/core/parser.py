@@ -649,8 +649,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         )
 
 
-class MarkdownParser(MarkdownItParser):
-    """Default parser that normalizes Markdown into lumberjack's internal document model."""
+MarkdownParser = MarkdownItParser
 
 
 def create_parser(name: str) -> MarkdownParserProtocol:

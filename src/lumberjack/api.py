@@ -3,28 +3,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .core import MarkdownSplitter, create_parser, create_tokenizer
-from .models import Chunk, DocumentAST, SplitOptions
+from .models import Chunk, SplitOptions
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from .base.interfaces import MarkdownParserProtocol, TokenizerProtocol
-
-
-def _parse_markdown(
-    text: str,
-    *,
-    document_title: str = "document.md",
-    parser: str | MarkdownParserProtocol = "default",
-    document_metadata: dict[str, object] | None = None,
-) -> DocumentAST:
-    """Parse markdown text into the internal document model."""
-    parser_impl = _resolve_parser(parser)
-    return parser_impl.parse(
-        text,
-        document_title=document_title,
-        document_metadata=document_metadata,
-    )
 
 
 def lumber(
@@ -50,11 +34,11 @@ def lumber(
     document_metadata: dict[str, object] | None = None,
 ) -> list[Chunk]:
     """Split markdown text into semantic chunks."""
-    tokenizer_impl = _resolve_tokenizer(tokenizer)
-    document = _parse_markdown(
+    tokenizer_impl = create_tokenizer(tokenizer) if isinstance(tokenizer, str) else tokenizer
+    parser_impl = create_parser(parser) if isinstance(parser, str) else parser
+    document = parser_impl.parse(
         text,
         document_title=document_title,
-        parser=parser,
         document_metadata=document_metadata,
     )
     splitter = MarkdownSplitter(
@@ -71,18 +55,6 @@ def lumber(
         ),
     )
     return splitter.split(document)
-
-
-def _resolve_tokenizer(tokenizer: str | TokenizerProtocol) -> TokenizerProtocol:
-    if isinstance(tokenizer, str):
-        return create_tokenizer(tokenizer)
-    return tokenizer
-
-
-def _resolve_parser(parser: str | MarkdownParserProtocol) -> MarkdownParserProtocol:
-    if isinstance(parser, str):
-        return create_parser(parser)
-    return parser
 
 
 __all__ = ["lumber"]
