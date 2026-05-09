@@ -88,6 +88,7 @@ def test_chunk_to_dict_serializes_heading_path() -> None:
     assert payload["chunk_type"] == "paragraph"
     assert payload["body"] == chunk.body
     assert payload["token_count"] == chunk.token_count
+    assert payload["estimated_token_count"] == chunk.estimated_token_count
     assert payload["headings"] == ((1, "Overview"), (2, "Details"), (3, "Notes"))
     assert payload["section_level"] == 3
     assert payload["document_title"] == "sample.md"

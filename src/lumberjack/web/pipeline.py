@@ -46,7 +46,10 @@ class WebSplitter(MarkdownSplitter):
         """Split and return intermediate pipeline data for visualization."""
         self._validate_options()
         front_matter_block = self._extract_front_matter(document.root)
-        entries = self._collect_section_entries(document.root)
+        self._cache_block_token_count.clear()
+        self._cache_title_token_count.clear()
+        self._initialize_section_token_counts(document.root)
+        entries = self._entries_from_section(document.root)
         drafts_before = self._split_section(document.root)
         drafts_after = (
             self._merge_small_chunks(drafts_before)

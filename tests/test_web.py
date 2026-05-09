@@ -30,6 +30,7 @@ def test_split_with_text(client: TestClient) -> None:
     assert "chunk_id" in chunk
     assert "body" in chunk
     assert "token_count" in chunk
+    assert "estimated_token_count" in chunk
     assert "headings" in chunk
 
 

@@ -100,6 +100,15 @@ LONG_URL_FIXTURE = (
 )
 
 
+class RecordingTokenizer(SimpleCharTokenizer):
+    def __init__(self) -> None:
+        self.counted: list[str] = []
+
+    def count(self, text: str) -> int:
+        self.counted.append(text)
+        return super().count(text)
+
+
 def test_splitter_preserves_heading_context() -> None:
     """Test that splitter preserves heading hierarchy in chunks."""
     document = MarkdownParser().parse(FIXTURE, document_title="sample.md")
@@ -123,7 +132,7 @@ def test_splitter_respects_budget_except_unsplittable_code_fence() -> None:
     )
     chunks = splitter.split(document)
 
-    oversized = [chunk for chunk in chunks if chunk.token_count > 180]
+    oversized = [chunk for chunk in chunks if chunk.estimated_token_count > 180]
     if oversized:
         assert all("```" in chunk.body for chunk in oversized)
 
@@ -192,7 +201,7 @@ def test_splitter_recursively_descends_heading_levels_when_section_is_oversized(
         chunks[2].body
         == "# Beta\n\n## Beta Two\n\nThis subsection also stays under the budget by itself."
     )
-    assert all(chunk.token_count <= 90 for chunk in chunks)
+    assert all(chunk.estimated_token_count <= 90 for chunk in chunks)
 
 
 def test_splitter_checks_whole_document_before_splitting_by_top_level_headings() -> None:
@@ -220,7 +229,7 @@ def test_splitter_greedily_merges_same_level_siblings_before_descending() -> Non
     assert len(chunks) == 2
     assert chunks[0].body == "# Parent\n\n## One\n\nOne body.\n\n## Two\n\nTwo body."
     assert chunks[1].body == "# Parent\n\n## Three\n\nThree body is a little longer."
-    assert all(chunk.token_count <= 60 for chunk in chunks)
+    assert all(chunk.estimated_token_count <= 60 for chunk in chunks)
 
 
 def test_splitter_exposes_body_without_common_headings_for_single_leaf_chunk() -> None:
@@ -271,7 +280,7 @@ def test_splitter_exclude_common_headings_single_entry() -> None:
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
-            max_tokens=35, merge_below_tokens=0, retain_headings=True, include_common_headings=False
+            max_tokens=22, merge_below_tokens=0, retain_headings=True, include_common_headings=False
         ),
     )
 
@@ -323,6 +332,159 @@ def test_splitter_body_drops_all_headings_when_headings_are_hidden() -> None:
 
     assert len(chunks) == 1
     assert chunks[0].body == "Alpha body.\n\nBeta body."
+
+
+def test_splitter_initializes_section_token_counts_bottom_up() -> None:
+    document = MarkdownParser().parse("# A\n\nBody", document_title="tokens.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=7, merge_below_tokens=0, retain_headings=True),
+    )
+
+    chunks = splitter.split(document)
+
+    section = document.root.children[0]
+    assert section.body_token_count == len("Body")
+    assert section.title_token_count == len("A") + 1
+    assert section.subtree_token_count == section.title_token_count + section.body_token_count + 1
+    assert len(chunks) == 1
+    assert chunks[0].body == "# A\n\nBody"
+    assert chunks[0].estimated_token_count == 7
+    assert chunks[0].token_count == len("# A\n\nBody")
+
+
+def test_splitter_uses_estimated_tokens_for_budget_decisions() -> None:
+    document = MarkdownParser().parse("# A\n\nBody", document_title="estimated.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=7, merge_below_tokens=0, retain_headings=True),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].estimated_token_count == 7
+    assert chunks[0].token_count == 9
+    assert chunks[0].token_count > splitter.options.max_tokens
+
+
+def test_heading_estimate_counts_title_once_and_marker_as_one_token() -> None:
+    document = MarkdownParser().parse("### Cacheable Title\n\nBody", document_title="tokens.md")
+    tokenizer = RecordingTokenizer()
+    splitter = MarkdownSplitter(
+        tokenizer=tokenizer,
+        options=SplitOptions(max_tokens=100, merge_below_tokens=0, retain_headings=True),
+    )
+
+    splitter.split(document)
+
+    section = document.root.children[0]
+    assert section.title_token_count == len("Cacheable Title") + 1
+    assert "Cacheable Title" in tokenizer.counted
+    assert "### Cacheable Title" not in tokenizer.counted
+
+
+def test_estimated_tokens_follow_heading_visibility_options() -> None:
+    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
+
+    with_headings = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=100, merge_below_tokens=0, retain_headings=True),
+    ).split(document)
+    without_headings = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=100, merge_below_tokens=0, retain_headings=False),
+    ).split(document)
+    without_common = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=100,
+            merge_below_tokens=0,
+            retain_headings=True,
+            include_common_headings=False,
+        ),
+    ).split(document)
+
+    assert with_headings[0].estimated_token_count > without_headings[0].estimated_token_count
+    assert with_headings[0].estimated_token_count > without_common[0].estimated_token_count
+    assert without_headings[0].estimated_token_count == len("Alpha body.") + len("Beta body.") + 1
+
+
+def test_splitter_does_not_count_oversized_section_rendering_for_budget_trials() -> None:
+    markdown = """# Parent
+
+## One
+
+One body.
+
+## Two
+
+Two body.
+
+## Three
+
+Three body.
+"""
+    document = MarkdownParser().parse(markdown, document_title="recording.md")
+    tokenizer = RecordingTokenizer()
+    splitter = MarkdownSplitter(
+        tokenizer=tokenizer,
+        options=SplitOptions(max_tokens=35, merge_below_tokens=0, retain_headings=True),
+    )
+
+    chunks = splitter.split(document)
+
+    oversized_rendering = (
+        "# Parent\n\n## One\n\nOne body.\n\n## Two\n\nTwo body.\n\n## Three\n\nThree body."
+    )
+    assert oversized_rendering not in tokenizer.counted
+    assert all(chunk.estimated_token_count <= 35 for chunk in chunks)
+
+
+def test_section_chunk_estimate_uses_cached_subtree_without_entry_conversion() -> None:
+    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=100, merge_below_tokens=0, retain_headings=True),
+    )
+    splitter._initialize_section_token_counts(document.root)
+    scope = document.root.children[0].children[0]
+
+    def fail_entries_from_section(_: object) -> list[_Entry]:
+        raise AssertionError("section budget should use cached subtree counts")
+
+    splitter._entries_from_section = fail_entries_from_section  # type: ignore[method-assign]
+
+    assert splitter._section_chunk_token_count(scope) == 41
+
+
+def test_section_chunk_estimate_respects_hidden_common_headings_without_entries() -> None:
+    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=100,
+            merge_below_tokens=0,
+            retain_headings=True,
+            include_common_headings=False,
+        ),
+    )
+    splitter._initialize_section_token_counts(document.root)
+    scope = document.root.children[0].children[0]
+
+    assert splitter._section_chunk_token_count(scope) == 28
+
+
+def test_section_chunk_estimate_respects_hidden_headings_without_entries() -> None:
+    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=100, merge_below_tokens=0, retain_headings=False),
+    )
+    splitter._initialize_section_token_counts(document.root)
+    scope = document.root.children[0].children[0]
+
+    assert splitter._section_chunk_token_count(scope) == 22
 
 
 def test_splitter_adds_overlap_only_for_text_fallback_splits() -> None:
@@ -384,7 +546,7 @@ def test_merge_below_tokens_does_not_merge_past_rendered_budget() -> None:
 
     assert [chunk.token_count for chunk in chunks] == [59, 4]
     assert chunks[1].body == "x\n\ny"
-    assert all(chunk.token_count <= 60 for chunk in chunks)
+    assert all(chunk.estimated_token_count <= 60 for chunk in chunks)
 
 
 def test_merge_below_tokens_only_absorbs_fragment_or_text_piece_tails() -> None:
@@ -488,7 +650,7 @@ def test_splitter_can_split_oversized_lists_when_enabled() -> None:
         "- gamma gamma gamma",
         "gamma",
     ]
-    assert all(chunk.token_count <= 20 for chunk in chunks)
+    assert all(chunk.estimated_token_count <= 20 for chunk in chunks)
 
 
 def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
@@ -511,7 +673,7 @@ def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
         '```python\nprint("beta")\n```',
         '```python\nprint("gamma")\n```',
     ]
-    assert all(chunk.token_count <= 28 for chunk in chunks)
+    assert all(chunk.estimated_token_count <= 28 for chunk in chunks)
 
 
 def test_splitter_never_splits_oversized_urls() -> None:

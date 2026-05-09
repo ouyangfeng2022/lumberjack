@@ -9,7 +9,15 @@ type HeadingPath = tuple[HeadingKey, ...]
 
 @dataclass(slots=True, frozen=True)
 class MarkdownInline:
-    """Normalized inline node (text, link, code, emphasis, etc.)."""
+    """Normalized inline node (text, link, code, emphasis, etc.).
+
+    Attributes:
+        kind: Inline node type (e.g. ``"text"``, ``"link"``, ``"code_inline"``,
+            ``"strong"``, ``"em"``, ``"image"``).
+        text: Rendered plain text of this node.
+        children: Nested inline children (e.g. emphasis wrapping text).
+        attrs: Additional attributes (``"href"``, ``"src"``, ``"title"``, etc.).
+    """
 
     kind: str
     text: str = ""
@@ -19,7 +27,21 @@ class MarkdownInline:
 
 @dataclass(slots=True, frozen=True)
 class MarkdownBlock:
-    """Block-level node with rendered text, line range, inline children, and nested blocks."""
+    """Block-level node with rendered text, line range, inline children, and nested blocks.
+
+    Attributes:
+        kind: Block type (e.g. ``"paragraph"``, ``"heading"``, ``"code_fence"``,
+            ``"blockquote"``, ``"list"``, ``"list_item"``, ``"table"``,
+            ``"html_block"``, ``"hr"``).
+        text: Rendered source text of this block.
+        start_line: 1-based line number where the block begins.
+        end_line: 1-based line number where the block ends.
+        children: Nested child blocks for container types (``"blockquote"``,
+            ``"list"``, ``"list_item"``).  Empty for leaf blocks.
+        inlines: Normalized inline nodes parsed from the block content.
+            Populated for ``"paragraph"`` and ``"heading"`` blocks.
+        attrs: Additional attributes (e.g. heading level, list style, code language).
+    """
 
     kind: str
     text: str
@@ -32,7 +54,21 @@ class MarkdownBlock:
 
 @dataclass(slots=True)
 class SectionNode:
-    """Heading-tree node representing a section and its children."""
+    """Heading-tree node representing a section and its children.
+
+    Attributes:
+        level: Heading level.
+        title: Plain-text heading title.
+        path: Tuple of ``(level, title)`` pairs from root to this section.
+        blocks: Block-level content directly under this section (not in sub-sections).
+        children: Child sections (sub-headings nested within this section).
+        index: Position of this section among its siblings (0-based).
+        start_line: 1-based line number where the section heading begins.
+        title_inlines: Normalized inline nodes parsed from the heading text.
+        title_token_count: Estimated token count of the title plus one heading marker token.
+        body_token_count: Token count of this section's own blocks (excluding children).
+        subtree_token_count: Total token count of this section and all descendants.
+    """
 
     level: int
     title: str
@@ -42,6 +78,9 @@ class SectionNode:
     index: int = 0
     start_line: int | None = None
     title_inlines: tuple[MarkdownInline, ...] = ()
+    title_token_count: int = 0
+    body_token_count: int = 0
+    subtree_token_count: int = 0
 
     @property
     def heading_key(self) -> HeadingKey:
@@ -57,7 +96,15 @@ class SectionNode:
 
 @dataclass(slots=True, frozen=True)
 class DocumentAST:
-    """Parsed document with root section tree, raw source, and metadata."""
+    """Parsed document with root section tree, raw source, and metadata.
+
+    Attributes:
+        title: Document title extracted from the first heading or front matter.
+        source: Raw Markdown source text.
+        root: Root section node of the heading tree.
+        metadata: Front matter key-value pairs (e.g. YAML front matter).
+        reference_definitions: Link/image reference definitions (``[label]: url``).
+    """
 
     title: str
     source: str
@@ -105,12 +152,28 @@ class SplitOptions:
 
 @dataclass(slots=True, frozen=True)
 class Chunk:
-    """Final chunk payload with type, body content, token count, heading breadcrumbs, and line range."""
+    """Final chunk payload with rendered and estimated token counts plus source metadata.
+
+    Attributes:
+        chunk_id: Unique identifier for this chunk.
+        chunk_type: Origin block type (e.g. ``"paragraph"``, ``"heading"``,
+            ``"code_fence"``, ``"document"``).
+        body: Rendered chunk text, optionally including heading breadcrumbs.
+        token_count: Token count measured by the configured tokenizer.
+        estimated_token_count: Estimated token count when exact counting is unavailable.
+        headings: Tuple of ``(level, title)`` pairs representing the heading path.
+        section_level: Deepest heading level in this chunk.
+        document_title: Title of the source document.
+        document_path: File path of the source document, if split from a file.
+        start_line: 1-based line number where this chunk begins in the source.
+        end_line: 1-based line number where this chunk ends in the source.
+    """
 
     chunk_id: str
     chunk_type: str = "paragraph"
     body: str = ""
     token_count: int = 0
+    estimated_token_count: int = 0
     headings: HeadingPath = ()
     section_level: int = 0
     document_title: str = ""

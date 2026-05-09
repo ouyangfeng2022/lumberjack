@@ -87,6 +87,7 @@ JSON 命令行输出包含：
 - `text`
 - `body`
 - `token_count`
+- `estimated_token_count`
 - `headings`
 - `section_level`
 - `document_title`
@@ -204,6 +205,7 @@ output/
       "chunk_type": "paragraph",
       "body": "...",
       "token_count": 1100,
+      "estimated_token_count": 1088,
       "headings": [[1, "引言"]],
       ...
     }

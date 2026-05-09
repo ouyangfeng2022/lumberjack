@@ -87,6 +87,7 @@ Each chunk is serialized from the `Chunk` dataclass and includes fields such as:
 - `text`
 - `body`
 - `token_count`
+- `estimated_token_count`
 - `headings`
 - `section_level`
 - `document_title`
@@ -206,6 +207,7 @@ Each JSON file contains:
       "chunk_type": "paragraph",
       "body": "...",
       "token_count": 1100,
+      "estimated_token_count": 1088,
       "headings": [[1, "Introduction"]],
       ...
     }
@@ -280,6 +282,11 @@ Important details:
 - Heading context is preserved in `Chunk.text` when `retain_headings=True`
 - Shared parent headings are deduplicated when sibling sections are merged into one chunk
 - `Chunk.body` excludes the common heading prefix already represented by `Chunk.headings`
+- `estimated_token_count` is the additive budget estimate used for splitting:
+  section body, heading title, and subtree counts are cached bottom-up. Heading
+  markers (the leading `#` run) and Markdown separators each count as one token.
+  `token_count` is still counted once from the final rendered chunk body for
+  reporting.
 - `merge_below_tokens` is not a final minimum chunk size. It is a soft merge
   threshold for short tails produced by fragment or text fallback splitting:
   adjacent tails below this value are merged only when they share the same
