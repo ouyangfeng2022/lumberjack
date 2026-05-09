@@ -143,7 +143,7 @@ The `script/download_and_split.py` script downloads Markdown datasets from Huggi
 Built-in presets configure the dataset name, subset, field mappings, and whether to filter for Markdown-like content:
 
 | Preset | Dataset | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `open-markdown` | [`open-index/open-markdown`](https://huggingface.co/datasets/open-index/open-markdown) | Pure Markdown, no filtering needed |
 | `fineweb` | [`HuggingFaceFW/fineweb`](https://huggingface.co/datasets/HuggingFaceFW/fineweb) | General web text, filters for Markdown content |
 
