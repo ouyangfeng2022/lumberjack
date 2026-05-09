@@ -106,6 +106,14 @@ class MarkdownItParser(_InlineRenderingMixin):
         while index < len(tokens):
             token = tokens[index]
             if token.type == "front_matter":
+                section_stack[-1].add_block(
+                    MarkdownBlock(
+                        kind="front_matter",
+                        text=self._slice_source(source_lines, token.map),
+                        start_line=self._start_line(token),
+                        end_line=self._end_line(token),
+                    )
+                )
                 index += 1
                 continue
             if token.type == "heading_open":

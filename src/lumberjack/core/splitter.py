@@ -94,7 +94,6 @@ class MarkdownSplitter(SplitterProtocol):
         return finalized
 
     def _validate_options(self) -> None:
-        """Raise ``ValueError`` if split options contain illegal values."""
         if self.options.max_tokens <= 0:
             raise ValueError("max_tokens must be greater than 0")
         if self.options.merge_below_tokens < 0:
@@ -105,6 +104,31 @@ class MarkdownSplitter(SplitterProtocol):
             raise ValueError("merge_below_tokens must be smaller than max_tokens")
         if self.options.overlap_tokens >= self.options.max_tokens:
             raise ValueError("overlap_tokens must be smaller than max_tokens")
+
+    def _extract_front_matter(self, root: SectionNode) -> MarkdownBlock | None:
+        if (
+            self.options.isolate_front_matter
+            and root.blocks
+            and root.blocks[0].kind == "front_matter"
+        ):
+            return root.blocks.pop(0)
+        return None
+
+    def _make_front_matter_chunk(self, block: MarkdownBlock, document: DocumentAST) -> Chunk:
+        token_count = self.tokenizer.count(block.text)
+        return Chunk(
+            chunk_id="chunk-0000",
+            chunk_type="front_matter",
+            body=block.text,
+            token_count=token_count,
+            estimated_token_count=token_count,
+            headings=(),
+            section_level=0,
+            document_title=document.title,
+            document_path=document.metadata.get("path"),
+            start_line=block.start_line,
+            end_line=block.end_line,
+        )
 
     def _measure_section(self, section: SectionNode) -> _MeasuredSection:
         """Return a measured wrapper for *section* and all descendants."""
@@ -240,33 +264,6 @@ class MarkdownSplitter(SplitterProtocol):
                 section.counts.body,
                 *(self._section_content_token_count(child) for child in section.children),
             ]
-        )
-
-    def _extract_front_matter(self, root: SectionNode) -> MarkdownBlock | None:
-        """Remove and return the front_matter block from the root section, if present."""
-        if (
-            self.options.isolate_front_matter
-            and root.blocks
-            and root.blocks[0].kind == "front_matter"
-        ):
-            return root.blocks.pop(0)
-        return None
-
-    def _make_front_matter_chunk(self, block: MarkdownBlock, document: DocumentAST) -> Chunk:
-        """Create a chunk from an isolated front_matter block."""
-        token_count = self.tokenizer.count(block.text)
-        return Chunk(
-            chunk_id="chunk-0000",
-            chunk_type="front_matter",
-            body=block.text,
-            token_count=token_count,
-            estimated_token_count=token_count,
-            headings=(),
-            section_level=0,
-            document_title=document.title,
-            document_path=document.metadata.get("path"),
-            start_line=block.start_line,
-            end_line=block.end_line,
         )
 
     def _split_section(
@@ -583,7 +580,9 @@ class MarkdownSplitter(SplitterProtocol):
         if self.tokenizer.count(text) <= max_tokens:
             return [text]
 
-        if self._contains_oversized_protected_span(text, max_tokens=max_tokens):
+        if any(
+            self.tokenizer.count(m.group(0)) > max_tokens for m in PROTECTED_SPAN_RE.finditer(text)
+        ):
             return [text]
 
         for separator in ("\n\n", "\n"):
@@ -719,22 +718,11 @@ class MarkdownSplitter(SplitterProtocol):
 
         for start in range(1, len(text)):
             suffix = text[start:]
-            if self._ends_inside_protected_span(text, start):
+            if any(m.start() < start < m.end() for m in PROTECTED_SPAN_RE.finditer(text)):
                 continue
             if self.tokenizer.count(suffix) <= max_tokens:
                 return suffix
         return ""
-
-    def _contains_oversized_protected_span(self, text: str, *, max_tokens: int) -> bool:
-        return any(
-            self.tokenizer.count(match.group(0)) > max_tokens
-            for match in PROTECTED_SPAN_RE.finditer(text)
-        )
-
-    def _ends_inside_protected_span(self, text: str, start: int) -> bool:
-        return any(
-            match.start() < start < match.end() for match in PROTECTED_SPAN_RE.finditer(text)
-        )
 
     def _merge_small_chunks(
         self,
@@ -749,8 +737,14 @@ class MarkdownSplitter(SplitterProtocol):
             previous = merged[-1]
             merged_entries = [*previous.entries, *chunk.entries]
             merged_token_count = self._estimate_entries(merged_entries)
+            prev_headings = {e.headings for e in previous.entries}
+            can_merge = (
+                len(prev_headings) == 1
+                and chunk.entries
+                and prev_headings == {e.headings for e in chunk.entries}
+            )
             if (
-                self._can_merge_small_chunks(previous, chunk)
+                can_merge
                 and merged_token_count <= self.options.max_tokens
                 and chunk.token_count < self.options.merge_below_tokens
                 and chunk.split_origin in {"fragment", "text_piece"}
@@ -941,11 +935,3 @@ class MarkdownSplitter(SplitterProtocol):
             if not common:
                 break
         return common
-
-    def _can_merge_small_chunks(self, left: _ChunkDraft, right: _ChunkDraft) -> bool:
-        if not left.entries or not right.entries:
-            return False
-
-        left_headings = {entry.headings for entry in left.entries}
-        right_headings = {entry.headings for entry in right.entries}
-        return len(left_headings) == 1 and left_headings == right_headings

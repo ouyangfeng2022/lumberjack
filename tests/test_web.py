@@ -49,9 +49,9 @@ def test_split_with_file(client: TestClient) -> None:
 
 def test_split_no_input(client: TestClient) -> None:
     response = client.post("/lumber/api/split")
-    assert response.status_code == 200
+    assert response.status_code == 400
     body = response.json()
-    assert "error" in body
+    assert "detail" in body
 
 
 def test_split_with_options(client: TestClient) -> None:
