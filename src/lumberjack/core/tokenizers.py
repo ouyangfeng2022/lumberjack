@@ -58,10 +58,10 @@ class TiktokenTokenizer(TokenizerProtocol):
 class SimpleCharTokenizer(TokenizerProtocol):
     """Character-level tokenizer that counts each character as one token."""
 
-    def encode(self, text: str, *, cache=False) -> tuple[int, ...]:
+    def encode(self, text: str, *, cache=False) -> tuple[int, ...]:  # noqa: ARG002
         return tuple(ord(c) for c in text)
 
-    def count(self, text: str, *, cache=False) -> int:
+    def count(self, text: str, *, cache=False) -> int:  # noqa: ARG002
         return len(text)
 
 

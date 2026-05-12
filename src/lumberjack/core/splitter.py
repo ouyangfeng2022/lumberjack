@@ -15,8 +15,6 @@ if TYPE_CHECKING:
 SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?\u3002\uFF01\uFF1F])\s+")
 PROTECTED_SPAN_RE = re.compile(r"<https?://[^\s>]+>|https?://[^\s)>\]]+")
 SplitOrigin = Literal["section", "fragment", "text_piece"]
-SEPARATOR_TOKEN_COUNT = 1
-HEADING_TOKEN_COUNT = 1
 
 
 @dataclass(slots=True)
@@ -129,7 +127,7 @@ class MarkdownSplitter(SplitterProtocol):
         return None
 
     def _make_front_matter_chunk(self, block: MarkdownBlock, document: DocumentAST) -> Chunk:
-        token_count = self.tokenizer.count(block.text, cache=True)
+        token_count = self.tokenizer.count(block.text)
         return Chunk(
             chunk_id="chunk-0000",
             chunk_type="front_matter",
@@ -148,17 +146,14 @@ class MarkdownSplitter(SplitterProtocol):
         """Return a measured wrapper for *section* and all descendants."""
         children = tuple(self._measure_section(child) for child in section.children)
 
-        body_token_count = 0
-
-        for block in section.blocks:
-            body_token_count += self.tokenizer.count(block.text, cache=True)
-
-        body_token_count += SEPARATOR_TOKEN_COUNT * max(0, len(section.blocks) - 1)
+        if section.blocks:
+            body_text = join_markdown([b.text for b in section.blocks])
+            body_token_count = self.tokenizer.count(body_text)
+        else:
+            body_token_count = 0
 
         if section.level > 0 and self.options.retain_headings:
-            title_token_count = (
-                self.tokenizer.count(section.title, cache=True) + HEADING_TOKEN_COUNT
-            )
+            title_token_count = self._heading_path_token_count(section.path)
         else:
             title_token_count = 0
 
@@ -179,26 +174,28 @@ class MarkdownSplitter(SplitterProtocol):
             children=children,
         )
 
-    def _joined_token_count(self, token_counts: Iterable[int]) -> int:
-        """Estimate Markdown joining cost with one token per separator."""
-        present = [token_count for token_count in token_counts if token_count > 0]
+    def _joined_token_count(self, token_counts: Iterable[int], *, separator: str = "\n\n") -> int:
+        """Estimate Markdown joining cost using separator length."""
+        present = [tc for tc in token_counts if tc > 0]
         if not present:
             return 0
-        return sum(present) + SEPARATOR_TOKEN_COUNT * (len(present) - 1)
+        if len(present) == 1:
+            return present[0]
+        return sum(present) + len(separator) * (len(present) - 1)
 
-    def _append_token_count(self, current: int, next_count: int) -> int:
-        if current <= 0:
-            return next_count
-        if next_count <= 0:
-            return current
-        return current + SEPARATOR_TOKEN_COUNT + next_count
+    def _append_token_count(
+        self, current_joined: str, next_part: str, separator: str = "\n\n"
+    ) -> int:
+        if not current_joined:
+            return self.tokenizer.count(next_part)
+        if not next_part:
+            return self.tokenizer.count(current_joined)
+        return self.tokenizer.count(f"{current_joined}{separator}{next_part}")
 
     def _heading_path_token_count(self, path: HeadingPath) -> int:
-        heading_tokens: list[int] = []
-        for _, title in path:
-            heading_token = self.tokenizer.count(title, cache=True) + HEADING_TOKEN_COUNT
-            heading_tokens.append(heading_token)
-        return self._joined_token_count(heading_tokens)
+        if not path:
+            return 0
+        return self.tokenizer.count(render_heading_path(path))
 
     def _section_entry_common_path(self, section: _MeasuredSection) -> HeadingPath:
         """Return the common heading prefix for renderable entries in *section*."""
@@ -414,6 +411,7 @@ class MarkdownSplitter(SplitterProtocol):
 
         chunks: list[_ChunkDraft] = []
         current_parts: list[str] = []
+        current_joined = ""
         current_body_tokens = 0
         current_start_line: int | None = None
         current_end_line: int | None = None
@@ -426,11 +424,7 @@ class MarkdownSplitter(SplitterProtocol):
                 )
             ]
 
-        budget = (
-            max(0, max_tokens - prefix_tokens - SEPARATOR_TOKEN_COUNT)
-            if prefix_tokens > 0
-            else max_tokens
-        )
+        budget = max(0, max_tokens - prefix_tokens) if prefix_tokens > 0 else max_tokens
 
         def draft_current() -> _ChunkDraft:
             return self._draft_from_entries(
@@ -447,12 +441,13 @@ class MarkdownSplitter(SplitterProtocol):
             )
 
         for block in blocks:
-            block_tokens = self.tokenizer.count(block.text, cache=True)
-            candidate_body_tokens = self._append_token_count(current_body_tokens, block_tokens)
+            block_tokens = self.tokenizer.count(block.text)
+            candidate_body_tokens = self._append_token_count(current_joined, block.text)
             candidate_total = self._joined_token_count([prefix_tokens, candidate_body_tokens])
             if current_parts and candidate_total > max_tokens:
                 chunks.append(draft_current())
                 current_parts = []
+                current_joined = ""
                 current_body_tokens = 0
                 current_start_line = None
                 current_end_line = None
@@ -460,7 +455,10 @@ class MarkdownSplitter(SplitterProtocol):
             single_block_total = self._joined_token_count([prefix_tokens, block_tokens])
             if single_block_total <= max_tokens:
                 current_parts.append(block.text)
-                current_body_tokens = self._append_token_count(current_body_tokens, block_tokens)
+                current_body_tokens = self._append_token_count(current_joined, block.text)
+                current_joined = (
+                    f"{current_joined}\n\n{block.text}" if current_joined else block.text
+                )
                 if block.start_line is not None and (
                     current_start_line is None or block.start_line < current_start_line
                 ):
@@ -488,6 +486,7 @@ class MarkdownSplitter(SplitterProtocol):
                     )
                 )
                 current_parts = []
+                current_joined = ""
                 current_body_tokens = 0
                 current_start_line = None
                 current_end_line = None
@@ -545,7 +544,7 @@ class MarkdownSplitter(SplitterProtocol):
         open_fence = f"```{info}".rstrip()
         close_fence = "```"
         empty_render = f"{open_fence}\n{close_fence}"
-        wrapper_tokens = self.tokenizer.count(empty_render, cache=True)
+        wrapper_tokens = self.tokenizer.count(empty_render)
         if wrapper_tokens >= max_tokens:
             return [block.text]
 
@@ -650,36 +649,30 @@ class MarkdownSplitter(SplitterProtocol):
         """Greedily pack parts into groups that fit within *max_tokens*, with optional overlap."""
         packed: list[str] = []
         current_parts: list[str] = []
-        current_part_tokens: list[int] = []
+        current_joined = ""
         current_tokens = 0
-        part_tokens = [self.tokenizer.count(part) for part in parts]
-        for part, part_token_count in zip(parts, part_tokens, strict=True):
-            candidate_tokens = self._append_token_count(current_tokens, part_token_count)
+        for part in parts:
+            candidate_tokens = self._append_token_count(current_joined, part, separator)
             if current_parts and candidate_tokens > max_tokens:
-                packed.append(separator.join(current_parts))
-                overlap_parts, overlap_token_count, overlap_part_tokens = (
-                    self._tail_parts_within_budget(
-                        current_parts,
-                        part_tokens=current_part_tokens,
-                        max_tokens=overlap_tokens,
-                    )
+                packed.append(current_joined)
+                overlap_parts, _ = self._tail_parts_within_budget(
+                    current_joined,
+                    max_tokens=overlap_tokens,
+                    separator=separator,
                 )
                 current_parts = [*overlap_parts, part]
-                current_part_tokens = [*overlap_part_tokens, part_token_count]
-                current_tokens = self._append_token_count(
-                    overlap_token_count,
-                    part_token_count,
-                )
+                current_joined = separator.join(current_parts)
+                current_tokens = self.tokenizer.count(current_joined)
                 if current_tokens > max_tokens:
                     current_parts = [part]
-                    current_part_tokens = [part_token_count]
-                    current_tokens = part_token_count
+                    current_joined = part
+                    current_tokens = self.tokenizer.count(part)
             else:
-                current_parts = [*current_parts, part]
-                current_part_tokens = [*current_part_tokens, part_token_count]
+                current_parts.append(part)
+                current_joined = separator.join(current_parts)
                 current_tokens = candidate_tokens
         if current_parts:
-            packed.append(separator.join(current_parts))
+            packed.append(current_joined)
         return packed
 
     def _hard_split(
@@ -708,25 +701,22 @@ class MarkdownSplitter(SplitterProtocol):
 
     def _tail_parts_within_budget(
         self,
-        parts: list[str],
+        current_joined: str,
         *,
-        part_tokens: list[int],
         max_tokens: int,
-    ) -> tuple[list[str], int, list[int]]:
-        if max_tokens <= 0 or not parts:
-            return ([], 0, [])
-
+        separator: str,
+    ) -> tuple[list[str], int]:
+        if max_tokens <= 0 or not current_joined:
+            return ([], 0)
+        parts = current_joined.split(separator)
         tail: list[str] = []
-        tail_part_tokens: list[int] = []
-        tail_tokens = 0
-        for part, part_token_count in zip(reversed(parts), reversed(part_tokens), strict=True):
-            candidate_tokens = self._append_token_count(part_token_count, tail_tokens)
-            if candidate_tokens > max_tokens:
+        for part in reversed(parts):
+            candidate = separator.join([part, *tail]) if tail else part
+            if self.tokenizer.count(candidate) > max_tokens:
                 break
             tail = [part, *tail]
-            tail_part_tokens = [part_token_count, *tail_part_tokens]
-            tail_tokens = candidate_tokens
-        return (tail, tail_tokens, tail_part_tokens)
+        tail_joined = separator.join(tail) if tail else ""
+        return (tail, self.tokenizer.count(tail_joined))
 
     def _suffix_within_budget(self, text: str, max_tokens: int) -> str:
         if max_tokens <= 0 or not text:
@@ -788,12 +778,13 @@ class MarkdownSplitter(SplitterProtocol):
         for index, chunk in enumerate(chunks, start=1):
             headings = self._common_heading_path(entry.headings for entry in chunk.entries)
             body = self._render_body(chunk.entries, common_headings=headings)
+            token_count = self.tokenizer.count(body)
             finalized.append(
                 Chunk(
                     chunk_id=f"chunk-{index:04d}",
                     body=body,
-                    token_count=self.tokenizer.count(body),
-                    estimated_token_count=chunk.token_count,
+                    token_count=token_count,
+                    estimated_token_count=token_count,
                     headings=headings,
                     section_level=headings[-1][0] if headings else 0,
                     document_title=document.title,
@@ -830,11 +821,7 @@ class MarkdownSplitter(SplitterProtocol):
             start_line=min(start_lines) if start_lines else None,
             end_line=max(end_lines) if end_lines else None,
             body_token_count=(
-                self._joined_token_count(
-                    self.tokenizer.count(block.text, cache=True) for block in blocks
-                )
-                if body_token_count is None
-                else body_token_count
+                self.tokenizer.count(body) if body_token_count is None else body_token_count
             ),
         )
 
