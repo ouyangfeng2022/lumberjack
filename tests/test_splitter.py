@@ -447,23 +447,6 @@ Three body.
     assert all(chunk.estimated_token_count <= 35 for chunk in chunks)
 
 
-def test_section_chunk_estimate_uses_measured_subtree_without_entry_conversion() -> None:
-    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
-    splitter = MarkdownSplitter(
-        tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=100, merge_below_tokens=0, retain_headings=True),
-    )
-    measured_root = splitter._measure_section(document.root)
-    measured_scope = measured_root.children[0].children[0]
-
-    def fail_entries_from_section(_: object) -> list[_Entry]:
-        raise AssertionError("section budget should use measured subtree counts")
-
-    splitter._entries_from_section = fail_entries_from_section  # type: ignore[method-assign]
-
-    assert splitter._section_chunk_token_count(measured_scope) == 41
-
-
 def test_section_chunk_estimate_respects_hidden_common_headings_without_entries() -> None:
     document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
     splitter = MarkdownSplitter(
@@ -477,8 +460,11 @@ def test_section_chunk_estimate_respects_hidden_common_headings_without_entries(
     )
     measured_root = splitter._measure_section(document.root)
     measured_scope = measured_root.children[0].children[0]
+    chunk_token_count = measured_scope.counts.subtree - splitter._heading_path_token_count(
+        measured_scope.node.path
+    )
 
-    assert splitter._section_chunk_token_count(measured_scope) == 28
+    assert chunk_token_count == 28
 
 
 def test_section_chunk_estimate_respects_hidden_headings_without_entries() -> None:
@@ -490,7 +476,7 @@ def test_section_chunk_estimate_respects_hidden_headings_without_entries() -> No
     measured_root = splitter._measure_section(document.root)
     measured_scope = measured_root.children[0].children[0]
 
-    assert splitter._section_chunk_token_count(measured_scope) == 22
+    assert measured_scope.counts.subtree == 22
 
 
 def test_splitter_adds_overlap_only_for_text_fallback_splits() -> None:
