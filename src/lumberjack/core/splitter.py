@@ -14,12 +14,21 @@ if TYPE_CHECKING:
 
 SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?\u3002\uFF01\uFF1F])\s+")
 PROTECTED_SPAN_RE = re.compile(r"<https?://[^\s>]+>|https?://[^\s)>\]]+")
+SEPARATOR = "\n\n"
 SplitOrigin = Literal["section", "fragment", "text_piece"]
 
 
 @dataclass(slots=True)
 class _Entry:
-    """Rendered content unit with heading context and line range, a flattened SectionNode."""
+    """Rendered content unit with heading context and line range, a flattened SectionNode.
+
+    Attributes:
+        headings: Full heading path for the entry, used for rendering and metadata.
+        body: Rendered Markdown body text for the entry, excluding headings.
+        start_line: Starting line number of the entry in the original document, if available.
+        end_line: Ending line number of the entry in the original document, if available.
+        body_token_count: Cached token count for the entry body, excluding headings.
+    """
 
     headings: HeadingPath
     body: str
@@ -146,23 +155,20 @@ class MarkdownSplitter(SplitterProtocol):
         """Return a measured wrapper for *section* and all descendants."""
         children = tuple(self._measure_section(child) for child in section.children)
 
+        body_token_count = 0
         if section.blocks:
-            body_text = join_markdown([b.text for b in section.blocks])
-            body_token_count = self.tokenizer.count(body_text)
-        else:
-            body_token_count = 0
+            for block in section.blocks:
+                body_token_count += self.tokenizer.count(block.text + SEPARATOR, cache=True)
 
         if section.level > 0 and self.options.retain_headings:
-            title_token_count = self._heading_path_token_count(section.path)
+            title_token_count = self.tokenizer.count(
+                "#" * section.level + " ", cache=True
+            ) + self.tokenizer.count(section.title + SEPARATOR, cache=True)
         else:
             title_token_count = 0
 
-        subtree_token_count = self._joined_token_count(
-            [
-                title_token_count,
-                body_token_count,
-                *(child.counts.subtree for child in children),
-            ]
+        subtree_token_count = (
+            title_token_count + body_token_count + sum(child.counts.subtree for child in children)
         )
         return _MeasuredSection(
             node=section,
@@ -173,15 +179,6 @@ class MarkdownSplitter(SplitterProtocol):
             ),
             children=children,
         )
-
-    def _joined_token_count(self, token_counts: Iterable[int], *, separator: str = "\n\n") -> int:
-        """Estimate Markdown joining cost using separator length."""
-        present = [tc for tc in token_counts if tc > 0]
-        if not present:
-            return 0
-        if len(present) == 1:
-            return present[0]
-        return sum(present) + len(separator) * (len(present) - 1)
 
     def _append_token_count(
         self, current_joined: str, next_part: str, separator: str = "\n\n"
@@ -195,7 +192,15 @@ class MarkdownSplitter(SplitterProtocol):
     def _heading_path_token_count(self, path: HeadingPath) -> int:
         if not path:
             return 0
-        return self.tokenizer.count(render_heading_path(path))
+        tokens = 0
+        for level, title in path:
+            if title:
+                tokens = (
+                    tokens
+                    + self.tokenizer.count("#" * level + " ", cache=True)
+                    + self.tokenizer.count(title + SEPARATOR, cache=True)
+                )
+        return tokens
 
     def _section_entry_common_path(self, section: _MeasuredSection) -> HeadingPath:
         """Return the common heading prefix for renderable entries in *section*."""
@@ -210,50 +215,6 @@ class MarkdownSplitter(SplitterProtocol):
                 paths.append(child_common)
 
         return self._common_heading_path(paths)
-
-    def _section_relative_token_count(
-        self,
-        section: _MeasuredSection,
-        *,
-        common_headings: HeadingPath,
-    ) -> int:
-        """Estimate a section subtree without the common heading prefix."""
-        parts: list[int] = []
-        previous_headings = common_headings
-
-        def visit(current: _MeasuredSection) -> None:
-            nonlocal previous_headings
-            node = current.node
-
-            if node.blocks or (not current.children and node.level > 0):
-                shared_headings = self._common_heading_path((previous_headings, node.path))
-                if len(shared_headings) < len(common_headings):
-                    shared_headings = common_headings
-                relative_headings = node.path[len(shared_headings) :]
-                token_count = self._joined_token_count(
-                    [
-                        self._heading_path_token_count(relative_headings),
-                        current.counts.body,
-                    ]
-                )
-                if token_count:
-                    parts.append(token_count)
-                previous_headings = node.path
-
-            for child in current.children:
-                visit(child)
-
-        visit(section)
-        return self._joined_token_count(parts)
-
-    def _section_content_token_count(self, section: _MeasuredSection) -> int:
-        """Estimate a section subtree containing only rendered body content."""
-        return self._joined_token_count(
-            [
-                section.counts.body,
-                *(self._section_content_token_count(child) for child in section.children),
-            ]
-        )
 
     def _split_section(
         self,
@@ -384,10 +345,9 @@ class MarkdownSplitter(SplitterProtocol):
         include_prefix = (
             self.options.retain_headings and self.options.include_common_headings and node.level > 0
         )
-        prefix = render_heading_path(node.path) if include_prefix else ""
         return self._split_fragment(
             headings=node.path,
-            prefix=prefix,
+            include_prefix=include_prefix,
             blocks=node.blocks.copy(),
         )
 
@@ -395,16 +355,18 @@ class MarkdownSplitter(SplitterProtocol):
         self,
         *,
         headings: HeadingPath,
-        prefix: str,
+        include_prefix: bool,
         blocks: list[MarkdownBlock],
     ) -> list[_ChunkDraft]:
         """Greedy block-level split of a fragment into chunk drafts within token budget."""
         max_tokens = self.options.max_tokens
-        prefix_tokens = self._heading_path_token_count(headings) if prefix else 0
-        if prefix_tokens >= max_tokens:
+        prefix_tokens = self._heading_path_token_count(headings) if include_prefix else 0
+        if prefix_tokens >= max_tokens or not blocks:
+            entry = self._entries_from_blocks(headings, blocks)
             return [
-                self._draft_from_entries(
-                    [self._entries_from_blocks(headings, blocks)],
+                _ChunkDraft(
+                    entries=[entry],
+                    token_count=entry.body_token_count,
                     split_origin="fragment",
                 )
             ]
@@ -415,14 +377,6 @@ class MarkdownSplitter(SplitterProtocol):
         current_body_tokens = 0
         current_start_line: int | None = None
         current_end_line: int | None = None
-
-        if not blocks:
-            return [
-                self._draft_from_entries(
-                    [self._entries_from_blocks(headings, blocks)],
-                    split_origin="fragment",
-                )
-            ]
 
         budget = max(0, max_tokens - prefix_tokens) if prefix_tokens > 0 else max_tokens
 
@@ -441,9 +395,9 @@ class MarkdownSplitter(SplitterProtocol):
             )
 
         for block in blocks:
-            block_tokens = self.tokenizer.count(block.text)
+            block_tokens = self.tokenizer.count(f"{block.text}{SEPARATOR}", cache=True)
             candidate_body_tokens = self._append_token_count(current_joined, block.text)
-            candidate_total = self._joined_token_count([prefix_tokens, candidate_body_tokens])
+            candidate_total = prefix_tokens + candidate_body_tokens
             if current_parts and candidate_total > max_tokens:
                 chunks.append(draft_current())
                 current_parts = []
@@ -452,12 +406,12 @@ class MarkdownSplitter(SplitterProtocol):
                 current_start_line = None
                 current_end_line = None
 
-            single_block_total = self._joined_token_count([prefix_tokens, block_tokens])
+            single_block_total = prefix_tokens + block_tokens
             if single_block_total <= max_tokens:
                 current_parts.append(block.text)
                 current_body_tokens = self._append_token_count(current_joined, block.text)
                 current_joined = (
-                    f"{current_joined}\n\n{block.text}" if current_joined else block.text
+                    f"{current_joined}{SEPARATOR}{block.text}" if current_joined else block.text
                 )
                 if block.start_line is not None and (
                     current_start_line is None or block.start_line < current_start_line
@@ -544,7 +498,7 @@ class MarkdownSplitter(SplitterProtocol):
         open_fence = f"```{info}".rstrip()
         close_fence = "```"
         empty_render = f"{open_fence}\n{close_fence}"
-        wrapper_tokens = self.tokenizer.count(empty_render)
+        wrapper_tokens = self.tokenizer.count(empty_render, cache=True)
         if wrapper_tokens >= max_tokens:
             return [block.text]
 
@@ -784,7 +738,7 @@ class MarkdownSplitter(SplitterProtocol):
                     chunk_id=f"chunk-{index:04d}",
                     body=body,
                     token_count=token_count,
-                    estimated_token_count=token_count,
+                    estimated_token_count=chunk.token_count,
                     headings=headings,
                     section_level=headings[-1][0] if headings else 0,
                     document_title=document.title,
@@ -815,14 +769,17 @@ class MarkdownSplitter(SplitterProtocol):
         body = join_markdown([block.text for block in blocks])
         start_lines = [b.start_line for b in blocks if b.start_line is not None]
         end_lines = [b.end_line for b in blocks if b.end_line is not None]
+        if body_token_count is None:
+            body_token_count = 0
+            for block in blocks:
+                body_token_count += self.tokenizer.count(block.text + SEPARATOR, cache=True)
+
         return _Entry(
             headings=headings,
             body=body,
             start_line=min(start_lines) if start_lines else None,
             end_line=max(end_lines) if end_lines else None,
-            body_token_count=(
-                self.tokenizer.count(body) if body_token_count is None else body_token_count
-            ),
+            body_token_count=body_token_count,
         )
 
     def _entries_from_section(self, section: _MeasuredSection) -> list[_Entry]:
@@ -861,7 +818,7 @@ class MarkdownSplitter(SplitterProtocol):
             return 0
 
         if not self.options.retain_headings:
-            return self._joined_token_count(entry.body_token_count for entry in entries)
+            return sum(entry.body_token_count for entry in entries)
 
         parts: list[int] = []
         common_headings = self._common_heading_path(entry.headings for entry in entries)
@@ -874,17 +831,15 @@ class MarkdownSplitter(SplitterProtocol):
             if len(shared_headings) < len(common_headings):
                 shared_headings = common_headings
             relative_headings = entry.headings[len(shared_headings) :]
-            entry_token_count = self._joined_token_count(
-                [
-                    self._heading_path_token_count(relative_headings),
-                    entry.body_token_count,
-                ]
+            entry_token_count = (
+                self._heading_path_token_count(relative_headings) + entry.body_token_count
             )
+
             if entry_token_count:
                 parts.append(entry_token_count)
             previous_headings = entry.headings
 
-        return self._joined_token_count(parts)
+        return sum(parts)
 
     def _render_body(
         self,
