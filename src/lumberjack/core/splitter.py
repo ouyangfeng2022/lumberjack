@@ -240,7 +240,7 @@ class MarkdownSplitter(SplitterProtocol):
             ]
 
         if section.children:
-            return self._split_section_children(section)
+            return self._split_section_children(section)  # include section.body
 
         return self._split_section_body(section)
 
