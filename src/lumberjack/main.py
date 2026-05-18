@@ -77,6 +77,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         help="Allow splitting oversized blocks of the given kind; repeat the flag to enable multiple kinds",
     )
+    parser.add_argument(
+        "--disable-lheading",
+        action="store_true",
+        help="Disable markdown-it setext heading parsing via parser.disable('lheading')",
+    )
     return parser
 
 
@@ -104,6 +109,7 @@ def main() -> None:
         include_common_headings=not args.no_include_common_headings,
         isolate_front_matter=not args.no_isolate_front_matter,
         split_oversized_blocks=frozenset(args.split_oversized_block),
+        disable_lheading=args.disable_lheading,
         tokenizer=args.tokenizer,
         parser=args.parser,
         document_metadata={"path": str(input_path.resolve())},

@@ -77,6 +77,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         *,
         plugins: Iterable[Callable[..., None]] = (),
         options_update: dict[str, Any] | None = None,
+        disable_lheading: bool = False,
     ) -> None:
         self._parser = MarkdownIt(preset, options_update=options_update)
         self._parser.use(texmath_plugin, delimiters="brackets")
@@ -84,6 +85,8 @@ class MarkdownItParser(_InlineRenderingMixin):
         self._parser.use(front_matter_plugin)
         for plugin in plugins:
             self._parser.use(plugin)
+        if disable_lheading:
+            self._parser.disable("lheading")
 
     def parse(
         self,
@@ -717,9 +720,9 @@ class MarkdownItParser(_InlineRenderingMixin):
 MarkdownParser = MarkdownItParser
 
 
-def create_parser(name: str) -> MarkdownParserProtocol:
+def create_parser(name: str, *, disable_lheading: bool = False) -> MarkdownParserProtocol:
     """Instantiate a parser by name (``"default"`` or ``"markdown-it"``)."""
     normalized = name.strip().lower()
     if normalized in {"default", "markdown-it"}:
-        return MarkdownItParser()
+        return MarkdownItParser(disable_lheading=disable_lheading)
     raise ValueError(f"Unsupported parser: {name}")

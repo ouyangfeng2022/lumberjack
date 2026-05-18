@@ -20,6 +20,7 @@ const DEFAULT_OPTIONS: Options = {
   merge_small_chunks: true,
   isolate_front_matter: true,
   split_oversized_blocks: 'paragraph,blockquote,html_block',
+  disable_lheading: false,
   tokenizer: 'simple',
   document_title: 'document.md',
 };

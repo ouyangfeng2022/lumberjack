@@ -41,6 +41,7 @@ const zh = {
   opts_overlap_tokens: '重叠词元数',
   opts_merge_small: '合并小块',
   opts_isolate_front_matter: '独立首页元数据',
+  opts_disable_lheading: '禁用 Setext 标题',
   opts_tokenizer: '分词器',
   opts_tokenizer_simple: '简单',
   opts_tokenizer_tiktoken: 'Tiktoken',

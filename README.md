@@ -118,6 +118,7 @@ chunks = lumber(
     retain_headings=True,
     merge_small_chunks=True,
     split_oversized_blocks=("list", "code_fence"),
+    disable_lheading=False,
     tokenizer="simple",
 )
 

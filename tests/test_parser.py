@@ -193,6 +193,17 @@ def test_markdown_it_parser_supports_setext_tables_and_extended_inlines() -> Non
     assert document.reference_definitions == {"ref": {"destination": "/target", "title": "Title"}}
 
 
+def test_markdown_it_parser_can_disable_setext_headings() -> None:
+    document = MarkdownItParser(disable_lheading=True).parse(
+        "Title\n=====\n\nbody",
+        document_title="setext.md",
+    )
+
+    assert document.root.children == []
+    assert [block.kind for block in document.root.blocks] == ["paragraph", "paragraph"]
+    assert document.root.blocks[0].text == "Title\n====="
+
+
 def test_markdown_it_parser_handles_all_block_and_inline_tokens_in_comprehensive_fixture() -> None:
     parser = MarkdownItParser()
     env: dict[str, object] = {}
@@ -245,6 +256,7 @@ def test_markdown_it_parser_handles_all_block_and_inline_tokens_in_comprehensive
         "link_close",
         "link_open",
         "math_inline",
+        "math_single",
         "s_close",
         "s_open",
         "softbreak",
@@ -448,7 +460,7 @@ def test_no_document_title_no_headings_uses_anonymous() -> None:
 
 def test_no_document_title_front_matter_empty_title_uses_first_h1() -> None:
     """Empty front matter title is skipped, falling back to first H1."""
-    md = "---\ntitle: \"\"\n---\n\n# Real Title\n\nContent."
+    md = '---\ntitle: ""\n---\n\n# Real Title\n\nContent.'
     document = MarkdownParser().parse(md)
 
     assert document.title == "Real Title"

@@ -29,13 +29,18 @@ def lumber(
             "html_block",
         }
     ),
+    disable_lheading: bool = False,
     tokenizer: str | TokenizerProtocol = "simple",
     parser: str | MarkdownParserProtocol = "default",
     document_metadata: dict[str, object] | None = None,
 ) -> list[Chunk]:
     """Split markdown text into semantic chunks."""
     tokenizer_impl = create_tokenizer(tokenizer) if isinstance(tokenizer, str) else tokenizer
-    parser_impl = create_parser(parser) if isinstance(parser, str) else parser
+    parser_impl = (
+        create_parser(parser, disable_lheading=disable_lheading)
+        if isinstance(parser, str)
+        else parser
+    )
     document = parser_impl.parse(
         text,
         document_title=document_title,

@@ -73,6 +73,23 @@ def test_split_with_options(client: TestClient) -> None:
     assert body["chunk_count"] >= 1
 
 
+def test_split_can_disable_setext_headings(client: TestClient) -> None:
+    response = client.post(
+        "/lumber/api/split",
+        data={
+            "text": "Title\n=====\n\nbody",
+            "max_tokens": "500",
+            "retain_headings": "false",
+            "disable_lheading": "true",
+        },
+    )
+
+    assert response.status_code == 200
+    chunk = response.json()["chunks"][0]
+    assert chunk["body"] == "Title\n=====\n\nbody"
+    assert chunk["headings"] == []
+
+
 def test_pipeline_uses_lumber_prefix(client: TestClient) -> None:
     response = client.post(
         "/lumber/api/pipeline",

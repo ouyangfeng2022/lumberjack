@@ -41,6 +41,7 @@ const en = {
   opts_overlap_tokens: 'Overlap tokens',
   opts_merge_small: 'Merge small chunks',
   opts_isolate_front_matter: 'Isolate front matter',
+  opts_disable_lheading: 'Disable Setext headings',
   opts_tokenizer: 'Tokenizer',
   opts_tokenizer_simple: 'Simple',
   opts_tokenizer_tiktoken: 'Tiktoken',

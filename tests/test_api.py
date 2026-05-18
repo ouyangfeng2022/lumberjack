@@ -79,6 +79,20 @@ def test_lumber_accepts_overlap_options() -> None:
     assert all(chunk.document_title == "sample.md" for chunk in chunks)
 
 
+def test_lumber_can_disable_setext_headings() -> None:
+    chunks = lumber(
+        "Title\n=====\n\nbody",
+        document_title="setext.md",
+        max_tokens=500,
+        retain_headings=False,
+        disable_lheading=True,
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0].body == "Title\n=====\n\nbody"
+    assert chunks[0].headings == ()
+
+
 def test_chunk_to_dict_serializes_heading_path() -> None:
     chunk = lumber(FIXTURE, document_title="sample.md", max_tokens=180)[-1]
 

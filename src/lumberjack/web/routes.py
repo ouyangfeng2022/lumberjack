@@ -81,6 +81,7 @@ async def split(
     merge_small_chunks: bool = Form(True),
     isolate_front_matter: bool = Form(True),
     split_oversized_blocks: str = Form("paragraph,blockquote,html_block"),
+    disable_lheading: bool = Form(False),
     tokenizer: str = Form("simple"),
 ) -> dict:
     """Split Markdown text or an uploaded file into chunks and return JSON results."""
@@ -111,6 +112,7 @@ async def split(
         merge_small_chunks=options.merge_small_chunks,
         isolate_front_matter=options.isolate_front_matter,
         split_oversized_blocks=options.split_oversized_blocks,
+        disable_lheading=disable_lheading,
         tokenizer=tokenizer,
     )
 
@@ -133,6 +135,7 @@ async def pipeline(
     merge_small_chunks: bool = Form(True),
     isolate_front_matter: bool = Form(True),
     split_oversized_blocks: str = Form("paragraph,blockquote,html_block"),
+    disable_lheading: bool = Form(False),
     tokenizer: str = Form("simple"),
 ) -> dict:
     """Return all intermediate pipeline stages for visualization."""
@@ -156,7 +159,7 @@ async def pipeline(
     lines = content.splitlines()
 
     # Stage 2: Parser tokens
-    parser_impl = WebParser()
+    parser_impl = WebParser(disable_lheading=disable_lheading)
     tokens = parser_impl.parse_tokens(content)
 
     # Stage 3: Document AST
@@ -193,6 +196,7 @@ async def pipeline(
                 "max_tokens": max_tokens,
                 "merge_below_tokens": merge_below_tokens,
                 "overlap_tokens": overlap_tokens,
+                "disable_lheading": disable_lheading,
             },
         },
         "stage_5_chunks": {
