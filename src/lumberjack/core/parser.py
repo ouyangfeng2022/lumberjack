@@ -81,9 +81,6 @@ class MarkdownItParser(_InlineRenderingMixin):
         self._parser = MarkdownIt(preset, options_update=options_update)
         self._parser.use(texmath_plugin, delimiters="brackets")
         self._parser.use(texmath_plugin, delimiters="dollars")
-        self._parser.use(texmath_plugin, delimiters="gitlab")
-        self._parser.use(texmath_plugin, delimiters="julia")
-        self._parser.use(texmath_plugin, delimiters="kramdown")
         self._parser.use(front_matter_plugin)
         for plugin in plugins:
             self._parser.use(plugin)
