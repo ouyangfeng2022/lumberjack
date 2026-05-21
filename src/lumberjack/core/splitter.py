@@ -27,6 +27,90 @@ THEMATIC_BREAK_ATTACH_PREVIOUS_KINDS = frozenset(
 )
 
 
+def max_line(left: int | None, right: int | None) -> int | None:
+    lines = [line for line in (left, right) if line is not None]
+    return max(lines, default=None)
+
+
+def count_joined(
+    tokenizer: TokenizerProtocol,
+    current: str,
+    next_part: str,
+    separator: str = "\n\n",
+) -> int:
+    if not current:
+        return tokenizer.count(next_part)
+    if not next_part:
+        return tokenizer.count(current)
+    return tokenizer.count(f"{current}{separator}{next_part}")
+
+
+def heading_path_token_count(tokenizer: TokenizerProtocol, path: HeadingPath) -> int:
+    if not path:
+        return 0
+    tokens = 0
+    for level, title in path:
+        if title:
+            tokens = tokens + tokenizer.count("#" * level + " " + title + SEPARATOR, cache=True)
+    return tokens
+
+
+def common_heading_path(paths: Iterable[HeadingPath]) -> HeadingPath:
+    iterator = iter(paths)
+    first = tuple(next(iterator, ()))
+    common = first
+    for path in iterator:
+        limit = min(len(common), len(path))
+        index = 0
+        while index < limit and common[index] == path[index]:
+            index += 1
+        common = common[:index]
+        if not common:
+            break
+    return common
+
+
+def attach_thematic_breaks(blocks: list[MarkdownBlock]) -> list[MarkdownBlock]:
+    attached: list[MarkdownBlock] = []
+    pending: list[MarkdownBlock] = []
+
+    for block in blocks:
+        if block.kind == "thematic_break":
+            if attached and attached[-1].kind in THEMATIC_BREAK_ATTACH_PREVIOUS_KINDS:
+                attached[-1] = MarkdownBlock(
+                    kind=attached[-1].kind,
+                    text=join_markdown([attached[-1].text, block.text]),
+                    start_line=attached[-1].start_line,
+                    end_line=max_line(attached[-1].end_line, block.end_line),
+                    children=attached[-1].children,
+                    inlines=attached[-1].inlines,
+                    attrs=attached[-1].attrs,
+                )
+            else:
+                pending.append(block)
+            continue
+
+        if pending:
+            start_lines = [break_block.start_line for break_block in pending]
+            start_lines.append(block.start_line)
+            block = MarkdownBlock(
+                kind=block.kind,
+                text=join_markdown([*(break_block.text for break_block in pending), block.text]),
+                start_line=min((line for line in start_lines if line is not None), default=None),
+                end_line=block.end_line,
+                children=block.children,
+                inlines=block.inlines,
+                attrs=block.attrs,
+            )
+            pending = []
+        attached.append(block)
+
+    if pending:
+        attached.extend(pending)
+
+    return attached
+
+
 @dataclass(slots=True)
 class _Entry:
     """Rendered content unit with heading context and line range, a flattened SectionNode.
@@ -86,6 +170,229 @@ class _MeasuredSection:
     children: tuple[_MeasuredSection, ...] = ()
 
 
+class TextSplitter:
+    """Splits oversized text blocks into token-bounded pieces."""
+
+    def __init__(self, tokenizer: TokenizerProtocol, overlap_tokens: int = 0):
+        self.tokenizer = tokenizer
+        self.overlap_tokens = overlap_tokens
+
+    def split_oversized_block(
+        self,
+        block: MarkdownBlock,
+        *,
+        max_tokens: int,
+        allowed_kinds: frozenset[str] | set[str],
+    ) -> list[str] | None:
+        if block.kind.lower() not in allowed_kinds:
+            return None
+
+        if block.kind in {"code_block", "code_fence"}:
+            return self.split_code_block(block, max_tokens=max_tokens)
+
+        if block.kind == "list" and block.children:
+            return self.split_list_block(block, max_tokens=max_tokens)
+
+        return self.split_text(block.text, max_tokens=max_tokens)
+
+    def split_code_block(
+        self,
+        block: MarkdownBlock,
+        *,
+        max_tokens: int,
+    ) -> list[str]:
+        info = str(block.attrs.get("info") or block.attrs.get("language") or "").strip()
+        literal = str(block.attrs.get("literal") or "")
+        open_fence = f"```{info}".rstrip()
+        close_fence = "```"
+        empty_render = f"{open_fence}\n{close_fence}"
+        wrapper_tokens = self.tokenizer.count(empty_render, cache=True)
+        if wrapper_tokens >= max_tokens:
+            return [block.text]
+
+        code_budget = max_tokens - wrapper_tokens
+        pieces = self.split_text(literal, max_tokens=code_budget)
+        return [f"{open_fence}\n{piece}\n{close_fence}" for piece in pieces]
+
+    def split_list_block(
+        self,
+        block: MarkdownBlock,
+        *,
+        max_tokens: int,
+    ) -> list[str]:
+        items = [child.text for child in block.children if child.text]
+        if len(items) <= 1:
+            return self.split_text(
+                block.text,
+                max_tokens=max_tokens,
+            )
+
+        packed = self.pack_parts(
+            items,
+            max_tokens,
+            separator="\n",
+            overlap_tokens=0,
+        )
+        if all(self.tokenizer.count(part) <= max_tokens for part in packed):
+            return packed
+
+        pieces: list[str] = []
+        for item in items:
+            if self.tokenizer.count(item) <= max_tokens:
+                pieces.append(item)
+                continue
+            pieces.extend(
+                self.split_text(
+                    item,
+                    max_tokens=max_tokens,
+                )
+            )
+        return pieces
+
+    def split_text(
+        self,
+        text: str,
+        *,
+        max_tokens: int,
+    ) -> list[str]:
+        overlap_tokens = self.overlap_tokens
+        if self.tokenizer.count(text) <= max_tokens:
+            return [text]
+
+        if any(
+            self.tokenizer.count(m.group(0)) > max_tokens for m in PROTECTED_SPAN_RE.finditer(text)
+        ):
+            return [text]
+
+        for separator in ("\n\n", "\n"):
+            parts = [part.strip() for part in text.split(separator) if part.strip()]
+            if len(parts) > 1:
+                packed = self.pack_parts(
+                    parts,
+                    max_tokens,
+                    separator=separator,
+                    overlap_tokens=overlap_tokens,
+                )
+                if all(self.tokenizer.count(part) <= max_tokens for part in packed):
+                    return packed
+
+        sentence_parts = [part.strip() for part in SENTENCE_BREAK_RE.split(text) if part.strip()]
+        if len(sentence_parts) > 1:
+            packed = self.pack_parts(
+                sentence_parts,
+                max_tokens,
+                separator=" ",
+                overlap_tokens=overlap_tokens,
+            )
+            if all(self.tokenizer.count(part) <= max_tokens for part in packed):
+                return packed
+
+        word_parts = [part for part in text.split(" ") if part]
+        if len(word_parts) > 1:
+            packed = self.pack_parts(
+                word_parts,
+                max_tokens,
+                separator=" ",
+                overlap_tokens=overlap_tokens,
+            )
+            if all(self.tokenizer.count(part) <= max_tokens for part in packed):
+                return packed
+
+        return self.hard_split(text, max_tokens, overlap_tokens=overlap_tokens)
+
+    def pack_parts(
+        self,
+        parts: list[str],
+        max_tokens: int,
+        *,
+        separator: str,
+        overlap_tokens: int,
+    ) -> list[str]:
+        packed: list[str] = []
+        current_parts: list[str] = []
+        current_joined = ""
+        current_tokens = 0
+        for part in parts:
+            candidate_tokens = count_joined(self.tokenizer, current_joined, part, separator)
+            if current_parts and candidate_tokens > max_tokens:
+                packed.append(current_joined)
+                overlap_parts, _ = self.tail_parts_within_budget(
+                    current_joined,
+                    max_tokens=overlap_tokens,
+                    separator=separator,
+                )
+                current_parts = [*overlap_parts, part]
+                current_joined = separator.join(current_parts)
+                current_tokens = self.tokenizer.count(current_joined)
+                if current_tokens > max_tokens:
+                    current_parts = [part]
+                    current_joined = part
+                    current_tokens = self.tokenizer.count(part)
+            else:
+                current_parts.append(part)
+                current_joined = separator.join(current_parts)
+                current_tokens = candidate_tokens
+        if current_parts:
+            packed.append(current_joined)
+        return packed
+
+    def hard_split(
+        self,
+        text: str,
+        max_tokens: int,
+        *,
+        overlap_tokens: int,
+    ) -> list[str]:
+        parts: list[str] = []
+        current = ""
+        for character in text:
+            candidate = f"{current}{character}"
+            if current and self.tokenizer.count(candidate) > max_tokens:
+                parts.append(current)
+                overlap = self.suffix_within_budget(current, overlap_tokens)
+                current = f"{overlap}{character}" if overlap else character
+                if self.tokenizer.count(current) > max_tokens:
+                    current = character
+            else:
+                current = candidate
+        if current:
+            parts.append(current)
+        return [part.strip() for part in parts if part.strip()]
+
+    def tail_parts_within_budget(
+        self,
+        current_joined: str,
+        *,
+        max_tokens: int,
+        separator: str,
+    ) -> tuple[list[str], int]:
+        if max_tokens <= 0 or not current_joined:
+            return ([], 0)
+        parts = current_joined.split(separator)
+        tail: list[str] = []
+        for part in reversed(parts):
+            candidate = separator.join([part, *tail]) if tail else part
+            if self.tokenizer.count(candidate) > max_tokens:
+                break
+            tail = [part, *tail]
+        tail_joined = separator.join(tail) if tail else ""
+        return (tail, self.tokenizer.count(tail_joined))
+
+    def suffix_within_budget(self, text: str, max_tokens: int) -> str:
+        if max_tokens <= 0 or not text:
+            return ""
+        if self.tokenizer.count(text) <= max_tokens:
+            return text
+
+        for start in range(1, len(text)):
+            suffix = text[start:]
+            if any(m.start() < start < m.end() for m in PROTECTED_SPAN_RE.finditer(text)):
+                continue
+            if self.tokenizer.count(suffix) <= max_tokens:
+                return suffix
+        return ""
+
+
 class MarkdownSplitter(SplitterProtocol):
     """Split a parsed Markdown document into token-bounded chunks."""
 
@@ -104,6 +411,7 @@ class MarkdownSplitter(SplitterProtocol):
         """
         self.tokenizer = tokenizer or SimpleCharTokenizer()
         self.options = options or SplitOptions()
+        self._text_splitter = TextSplitter(self.tokenizer, self.options.overlap_tokens)
 
     def split(self, document: DocumentAST) -> list[Chunk]:
         """Split *document* into chunks respecting token limits and merge preferences."""
@@ -189,26 +497,6 @@ class MarkdownSplitter(SplitterProtocol):
             children=children,
         )
 
-    def _append_token_count(
-        self, current_joined: str, next_part: str, separator: str = "\n\n"
-    ) -> int:
-        if not current_joined:
-            return self.tokenizer.count(next_part)
-        if not next_part:
-            return self.tokenizer.count(current_joined)
-        return self.tokenizer.count(f"{current_joined}{separator}{next_part}")
-
-    def _heading_path_token_count(self, path: HeadingPath) -> int:
-        if not path:
-            return 0
-        tokens = 0
-        for level, title in path:
-            if title:
-                tokens = tokens + self.tokenizer.count(
-                    "#" * level + " " + title + SEPARATOR, cache=True
-                )
-        return tokens
-
     def _section_entry_common_path(self, section: _MeasuredSection) -> HeadingPath:
         """Return the common heading prefix for renderable entries in *section*."""
         node = section.node
@@ -221,7 +509,7 @@ class MarkdownSplitter(SplitterProtocol):
             if child_common:
                 paths.append(child_common)
 
-        return self._common_heading_path(paths)
+        return common_heading_path(paths)
 
     def _split_section(
         self,
@@ -232,7 +520,7 @@ class MarkdownSplitter(SplitterProtocol):
             return []
 
         common_heading_token_count: int = (
-            self._heading_path_token_count(section.node.path[:-1])
+            heading_path_token_count(self.tokenizer, section.node.path[:-1])
             if self.options.include_common_headings
             else 0
         )
@@ -262,7 +550,9 @@ class MarkdownSplitter(SplitterProtocol):
         current_token_count: int = 0
 
         common_heading_token_count: int = (
-            self._heading_path_token_count(node.path) if self.options.include_common_headings else 0
+            heading_path_token_count(self.tokenizer, node.path)
+            if self.options.include_common_headings
+            else 0
         )
         budget_token_count = self.options.max_tokens - common_heading_token_count
 
@@ -345,10 +635,10 @@ class MarkdownSplitter(SplitterProtocol):
             self.options.retain_headings and self.options.include_common_headings and node.level > 0
         )
         headings = node.path
-        blocks = self._attach_thematic_breaks(node.blocks)
+        blocks = attach_thematic_breaks(node.blocks)
         max_tokens = self.options.max_tokens
 
-        prefix_tokens = self._heading_path_token_count(headings) if include_prefix else 0
+        prefix_tokens = heading_path_token_count(self.tokenizer, headings) if include_prefix else 0
         if prefix_tokens >= max_tokens or not blocks:
             entry = self._entry_from_blocks(headings, blocks)
             return [
@@ -384,7 +674,7 @@ class MarkdownSplitter(SplitterProtocol):
 
         for block in blocks:
             block_tokens = self.tokenizer.count(f"{block.text}{SEPARATOR}", cache=True)
-            candidate_body_tokens = self._append_token_count(current_joined, block.text)
+            candidate_body_tokens = count_joined(self.tokenizer, current_joined, block.text)
             candidate_total = prefix_tokens + candidate_body_tokens
             if current_parts and candidate_total > max_tokens:
                 chunks.append(draft_current())
@@ -397,7 +687,7 @@ class MarkdownSplitter(SplitterProtocol):
             single_block_total = prefix_tokens + block_tokens
             if single_block_total <= max_tokens:
                 current_parts.append(block.text)
-                current_body_tokens = self._append_token_count(current_joined, block.text)
+                current_body_tokens = count_joined(self.tokenizer, current_joined, block.text)
                 current_joined = (
                     f"{current_joined}{SEPARATOR}{block.text}" if current_joined else block.text
                 )
@@ -411,7 +701,9 @@ class MarkdownSplitter(SplitterProtocol):
                     current_end_line = block.end_line
                 continue
 
-            block_pieces = self._split_oversized_block(block, max_tokens=budget)
+            block_pieces = self._text_splitter.split_oversized_block(
+                block, max_tokens=budget, allowed_kinds=self.options.split_oversized_blocks
+            )
             if block_pieces is None:
                 chunks.append(
                     self._draft_from_entries(
@@ -457,285 +749,6 @@ class MarkdownSplitter(SplitterProtocol):
                 chunks.append(draft_current())
 
         return chunks
-
-    def _attach_thematic_breaks(self, blocks: list[MarkdownBlock]) -> list[MarkdownBlock]:
-        """Keep thematic breaks from becoming standalone chunks without changing the AST."""
-        attached: list[MarkdownBlock] = []
-        pending: list[MarkdownBlock] = []
-
-        for block in blocks:
-            if block.kind == "thematic_break":
-                if attached and attached[-1].kind in THEMATIC_BREAK_ATTACH_PREVIOUS_KINDS:
-                    attached[-1] = self._append_thematic_break(attached[-1], block)
-                else:
-                    pending.append(block)
-                continue
-
-            if pending:
-                block = self._prepend_thematic_breaks(pending, block)
-                pending = []
-            attached.append(block)
-
-        if pending:
-            attached.extend(pending)
-
-        return attached
-
-    @staticmethod
-    def _append_thematic_break(
-        block: MarkdownBlock, thematic_break: MarkdownBlock
-    ) -> MarkdownBlock:
-        return MarkdownBlock(
-            kind=block.kind,
-            text=join_markdown([block.text, thematic_break.text]),
-            start_line=block.start_line,
-            end_line=MarkdownSplitter._max_line(block.end_line, thematic_break.end_line),
-            children=block.children,
-            inlines=block.inlines,
-            attrs=block.attrs,
-        )
-
-    @staticmethod
-    def _prepend_thematic_breaks(
-        thematic_breaks: list[MarkdownBlock],
-        block: MarkdownBlock,
-    ) -> MarkdownBlock:
-        start_lines = [break_block.start_line for break_block in thematic_breaks]
-        start_lines.append(block.start_line)
-        return MarkdownBlock(
-            kind=block.kind,
-            text=join_markdown(
-                [*(break_block.text for break_block in thematic_breaks), block.text]
-            ),
-            start_line=min((line for line in start_lines if line is not None), default=None),
-            end_line=block.end_line,
-            children=block.children,
-            inlines=block.inlines,
-            attrs=block.attrs,
-        )
-
-    @staticmethod
-    def _max_line(left: int | None, right: int | None) -> int | None:
-        lines = [line for line in (left, right) if line is not None]
-        return max(lines, default=None)
-
-    def _split_oversized_block(
-        self,
-        block: MarkdownBlock,
-        max_tokens: int,
-    ) -> list[str] | None:
-        """Split an oversized block if its kind is allowed, otherwise return ``None``."""
-        if block.kind.lower() not in self.options.split_oversized_blocks:
-            return None
-
-        if block.kind in {"code_block", "code_fence"}:
-            return self._split_code_block(block, max_tokens=max_tokens)
-
-        if block.kind == "list" and block.children:
-            return self._split_list_block(block, max_tokens=max_tokens)
-
-        return self._split_text(block.text, max_tokens=max_tokens)
-
-    def _split_code_block(
-        self,
-        block: MarkdownBlock,
-        max_tokens: int,
-    ) -> list[str]:
-        """Split a fenced/indented code block, preserving fence wrappers in each piece."""
-        # TODO: LSP
-        info = str(block.attrs.get("info") or block.attrs.get("language") or "").strip()
-        literal = str(block.attrs.get("literal") or "")
-        open_fence = f"```{info}".rstrip()
-        close_fence = "```"
-        empty_render = f"{open_fence}\n{close_fence}"
-        wrapper_tokens = self.tokenizer.count(empty_render, cache=True)
-        if wrapper_tokens >= max_tokens:
-            return [block.text]
-
-        code_budget = max_tokens - wrapper_tokens
-        pieces = self._split_text(literal, max_tokens=code_budget)
-        return [f"{open_fence}\n{piece}\n{close_fence}" for piece in pieces]
-
-    def _split_list_block(
-        self,
-        block: MarkdownBlock,
-        max_tokens: int,
-    ) -> list[str]:
-        """Split a list block by packing list items, falling back to text splitting."""
-        # TODO: MAX_TOKENS specifically for list
-        items = [child.text for child in block.children if child.text]
-        if len(items) <= 1:
-            return self._split_text(
-                block.text,
-                max_tokens=max_tokens,
-            )
-
-        packed = self._pack_parts(
-            items,
-            max_tokens,
-            separator="\n",
-            overlap_tokens=0,
-        )
-        if all(self.tokenizer.count(part) <= max_tokens for part in packed):
-            return packed
-
-        pieces: list[str] = []
-        for item in items:
-            if self.tokenizer.count(item) <= max_tokens:
-                pieces.append(item)
-                continue
-            pieces.extend(
-                self._split_text(
-                    item,
-                    max_tokens=max_tokens,
-                )
-            )
-        return pieces
-
-    def _split_text(
-        self,
-        text: str,
-        max_tokens: int,
-    ) -> list[str]:
-        """Split text through paragraph -> line -> sentence -> word -> hard-split fallback."""
-        overlap_tokens = self.options.overlap_tokens
-        if self.tokenizer.count(text) <= max_tokens:
-            return [text]
-
-        if any(
-            self.tokenizer.count(m.group(0)) > max_tokens for m in PROTECTED_SPAN_RE.finditer(text)
-        ):
-            return [text]
-
-        for separator in ("\n\n", "\n"):
-            parts = [part.strip() for part in text.split(separator) if part.strip()]
-            if len(parts) > 1:
-                packed = self._pack_parts(
-                    parts,
-                    max_tokens,
-                    separator=separator,
-                    overlap_tokens=overlap_tokens,
-                )
-                if all(self.tokenizer.count(part) <= max_tokens for part in packed):
-                    return packed
-
-        sentence_parts = [part.strip() for part in SENTENCE_BREAK_RE.split(text) if part.strip()]
-        if len(sentence_parts) > 1:
-            packed = self._pack_parts(
-                sentence_parts,
-                max_tokens,
-                separator=" ",
-                overlap_tokens=overlap_tokens,
-            )
-            if all(self.tokenizer.count(part) <= max_tokens for part in packed):
-                return packed
-
-        word_parts = [part for part in text.split(" ") if part]
-        if len(word_parts) > 1:
-            packed = self._pack_parts(
-                word_parts,
-                max_tokens,
-                separator=" ",
-                overlap_tokens=overlap_tokens,
-            )
-            if all(self.tokenizer.count(part) <= max_tokens for part in packed):
-                return packed
-
-        return self._hard_split(text, max_tokens, overlap_tokens=overlap_tokens)
-
-    def _pack_parts(
-        self,
-        parts: list[str],
-        max_tokens: int,
-        *,
-        separator: str,
-        overlap_tokens: int,
-    ) -> list[str]:
-        """Greedily pack parts into groups that fit within *max_tokens*, with optional overlap."""
-        packed: list[str] = []
-        current_parts: list[str] = []
-        current_joined = ""
-        current_tokens = 0
-        for part in parts:
-            candidate_tokens = self._append_token_count(current_joined, part, separator)
-            if current_parts and candidate_tokens > max_tokens:
-                packed.append(current_joined)
-                overlap_parts, _ = self._tail_parts_within_budget(
-                    current_joined,
-                    max_tokens=overlap_tokens,
-                    separator=separator,
-                )
-                current_parts = [*overlap_parts, part]
-                current_joined = separator.join(current_parts)
-                current_tokens = self.tokenizer.count(current_joined)
-                if current_tokens > max_tokens:
-                    current_parts = [part]
-                    current_joined = part
-                    current_tokens = self.tokenizer.count(part)
-            else:
-                current_parts.append(part)
-                current_joined = separator.join(current_parts)
-                current_tokens = candidate_tokens
-        if current_parts:
-            packed.append(current_joined)
-        return packed
-
-    def _hard_split(
-        self,
-        text: str,
-        max_tokens: int,
-        *,
-        overlap_tokens: int,
-    ) -> list[str]:
-        """Character-level split when no higher-level boundary is available."""
-        parts: list[str] = []
-        current = ""
-        for character in text:
-            candidate = f"{current}{character}"
-            if current and self.tokenizer.count(candidate) > max_tokens:
-                parts.append(current)
-                overlap = self._suffix_within_budget(current, overlap_tokens)
-                current = f"{overlap}{character}" if overlap else character
-                if self.tokenizer.count(current) > max_tokens:
-                    current = character
-            else:
-                current = candidate
-        if current:
-            parts.append(current)
-        return [part.strip() for part in parts if part.strip()]
-
-    def _tail_parts_within_budget(
-        self,
-        current_joined: str,
-        *,
-        max_tokens: int,
-        separator: str,
-    ) -> tuple[list[str], int]:
-        if max_tokens <= 0 or not current_joined:
-            return ([], 0)
-        parts = current_joined.split(separator)
-        tail: list[str] = []
-        for part in reversed(parts):
-            candidate = separator.join([part, *tail]) if tail else part
-            if self.tokenizer.count(candidate) > max_tokens:
-                break
-            tail = [part, *tail]
-        tail_joined = separator.join(tail) if tail else ""
-        return (tail, self.tokenizer.count(tail_joined))
-
-    def _suffix_within_budget(self, text: str, max_tokens: int) -> str:
-        if max_tokens <= 0 or not text:
-            return ""
-        if self.tokenizer.count(text) <= max_tokens:
-            return text
-
-        for start in range(1, len(text)):
-            suffix = text[start:]
-            if any(m.start() < start < m.end() for m in PROTECTED_SPAN_RE.finditer(text)):
-                continue
-            if self.tokenizer.count(suffix) <= max_tokens:
-                return suffix
-        return ""
 
     def _merge_small_chunks(
         self,
@@ -783,7 +796,7 @@ class MarkdownSplitter(SplitterProtocol):
         document_path = str(doc_path) if doc_path is not None else None
         index = 0
         for chunk in chunks:
-            headings = self._common_heading_path(entry.headings for entry in chunk.entries)
+            headings = common_heading_path(entry.headings for entry in chunk.entries)
             body = self._render_body(chunk.entries, common_headings=headings)
             if not body:
                 continue
@@ -881,18 +894,18 @@ class MarkdownSplitter(SplitterProtocol):
             return sum(entry.body_token_count for entry in entries)
 
         parts: list[int] = []
-        common_headings = self._common_heading_path(entry.headings for entry in entries)
+        common_headings = common_heading_path(entry.headings for entry in entries)
         if self.options.include_common_headings and common_headings:
-            parts.append(self._heading_path_token_count(common_headings))
+            parts.append(heading_path_token_count(self.tokenizer, common_headings))
 
         previous_headings = common_headings
         for entry in entries:
-            shared_headings = self._common_heading_path((previous_headings, entry.headings))
+            shared_headings = common_heading_path((previous_headings, entry.headings))
             if len(shared_headings) < len(common_headings):
                 shared_headings = common_headings
             relative_headings = entry.headings[len(shared_headings) :]
             entry_token_count = (
-                self._heading_path_token_count(relative_headings) + entry.body_token_count
+                heading_path_token_count(self.tokenizer, relative_headings) + entry.body_token_count
             )
 
             if entry_token_count:
@@ -926,7 +939,7 @@ class MarkdownSplitter(SplitterProtocol):
 
         previous_headings = common_headings
         for entry in entries:
-            shared_headings = self._common_heading_path((previous_headings, entry.headings))
+            shared_headings = common_heading_path((previous_headings, entry.headings))
             if len(shared_headings) < len(common_headings):
                 shared_headings = common_headings
             relative_headings = entry.headings[len(shared_headings) :]
@@ -942,18 +955,3 @@ class MarkdownSplitter(SplitterProtocol):
             previous_headings = entry.headings
 
         return join_markdown(parts)
-
-    def _common_heading_path(self, paths: Iterable[HeadingPath]) -> HeadingPath:
-        """Return the longest shared heading prefix across all given paths."""
-        iterator = iter(paths)
-        first = tuple(next(iterator, ()))
-        common = first
-        for path in iterator:
-            limit = min(len(common), len(path))
-            index = 0
-            while index < limit and common[index] == path[index]:
-                index += 1
-            common = common[:index]
-            if not common:
-                break
-        return common

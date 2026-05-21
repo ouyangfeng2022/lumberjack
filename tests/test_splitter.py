@@ -4,7 +4,7 @@ from pathlib import Path
 
 from lumberjack.api import lumber
 from lumberjack.core.parser import MarkdownParser
-from lumberjack.core.splitter import MarkdownSplitter, _ChunkDraft, _Entry
+from lumberjack.core.splitter import MarkdownSplitter, _ChunkDraft, _Entry, heading_path_token_count
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 from lumberjack.models import SplitOptions
 
@@ -473,8 +473,8 @@ def test_section_chunk_estimate_respects_hidden_common_headings_without_entries(
     )
     measured_root = splitter._measure_section(document.root)
     measured_scope = measured_root.children[0].children[0]
-    chunk_token_count = measured_scope.counts.subtree - splitter._heading_path_token_count(
-        measured_scope.node.path
+    chunk_token_count = measured_scope.counts.subtree - heading_path_token_count(
+        splitter.tokenizer, measured_scope.node.path
     )
 
     assert chunk_token_count == 31

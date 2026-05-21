@@ -24,11 +24,224 @@ from ..models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
 LINK_REFERENCE_DEFINITION_RE = re.compile(r"^[ ]{0,3}\[([^\]]+)\]:")
 
 
-class _InlineRenderingMixin:
-    def _render_inlines(self, inlines: Iterable[MarkdownInline]) -> str:
-        return "".join(self._render_inline(inline) for inline in inlines)
+def slice_source(source_lines: list[str], line_map: Any) -> str:
+    """Extract source text for a half-open [start, end) line range."""
+    if not isinstance(line_map, list) or len(line_map) != 2:
+        return ""
+    start, end = int(line_map[0]), int(line_map[1])
+    if start < 0 or end < start:
+        return ""
+    return "\n".join(source_lines[start:end])
 
-    def _render_inline(self, node: MarkdownInline) -> str:
+
+def start_line(token: Token) -> int | None:
+    if token.map is None:
+        return None
+    return int(token.map[0]) + 1
+
+
+def end_line(token: Token) -> int | None:
+    if token.map is None:
+        return None
+    return int(token.map[1])
+
+
+def is_tight_list(tokens: list[Token], start: int, end: int) -> bool:
+    return any(token.type == "paragraph_open" and token.hidden for token in tokens[start : end + 1])
+
+
+class InlineNormalizer:
+    """Converts markdown-it inline tokens into lumberjack MarkdownInline nodes and renders them back."""
+
+    def token_to_inlines(self, token: Token | None) -> tuple[MarkdownInline, ...]:
+        if token is None:
+            return ()
+        return self.normalize_tokens(token.children or [])
+
+    def normalize_tokens(self, tokens: list[Token]) -> tuple[MarkdownInline, ...]:
+        result, _ = self.collect_tokens(tokens, 0)
+        return result
+
+    def collect_tokens(
+        self,
+        tokens: list[Token],
+        index: int,
+        *,
+        stop_types: set[str] | None = None,
+    ) -> tuple[tuple[MarkdownInline, ...], int]:
+        normalized: list[MarkdownInline] = []
+        while index < len(tokens):
+            token = tokens[index]
+            if stop_types is not None and token.type in stop_types:
+                break
+
+            if token.type.endswith("_close"):
+                index += 1
+                continue
+
+            if token.type == "text":
+                normalized.append(MarkdownInline(kind="text", text=token.content))
+                index += 1
+                continue
+
+            if token.type == "code_inline":
+                normalized.append(
+                    MarkdownInline(
+                        kind="code_span",
+                        text=token.content,
+                        attrs={"literal": token.content},
+                    )
+                )
+                index += 1
+                continue
+
+            if token.type == "math_inline":
+                normalized.append(
+                    MarkdownInline(
+                        kind="math_inline",
+                        text=token.content,
+                        attrs={"literal": token.content},
+                    )
+                )
+                index += 1
+                continue
+
+            if token.type == "html_inline":
+                normalized.append(MarkdownInline(kind="inline_html", text=token.content))
+                index += 1
+                continue
+
+            if token.type in {"softbreak", "hardbreak"}:
+                normalized.append(
+                    MarkdownInline(
+                        kind="soft_break" if token.type == "softbreak" else "hard_break",
+                        text="\n",
+                    )
+                )
+                index += 1
+                continue
+
+            if token.type == "image":
+                normalized.append(
+                    MarkdownInline(
+                        kind="image",
+                        children=self.normalize_tokens(token.children or []),
+                        attrs={
+                            "destination": str((token.attrs or {}).get("src") or ""),
+                            "title": str((token.attrs or {}).get("title") or ""),
+                        },
+                    )
+                )
+                index += 1
+                continue
+
+            if token.type == "footnote_ref":
+                normalized.append(
+                    MarkdownInline(
+                        kind="footnote_ref",
+                        text=f"[^{token.meta.get('label', '')}]",
+                        attrs={
+                            "source_token_type": token.type,
+                            "meta": dict(token.meta)
+                            if isinstance(token.meta, dict)
+                            else token.meta,
+                        },
+                    )
+                )
+                index += 1
+                continue
+
+            if token.type == "footnote_anchor":
+                normalized.append(
+                    MarkdownInline(
+                        kind="footnote_anchor",
+                        text="",
+                        attrs={
+                            "source_token_type": token.type,
+                            "meta": dict(token.meta)
+                            if isinstance(token.meta, dict)
+                            else token.meta,
+                        },
+                    )
+                )
+                index += 1
+                continue
+
+            if token.type in {"em_open", "strong_open", "s_open", "link_open"}:
+                kind_map = {
+                    "em_open": "emphasis",
+                    "strong_open": "strong",
+                    "s_open": "strikethrough",
+                    "link_open": "autolink" if token.markup in {"autolink", "linkify"} else "link",
+                }
+                close_type_map = {
+                    "em_open": "em_close",
+                    "strong_open": "strong_close",
+                    "s_open": "s_close",
+                    "link_open": "link_close",
+                }
+                children, index = self.collect_tokens(
+                    tokens,
+                    index + 1,
+                    stop_types={close_type_map[token.type]},
+                )
+                if index < len(tokens):
+                    index += 1
+
+                attrs = {
+                    "destination": str((token.attrs or {}).get("href") or ""),
+                    "title": str((token.attrs or {}).get("title") or ""),
+                }
+                if token.type == "link_open" and token.markup in {"autolink", "linkify"}:
+                    attrs["literal"] = self.render_inlines(children)
+                    attrs["syntax"] = str(token.markup or "link")
+                normalized.append(
+                    MarkdownInline(
+                        kind=kind_map[token.type],
+                        children=children,
+                        attrs=attrs,
+                    )
+                )
+                continue
+
+            if token.type.endswith("_open"):
+                close_type = f"{token.type.removesuffix('_open')}_close"
+                children, index = self.collect_tokens(
+                    tokens,
+                    index + 1,
+                    stop_types={close_type},
+                )
+                if index < len(tokens):
+                    index += 1
+                normalized.append(
+                    MarkdownInline(
+                        kind=token.type.removesuffix("_open"),
+                        children=children,
+                        attrs={
+                            "source_token_type": token.type,
+                            "markup": str(token.markup or ""),
+                            "meta": dict(token.meta)
+                            if isinstance(token.meta, dict)
+                            else token.meta,
+                        },
+                    )
+                )
+                continue
+
+            if token.children:
+                normalized.extend(self.normalize_tokens(token.children))
+                index += 1
+                continue
+
+            normalized.append(MarkdownInline(kind=token.type, text=token.content))
+            index += 1
+
+        return (tuple(normalized), index)
+
+    def render_inlines(self, inlines: Iterable[MarkdownInline]) -> str:
+        return "".join(self.render_inline(inline) for inline in inlines)
+
+    def render_inline(self, node: MarkdownInline) -> str:
         if node.kind == "text":
             return node.text
         if node.kind == "code_span":
@@ -36,27 +249,27 @@ class _InlineRenderingMixin:
         if node.kind == "math_inline":
             return f"${node.attrs.get('literal', node.text)}$"
         if node.kind == "emphasis":
-            return f"*{self._render_inlines(node.children)}*"
+            return f"*{self.render_inlines(node.children)}*"
         if node.kind == "strong":
-            return f"**{self._render_inlines(node.children)}**"
+            return f"**{self.render_inlines(node.children)}**"
         if node.kind == "strikethrough":
-            return f"~~{self._render_inlines(node.children)}~~"
+            return f"~~{self.render_inlines(node.children)}~~"
         if node.kind == "link":
             title = str(node.attrs.get("title") or "").strip()
             title_suffix = f' "{title}"' if title else ""
             return (
-                f"[{self._render_inlines(node.children)}]"
+                f"[{self.render_inlines(node.children)}]"
                 f"({node.attrs.get('destination', '')}{title_suffix})"
             )
         if node.kind == "image":
             title = str(node.attrs.get("title") or "").strip()
             title_suffix = f' "{title}"' if title else ""
             return (
-                f"![{self._render_inlines(node.children)}]"
+                f"![{self.render_inlines(node.children)}]"
                 f"({node.attrs.get('destination', '')}{title_suffix})"
             )
         if node.kind == "autolink":
-            literal = str(node.attrs.get("literal") or self._render_inlines(node.children))
+            literal = str(node.attrs.get("literal") or self.render_inlines(node.children))
             if node.attrs.get("syntax") == "autolink":
                 return f"<{literal}>"
             return literal or str(node.attrs.get("destination", ""))
@@ -65,11 +278,11 @@ class _InlineRenderingMixin:
         if node.kind in {"soft_break", "hard_break"}:
             return "\n"
         if node.children:
-            return self._render_inlines(node.children)
+            return self.render_inlines(node.children)
         return node.text
 
 
-class MarkdownItParser(_InlineRenderingMixin):
+class MarkdownItParser:
     """Parse Markdown with markdown-it-py and normalize tokens into lumberjack's document model."""
 
     def __init__(
@@ -80,6 +293,7 @@ class MarkdownItParser(_InlineRenderingMixin):
         options_update: dict[str, Any] | None = None,
         disable_lheading: bool = False,
     ) -> None:
+        self._inline = InlineNormalizer()
         self._parser = MarkdownIt(preset, options_update=options_update)
         self._parser.use(dollarmath_plugin)
         self._parser.use(front_matter_plugin)
@@ -114,9 +328,9 @@ class MarkdownItParser(_InlineRenderingMixin):
                 section_stack[-1].add_block(
                     MarkdownBlock(
                         kind="front_matter",
-                        text=self._slice_source(source_lines, token.map),
-                        start_line=self._start_line(token),
-                        end_line=self._end_line(token),
+                        text=slice_source(source_lines, token.map),
+                        start_line=start_line(token),
+                        end_line=end_line(token),
                     )
                 )
                 index += 1
@@ -157,10 +371,10 @@ class MarkdownItParser(_InlineRenderingMixin):
         token = tokens[index]
         close_index = self._find_matching_close(tokens, index)
         inline_token = tokens[index + 1] if index + 1 < len(tokens) else None
-        title_inlines = self._inline_token_to_inlines(inline_token)
-        title = self._render_inlines(title_inlines).strip()
+        title_inlines = self._inline.token_to_inlines(inline_token)
+        title = self._inline.render_inlines(title_inlines).strip()
         level = int(token.tag[1:]) if token.tag.startswith("h") else 1
-        start_line = self._start_line(token)
+        section_start = start_line(token)
 
         while section_stack and section_stack[-1].level >= level:
             section_stack.pop()
@@ -171,7 +385,7 @@ class MarkdownItParser(_InlineRenderingMixin):
                 title=title,
                 path=(*parent.path, (level, title)),
                 index=len(parent.children),
-                start_line=start_line,
+                start_line=section_start,
                 title_inlines=title_inlines,
             ),
             close_index + 1,
@@ -192,13 +406,13 @@ class MarkdownItParser(_InlineRenderingMixin):
             close_index = self._find_matching_close(tokens, index)
             if not allow_headings:
                 inline_token = tokens[index + 1] if index + 1 < len(tokens) else None
-                inlines = self._inline_token_to_inlines(inline_token)
+                inlines = self._inline.token_to_inlines(inline_token)
                 return (
                     MarkdownBlock(
                         kind="paragraph",
-                        text=self._slice_source(source_lines, token.map),
-                        start_line=self._start_line(token),
-                        end_line=self._end_line(token),
+                        text=slice_source(source_lines, token.map),
+                        start_line=start_line(token),
+                        end_line=end_line(token),
                         inlines=inlines,
                     ),
                     close_index + 1,
@@ -208,13 +422,13 @@ class MarkdownItParser(_InlineRenderingMixin):
         if token.type == "paragraph_open":
             close_index = self._find_matching_close(tokens, index)
             inline_token = tokens[index + 1] if index + 1 < len(tokens) else None
-            inlines = self._inline_token_to_inlines(inline_token)
+            inlines = self._inline.token_to_inlines(inline_token)
             return (
                 MarkdownBlock(
                     kind="paragraph",
-                    text=self._slice_source(source_lines, token.map),
-                    start_line=self._start_line(token),
-                    end_line=self._end_line(token),
+                    text=slice_source(source_lines, token.map),
+                    start_line=start_line(token),
+                    end_line=end_line(token),
                     inlines=inlines,
                 ),
                 close_index + 1,
@@ -226,9 +440,9 @@ class MarkdownItParser(_InlineRenderingMixin):
             return (
                 MarkdownBlock(
                     kind="blockquote",
-                    text=self._slice_source(source_lines, token.map),
-                    start_line=self._start_line(token),
-                    end_line=self._end_line(token),
+                    text=slice_source(source_lines, token.map),
+                    start_line=start_line(token),
+                    end_line=end_line(token),
                     children=children,
                 ),
                 close_index + 1,
@@ -240,15 +454,15 @@ class MarkdownItParser(_InlineRenderingMixin):
             attrs = {
                 "ordered": token.type == "ordered_list_open",
                 "start": int((token.attrs or {}).get("start") or 1),
-                "tight": self._is_tight_list(tokens, index, close_index),
+                "tight": is_tight_list(tokens, index, close_index),
                 "bullet": f"{token.markup or '-'}",
             }
             return (
                 MarkdownBlock(
                     kind="list",
-                    text=self._slice_source(source_lines, token.map),
-                    start_line=self._start_line(token),
-                    end_line=self._end_line(token),
+                    text=slice_source(source_lines, token.map),
+                    start_line=start_line(token),
+                    end_line=end_line(token),
                     children=children,
                     attrs=attrs,
                 ),
@@ -261,9 +475,9 @@ class MarkdownItParser(_InlineRenderingMixin):
             return (
                 MarkdownBlock(
                     kind="list_item",
-                    text=self._slice_source(source_lines, token.map),
-                    start_line=self._start_line(token),
-                    end_line=self._end_line(token),
+                    text=slice_source(source_lines, token.map),
+                    start_line=start_line(token),
+                    end_line=end_line(token),
                     children=children,
                 ),
                 close_index + 1,
@@ -275,9 +489,9 @@ class MarkdownItParser(_InlineRenderingMixin):
             return (
                 MarkdownBlock(
                     kind="code_fence",
-                    text=self._slice_source(source_lines, token.map),
-                    start_line=self._start_line(token),
-                    end_line=self._end_line(token),
+                    text=slice_source(source_lines, token.map),
+                    start_line=start_line(token),
+                    end_line=end_line(token),
                     attrs={
                         "language": language,
                         "info": info,
@@ -291,9 +505,9 @@ class MarkdownItParser(_InlineRenderingMixin):
             return (
                 MarkdownBlock(
                     kind="math_block",
-                    text=self._slice_source(source_lines, token.map),
-                    start_line=self._start_line(token),
-                    end_line=self._end_line(token),
+                    text=slice_source(source_lines, token.map),
+                    start_line=start_line(token),
+                    end_line=end_line(token),
                     attrs={"literal": token.content.rstrip("\n")},
                 ),
                 index + 1,
@@ -303,9 +517,9 @@ class MarkdownItParser(_InlineRenderingMixin):
             return (
                 MarkdownBlock(
                     kind="math_block_eqno",
-                    text=self._slice_source(source_lines, token.map),
-                    start_line=self._start_line(token),
-                    end_line=self._end_line(token),
+                    text=slice_source(source_lines, token.map),
+                    start_line=start_line(token),
+                    end_line=end_line(token),
                     attrs={"literal": token.content.rstrip("\n"), "eqno": token.info.strip()},
                 ),
                 index + 1,
@@ -315,9 +529,9 @@ class MarkdownItParser(_InlineRenderingMixin):
             return (
                 MarkdownBlock(
                     kind="code_block",
-                    text=self._slice_source(source_lines, token.map),
-                    start_line=self._start_line(token),
-                    end_line=self._end_line(token),
+                    text=slice_source(source_lines, token.map),
+                    start_line=start_line(token),
+                    end_line=end_line(token),
                     attrs={"literal": token.content.rstrip("\n")},
                 ),
                 index + 1,
@@ -327,9 +541,9 @@ class MarkdownItParser(_InlineRenderingMixin):
             return (
                 MarkdownBlock(
                     kind="html_block",
-                    text=self._slice_source(source_lines, token.map),
-                    start_line=self._start_line(token),
-                    end_line=self._end_line(token),
+                    text=slice_source(source_lines, token.map),
+                    start_line=start_line(token),
+                    end_line=end_line(token),
                     attrs={"literal": token.content.rstrip("\n")},
                 ),
                 index + 1,
@@ -339,9 +553,9 @@ class MarkdownItParser(_InlineRenderingMixin):
             return (
                 MarkdownBlock(
                     kind="thematic_break",
-                    text=self._slice_source(source_lines, token.map) or "---",
-                    start_line=self._start_line(token),
-                    end_line=self._end_line(token),
+                    text=slice_source(source_lines, token.map) or "---",
+                    start_line=start_line(token),
+                    end_line=end_line(token),
                 ),
                 index + 1,
             )
@@ -351,9 +565,9 @@ class MarkdownItParser(_InlineRenderingMixin):
             return (
                 MarkdownBlock(
                     kind="table",
-                    text=self._slice_source(source_lines, token.map),
-                    start_line=self._start_line(token),
-                    end_line=self._end_line(token),
+                    text=slice_source(source_lines, token.map),
+                    start_line=start_line(token),
+                    end_line=end_line(token),
                 ),
                 close_index + 1,
             )
@@ -413,7 +627,7 @@ class MarkdownItParser(_InlineRenderingMixin):
             if token.type.endswith("_open")
             else ()
         )
-        text = self._slice_source(source_lines, token.map)
+        text = slice_source(source_lines, token.map)
         if not text and children:
             text = join_markdown([child.text for child in children if child.text])
         if not text.strip():
@@ -423,8 +637,8 @@ class MarkdownItParser(_InlineRenderingMixin):
             MarkdownBlock(
                 kind=token.type.removesuffix("_open"),
                 text=text,
-                start_line=self._start_line(token),
-                end_line=self._end_line(token),
+                start_line=start_line(token),
+                end_line=end_line(token),
                 children=children,
                 attrs={
                     "source_token_type": token.type,
@@ -434,194 +648,6 @@ class MarkdownItParser(_InlineRenderingMixin):
             ),
             close_index + 1,
         )
-
-    def _inline_token_to_inlines(self, token: Token | None) -> tuple[MarkdownInline, ...]:
-        """Convert an inline token's children to normalized ``MarkdownInline`` nodes."""
-        if token is None:
-            return ()
-        return self._normalize_inline_tokens(token.children or [])
-
-    def _normalize_inline_tokens(self, tokens: list[Token]) -> tuple[MarkdownInline, ...]:
-        """Recursively normalize markdown-it inline tokens into lumberjack inline nodes."""
-        inlines, _ = self._collect_inline_tokens(tokens, 0)
-        return inlines
-
-    def _collect_inline_tokens(
-        self,
-        tokens: list[Token],
-        index: int,
-        *,
-        stop_types: set[str] | None = None,
-    ) -> tuple[tuple[MarkdownInline, ...], int]:
-        """Walk inline tokens from *index* until *stop_types* or end, returning normalized nodes."""
-        normalized: list[MarkdownInline] = []
-        while index < len(tokens):
-            token = tokens[index]
-            if stop_types is not None and token.type in stop_types:
-                break
-
-            if token.type.endswith("_close"):
-                index += 1
-                continue
-
-            if token.type == "text":
-                normalized.append(MarkdownInline(kind="text", text=token.content))
-                index += 1
-                continue
-
-            if token.type == "code_inline":
-                normalized.append(
-                    MarkdownInline(
-                        kind="code_span",
-                        text=token.content,
-                        attrs={"literal": token.content},
-                    )
-                )
-                index += 1
-                continue
-
-            if token.type == "math_inline":
-                normalized.append(
-                    MarkdownInline(
-                        kind="math_inline",
-                        text=token.content,
-                        attrs={"literal": token.content},
-                    )
-                )
-                index += 1
-                continue
-
-            if token.type == "html_inline":
-                normalized.append(MarkdownInline(kind="inline_html", text=token.content))
-                index += 1
-                continue
-
-            if token.type in {"softbreak", "hardbreak"}:
-                normalized.append(
-                    MarkdownInline(
-                        kind="soft_break" if token.type == "softbreak" else "hard_break",
-                        text="\n",
-                    )
-                )
-                index += 1
-                continue
-
-            if token.type == "image":
-                normalized.append(
-                    MarkdownInline(
-                        kind="image",
-                        children=self._normalize_inline_tokens(token.children or []),
-                        attrs={
-                            "destination": str((token.attrs or {}).get("src") or ""),
-                            "title": str((token.attrs or {}).get("title") or ""),
-                        },
-                    )
-                )
-                index += 1
-                continue
-
-            if token.type == "footnote_ref":
-                normalized.append(
-                    MarkdownInline(
-                        kind="footnote_ref",
-                        text=f"[^{token.meta.get('label', '')}]",
-                        attrs={
-                            "source_token_type": token.type,
-                            "meta": dict(token.meta)
-                            if isinstance(token.meta, dict)
-                            else token.meta,
-                        },
-                    )
-                )
-                index += 1
-                continue
-
-            if token.type == "footnote_anchor":
-                normalized.append(
-                    MarkdownInline(
-                        kind="footnote_anchor",
-                        text="",
-                        attrs={
-                            "source_token_type": token.type,
-                            "meta": dict(token.meta)
-                            if isinstance(token.meta, dict)
-                            else token.meta,
-                        },
-                    )
-                )
-                index += 1
-                continue
-
-            if token.type in {"em_open", "strong_open", "s_open", "link_open"}:
-                kind_map = {
-                    "em_open": "emphasis",
-                    "strong_open": "strong",
-                    "s_open": "strikethrough",
-                    "link_open": "autolink" if token.markup in {"autolink", "linkify"} else "link",
-                }
-                close_type_map = {
-                    "em_open": "em_close",
-                    "strong_open": "strong_close",
-                    "s_open": "s_close",
-                    "link_open": "link_close",
-                }
-                children, index = self._collect_inline_tokens(
-                    tokens,
-                    index + 1,
-                    stop_types={close_type_map[token.type]},
-                )
-                if index < len(tokens):
-                    index += 1
-
-                attrs = {
-                    "destination": str((token.attrs or {}).get("href") or ""),
-                    "title": str((token.attrs or {}).get("title") or ""),
-                }
-                if token.type == "link_open" and token.markup in {"autolink", "linkify"}:
-                    attrs["literal"] = self._render_inlines(children)
-                    attrs["syntax"] = str(token.markup or "link")
-                normalized.append(
-                    MarkdownInline(
-                        kind=kind_map[token.type],
-                        children=children,
-                        attrs=attrs,
-                    )
-                )
-                continue
-
-            if token.type.endswith("_open"):
-                close_type = f"{token.type.removesuffix('_open')}_close"
-                children, index = self._collect_inline_tokens(
-                    tokens,
-                    index + 1,
-                    stop_types={close_type},
-                )
-                if index < len(tokens):
-                    index += 1
-                normalized.append(
-                    MarkdownInline(
-                        kind=token.type.removesuffix("_open"),
-                        children=children,
-                        attrs={
-                            "source_token_type": token.type,
-                            "markup": str(token.markup or ""),
-                            "meta": dict(token.meta)
-                            if isinstance(token.meta, dict)
-                            else token.meta,
-                        },
-                    )
-                )
-                continue
-
-            if token.children:
-                normalized.extend(self._normalize_inline_tokens(token.children))
-                index += 1
-                continue
-
-            normalized.append(MarkdownInline(kind=token.type, text=token.content))
-            index += 1
-
-        return (tuple(normalized), index)
 
     def _parse_front_matter(
         self,
@@ -698,36 +724,12 @@ class MarkdownItParser(_InlineRenderingMixin):
     ) -> str:
         """Recover the original bracket label for a link reference definition."""
         if isinstance(line_map, list) and len(line_map) == 2:
-            excerpt = self._slice_source(source_lines, line_map)
+            excerpt = slice_source(source_lines, line_map)
             for line in excerpt.splitlines():
                 match = LINK_REFERENCE_DEFINITION_RE.match(line)
                 if match:
                     return match.group(1)
         return fallback
-
-    def _slice_source(self, source_lines: list[str], line_map: Any) -> str:
-        """Extract source text for a half-open [start, end) line range."""
-        if not isinstance(line_map, list) or len(line_map) != 2:
-            return ""
-        start, end = int(line_map[0]), int(line_map[1])
-        if start < 0 or end < start:
-            return ""
-        return "\n".join(source_lines[start:end])
-
-    def _start_line(self, token: Token) -> int | None:
-        if token.map is None:
-            return None
-        return int(token.map[0]) + 1
-
-    def _end_line(self, token: Token) -> int | None:
-        if token.map is None:
-            return None
-        return int(token.map[1])
-
-    def _is_tight_list(self, tokens: list[Token], start: int, end: int) -> bool:
-        return any(
-            token.type == "paragraph_open" and token.hidden for token in tokens[start : end + 1]
-        )
 
 
 MarkdownParser = MarkdownItParser
