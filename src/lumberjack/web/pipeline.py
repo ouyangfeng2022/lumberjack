@@ -48,7 +48,9 @@ class WebSplitter(MarkdownSplitter):
         )
         chunks = self._finalize_chunks(drafts_after, document)
         if front_matter_block is not None:
-            chunks.insert(0, self._make_front_matter_chunk(front_matter_block, document))
+            chunks.insert(
+                0, self._make_front_matter_chunk(front_matter_block, document)
+            )
         return PipelineSteps(
             entries=entries,
             drafts_after_merge=drafts_after,

@@ -43,6 +43,9 @@ uv run pytest tests/test_web.py
 # Lint and format
 uv run ruff check --fix
 uv run ruff format
+
+# Run Python scripts
+uv run python xxx.py
 ```
 
 ## Architecture

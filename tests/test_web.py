@@ -100,7 +100,9 @@ def test_pipeline_uses_lumber_prefix(client: TestClient) -> None:
     assert body["stage_5_chunks"]["chunk_count"] >= 1
 
 
-def test_pipeline_split_entries_expose_only_rendering_inputs(client: TestClient) -> None:
+def test_pipeline_split_entries_expose_only_rendering_inputs(
+    client: TestClient,
+) -> None:
     response = client.post(
         "/lumber/api/pipeline",
         data={"text": SIMPLE_MD, "max_tokens": "500"},

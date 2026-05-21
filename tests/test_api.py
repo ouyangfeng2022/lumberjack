@@ -145,7 +145,10 @@ def test_parse_markdown_and_split_preserve_line_ranges_with_single_parser() -> N
     assert chunks[0].start_line == 1
     assert chunks[0].end_line == 1
     assert chunks[-1].headings == ((1, "Overview"), (2, "Details"), (3, "Notes"))
-    assert chunks[-1].body == "# Overview\n\n## Details\n\n### Notes\n\nFinal notes live here."
+    assert (
+        chunks[-1].body
+        == "# Overview\n\n## Details\n\n### Notes\n\nFinal notes live here."
+    )
     assert chunks[-1].start_line == 19
     assert chunks[-1].end_line == 19
 

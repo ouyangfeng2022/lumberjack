@@ -8,9 +8,9 @@ from mdit_py_plugins.tasklists import tasklists_plugin
 
 from lumberjack.core.parser import MarkdownItParser, MarkdownParser, create_parser
 
-FIXTURE = (Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md").read_text(
-    encoding="utf-8"
-)
+FIXTURE = (
+    Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md"
+).read_text(encoding="utf-8")
 
 COMMONMARK_FIXTURE = """# Heading with [link](https://example.com)
 
@@ -97,7 +97,9 @@ def test_create_parser_routes_default_and_fallback_names() -> None:
 
 
 def test_parser_captures_commonmark_blocks_and_inlines() -> None:
-    document = MarkdownParser().parse(COMMONMARK_FIXTURE, document_title="commonmark.md")
+    document = MarkdownParser().parse(
+        COMMONMARK_FIXTURE, document_title="commonmark.md"
+    )
     heading = document.root.children[0]
 
     assert heading.title == "Heading with [link](https://example.com)"
@@ -168,7 +170,9 @@ def test_parser_captures_commonmark_blocks_and_inlines() -> None:
 
 
 def test_markdown_it_parser_supports_setext_tables_and_extended_inlines() -> None:
-    document = MarkdownParser().parse(MARKDOWN_IT_FIXTURE, document_title="markdown-it.md")
+    document = MarkdownParser().parse(
+        MARKDOWN_IT_FIXTURE, document_title="markdown-it.md"
+    )
     heading = document.root.children[0]
 
     assert heading.title == "Title"
@@ -194,7 +198,9 @@ def test_markdown_it_parser_supports_setext_tables_and_extended_inlines() -> Non
     assert paragraph.inlines[4].attrs["destination"] == "https://example.com"
     assert paragraph.inlines[4].attrs["syntax"] == "autolink"
     assert all(block.kind != "link_reference_definition" for block in heading.blocks)
-    assert document.reference_definitions == {"ref": {"destination": "/target", "title": "Title"}}
+    assert document.reference_definitions == {
+        "ref": {"destination": "/target", "title": "Title"}
+    }
 
 
 def test_markdown_it_parser_can_disable_setext_headings() -> None:
@@ -208,14 +214,19 @@ def test_markdown_it_parser_can_disable_setext_headings() -> None:
     assert document.root.blocks[0].text == "Title\n====="
 
 
-def test_markdown_it_parser_handles_all_block_and_inline_tokens_in_comprehensive_fixture() -> None:
+def test_markdown_it_parser_handles_all_block_and_inline_tokens_in_comprehensive_fixture() -> (
+    None
+):
     parser = MarkdownItParser()
     env: dict[str, object] = {}
     tokens = parser._parser.parse(COMPREHENSIVE_FIXTURE, env)
 
     block_types = {token.type for token in tokens}
     inline_types = {
-        child.type for token in tokens if token.type == "inline" for child in (token.children or [])
+        child.type
+        for token in tokens
+        if token.type == "inline"
+        for child in (token.children or [])
     }
 
     assert block_types == {
@@ -304,7 +315,10 @@ def test_markdown_it_parser_supports_footnote_plugin() -> None:
 
     document = parser.parse(markdown, document_title="footnotes.md")
 
-    assert [block.kind for block in document.root.blocks] == ["paragraph", "footnote_block"]
+    assert [block.kind for block in document.root.blocks] == [
+        "paragraph",
+        "footnote_block",
+    ]
     assert document.root.blocks[0].text == "Footnote ref[^1]."
     assert [inline.kind for inline in document.root.blocks[0].inlines] == [
         "text",
@@ -334,7 +348,9 @@ def test_parser_distinguishes_tight_and_loose_lists() -> None:
 
 
 def test_parser_preserves_line_ranges_for_normalized_block_syntax() -> None:
-    document = MarkdownParser().parse(NORMALIZED_SOURCE_FIXTURE, document_title="normalized.md")
+    document = MarkdownParser().parse(
+        NORMALIZED_SOURCE_FIXTURE, document_title="normalized.md"
+    )
     heading = document.root.children[0]
 
     thematic_break, fenced, indented = heading.blocks

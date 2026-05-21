@@ -36,7 +36,9 @@ def build_parser() -> argparse.ArgumentParser:
         default="default",
         help="Markdown parser implementation",
     )
-    parser.add_argument("--max-tokens", type=int, default=1200, help="Maximum tokens per chunk")
+    parser.add_argument(
+        "--max-tokens", type=int, default=1200, help="Maximum tokens per chunk"
+    )
     parser.add_argument(
         "--merge-below-tokens",
         type=int,

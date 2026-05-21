@@ -21,7 +21,9 @@ BRACKETS_MATH_BLOCK_RE = re.compile(r"^\\\[([\s\S]+?)\\\]", re.M)
 
 def brackets_math_plugin(md: MarkdownIt) -> None:
     md.inline.ruler.before("escape", "math_inline", _inline_func)
-    md.block.ruler.before("fence", "math_block_eqno", make_block_func(allow_labels=True))
+    md.block.ruler.before(
+        "fence", "math_block_eqno", make_block_func(allow_labels=True)
+    )
     md.block.ruler.before("fence", "math_block", make_block_func(allow_labels=False))
 
 
@@ -43,9 +45,13 @@ def _inline_func(state: StateInline, silent: bool) -> bool:
     return True
 
 
-def make_block_func(allow_labels: bool = True) -> Callable[[StateBlock, int, int, bool], bool]:
+def make_block_func(
+    allow_labels: bool = True,
+) -> Callable[[StateBlock, int, int, bool], bool]:
 
-    def _block_func(state: StateBlock, begLine: int, endLine: int, silent: bool) -> bool:
+    def _block_func(
+        state: StateBlock, begLine: int, endLine: int, silent: bool
+    ) -> bool:
         begin = state.bMarks[begLine] + state.tShift[begLine]
         src = state.src
         tag = "\\["

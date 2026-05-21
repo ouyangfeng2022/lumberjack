@@ -36,7 +36,9 @@ def lumber(
     document_metadata: dict[str, object] | None = None,
 ) -> list[Chunk]:
     """Split markdown text into semantic chunks."""
-    tokenizer_impl = create_tokenizer(tokenizer) if isinstance(tokenizer, str) else tokenizer
+    tokenizer_impl = (
+        create_tokenizer(tokenizer) if isinstance(tokenizer, str) else tokenizer
+    )
     parser_impl = (
         create_parser(parser, disable_lheading=disable_lheading)
         if isinstance(parser, str)

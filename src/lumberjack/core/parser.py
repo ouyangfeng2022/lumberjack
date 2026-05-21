@@ -26,7 +26,7 @@ LINK_REFERENCE_DEFINITION_RE = re.compile(r"^[ ]{0,3}\[([^\]]+)\]:")
 
 def slice_source(source_lines: list[str], line_map: Any) -> str:
     """Extract source text for a half-open [start, end) line range."""
-    if not isinstance(line_map, list) or len(line_map) != 2:
+    if not isinstance(line_map, (list, tuple)) or len(line_map) != 2:
         return ""
     start, end = int(line_map[0]), int(line_map[1])
     if start < 0 or end < start:
@@ -47,7 +47,10 @@ def end_line(token: Token) -> int | None:
 
 
 def is_tight_list(tokens: list[Token], start: int, end: int) -> bool:
-    return any(token.type == "paragraph_open" and token.hidden for token in tokens[start : end + 1])
+    return any(
+        token.type == "paragraph_open" and token.hidden
+        for token in tokens[start : end + 1]
+    )
 
 
 class InlineNormalizer:
@@ -107,14 +110,18 @@ class InlineNormalizer:
                 continue
 
             if token.type == "html_inline":
-                normalized.append(MarkdownInline(kind="inline_html", text=token.content))
+                normalized.append(
+                    MarkdownInline(kind="inline_html", text=token.content)
+                )
                 index += 1
                 continue
 
             if token.type in {"softbreak", "hardbreak"}:
                 normalized.append(
                     MarkdownInline(
-                        kind="soft_break" if token.type == "softbreak" else "hard_break",
+                        kind="soft_break"
+                        if token.type == "softbreak"
+                        else "hard_break",
                         text="\n",
                     )
                 )
@@ -172,7 +179,9 @@ class InlineNormalizer:
                     "em_open": "emphasis",
                     "strong_open": "strong",
                     "s_open": "strikethrough",
-                    "link_open": "autolink" if token.markup in {"autolink", "linkify"} else "link",
+                    "link_open": "autolink"
+                    if token.markup in {"autolink", "linkify"}
+                    else "link",
                 }
                 close_type_map = {
                     "em_open": "em_close",
@@ -192,7 +201,10 @@ class InlineNormalizer:
                     "destination": str((token.attrs or {}).get("href") or ""),
                     "title": str((token.attrs or {}).get("title") or ""),
                 }
-                if token.type == "link_open" and token.markup in {"autolink", "linkify"}:
+                if token.type == "link_open" and token.markup in {
+                    "autolink",
+                    "linkify",
+                }:
                     attrs["literal"] = self.render_inlines(children)
                     attrs["syntax"] = str(token.markup or "link")
                 normalized.append(
@@ -269,7 +281,9 @@ class InlineNormalizer:
                 f"({node.attrs.get('destination', '')}{title_suffix})"
             )
         if node.kind == "autolink":
-            literal = str(node.attrs.get("literal") or self.render_inlines(node.children))
+            literal = str(
+                node.attrs.get("literal") or self.render_inlines(node.children)
+            )
             if node.attrs.get("syntax") == "autolink":
                 return f"<{literal}>"
             return literal or str(node.attrs.get("destination", ""))
@@ -358,7 +372,9 @@ class MarkdownItParser:
             source=text,
             root=root,
             metadata=document_metadata,
-            reference_definitions=self._extract_reference_definitions(env, source_lines),
+            reference_definitions=self._extract_reference_definitions(
+                env, source_lines
+            ),
         )
 
     def _build_section(
@@ -520,7 +536,10 @@ class MarkdownItParser:
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
                     end_line=end_line(token),
-                    attrs={"literal": token.content.rstrip("\n"), "eqno": token.info.strip()},
+                    attrs={
+                        "literal": token.content.rstrip("\n"),
+                        "eqno": token.info.strip(),
+                    },
                 ),
                 index + 1,
             )
@@ -585,7 +604,9 @@ class MarkdownItParser:
         blocks: list[MarkdownBlock] = []
         index = start
         while index < end:
-            block, index = self._build_block(tokens, index, source_lines, allow_headings=False)
+            block, index = self._build_block(
+                tokens, index, source_lines, allow_headings=False
+            )
             if block is not None and block.text:
                 blocks.append(block)
         return tuple(blocks)
@@ -620,7 +641,9 @@ class MarkdownItParser:
             return (None, index + 1)
 
         close_index = (
-            self._find_matching_close(tokens, index) if token.type.endswith("_open") else index
+            self._find_matching_close(tokens, index)
+            if token.type.endswith("_open")
+            else index
         )
         children = (
             self._parse_blocks(tokens, index + 1, close_index, source_lines)
@@ -643,7 +666,9 @@ class MarkdownItParser:
                 attrs={
                     "source_token_type": token.type,
                     "markup": str(token.markup or ""),
-                    "meta": dict(token.meta) if isinstance(token.meta, dict) else token.meta,
+                    "meta": dict(token.meta)
+                    if isinstance(token.meta, dict)
+                    else token.meta,
                 },
             ),
             close_index + 1,
@@ -735,7 +760,9 @@ class MarkdownItParser:
 MarkdownParser = MarkdownItParser
 
 
-def create_parser(name: str, *, disable_lheading: bool = False) -> MarkdownParserProtocol:
+def create_parser(
+    name: str, *, disable_lheading: bool = False
+) -> MarkdownParserProtocol:
     """Instantiate a parser by name (``"default"`` or ``"markdown-it"``)."""
     normalized = name.strip().lower()
     if normalized in {"default", "markdown-it"}:

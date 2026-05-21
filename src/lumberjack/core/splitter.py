@@ -5,7 +5,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from ..base.interfaces import SplitterProtocol, TokenizerProtocol
-from ..models import Chunk, DocumentAST, HeadingPath, MarkdownBlock, SectionNode, SplitOptions
+from ..models import (
+    Chunk,
+    DocumentAST,
+    HeadingPath,
+    MarkdownBlock,
+    SectionNode,
+    SplitOptions,
+)
 from ..utils import join_markdown, render_heading_path
 from .tokenizers import SimpleCharTokenizer
 
@@ -51,7 +58,9 @@ def heading_path_token_count(tokenizer: TokenizerProtocol, path: HeadingPath) ->
     tokens = 0
     for level, title in path:
         if title:
-            tokens = tokens + tokenizer.count("#" * level + " " + title + SEPARATOR, cache=True)
+            tokens = tokens + tokenizer.count(
+                "#" * level + " " + title + SEPARATOR, cache=True
+            )
     return tokens
 
 
@@ -95,8 +104,12 @@ def attach_thematic_breaks(blocks: list[MarkdownBlock]) -> list[MarkdownBlock]:
             start_lines.append(block.start_line)
             block = MarkdownBlock(
                 kind=block.kind,
-                text=join_markdown([*(break_block.text for break_block in pending), block.text]),
-                start_line=min((line for line in start_lines if line is not None), default=None),
+                text=join_markdown(
+                    [*(break_block.text for break_block in pending), block.text]
+                ),
+                start_line=min(
+                    (line for line in start_lines if line is not None), default=None
+                ),
                 end_line=block.end_line,
                 children=block.children,
                 inlines=block.inlines,
@@ -260,7 +273,8 @@ class TextSplitter:
             return [text]
 
         if any(
-            self.tokenizer.count(m.group(0)) > max_tokens for m in PROTECTED_SPAN_RE.finditer(text)
+            self.tokenizer.count(m.group(0)) > max_tokens
+            for m in PROTECTED_SPAN_RE.finditer(text)
         ):
             return [text]
 
@@ -276,7 +290,9 @@ class TextSplitter:
                 if all(self.tokenizer.count(part) <= max_tokens for part in packed):
                     return packed
 
-        sentence_parts = [part.strip() for part in SENTENCE_BREAK_RE.split(text) if part.strip()]
+        sentence_parts = [
+            part.strip() for part in SENTENCE_BREAK_RE.split(text) if part.strip()
+        ]
         if len(sentence_parts) > 1:
             packed = self.pack_parts(
                 sentence_parts,
@@ -313,7 +329,9 @@ class TextSplitter:
         current_joined = ""
         current_tokens = 0
         for part in parts:
-            candidate_tokens = count_joined(self.tokenizer, current_joined, part, separator)
+            candidate_tokens = count_joined(
+                self.tokenizer, current_joined, part, separator
+            )
             if current_parts and candidate_tokens > max_tokens:
                 packed.append(current_joined)
                 overlap_parts, _ = self.tail_parts_within_budget(
@@ -386,7 +404,9 @@ class TextSplitter:
 
         for start in range(1, len(text)):
             suffix = text[start:]
-            if any(m.start() < start < m.end() for m in PROTECTED_SPAN_RE.finditer(text)):
+            if any(
+                m.start() < start < m.end() for m in PROTECTED_SPAN_RE.finditer(text)
+            ):
                 continue
             if self.tokenizer.count(suffix) <= max_tokens:
                 return suffix
@@ -423,7 +443,9 @@ class MarkdownSplitter(SplitterProtocol):
             chunks = self._merge_small_chunks(chunks)
         finalized = self._finalize_chunks(chunks, document)
         if front_matter_block is not None:
-            finalized.insert(0, self._make_front_matter_chunk(front_matter_block, document))
+            finalized.insert(
+                0, self._make_front_matter_chunk(front_matter_block, document)
+            )
         return finalized
 
     def _validate_options(self) -> None:
@@ -452,7 +474,9 @@ class MarkdownSplitter(SplitterProtocol):
             return root.blocks.pop(0)
         return None
 
-    def _make_front_matter_chunk(self, block: MarkdownBlock, document: DocumentAST) -> Chunk:
+    def _make_front_matter_chunk(
+        self, block: MarkdownBlock, document: DocumentAST
+    ) -> Chunk:
         token_count = self.tokenizer.count(block.text)
         return Chunk(
             chunk_id="chunk-0000",
@@ -475,7 +499,9 @@ class MarkdownSplitter(SplitterProtocol):
         body_token_count = 0
         if section.blocks:
             for block in section.blocks:
-                body_token_count += self.tokenizer.count(block.text + SEPARATOR, cache=True)
+                body_token_count += self.tokenizer.count(
+                    block.text + SEPARATOR, cache=True
+                )
 
         if section.level > 0 and self.options.retain_headings:
             title_token_count = self.tokenizer.count(
@@ -485,7 +511,9 @@ class MarkdownSplitter(SplitterProtocol):
             title_token_count = 0
 
         subtree_token_count = (
-            title_token_count + body_token_count + sum(child.counts.subtree for child in children)
+            title_token_count
+            + body_token_count
+            + sum(child.counts.subtree for child in children)
         )
         return _MeasuredSection(
             node=section,
@@ -632,13 +660,17 @@ class MarkdownSplitter(SplitterProtocol):
         """Split a section's own blocks into fragments, then into chunk drafts."""
         node = section.node
         include_prefix = (
-            self.options.retain_headings and self.options.include_common_headings and node.level > 0
+            self.options.retain_headings
+            and self.options.include_common_headings
+            and node.level > 0
         )
         headings = node.path
         blocks = attach_thematic_breaks(node.blocks)
         max_tokens = self.options.max_tokens
 
-        prefix_tokens = heading_path_token_count(self.tokenizer, headings) if include_prefix else 0
+        prefix_tokens = (
+            heading_path_token_count(self.tokenizer, headings) if include_prefix else 0
+        )
         if prefix_tokens >= max_tokens or not blocks:
             entry = self._entry_from_blocks(headings, blocks)
             return [
@@ -674,7 +706,9 @@ class MarkdownSplitter(SplitterProtocol):
 
         for block in blocks:
             block_tokens = self.tokenizer.count(f"{block.text}{SEPARATOR}", cache=True)
-            candidate_body_tokens = count_joined(self.tokenizer, current_joined, block.text)
+            candidate_body_tokens = count_joined(
+                self.tokenizer, current_joined, block.text
+            )
             candidate_total = prefix_tokens + candidate_body_tokens
             if current_parts and candidate_total > max_tokens:
                 chunks.append(draft_current())
@@ -687,9 +721,13 @@ class MarkdownSplitter(SplitterProtocol):
             single_block_total = prefix_tokens + block_tokens
             if single_block_total <= max_tokens:
                 current_parts.append(block.text)
-                current_body_tokens = count_joined(self.tokenizer, current_joined, block.text)
+                current_body_tokens = count_joined(
+                    self.tokenizer, current_joined, block.text
+                )
                 current_joined = (
-                    f"{current_joined}{SEPARATOR}{block.text}" if current_joined else block.text
+                    f"{current_joined}{SEPARATOR}{block.text}"
+                    if current_joined
+                    else block.text
                 )
                 if block.start_line is not None and (
                     current_start_line is None or block.start_line < current_start_line
@@ -702,7 +740,9 @@ class MarkdownSplitter(SplitterProtocol):
                 continue
 
             block_pieces = self._text_splitter.split_oversized_block(
-                block, max_tokens=budget, allowed_kinds=self.options.split_oversized_blocks
+                block,
+                max_tokens=budget,
+                allowed_kinds=self.options.split_oversized_blocks,
             )
             if block_pieces is None:
                 chunks.append(
@@ -825,7 +865,11 @@ class MarkdownSplitter(SplitterProtocol):
                         default=None,
                     ),
                     end_line=max(
-                        (entry.end_line for entry in chunk.entries if entry.end_line is not None),
+                        (
+                            entry.end_line
+                            for entry in chunk.entries
+                            if entry.end_line is not None
+                        ),
                         default=None,
                     ),
                 )
@@ -845,7 +889,9 @@ class MarkdownSplitter(SplitterProtocol):
         if body_token_count is None:
             body_token_count = 0
             for block in blocks:
-                body_token_count += self.tokenizer.count(block.text + SEPARATOR, cache=True)
+                body_token_count += self.tokenizer.count(
+                    block.text + SEPARATOR, cache=True
+                )
 
         return _Entry(
             headings=headings,
@@ -905,7 +951,8 @@ class MarkdownSplitter(SplitterProtocol):
                 shared_headings = common_headings
             relative_headings = entry.headings[len(shared_headings) :]
             entry_token_count = (
-                heading_path_token_count(self.tokenizer, relative_headings) + entry.body_token_count
+                heading_path_token_count(self.tokenizer, relative_headings)
+                + entry.body_token_count
             )
 
             if entry_token_count:

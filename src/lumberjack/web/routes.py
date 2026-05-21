@@ -42,7 +42,9 @@ async def _resolve_input(
 
 def _parse_block_types(raw: str) -> frozenset[str]:
     """Parse a comma-separated block-type string into a validated frozenset."""
-    return frozenset(b.strip() for b in raw.split(",") if b.strip() in _VALID_SPLIT_BLOCKS)
+    return frozenset(
+        b.strip() for b in raw.split(",") if b.strip() in _VALID_SPLIT_BLOCKS
+    )
 
 
 def _build_split_options(

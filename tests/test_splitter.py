@@ -4,13 +4,18 @@ from pathlib import Path
 
 from lumberjack.api import lumber
 from lumberjack.core.parser import MarkdownParser
-from lumberjack.core.splitter import MarkdownSplitter, _ChunkDraft, _Entry, heading_path_token_count
+from lumberjack.core.splitter import (
+    MarkdownSplitter,
+    _ChunkDraft,
+    _Entry,
+    heading_path_token_count,
+)
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 from lumberjack.models import SplitOptions
 
-FIXTURE = (Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md").read_text(
-    encoding="utf-8"
-)
+FIXTURE = (
+    Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md"
+).read_text(encoding="utf-8")
 
 MERGED_SECTION_FIXTURE = """# Development Guide
 
@@ -96,9 +101,7 @@ print("beta")
 print("gamma")
 ```"""
 
-LONG_URL_FIXTURE = (
-    "See https://example.com/really/long/path/that/should/not/be/split/in/chunks for details."
-)
+LONG_URL_FIXTURE = "See https://example.com/really/long/path/that/should/not/be/split/in/chunks for details."
 
 
 class RecordingTokenizer(SimpleCharTokenizer):
@@ -139,7 +142,9 @@ def test_splitter_respects_budget_except_unsplittable_code_fence() -> None:
 
 
 def test_splitter_deduplicates_shared_parent_heading_in_merged_chunk() -> None:
-    document = MarkdownParser().parse(MERGED_SECTION_FIXTURE, document_title="development.md")
+    document = MarkdownParser().parse(
+        MERGED_SECTION_FIXTURE, document_title="development.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(max_tokens=1000, merge_below_tokens=20),
@@ -158,15 +163,21 @@ def test_splitter_deduplicates_shared_parent_heading_in_merged_chunk() -> None:
 
 
 def test_splitter_omits_headings_from_body_when_disabled() -> None:
-    document = MarkdownParser().parse(MERGED_SECTION_FIXTURE, document_title="development.md")
+    document = MarkdownParser().parse(
+        MERGED_SECTION_FIXTURE, document_title="development.md"
+    )
 
     with_headings = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=1000, merge_below_tokens=20, retain_headings=True),
+        options=SplitOptions(
+            max_tokens=1000, merge_below_tokens=20, retain_headings=True
+        ),
     ).split(document)
     without_headings = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=1000, merge_below_tokens=20, retain_headings=False),
+        options=SplitOptions(
+            max_tokens=1000, merge_below_tokens=20, retain_headings=False
+        ),
     ).split(document)
 
     assert len(with_headings) == 1
@@ -183,11 +194,17 @@ def test_splitter_omits_headings_from_body_when_disabled() -> None:
     assert without_headings[0].token_count < with_headings[0].token_count
 
 
-def test_splitter_recursively_descends_heading_levels_when_section_is_oversized() -> None:
-    document = MarkdownParser().parse(RECURSIVE_SECTION_FIXTURE, document_title="recursive.md")
+def test_splitter_recursively_descends_heading_levels_when_section_is_oversized() -> (
+    None
+):
+    document = MarkdownParser().parse(
+        RECURSIVE_SECTION_FIXTURE, document_title="recursive.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=90, merge_below_tokens=80, retain_headings=True),
+        options=SplitOptions(
+            max_tokens=90, merge_below_tokens=80, retain_headings=True
+        ),
     )
 
     chunks = splitter.split(document)
@@ -205,11 +222,17 @@ def test_splitter_recursively_descends_heading_levels_when_section_is_oversized(
     assert all(chunk.estimated_token_count <= 90 for chunk in chunks)
 
 
-def test_splitter_checks_whole_document_before_splitting_by_top_level_headings() -> None:
-    document = MarkdownParser().parse(MULTI_ROOT_FIXTURE, document_title="multi-root.md")
+def test_splitter_checks_whole_document_before_splitting_by_top_level_headings() -> (
+    None
+):
+    document = MarkdownParser().parse(
+        MULTI_ROOT_FIXTURE, document_title="multi-root.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=200, merge_below_tokens=20, retain_headings=True),
+        options=SplitOptions(
+            max_tokens=200, merge_below_tokens=20, retain_headings=True
+        ),
     )
 
     chunks = splitter.split(document)
@@ -219,10 +242,14 @@ def test_splitter_checks_whole_document_before_splitting_by_top_level_headings()
 
 
 def test_splitter_greedily_merges_same_level_siblings_before_descending() -> None:
-    document = MarkdownParser().parse(GREEDY_SIBLING_FIXTURE, document_title="siblings.md")
+    document = MarkdownParser().parse(
+        GREEDY_SIBLING_FIXTURE, document_title="siblings.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=62, merge_below_tokens=20, retain_headings=True),
+        options=SplitOptions(
+            max_tokens=62, merge_below_tokens=20, retain_headings=True
+        ),
     )
 
     chunks = splitter.split(document)
@@ -234,7 +261,9 @@ def test_splitter_greedily_merges_same_level_siblings_before_descending() -> Non
 
 
 def test_splitter_exposes_body_without_common_headings_for_single_leaf_chunk() -> None:
-    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
+    document = MarkdownParser().parse(
+        THIRD_LEVEL_FIXTURE, document_title="third-level.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(max_tokens=40, merge_below_tokens=0, retain_headings=True),
@@ -247,21 +276,30 @@ def test_splitter_exposes_body_without_common_headings_for_single_leaf_chunk() -
 
 
 def test_splitter_exposes_body_without_common_headings_for_multi_entry_chunk() -> None:
-    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
+    document = MarkdownParser().parse(
+        THIRD_LEVEL_FIXTURE, document_title="third-level.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=110, merge_below_tokens=0, retain_headings=True),
+        options=SplitOptions(
+            max_tokens=110, merge_below_tokens=0, retain_headings=True
+        ),
     )
 
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
     assert chunks[0].headings == ((1, "Root"), (2, "Scope"))
-    assert chunks[0].body == "# Root\n\n## Scope\n\n### A\n\nAlpha body.\n\n### B\n\nBeta body."
+    assert (
+        chunks[0].body
+        == "# Root\n\n## Scope\n\n### A\n\nAlpha body.\n\n### B\n\nBeta body."
+    )
 
 
 def test_splitter_exclude_common_headings_drops_shared_prefix() -> None:
-    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
+    document = MarkdownParser().parse(
+        THIRD_LEVEL_FIXTURE, document_title="third-level.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
@@ -280,11 +318,16 @@ def test_splitter_exclude_common_headings_drops_shared_prefix() -> None:
 
 
 def test_splitter_exclude_common_headings_single_entry() -> None:
-    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
+    document = MarkdownParser().parse(
+        THIRD_LEVEL_FIXTURE, document_title="third-level.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
-            max_tokens=22, merge_below_tokens=0, retain_headings=True, include_common_headings=False
+            max_tokens=22,
+            merge_below_tokens=0,
+            retain_headings=True,
+            include_common_headings=False,
         ),
     )
 
@@ -295,7 +338,9 @@ def test_splitter_exclude_common_headings_single_entry() -> None:
 
 
 def test_splitter_exclude_common_headings_ignored_when_retain_headings_false() -> None:
-    document = MarkdownParser().parse(MULTI_ROOT_FIXTURE, document_title="multi-root.md")
+    document = MarkdownParser().parse(
+        MULTI_ROOT_FIXTURE, document_title="multi-root.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
@@ -313,10 +358,14 @@ def test_splitter_exclude_common_headings_ignored_when_retain_headings_false() -
 
 
 def test_splitter_body_is_pure_content_when_headings_are_hidden() -> None:
-    document = MarkdownParser().parse(MULTI_ROOT_FIXTURE, document_title="multi-root.md")
+    document = MarkdownParser().parse(
+        MULTI_ROOT_FIXTURE, document_title="multi-root.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=200, merge_below_tokens=0, retain_headings=False),
+        options=SplitOptions(
+            max_tokens=200, merge_below_tokens=0, retain_headings=False
+        ),
     )
 
     chunks = splitter.split(document)
@@ -326,10 +375,14 @@ def test_splitter_body_is_pure_content_when_headings_are_hidden() -> None:
 
 
 def test_splitter_body_drops_all_headings_when_headings_are_hidden() -> None:
-    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
+    document = MarkdownParser().parse(
+        THIRD_LEVEL_FIXTURE, document_title="third-level.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=60, merge_below_tokens=0, retain_headings=False),
+        options=SplitOptions(
+            max_tokens=60, merge_below_tokens=0, retain_headings=False
+        ),
     )
 
     chunks = splitter.split(document)
@@ -389,11 +442,15 @@ def test_splitter_uses_estimated_tokens_for_budget_decisions() -> None:
 
 
 def test_heading_estimate_counts_title_once_and_marker_as_one_token() -> None:
-    document = MarkdownParser().parse("### Cacheable Title\n\nBody", document_title="tokens.md")
+    document = MarkdownParser().parse(
+        "### Cacheable Title\n\nBody", document_title="tokens.md"
+    )
     tokenizer = RecordingTokenizer()
     splitter = MarkdownSplitter(
         tokenizer=tokenizer,
-        options=SplitOptions(max_tokens=100, merge_below_tokens=0, retain_headings=True),
+        options=SplitOptions(
+            max_tokens=100, merge_below_tokens=0, retain_headings=True
+        ),
     )
 
     measured_root = splitter._measure_section(document.root)
@@ -404,15 +461,21 @@ def test_heading_estimate_counts_title_once_and_marker_as_one_token() -> None:
 
 
 def test_estimated_tokens_follow_heading_visibility_options() -> None:
-    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
+    document = MarkdownParser().parse(
+        THIRD_LEVEL_FIXTURE, document_title="third-level.md"
+    )
 
     with_headings = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=100, merge_below_tokens=0, retain_headings=True),
+        options=SplitOptions(
+            max_tokens=100, merge_below_tokens=0, retain_headings=True
+        ),
     ).split(document)
     without_headings = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=100, merge_below_tokens=0, retain_headings=False),
+        options=SplitOptions(
+            max_tokens=100, merge_below_tokens=0, retain_headings=False
+        ),
     ).split(document)
     without_common = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
@@ -424,12 +487,20 @@ def test_estimated_tokens_follow_heading_visibility_options() -> None:
         ),
     ).split(document)
 
-    assert with_headings[0].estimated_token_count > without_headings[0].estimated_token_count
-    assert with_headings[0].estimated_token_count >= without_common[0].estimated_token_count
+    assert (
+        with_headings[0].estimated_token_count
+        > without_headings[0].estimated_token_count
+    )
+    assert (
+        with_headings[0].estimated_token_count
+        >= without_common[0].estimated_token_count
+    )
     assert without_headings[0].estimated_token_count == 25
 
 
-def test_splitter_does_not_count_oversized_section_rendering_for_budget_trials() -> None:
+def test_splitter_does_not_count_oversized_section_rendering_for_budget_trials() -> (
+    None
+):
     markdown = """# Parent
 
 ## One
@@ -453,15 +524,17 @@ Three body.
 
     chunks = splitter.split(document)
 
-    oversized_rendering = (
-        "# Parent\n\n## One\n\nOne body.\n\n## Two\n\nTwo body.\n\n## Three\n\nThree body."
-    )
+    oversized_rendering = "# Parent\n\n## One\n\nOne body.\n\n## Two\n\nTwo body.\n\n## Three\n\nThree body."
     assert oversized_rendering not in tokenizer.counted
     assert all(chunk.estimated_token_count <= 35 for chunk in chunks)
 
 
-def test_section_chunk_estimate_respects_hidden_common_headings_without_entries() -> None:
-    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
+def test_section_chunk_estimate_respects_hidden_common_headings_without_entries() -> (
+    None
+):
+    document = MarkdownParser().parse(
+        THIRD_LEVEL_FIXTURE, document_title="third-level.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
@@ -481,10 +554,14 @@ def test_section_chunk_estimate_respects_hidden_common_headings_without_entries(
 
 
 def test_section_chunk_estimate_respects_hidden_headings_without_entries() -> None:
-    document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
+    document = MarkdownParser().parse(
+        THIRD_LEVEL_FIXTURE, document_title="third-level.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=100, merge_below_tokens=0, retain_headings=False),
+        options=SplitOptions(
+            max_tokens=100, merge_below_tokens=0, retain_headings=False
+        ),
     )
     measured_root = splitter._measure_section(document.root)
     measured_scope = measured_root.children[0].children[0]
@@ -618,7 +695,9 @@ def test_splitter_keeps_oversized_lists_intact_by_default() -> None:
     document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=20, merge_below_tokens=0, retain_headings=False),
+        options=SplitOptions(
+            max_tokens=20, merge_below_tokens=0, retain_headings=False
+        ),
     )
 
     chunks = splitter.split(document)
@@ -728,7 +807,10 @@ def test_front_matter_isolated_as_first_chunk_by_default() -> None:
     assert len(chunks) >= 2
     assert chunks[0].chunk_id == "chunk-0000"
     assert chunks[0].chunk_type == "front_matter"
-    assert chunks[0].body == "---\ntitle: Test Document\nauthor: Alice\ndate: 2024-01-01\n---"
+    assert (
+        chunks[0].body
+        == "---\ntitle: Test Document\nauthor: Alice\ndate: 2024-01-01\n---"
+    )
     assert chunks[0].headings == ()
     assert chunks[0].section_level == 0
     assert chunks[0].start_line == 1
@@ -754,7 +836,9 @@ def test_front_matter_included_normally_when_isolation_disabled() -> None:
 
 
 def test_no_front_matter_works_normally() -> None:
-    document = MarkdownParser().parse("# Just a heading\n\nSome text.", document_title="doc.md")
+    document = MarkdownParser().parse(
+        "# Just a heading\n\nSome text.", document_title="doc.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
@@ -784,7 +868,9 @@ def test_thematic_break_never_appears_as_standalone_chunk() -> None:
     document = MarkdownParser().parse(THEMATIC_BREAK_FIXTURE, document_title="hr.md")
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=500, merge_below_tokens=0, retain_headings=False),
+        options=SplitOptions(
+            max_tokens=500, merge_below_tokens=0, retain_headings=False
+        ),
     )
 
     chunks = splitter.split(document)
@@ -819,7 +905,9 @@ def test_thematic_break_at_document_start_stays_standalone() -> None:
     document = MarkdownParser().parse(md, document_title="hr-first.md")
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=500, merge_below_tokens=0, retain_headings=False),
+        options=SplitOptions(
+            max_tokens=500, merge_below_tokens=0, retain_headings=False
+        ),
     )
 
     chunks = splitter.split(document)
@@ -865,10 +953,14 @@ If you encounter issues, check the following.
 
 def test_empty_section_discarded_when_retain_headings_false() -> None:
     """Heading-only chunks always discarded when retain_headings=False (0 tokens)."""
-    document = MarkdownParser().parse(EMPTY_SECTION_FIXTURE, document_title="empty-section.md")
+    document = MarkdownParser().parse(
+        EMPTY_SECTION_FIXTURE, document_title="empty-section.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=500, merge_below_tokens=0, retain_headings=False),
+        options=SplitOptions(
+            max_tokens=500, merge_below_tokens=0, retain_headings=False
+        ),
     )
 
     chunks = splitter.split(document)
@@ -880,7 +972,9 @@ def test_empty_section_discarded_when_retain_headings_false() -> None:
 
 def test_empty_section_discarded_by_default_with_retain_headings() -> None:
     """Heading-only chunks discarded by default (skip_empty_sections=True)."""
-    document = MarkdownParser().parse(EMPTY_SECTION_FIXTURE, document_title="empty-section.md")
+    document = MarkdownParser().parse(
+        EMPTY_SECTION_FIXTURE, document_title="empty-section.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
@@ -895,13 +989,16 @@ def test_empty_section_discarded_by_default_with_retain_headings() -> None:
 
     assert all(chunk.body.strip() for chunk in chunks)
     assert not any(
-        chunk.headings == ((1, "Getting Started"), (2, "Installation")) for chunk in chunks
+        chunk.headings == ((1, "Getting Started"), (2, "Installation"))
+        for chunk in chunks
     )
 
 
 def test_empty_section_kept_when_skip_empty_sections_false() -> None:
     """Heading-only chunks kept when skip_empty_sections=False and retain_headings=True."""
-    document = MarkdownParser().parse(EMPTY_SECTION_FIXTURE, document_title="empty-section.md")
+    document = MarkdownParser().parse(
+        EMPTY_SECTION_FIXTURE, document_title="empty-section.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
@@ -917,9 +1014,13 @@ def test_empty_section_kept_when_skip_empty_sections_false() -> None:
     assert any("## Installation" in chunk.body for chunk in chunks)
 
 
-def test_empty_section_discarded_even_with_skip_false_when_retain_headings_false() -> None:
+def test_empty_section_discarded_even_with_skip_false_when_retain_headings_false() -> (
+    None
+):
     """Zero-token chunks always discarded regardless of skip_empty_sections."""
-    document = MarkdownParser().parse(EMPTY_SECTION_FIXTURE, document_title="empty-section.md")
+    document = MarkdownParser().parse(
+        EMPTY_SECTION_FIXTURE, document_title="empty-section.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
@@ -937,7 +1038,9 @@ def test_empty_section_discarded_even_with_skip_false_when_retain_headings_false
 
 
 def test_empty_section_between_non_empty_sections_is_skipped() -> None:
-    document = MarkdownParser().parse(EMPTY_SECTION_FIXTURE, document_title="empty-section.md")
+    document = MarkdownParser().parse(
+        EMPTY_SECTION_FIXTURE, document_title="empty-section.md"
+    )
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
