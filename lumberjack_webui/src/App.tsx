@@ -19,6 +19,7 @@ const DEFAULT_OPTIONS: Options = {
   include_common_headings: true,
   merge_small_chunks: true,
   isolate_front_matter: true,
+  skip_empty_sections: true,
   split_oversized_blocks: 'paragraph,blockquote,html_block',
   disable_lheading: false,
   tokenizer: 'simple',

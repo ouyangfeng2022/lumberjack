@@ -21,6 +21,7 @@ export async function fetchPipeline(
   formData.append('include_common_headings', String(options.include_common_headings));
   formData.append('merge_small_chunks', String(options.merge_small_chunks));
   formData.append('isolate_front_matter', String(options.isolate_front_matter));
+  formData.append('skip_empty_sections', String(options.skip_empty_sections));
   formData.append('disable_lheading', String(options.disable_lheading));
   const blocks = options.split_oversized_blocks
     .split(',')

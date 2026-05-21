@@ -25,6 +25,7 @@ export interface SplitOptions {
   include_common_headings: boolean;
   merge_small_chunks: boolean;
   isolate_front_matter: boolean;
+  skip_empty_sections: boolean;
   split_oversized_blocks: string;
   disable_lheading: boolean;
   tokenizer: string;
