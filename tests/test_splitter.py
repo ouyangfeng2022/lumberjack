@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from lumberjack.api import lumber
 from lumberjack.core.parser import MarkdownParser
 from lumberjack.core.splitter import MarkdownSplitter, _ChunkDraft, _Entry
 from lumberjack.core.tokenizers import SimpleCharTokenizer
@@ -104,7 +105,7 @@ class RecordingTokenizer(SimpleCharTokenizer):
     def __init__(self) -> None:
         self.counted: list[str] = []
 
-    def count(self, text: str) -> int:
+    def count(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
         self.counted.append(text)
         return super().count(text)
 
@@ -236,7 +237,7 @@ def test_splitter_exposes_body_without_common_headings_for_single_leaf_chunk() -
     document = MarkdownParser().parse(THIRD_LEVEL_FIXTURE, document_title="third-level.md")
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=35, merge_below_tokens=0, retain_headings=True),
+        options=SplitOptions(max_tokens=40, merge_below_tokens=0, retain_headings=True),
     )
 
     chunks = splitter.split(document)
@@ -341,24 +342,29 @@ def test_splitter_measures_section_token_counts_bottom_up() -> None:
     document = MarkdownParser().parse("# A\n\nBody", document_title="tokens.md")
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=7, merge_below_tokens=0, retain_headings=True),
+        options=SplitOptions(
+            max_tokens=7,
+            merge_below_tokens=0,
+            retain_headings=True,
+            split_oversized_blocks=frozenset(),
+        ),
     )
 
     measured_root = splitter._measure_section(document.root)
     chunks = splitter.split(document)
 
     measured_section = measured_root.children[0]
-    assert measured_section.counts.body == len("Body")
-    assert measured_section.counts.title == len("# A")
+    assert measured_section.counts.body == len("Body\n\n")
+    assert measured_section.counts.title == len("# A\n\n")
     assert measured_section.counts.subtree == (
-        measured_section.counts.title + measured_section.counts.body + 2
+        measured_section.counts.title + measured_section.counts.body
     )
     assert not hasattr(document.root.children[0], "body_token_count")
     assert not hasattr(document.root.children[0], "title_token_count")
     assert not hasattr(document.root.children[0], "subtree_token_count")
     assert len(chunks) == 1
     assert chunks[0].body == "# A\n\nBody"
-    assert chunks[0].estimated_token_count == 9
+    assert chunks[0].estimated_token_count == 11
     assert chunks[0].token_count == len("# A\n\nBody")
 
 
@@ -366,15 +372,20 @@ def test_splitter_uses_estimated_tokens_for_budget_decisions() -> None:
     document = MarkdownParser().parse("# A\n\nBody", document_title="estimated.md")
     splitter = MarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=7, merge_below_tokens=0, retain_headings=True),
+        options=SplitOptions(
+            max_tokens=7,
+            merge_below_tokens=0,
+            retain_headings=True,
+            split_oversized_blocks=frozenset(),
+        ),
     )
 
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].estimated_token_count == 9
+    assert chunks[0].estimated_token_count == 11
     assert chunks[0].token_count == 9
-    assert chunks[0].token_count > splitter.options.max_tokens
+    assert chunks[0].estimated_token_count > splitter.options.max_tokens
 
 
 def test_heading_estimate_counts_title_once_and_marker_as_one_token() -> None:
@@ -388,8 +399,8 @@ def test_heading_estimate_counts_title_once_and_marker_as_one_token() -> None:
     measured_root = splitter._measure_section(document.root)
 
     measured_section = measured_root.children[0]
-    assert measured_section.counts.title == len("### Cacheable Title")
-    assert "### Cacheable Title" in tokenizer.counted
+    assert measured_section.counts.title == len("### Cacheable Title\n\n")
+    assert "### Cacheable Title\n\n" in tokenizer.counted
 
 
 def test_estimated_tokens_follow_heading_visibility_options() -> None:
@@ -415,7 +426,7 @@ def test_estimated_tokens_follow_heading_visibility_options() -> None:
 
     assert with_headings[0].estimated_token_count > without_headings[0].estimated_token_count
     assert with_headings[0].estimated_token_count >= without_common[0].estimated_token_count
-    assert without_headings[0].estimated_token_count == len("Alpha body.\n\nBeta body.")
+    assert without_headings[0].estimated_token_count == 25
 
 
 def test_splitter_does_not_count_oversized_section_rendering_for_budget_trials() -> None:
@@ -466,7 +477,7 @@ def test_section_chunk_estimate_respects_hidden_common_headings_without_entries(
         measured_scope.node.path
     )
 
-    assert chunk_token_count == 75
+    assert chunk_token_count == 31
 
 
 def test_section_chunk_estimate_respects_hidden_headings_without_entries() -> None:
@@ -478,7 +489,7 @@ def test_section_chunk_estimate_respects_hidden_headings_without_entries() -> No
     measured_root = splitter._measure_section(document.root)
     measured_scope = measured_root.children[0].children[0]
 
-    assert measured_scope.counts.subtree == 23
+    assert measured_scope.counts.subtree == 25
 
 
 def test_splitter_adds_overlap_only_for_text_fallback_splits() -> None:
@@ -538,8 +549,8 @@ def test_merge_below_tokens_does_not_merge_past_rendered_budget() -> None:
 
     chunks = splitter.split(document)
 
-    assert [chunk.token_count for chunk in chunks] == [59, 4]
-    assert chunks[1].body == "x\n\ny"
+    assert [chunk.token_count for chunk in chunks] == [62, 1]
+    assert chunks[1].body == "y"
     assert all(chunk.estimated_token_count <= 60 for chunk in chunks)
 
 
@@ -757,3 +768,185 @@ def test_no_front_matter_works_normally() -> None:
 
     assert chunks[0].chunk_id == "chunk-0001"
     assert "Just a heading" in chunks[0].body
+
+
+THEMATIC_BREAK_FIXTURE = """# Section
+
+First paragraph.
+
+---
+
+Second paragraph.
+"""
+
+
+def test_thematic_break_never_appears_as_standalone_chunk() -> None:
+    document = MarkdownParser().parse(THEMATIC_BREAK_FIXTURE, document_title="hr.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=500, merge_below_tokens=0, retain_headings=False),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 1
+    assert "---" in chunks[0].body
+    assert "First paragraph." in chunks[0].body
+    assert "Second paragraph." in chunks[0].body
+
+
+def test_thematic_break_sticks_to_neighbor_at_chunk_boundary() -> None:
+    """Even with a tight budget, the thematic_break is not emitted alone."""
+    document = MarkdownParser().parse(THEMATIC_BREAK_FIXTURE, document_title="hr.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=40,
+            merge_below_tokens=0,
+            retain_headings=True,
+            merge_small_chunks=False,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert any("---" in chunk.body for chunk in chunks)
+    assert all(chunk.body.strip() != "---" for chunk in chunks)
+
+
+def test_thematic_break_at_document_start_stays_standalone() -> None:
+    md = "---\n\nParagraph text."
+    document = MarkdownParser().parse(md, document_title="hr-first.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=500, merge_below_tokens=0, retain_headings=False),
+    )
+
+    chunks = splitter.split(document)
+    assert len(chunks) == 1
+    assert "---" in chunks[0].body
+
+
+def test_thematic_break_after_front_matter_stays_in_body_content() -> None:
+    md = "---\ntitle: T\n---\n\n---\n\nBody"
+    chunks = lumber(md, max_tokens=100, merge_below_tokens=0, retain_headings=False)
+
+    assert chunks[0].chunk_type == "front_matter"
+    assert chunks[0].body == "---\ntitle: T\n---"
+    assert "---" in chunks[1].body
+    assert "Body" in chunks[1].body
+
+
+def test_thematic_break_after_split_list_is_preserved() -> None:
+    md = f"- {'a' * 40}\n- {'b' * 40}\n\n---\n\nAfter"
+    chunks = lumber(
+        md,
+        max_tokens=50,
+        merge_below_tokens=0,
+        retain_headings=False,
+        split_oversized_blocks={"list", "paragraph"},
+    )
+
+    assert any("---" in chunk.body for chunk in chunks)
+    assert all(chunk.body.strip() != "---" for chunk in chunks)
+
+
+EMPTY_SECTION_FIXTURE = """# Getting Started
+
+This guide walks you through the basics of using our platform.
+
+## Installation
+
+## Troubleshooting
+
+If you encounter issues, check the following.
+"""
+
+
+def test_empty_section_discarded_when_retain_headings_false() -> None:
+    """Heading-only chunks always discarded when retain_headings=False (0 tokens)."""
+    document = MarkdownParser().parse(EMPTY_SECTION_FIXTURE, document_title="empty-section.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=500, merge_below_tokens=0, retain_headings=False),
+    )
+
+    chunks = splitter.split(document)
+
+    assert all(chunk.body.strip() for chunk in chunks)
+    assert "This guide walks you through the basics" in chunks[0].body
+    assert "If you encounter issues" in chunks[0].body
+
+
+def test_empty_section_discarded_by_default_with_retain_headings() -> None:
+    """Heading-only chunks discarded by default (skip_empty_sections=True)."""
+    document = MarkdownParser().parse(EMPTY_SECTION_FIXTURE, document_title="empty-section.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=50,
+            merge_below_tokens=0,
+            retain_headings=True,
+            skip_empty_sections=True,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert all(chunk.body.strip() for chunk in chunks)
+    assert not any(
+        chunk.headings == ((1, "Getting Started"), (2, "Installation")) for chunk in chunks
+    )
+
+
+def test_empty_section_kept_when_skip_empty_sections_false() -> None:
+    """Heading-only chunks kept when skip_empty_sections=False and retain_headings=True."""
+    document = MarkdownParser().parse(EMPTY_SECTION_FIXTURE, document_title="empty-section.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=500,
+            merge_below_tokens=0,
+            retain_headings=True,
+            skip_empty_sections=False,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert any("## Installation" in chunk.body for chunk in chunks)
+
+
+def test_empty_section_discarded_even_with_skip_false_when_retain_headings_false() -> None:
+    """Zero-token chunks always discarded regardless of skip_empty_sections."""
+    document = MarkdownParser().parse(EMPTY_SECTION_FIXTURE, document_title="empty-section.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=500,
+            merge_below_tokens=0,
+            retain_headings=False,
+            skip_empty_sections=False,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert all(chunk.body.strip() for chunk in chunks)
+    assert not any("Installation" in chunk.body for chunk in chunks)
+
+
+def test_empty_section_between_non_empty_sections_is_skipped() -> None:
+    document = MarkdownParser().parse(EMPTY_SECTION_FIXTURE, document_title="empty-section.md")
+    splitter = MarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=50,
+            merge_below_tokens=0,
+            retain_headings=True,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert all(chunk.body.strip() for chunk in chunks)

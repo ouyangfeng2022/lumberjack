@@ -54,6 +54,7 @@ def _build_split_options(
     include_common_headings: bool,
     merge_small_chunks: bool,
     isolate_front_matter: bool,
+    skip_empty_sections: bool,
     split_oversized_blocks: str,
 ) -> SplitOptions:
     """Build core split options from web form values."""
@@ -65,6 +66,7 @@ def _build_split_options(
         include_common_headings=include_common_headings,
         merge_small_chunks=merge_small_chunks,
         isolate_front_matter=isolate_front_matter,
+        skip_empty_sections=skip_empty_sections,
         split_oversized_blocks=_parse_block_types(split_oversized_blocks),
     )
 
@@ -80,6 +82,7 @@ async def split(
     include_common_headings: bool = Form(True),
     merge_small_chunks: bool = Form(True),
     isolate_front_matter: bool = Form(True),
+    skip_empty_sections: bool = Form(True),
     split_oversized_blocks: str = Form("paragraph,blockquote,html_block"),
     disable_lheading: bool = Form(False),
     tokenizer: str = Form("simple"),
@@ -98,23 +101,28 @@ async def split(
         include_common_headings=include_common_headings,
         merge_small_chunks=merge_small_chunks,
         isolate_front_matter=isolate_front_matter,
+        skip_empty_sections=skip_empty_sections,
         split_oversized_blocks=split_oversized_blocks,
     )
 
-    chunks = lumber(
-        content,
-        document_title=document_title,
-        max_tokens=options.max_tokens,
-        merge_below_tokens=options.merge_below_tokens,
-        overlap_tokens=options.overlap_tokens,
-        retain_headings=options.retain_headings,
-        include_common_headings=options.include_common_headings,
-        merge_small_chunks=options.merge_small_chunks,
-        isolate_front_matter=options.isolate_front_matter,
-        split_oversized_blocks=options.split_oversized_blocks,
-        disable_lheading=disable_lheading,
-        tokenizer=tokenizer,
-    )
+    try:
+        chunks = lumber(
+            content,
+            document_title=document_title,
+            max_tokens=options.max_tokens,
+            merge_below_tokens=options.merge_below_tokens,
+            overlap_tokens=options.overlap_tokens,
+            retain_headings=options.retain_headings,
+            include_common_headings=options.include_common_headings,
+            merge_small_chunks=options.merge_small_chunks,
+            isolate_front_matter=options.isolate_front_matter,
+            skip_empty_sections=options.skip_empty_sections,
+            split_oversized_blocks=options.split_oversized_blocks,
+            disable_lheading=disable_lheading,
+            tokenizer=tokenizer,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
     return {
         "document": chunks[0].document_title if chunks else "Anonymous",
@@ -134,6 +142,7 @@ async def pipeline(
     include_common_headings: bool = Form(True),
     merge_small_chunks: bool = Form(True),
     isolate_front_matter: bool = Form(True),
+    skip_empty_sections: bool = Form(True),
     split_oversized_blocks: str = Form("paragraph,blockquote,html_block"),
     disable_lheading: bool = Form(False),
     tokenizer: str = Form("simple"),
@@ -152,6 +161,7 @@ async def pipeline(
         include_common_headings=include_common_headings,
         merge_small_chunks=merge_small_chunks,
         isolate_front_matter=isolate_front_matter,
+        skip_empty_sections=skip_empty_sections,
         split_oversized_blocks=split_oversized_blocks,
     )
 

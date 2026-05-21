@@ -22,6 +22,7 @@ def lumber(
     include_common_headings: bool = True,
     merge_small_chunks: bool = True,
     isolate_front_matter: bool = True,
+    skip_empty_sections: bool = True,
     split_oversized_blocks: Iterable[str] = frozenset(
         {
             "paragraph",
@@ -56,6 +57,7 @@ def lumber(
             include_common_headings=include_common_headings,
             merge_small_chunks=merge_small_chunks,
             isolate_front_matter=isolate_front_matter,
+            skip_empty_sections=skip_empty_sections,
             split_oversized_blocks=frozenset(split_oversized_blocks),
         ),
     )

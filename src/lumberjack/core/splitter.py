@@ -16,6 +16,15 @@ SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?\u3002\uFF01\uFF1F])\s+")
 PROTECTED_SPAN_RE = re.compile(r"<https?://[^\s>]+>|https?://[^\s)>\]]+")
 SEPARATOR = "\n\n"
 SplitOrigin = Literal["section", "fragment", "text_piece"]
+THEMATIC_BREAK_ATTACH_PREVIOUS_KINDS = frozenset(
+    {
+        "paragraph",
+        "blockquote",
+        "html_block",
+        "math_block",
+        "math_block_eqno",
+    }
+)
 
 
 @dataclass(slots=True)
@@ -162,8 +171,8 @@ class MarkdownSplitter(SplitterProtocol):
 
         if section.level > 0 and self.options.retain_headings:
             title_token_count = self.tokenizer.count(
-                "#" * section.level + " ", cache=True
-            ) + self.tokenizer.count(section.title + SEPARATOR, cache=True)
+                "#" * section.level + " " + section.title + SEPARATOR, cache=True
+            )
         else:
             title_token_count = 0
 
@@ -195,10 +204,8 @@ class MarkdownSplitter(SplitterProtocol):
         tokens = 0
         for level, title in path:
             if title:
-                tokens = (
-                    tokens
-                    + self.tokenizer.count("#" * level + " ", cache=True)
-                    + self.tokenizer.count(title + SEPARATOR, cache=True)
+                tokens = tokens + self.tokenizer.count(
+                    "#" * level + " " + title + SEPARATOR, cache=True
                 )
         return tokens
 
@@ -225,17 +232,17 @@ class MarkdownSplitter(SplitterProtocol):
             return []
 
         common_heading_token_count: int = (
-            self._heading_path_token_count(section.node.path)
+            self._heading_path_token_count(section.node.path[:-1])
             if self.options.include_common_headings
             else 0
         )
-        budget_token_count = self.options.max_tokens - common_heading_token_count
+        chunk_token = common_heading_token_count + section.counts.subtree
 
-        if section.counts.subtree <= budget_token_count:
+        if chunk_token <= self.options.max_tokens:
             return [
                 _ChunkDraft(
                     entries=self._entries_from_section(section),
-                    token_count=section.counts.subtree,
+                    token_count=chunk_token,
                 )
             ]
 
@@ -253,66 +260,62 @@ class MarkdownSplitter(SplitterProtocol):
         chunks: list[_ChunkDraft] = []
         current_entries: list[_Entry] = []
         current_token_count: int = 0
-        current_draft: _ChunkDraft | None = None
+
         common_heading_token_count: int = (
             self._heading_path_token_count(node.path) if self.options.include_common_headings else 0
         )
         budget_token_count = self.options.max_tokens - common_heading_token_count
 
         def flush_current() -> None:
-            nonlocal current_entries, current_draft, current_token_count
+            nonlocal current_entries, current_token_count
 
-            if current_draft is None or not current_draft.entries:
+            if not current_entries:
                 return
 
-            chunks.append(current_draft)
-
-            current_entries = []
-            current_draft = None
-            current_token_count = 0
-
-        def add_packable(draft: _ChunkDraft) -> None:
-            """Add a draft whose tokens are already guaranteed not to exceed max_tokens."""
-            nonlocal current_entries, current_draft, current_token_count
-
-            if current_draft is None:
-                current_entries = draft.entries.copy()
-                current_draft = draft
-                current_token_count = draft.token_count
-                return
-
-            candidate_entries = [*current_entries, *draft.entries]
-            candidate_token_count = current_token_count + draft.token_count
-            candidate_draft = _ChunkDraft(
-                entries=candidate_entries,
-                token_count=candidate_token_count,
+            chunks.append(
+                _ChunkDraft(
+                    entries=current_entries,
+                    token_count=current_token_count,
+                )
             )
+            current_entries = []
+            current_token_count = common_heading_token_count
 
-            if candidate_token_count > budget_token_count:
+        def add_packable(entries: list[_Entry], token_count: int) -> None:
+            """Add a draft whose tokens are already guaranteed not to exceed max_tokens.
+
+            Args:
+                entries (list[_Entry]): list of entry with a common headings
+                token_count (int): estimated token counts of the rendered `entries`.
+            """
+            nonlocal current_entries, current_token_count
+
+            if not current_entries:
+                current_entries = entries.copy()
+                current_token_count = common_heading_token_count + token_count
+                return
+
+            candidate_entries = [*current_entries, *entries]
+            candidate_token_count = current_token_count + token_count
+
+            if candidate_token_count > self.options.max_tokens:
                 flush_current()
-                current_entries = draft.entries.copy()
-                current_draft = draft
-                current_token_count = draft.token_count
+                current_entries = entries.copy()
+                current_token_count = common_heading_token_count + token_count
                 return
 
             current_entries = candidate_entries
             current_token_count = candidate_token_count
-            current_draft = candidate_draft
 
         if node.blocks:
             body_token_count = section.counts.body
             if body_token_count <= budget_token_count:
-                body_draft = _ChunkDraft(
-                    [
-                        self._entries_from_blocks(
-                            node.path,
-                            node.blocks,
-                            body_token_count=body_token_count,
-                        )
-                    ],
-                    token_count=body_token_count,
+                entry = self._entry_from_blocks(
+                    node.path,
+                    node.blocks,
+                    body_token_count=body_token_count,
                 )
-                add_packable(body_draft)
+                add_packable([entry], body_token_count)
             else:
                 flush_current()
                 chunks.extend(self._split_section_body(section))
@@ -322,12 +325,8 @@ class MarkdownSplitter(SplitterProtocol):
                 continue
 
             if child.counts.subtree <= budget_token_count:
-                add_packable(
-                    _ChunkDraft(
-                        entries=self._entries_from_section(child),
-                        token_count=child.counts.subtree,
-                    )
-                )
+                entries = self._entries_from_section(child)
+                add_packable(entries, child.counts.subtree)
                 continue
 
             flush_current()
@@ -345,28 +344,17 @@ class MarkdownSplitter(SplitterProtocol):
         include_prefix = (
             self.options.retain_headings and self.options.include_common_headings and node.level > 0
         )
-        return self._split_fragment(
-            headings=node.path,
-            include_prefix=include_prefix,
-            blocks=node.blocks.copy(),
-        )
-
-    def _split_fragment(
-        self,
-        *,
-        headings: HeadingPath,
-        include_prefix: bool,
-        blocks: list[MarkdownBlock],
-    ) -> list[_ChunkDraft]:
-        """Greedy block-level split of a fragment into chunk drafts within token budget."""
+        headings = node.path
+        blocks = self._attach_thematic_breaks(node.blocks)
         max_tokens = self.options.max_tokens
+
         prefix_tokens = self._heading_path_token_count(headings) if include_prefix else 0
         if prefix_tokens >= max_tokens or not blocks:
-            entry = self._entries_from_blocks(headings, blocks)
+            entry = self._entry_from_blocks(headings, blocks)
             return [
                 _ChunkDraft(
                     entries=[entry],
-                    token_count=entry.body_token_count,
+                    token_count=prefix_tokens + entry.body_token_count,
                     split_origin="fragment",
                 )
             ]
@@ -470,6 +458,67 @@ class MarkdownSplitter(SplitterProtocol):
 
         return chunks
 
+    def _attach_thematic_breaks(self, blocks: list[MarkdownBlock]) -> list[MarkdownBlock]:
+        """Keep thematic breaks from becoming standalone chunks without changing the AST."""
+        attached: list[MarkdownBlock] = []
+        pending: list[MarkdownBlock] = []
+
+        for block in blocks:
+            if block.kind == "thematic_break":
+                if attached and attached[-1].kind in THEMATIC_BREAK_ATTACH_PREVIOUS_KINDS:
+                    attached[-1] = self._append_thematic_break(attached[-1], block)
+                else:
+                    pending.append(block)
+                continue
+
+            if pending:
+                block = self._prepend_thematic_breaks(pending, block)
+                pending = []
+            attached.append(block)
+
+        if pending:
+            attached.extend(pending)
+
+        return attached
+
+    @staticmethod
+    def _append_thematic_break(
+        block: MarkdownBlock, thematic_break: MarkdownBlock
+    ) -> MarkdownBlock:
+        return MarkdownBlock(
+            kind=block.kind,
+            text=join_markdown([block.text, thematic_break.text]),
+            start_line=block.start_line,
+            end_line=MarkdownSplitter._max_line(block.end_line, thematic_break.end_line),
+            children=block.children,
+            inlines=block.inlines,
+            attrs=block.attrs,
+        )
+
+    @staticmethod
+    def _prepend_thematic_breaks(
+        thematic_breaks: list[MarkdownBlock],
+        block: MarkdownBlock,
+    ) -> MarkdownBlock:
+        start_lines = [break_block.start_line for break_block in thematic_breaks]
+        start_lines.append(block.start_line)
+        return MarkdownBlock(
+            kind=block.kind,
+            text=join_markdown(
+                [*(break_block.text for break_block in thematic_breaks), block.text]
+            ),
+            start_line=min((line for line in start_lines if line is not None), default=None),
+            end_line=block.end_line,
+            children=block.children,
+            inlines=block.inlines,
+            attrs=block.attrs,
+        )
+
+    @staticmethod
+    def _max_line(left: int | None, right: int | None) -> int | None:
+        lines = [line for line in (left, right) if line is not None]
+        return max(lines, default=None)
+
     def _split_oversized_block(
         self,
         block: MarkdownBlock,
@@ -493,6 +542,7 @@ class MarkdownSplitter(SplitterProtocol):
         max_tokens: int,
     ) -> list[str]:
         """Split a fenced/indented code block, preserving fence wrappers in each piece."""
+        # TODO: LSP
         info = str(block.attrs.get("info") or block.attrs.get("language") or "").strip()
         literal = str(block.attrs.get("literal") or "")
         open_fence = f"```{info}".rstrip()
@@ -512,6 +562,7 @@ class MarkdownSplitter(SplitterProtocol):
         max_tokens: int,
     ) -> list[str]:
         """Split a list block by packing list items, falling back to text splitting."""
+        # TODO: MAX_TOKENS specifically for list
         items = [child.text for child in block.children if child.text]
         if len(items) <= 1:
             return self._split_text(
@@ -711,6 +762,7 @@ class MarkdownSplitter(SplitterProtocol):
                 and chunk.token_count < self.options.merge_below_tokens
                 and chunk.split_origin in {"fragment", "text_piece"}
             ):
+                # TODO: prefix tokens ?
                 merged[-1] = _ChunkDraft(
                     entries=merged_entries,
                     token_count=merged_token_count,
@@ -729,9 +781,17 @@ class MarkdownSplitter(SplitterProtocol):
         finalized: list[Chunk] = []
         doc_path = document.metadata.get("path")
         document_path = str(doc_path) if doc_path is not None else None
-        for index, chunk in enumerate(chunks, start=1):
+        index = 0
+        for chunk in chunks:
             headings = self._common_heading_path(entry.headings for entry in chunk.entries)
             body = self._render_body(chunk.entries, common_headings=headings)
+            if not body:
+                continue
+            if self.options.skip_empty_sections and not any(
+                entry.body.strip() for entry in chunk.entries
+            ):
+                continue
+            index += 1
             token_count = self.tokenizer.count(body)
             finalized.append(
                 Chunk(
@@ -759,7 +819,7 @@ class MarkdownSplitter(SplitterProtocol):
             )
         return finalized
 
-    def _entries_from_blocks(
+    def _entry_from_blocks(
         self,
         headings: HeadingPath,
         blocks: list[MarkdownBlock],
@@ -788,7 +848,7 @@ class MarkdownSplitter(SplitterProtocol):
         entries: list[_Entry] = []
         if node.blocks or (not section.children and node.level > 0):
             entries.append(
-                self._entries_from_blocks(
+                self._entry_from_blocks(
                     node.path,
                     node.blocks,
                     body_token_count=section.counts.body,
