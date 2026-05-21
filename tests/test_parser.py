@@ -151,6 +151,10 @@ def test_parser_captures_commonmark_blocks_and_inlines() -> None:
     assert ordered_list.children[0].text.startswith("1. ")
     assert ordered_list.children[1].text.startswith("2. ")
 
+    thematic_break = heading.blocks[3]
+    assert thematic_break.kind == "thematic_break"
+    assert thematic_break.text == "---"
+
     fenced = heading.blocks[4]
     assert fenced.attrs["language"] == "python"
     assert fenced.attrs["literal"] == 'print("fenced")'
@@ -256,7 +260,6 @@ def test_markdown_it_parser_handles_all_block_and_inline_tokens_in_comprehensive
         "link_close",
         "link_open",
         "math_inline",
-        "math_single",
         "s_close",
         "s_open",
         "softbreak",
@@ -464,3 +467,46 @@ def test_no_document_title_front_matter_empty_title_uses_first_h1() -> None:
     document = MarkdownParser().parse(md)
 
     assert document.title == "Real Title"
+
+
+def test_thematic_break_remains_structural_block() -> None:
+    """thematic_break remains its own parsed block."""
+    md = "Paragraph.\n\n---\n\nMore text."
+    document = MarkdownParser().parse(md, document_title="hr.md")
+    blocks = document.root.blocks
+
+    assert len(blocks) == 3
+    assert blocks[0].kind == "paragraph"
+    assert blocks[0].text == "Paragraph."
+    assert blocks[1].kind == "thematic_break"
+    assert blocks[1].text == "---"
+    assert blocks[2].kind == "paragraph"
+    assert blocks[2].text == "More text."
+
+
+def test_thematic_break_at_start_stays_standalone() -> None:
+    """thematic_break with no preceding block remains standalone."""
+    md = "---\n\nParagraph."
+    document = MarkdownParser().parse(md, document_title="hr-first.md")
+    blocks = document.root.blocks
+
+    assert len(blocks) == 2
+    assert blocks[0].kind == "thematic_break"
+    assert blocks[1].kind == "paragraph"
+
+
+def test_multiple_thematic_breaks_remain_structural_blocks() -> None:
+    """Each thematic_break remains parse-visible."""
+    md = "Para 1\n\n---\n\nPara 2\n\n***\n\nPara 3"
+    document = MarkdownParser().parse(md, document_title="multi-hr.md")
+    blocks = document.root.blocks
+
+    assert len(blocks) == 5
+    assert blocks[0].kind == "paragraph"
+    assert blocks[1].kind == "thematic_break"
+    assert blocks[1].text == "---"
+    assert blocks[2].kind == "paragraph"
+    assert blocks[3].kind == "thematic_break"
+    assert blocks[3].text == "***"
+    assert blocks[4].kind == "paragraph"
+    assert blocks[4].text == "Para 3"

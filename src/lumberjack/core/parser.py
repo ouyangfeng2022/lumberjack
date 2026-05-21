@@ -5,9 +5,10 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 from markdown_it import MarkdownIt
+from mdit_py_plugins.dollarmath import dollarmath_plugin
 from mdit_py_plugins.front_matter import front_matter_plugin
-from mdit_py_plugins.texmath import texmath_plugin
 
+from ..core.plugins import brackets_math_plugin
 from ..utils import join_markdown
 
 if TYPE_CHECKING:
@@ -80,9 +81,9 @@ class MarkdownItParser(_InlineRenderingMixin):
         disable_lheading: bool = False,
     ) -> None:
         self._parser = MarkdownIt(preset, options_update=options_update)
-        self._parser.use(texmath_plugin, delimiters="brackets")
-        self._parser.use(texmath_plugin, delimiters="dollars")
+        self._parser.use(dollarmath_plugin)
         self._parser.use(front_matter_plugin)
+        self._parser.use(brackets_math_plugin)
         for plugin in plugins:
             self._parser.use(plugin)
         if disable_lheading:
@@ -294,6 +295,18 @@ class MarkdownItParser(_InlineRenderingMixin):
                     start_line=self._start_line(token),
                     end_line=self._end_line(token),
                     attrs={"literal": token.content.rstrip("\n")},
+                ),
+                index + 1,
+            )
+
+        if token.type == "math_block_eqno":
+            return (
+                MarkdownBlock(
+                    kind="math_block_eqno",
+                    text=self._slice_source(source_lines, token.map),
+                    start_line=self._start_line(token),
+                    end_line=self._end_line(token),
+                    attrs={"literal": token.content.rstrip("\n"), "eqno": token.info.strip()},
                 ),
                 index + 1,
             )
