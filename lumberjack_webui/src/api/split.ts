@@ -21,6 +21,7 @@ export async function splitMarkdown(
   formData.append('merge_small_chunks', String(options.merge_small_chunks));
   formData.append('isolate_front_matter', String(options.isolate_front_matter));
   formData.append('skip_empty_sections', String(options.skip_empty_sections));
+  formData.append('recursive_split', String(options.recursive_split));
   formData.append('disable_lheading', String(options.disable_lheading));
   const blocks = options.split_oversized_blocks
     .split(',')
@@ -31,6 +32,7 @@ export async function splitMarkdown(
   }
   formData.append('split_oversized_blocks', blocks.join(','));
   formData.append('tokenizer', options.tokenizer);
+  formData.append('splitter', options.splitter);
   formData.append('document_title', options.document_title);
 
   const response = await fetch('/lumber/api/split', {

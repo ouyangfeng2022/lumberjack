@@ -129,6 +129,8 @@ class SplitOptions:
         skip_empty_sections: When True, discard chunks that contain only a heading
             with no body content. Chunks with zero rendered tokens are always discarded
             regardless of this setting.
+        recursive_split: When True, split oversized direct section bodies in splitters
+            that support strict heading-level output.
         split_oversized_blocks: Block kinds to split when they exceed ``max_tokens``.
             Must be a frozenset of lowercase strings matching :attr:`MarkdownBlock.kind`
             values.
@@ -142,6 +144,7 @@ class SplitOptions:
     merge_small_chunks: bool = True
     isolate_front_matter: bool = True
     skip_empty_sections: bool = True
+    recursive_split: bool = False
     split_oversized_blocks: frozenset[str] = frozenset(
         {
             "paragraph",

@@ -37,6 +37,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Markdown parser implementation",
     )
     parser.add_argument(
+        "--splitter",
+        choices=("semantic", "heading"),
+        default="semantic",
+        help="Splitter implementation",
+    )
+    parser.add_argument(
         "--max-tokens", type=int, default=1200, help="Maximum tokens per chunk"
     )
     parser.add_argument(
@@ -50,6 +56,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="Token overlap for text fallback splits",
+    )
+    parser.add_argument(
+        "--recursive-split",
+        action="store_true",
+        help="Split oversized direct section bodies when using --splitter heading",
     )
     parser.add_argument(
         "--retain-headings", action="store_true", help="Retain headings in each chunk"
@@ -114,6 +125,8 @@ def main() -> None:
         disable_lheading=args.disable_lheading,
         tokenizer=args.tokenizer,
         parser=args.parser,
+        splitter=args.splitter,
+        recursive_split=args.recursive_split,
         document_metadata={"path": str(input_path.resolve())},
     )
 

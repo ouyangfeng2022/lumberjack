@@ -73,6 +73,27 @@ def test_split_with_options(client: TestClient) -> None:
     assert body["chunk_count"] >= 1
 
 
+def test_split_accepts_heading_splitter_with_recursive_split(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/lumber/api/split",
+        data={
+            "text": "# Parent\n\nParent intro.\n\n## Child\n\nChild body.",
+            "max_tokens": "500",
+            "splitter": "heading",
+            "recursive_split": "true",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [chunk["headings"] for chunk in body["chunks"]] == [
+        [[1, "Parent"]],
+        [[1, "Parent"], [2, "Child"]],
+    ]
+
+
 def test_split_can_disable_setext_headings(client: TestClient) -> None:
     response = client.post(
         "/lumber/api/split",
@@ -98,6 +119,22 @@ def test_pipeline_uses_lumber_prefix(client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["stage_5_chunks"]["chunk_count"] >= 1
+
+
+def test_pipeline_uses_selected_heading_splitter(client: TestClient) -> None:
+    response = client.post(
+        "/lumber/api/pipeline",
+        data={
+            "text": "# Parent\n\nParent intro.\n\n## Child\n\nChild body.",
+            "max_tokens": "500",
+            "splitter": "heading",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stage_4_split"]["options"]["splitter"] == "heading"
+    assert len(body["stage_4_split"]["drafts"]) == 2
 
 
 def test_pipeline_split_entries_expose_only_rendering_inputs(

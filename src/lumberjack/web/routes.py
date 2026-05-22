@@ -6,9 +6,10 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from lumberjack.api import lumber
 from lumberjack.core import create_tokenizer
+from lumberjack.core.splitter import SPLITTER_REGISTRY
 from lumberjack.models import DocumentAST, SplitOptions
 
-from .pipeline import WebParser, WebSplitter
+from .pipeline import WebHeadingSplitter, WebParser, WebSplitter
 
 router = APIRouter()
 
@@ -57,6 +58,7 @@ def _build_split_options(
     merge_small_chunks: bool,
     isolate_front_matter: bool,
     skip_empty_sections: bool,
+    recursive_split: bool,
     split_oversized_blocks: str,
 ) -> SplitOptions:
     """Build core split options from web form values."""
@@ -69,8 +71,31 @@ def _build_split_options(
         merge_small_chunks=merge_small_chunks,
         isolate_front_matter=isolate_front_matter,
         skip_empty_sections=skip_empty_sections,
+        recursive_split=recursive_split,
         split_oversized_blocks=_parse_block_types(split_oversized_blocks),
     )
+
+
+_WEB_SPLITTER_MAP: dict[type, type] = {
+    SPLITTER_REGISTRY["semantic"]: WebSplitter,
+    SPLITTER_REGISTRY["heading"]: WebHeadingSplitter,
+}
+
+
+def _build_web_splitter(
+    name: str,
+    *,
+    tokenizer: str,
+    options: SplitOptions,
+) -> WebSplitter | WebHeadingSplitter:
+    """Build a web splitter with pipeline instrumentation."""
+    tokenizer_impl = create_tokenizer(tokenizer)
+    normalized = name.strip().lower()
+    core_cls = SPLITTER_REGISTRY.get(normalized)
+    if core_cls is None:
+        raise ValueError(f"Unsupported splitter: {name}")
+    web_cls = _WEB_SPLITTER_MAP.get(core_cls, WebSplitter)
+    return web_cls(tokenizer=tokenizer_impl, options=options)
 
 
 @router.post("/split")
@@ -85,9 +110,11 @@ async def split(
     merge_small_chunks: bool = Form(True),
     isolate_front_matter: bool = Form(True),
     skip_empty_sections: bool = Form(True),
+    recursive_split: bool = Form(False),
     split_oversized_blocks: str = Form("paragraph,blockquote,html_block"),
     disable_lheading: bool = Form(False),
     tokenizer: str = Form("simple"),
+    splitter: str = Form("semantic"),
 ) -> dict:
     """Split Markdown text or an uploaded file into chunks and return JSON results."""
     try:
@@ -104,6 +131,7 @@ async def split(
         merge_small_chunks=merge_small_chunks,
         isolate_front_matter=isolate_front_matter,
         skip_empty_sections=skip_empty_sections,
+        recursive_split=recursive_split,
         split_oversized_blocks=split_oversized_blocks,
     )
 
@@ -122,6 +150,8 @@ async def split(
             split_oversized_blocks=options.split_oversized_blocks,
             disable_lheading=disable_lheading,
             tokenizer=tokenizer,
+            splitter=splitter,
+            recursive_split=options.recursive_split,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -145,9 +175,11 @@ async def pipeline(
     merge_small_chunks: bool = Form(True),
     isolate_front_matter: bool = Form(True),
     skip_empty_sections: bool = Form(True),
+    recursive_split: bool = Form(False),
     split_oversized_blocks: str = Form("paragraph,blockquote,html_block"),
     disable_lheading: bool = Form(False),
     tokenizer: str = Form("simple"),
+    splitter: str = Form("semantic"),
 ) -> dict:
     """Return all intermediate pipeline stages for visualization."""
     try:
@@ -164,6 +196,7 @@ async def pipeline(
         merge_small_chunks=merge_small_chunks,
         isolate_front_matter=isolate_front_matter,
         skip_empty_sections=skip_empty_sections,
+        recursive_split=recursive_split,
         split_oversized_blocks=split_oversized_blocks,
     )
 
@@ -178,12 +211,15 @@ async def pipeline(
     document: DocumentAST = parser_impl.parse(content, document_title=document_title)
 
     # Stage 4-5: Splitting with intermediate data
-    tokenizer_impl = create_tokenizer(tokenizer)
-    splitter = WebSplitter(
-        tokenizer=tokenizer_impl,
-        options=options,
-    )
-    steps = splitter.split_with_steps(document)
+    try:
+        web_splitter = _build_web_splitter(
+            splitter,
+            tokenizer=tokenizer,
+            options=options,
+        )
+        steps = web_splitter.split_with_steps(document)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
     return {
         "stage_1_raw": {
@@ -209,6 +245,8 @@ async def pipeline(
                 "merge_below_tokens": merge_below_tokens,
                 "overlap_tokens": overlap_tokens,
                 "disable_lheading": disable_lheading,
+                "splitter": splitter,
+                "recursive_split": recursive_split,
             },
         },
         "stage_5_chunks": {

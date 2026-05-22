@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any
 
 from ..core.parser import MarkdownItParser
-from ..core.splitter import MarkdownSplitter, _ChunkDraft, _Entry
+from ..core.splitter import HeadingSplitter, MarkdownSplitter, _ChunkDraft, _Entry
 
 if TYPE_CHECKING:
     from ..models import Chunk, DocumentAST
@@ -54,5 +54,20 @@ class WebSplitter(MarkdownSplitter):
         return PipelineSteps(
             entries=entries,
             drafts_after_merge=drafts_after,
+            chunks=chunks,
+        )
+
+
+class WebHeadingSplitter(HeadingSplitter):
+    """Heading splitter that captures intermediate pipeline stages for visualization."""
+
+    def split_with_steps(self, document: DocumentAST) -> PipelineSteps:
+        """Split by heading sections and return intermediate visualization data."""
+        measured_root, drafts, front_matter_block = self._do_heading_split(document)
+        entries = self._entries_from_section(measured_root)
+        chunks = self._finalize_with_front_matter(drafts, front_matter_block, document)
+        return PipelineSteps(
+            entries=entries,
+            drafts_after_merge=drafts,
             chunks=chunks,
         )

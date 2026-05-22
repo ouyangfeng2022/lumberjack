@@ -156,6 +156,18 @@ export default function SplitOptions({ options, onChange }: Props) {
           </div>
 
           <div className={styles.field}>
+            <span className={styles.fieldLabel}>{t('opts_splitter')}</span>
+            <select
+              className={styles.select}
+              value={options.splitter}
+              onChange={(e) => update('splitter', e.target.value)}
+            >
+              <option value="semantic">{t('opts_splitter_semantic')}</option>
+              <option value="heading">{t('opts_splitter_heading')}</option>
+            </select>
+          </div>
+
+          <div className={styles.field}>
             <span className={styles.fieldLabel}>{t('opts_tokenizer')}</span>
             <select
               className={styles.select}
@@ -170,6 +182,17 @@ export default function SplitOptions({ options, onChange }: Props) {
           <div className={styles.field}>
             <span className={styles.fieldLabel}>{t('opts_split_oversized')}</span>
             <div className={styles.checkGroup}>
+              <label
+                className={`${styles.checkField} ${options.splitter !== 'heading' ? styles.checkDisabled : ''}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={options.recursive_split}
+                  disabled={options.splitter !== 'heading'}
+                  onChange={(e) => update('recursive_split', e.target.checked)}
+                />
+                <span>{t('opts_recursive_split')}</span>
+              </label>
               {SPLIT_BLOCK_OPTIONS.map((block) => (
                 <label key={block} className={styles.checkField}>
                   <input

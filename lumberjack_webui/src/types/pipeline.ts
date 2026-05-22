@@ -79,6 +79,8 @@ export interface SplitStage {
     max_tokens: number;
     merge_below_tokens: number;
     overlap_tokens: number;
+    splitter: string;
+    recursive_split: boolean;
   };
 }
 

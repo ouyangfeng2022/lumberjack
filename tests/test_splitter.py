@@ -5,9 +5,11 @@ from pathlib import Path
 from lumberjack.api import lumber
 from lumberjack.core.parser import MarkdownParser
 from lumberjack.core.splitter import (
+    HeadingSplitter,
     MarkdownSplitter,
     _ChunkDraft,
     _Entry,
+    create_splitter,
     heading_path_token_count,
 )
 from lumberjack.core.tokenizers import SimpleCharTokenizer
@@ -103,6 +105,24 @@ print("gamma")
 
 LONG_URL_FIXTURE = "See https://example.com/really/long/path/that/should/not/be/split/in/chunks for details."
 
+HEADING_SPLITTER_FIXTURE = """# Parent
+
+Parent intro.
+
+## One
+
+One body.
+
+## Two
+
+Two body.
+"""
+
+HEADING_OVERSIZED_FIXTURE = """# Long
+
+Alpha bravo charlie delta echo foxtrot golf hotel india juliet.
+"""
+
 
 class RecordingTokenizer(SimpleCharTokenizer):
     def __init__(self) -> None:
@@ -125,6 +145,123 @@ def test_splitter_preserves_heading_context() -> None:
     assert len(chunks) >= 2
     assert any("# Overview" in chunk.body for chunk in chunks)
     assert any("## Details" in chunk.body for chunk in chunks)
+
+
+def test_create_splitter_routes_semantic_default_and_heading() -> None:
+    options = SplitOptions(max_tokens=100, merge_below_tokens=0)
+
+    assert isinstance(
+        create_splitter("semantic", SimpleCharTokenizer(), options), MarkdownSplitter
+    )
+    assert isinstance(
+        create_splitter("default", SimpleCharTokenizer(), options), MarkdownSplitter
+    )
+    assert isinstance(
+        create_splitter("heading", SimpleCharTokenizer(), options), HeadingSplitter
+    )
+
+
+def test_heading_splitter_keeps_sections_separate_without_repeating_children() -> None:
+    document = MarkdownParser().parse(
+        HEADING_SPLITTER_FIXTURE, document_title="heading.md"
+    )
+    splitter = HeadingSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=1000, merge_below_tokens=0),
+    )
+
+    chunks = splitter.split(document)
+
+    assert [chunk.headings for chunk in chunks] == [
+        ((1, "Parent"),),
+        ((1, "Parent"), (2, "One")),
+        ((1, "Parent"), (2, "Two")),
+    ]
+    assert chunks[0].body == "# Parent\n\nParent intro."
+    assert chunks[1].body == "# Parent\n\n## One\n\nOne body."
+    assert chunks[2].body == "# Parent\n\n## Two\n\nTwo body."
+    assert "One body." not in chunks[0].body
+    assert "Two body." not in chunks[0].body
+
+
+def test_heading_splitter_keeps_oversized_section_intact_by_default() -> None:
+    document = MarkdownParser().parse(
+        HEADING_OVERSIZED_FIXTURE, document_title="heading.md"
+    )
+    splitter = HeadingSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=25,
+            merge_below_tokens=0,
+            split_oversized_blocks=frozenset({"paragraph"}),
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].headings == ((1, "Long"),)
+    assert chunks[0].estimated_token_count > splitter.options.max_tokens
+    assert "Alpha bravo charlie" in chunks[0].body
+
+
+def test_heading_splitter_recursively_splits_oversized_section_body() -> None:
+    document = MarkdownParser().parse(
+        HEADING_OVERSIZED_FIXTURE, document_title="heading.md"
+    )
+    splitter = HeadingSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=35,
+            merge_below_tokens=0,
+            recursive_split=True,
+            split_oversized_blocks=frozenset({"paragraph"}),
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) > 1
+    assert all(chunk.headings == ((1, "Long"),) for chunk in chunks)
+    assert all(chunk.body.startswith("# Long\n\n") for chunk in chunks)
+    assert "Alpha bravo" in chunks[0].body
+    assert "juliet." in chunks[-1].body
+
+
+def test_heading_splitter_respects_empty_section_options() -> None:
+    document = MarkdownParser().parse("# Empty\n\n## Child\n\nChild body.")
+
+    default_chunks = HeadingSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=1000, merge_below_tokens=0),
+    ).split(document)
+    kept_chunks = HeadingSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=1000,
+            merge_below_tokens=0,
+            skip_empty_sections=False,
+        ),
+    ).split(document)
+    hidden_heading_chunks = HeadingSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=1000,
+            merge_below_tokens=0,
+            retain_headings=False,
+            skip_empty_sections=False,
+        ),
+    ).split(document)
+
+    assert [chunk.headings for chunk in default_chunks] == [
+        ((1, "Empty"), (2, "Child")),
+    ]
+    assert [chunk.headings for chunk in kept_chunks] == [
+        ((1, "Empty"),),
+        ((1, "Empty"), (2, "Child")),
+    ]
+    assert kept_chunks[0].body == "# Empty"
+    assert [chunk.body for chunk in hidden_heading_chunks] == ["Child body."]
 
 
 def test_splitter_respects_budget_except_unsplittable_code_fence() -> None:
@@ -815,6 +952,23 @@ def test_front_matter_isolated_as_first_chunk_by_default() -> None:
     assert chunks[0].section_level == 0
     assert chunks[0].start_line == 1
     assert chunks[0].end_line == 5
+
+
+def test_heading_splitter_isolates_front_matter_before_heading_chunks() -> None:
+    document = MarkdownParser().parse(FRONT_MATTER_FIXTURE, document_title="doc.md")
+    splitter = HeadingSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=500, merge_below_tokens=0),
+    )
+
+    chunks = splitter.split(document)
+
+    assert chunks[0].chunk_type == "front_matter"
+    assert chunks[0].chunk_id == "chunk-0000"
+    assert [chunk.headings for chunk in chunks[1:]] == [
+        ((1, "Introduction"),),
+        ((1, "Body"),),
+    ]
 
 
 def test_front_matter_included_normally_when_isolation_disabled() -> None:

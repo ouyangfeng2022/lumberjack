@@ -13,7 +13,7 @@ mode and normalizes its token stream into lumberjack's internal data model befor
 Core pipeline:
 
 ```text
-Markdown text -> parser tokens -> DocumentAST -> MarkdownSplitter -> Chunk[]
+Markdown text -> parser tokens -> DocumentAST -> splitter -> Chunk[]
 ```
 
 Current behavior:
@@ -61,9 +61,11 @@ Supported CLI options today:
 - `--format {json,markdown}`: output format, default `json`
 - `--tokenizer {simple,tiktoken}`: token counting strategy, default `simple`
 - `--parser {default,markdown-it}`: parser selector exposed by the CLI
+- `--splitter {semantic,heading}`: splitting strategy, default `semantic`
 - `--max-tokens`: maximum chunk budget, default `1200`
 - `--merge-below-tokens`: soft threshold for small-chunk merging, default `50`
 - `--overlap-tokens`: optional token overlap used only for text fallback splits, default `0`
+- `--recursive-split`: split oversized direct section bodies when using `--splitter heading`
 - `--retain-headings`: include heading context in rendered chunk text
 - `--split-oversized-block <kind>`: opt in to splitting oversized `list`, `code_block`, `code_fence`, `table`, and other supported block kinds
 
@@ -120,6 +122,8 @@ chunks = lumber(
     split_oversized_blocks=("list", "code_fence"),
     disable_lheading=False,
     tokenizer="simple",
+    parser="default",
+    splitter="semantic",
 )
 
 from mdit_py_plugins.tasklists import tasklists_plugin
@@ -188,7 +192,14 @@ Parser behavior note:
 
 ## Splitting Strategy
 
-Splitting is structure-first and budget-aware:
+`lumber()` supports two splitter names:
+
+- `semantic` (default): structure-first and budget-aware; it can merge adjacent
+  sibling sections when they fit the same chunk.
+- `heading`: emits one non-overlapping chunk per heading section direct body.
+  Child sections are emitted as their own chunks, not repeated in parent chunks.
+
+Semantic splitting follows this order:
 
 1. Keep the whole document as one chunk if it already fits.
 2. Otherwise split by heading sections.
@@ -212,6 +223,9 @@ Important details:
 - Optional overlap is only applied when a single oversized block must be split by paragraph, line, sentence, word, or hard boundaries
 - Oversized lists and code blocks stay intact by default, but can be made splittable via `split_oversized_blocks`
 - Long URL-like spans are treated as unsplittable and will not be hard-split across chunks
+- For `heading`, `recursive_split=False` keeps oversized section bodies intact.
+  Set `recursive_split=True` to use the same block/text fallback for oversized
+  direct section bodies.
 
 ## Tokenizers
 

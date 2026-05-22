@@ -1002,3 +1002,96 @@ class MarkdownSplitter(SplitterProtocol):
             previous_headings = entry.headings
 
         return join_markdown(parts)
+
+
+class HeadingSplitter(MarkdownSplitter):
+    """Split a document into non-overlapping chunks by heading section."""
+
+    def _do_heading_split(
+        self, document: DocumentAST
+    ) -> tuple[_MeasuredSection, list[_ChunkDraft], MarkdownBlock | None]:
+        """Core heading split logic shared by ``split`` and web visualisation."""
+        self._validate_options()
+        front_matter_block = self._extract_front_matter(document.root)
+        measured_root = self._measure_section(document.root)
+        drafts = self._split_heading_sections(measured_root)
+        return measured_root, drafts, front_matter_block
+
+    def _finalize_with_front_matter(
+        self,
+        drafts: list[_ChunkDraft],
+        front_matter_block: MarkdownBlock | None,
+        document: DocumentAST,
+    ) -> list[Chunk]:
+        """Finalise drafts into chunks and prepend front-matter if present."""
+        finalized = self._finalize_chunks(drafts, document)
+        if front_matter_block is not None:
+            finalized.insert(
+                0, self._make_front_matter_chunk(front_matter_block, document)
+            )
+        return finalized
+
+    def split(self, document: DocumentAST) -> list[Chunk]:
+        """Split *document* by direct ``SectionNode`` bodies in document order."""
+        _, drafts, front_matter_block = self._do_heading_split(document)
+        return self._finalize_with_front_matter(drafts, front_matter_block, document)
+
+    def _split_heading_sections(self, section: _MeasuredSection) -> list[_ChunkDraft]:
+        """Return one direct-body draft per section, then recurse into children."""
+        chunks: list[_ChunkDraft] = []
+        node = section.node
+
+        if node.blocks or node.level > 0:
+            if self.options.recursive_split and self._section_body_exceeds_budget(
+                section
+            ):
+                chunks.extend(self._split_section_body(section))
+            else:
+                chunks.append(
+                    self._draft_from_entries(
+                        [
+                            self._entry_from_blocks(
+                                node.path,
+                                node.blocks,
+                                body_token_count=section.counts.body,
+                            )
+                        ]
+                    )
+                )
+
+        for child in section.children:
+            chunks.extend(self._split_heading_sections(child))
+
+        return chunks
+
+    def _section_body_exceeds_budget(self, section: _MeasuredSection) -> bool:
+        if not section.node.blocks:
+            return False
+        entries = [
+            self._entry_from_blocks(
+                section.node.path,
+                section.node.blocks,
+                body_token_count=section.counts.body,
+            )
+        ]
+        return self._estimate_entries(entries) > self.options.max_tokens
+
+
+SPLITTER_REGISTRY: dict[str, type[MarkdownSplitter]] = {
+    "default": HeadingSplitter,
+    "heading": HeadingSplitter,
+    "semantic": MarkdownSplitter,
+}
+
+
+def create_splitter(
+    name: str,
+    tokenizer: TokenizerProtocol | None = None,
+    options: SplitOptions | None = None,
+) -> SplitterProtocol:
+    """Instantiate a splitter by name."""
+    normalized = name.strip().lower()
+    cls = SPLITTER_REGISTRY.get(normalized)
+    if cls is None:
+        raise ValueError(f"Unsupported splitter: {name}")
+    return cls(tokenizer=tokenizer, options=options)

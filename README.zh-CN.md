@@ -13,7 +13,7 @@
 核心管线：
 
 ```text
-Markdown 文本 -> 解析器 token -> DocumentAST -> MarkdownSplitter -> Chunk[]
+Markdown 文本 -> 解析器 token -> DocumentAST -> splitter -> Chunk[]
 ```
 
 当前行为：
@@ -61,9 +61,11 @@ uv run lumber --help
 - `--format {json,markdown}`：输出格式，默认 `json`
 - `--tokenizer {simple,tiktoken}`：token 计数策略，默认 `simple`
 - `--parser {default,markdown-it}`：命令行暴露的解析器选择器
+- `--splitter {semantic,heading}`：切分策略，默认 `semantic`
 - `--max-tokens`：最大分块预算，默认 `1200`
 - `--merge-below-tokens`：小分块合并软阈值，默认 `50`
 - `--overlap-tokens`：仅在文本回退切分时使用的可选 token 重叠量，默认 `0`
+- `--recursive-split`：使用 `--splitter heading` 时递归拆分超大的章节直接正文
 - `--retain-headings`：在渲染的分块文本中包含标题上下文
 - `--split-oversized-block <kind>`：允许切分超大的 `list`、`code_block`、`code_fence`、`table` 等受支持的块类型
 
@@ -117,6 +119,8 @@ chunks = lumber(
     split_oversized_blocks=("list", "code_fence"),
     disable_lheading=False,
     tokenizer="simple",
+    parser="default",
+    splitter="semantic",
 )
 
 from mdit_py_plugins.tasklists import tasklists_plugin
@@ -186,7 +190,12 @@ plugin_chunks = lumber(
 
 ## 切分策略
 
-切分遵循结构优先、预算感知的原则：
+`lumber()` 支持两个切分器名称：
+
+- `semantic`（默认）：结构优先且感知预算；同级章节在预算允许时可以合并进同一个分块。
+- `heading`：按标题章节的直接正文输出不重叠分块；子章节独立输出，不重复出现在父章节分块里。
+
+语义切分遵循以下顺序：
 
 1. 如果整篇文档已在预算内，则保持为一个分块。
 2. 否则按标题章节切分。
@@ -202,6 +211,8 @@ plugin_chunks = lumber(
 - 可选重叠仅在单个超大块必须按段落、行、句子、单词或硬边界切分时应用
 - 超大列表和代码块默认保持完整，但可通过 `split_oversized_blocks` 设为可切分
 - 长的 URL 样式文本被视为不可切分，不会跨分块硬切分
+- 对 `heading` 切分器，`recursive_split=False` 会保留超大的章节正文。
+  设置 `recursive_split=True` 后，超大的章节直接正文会复用同一套块/文本回退切分逻辑。
 
 ## 分词器
 

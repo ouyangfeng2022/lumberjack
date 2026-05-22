@@ -79,6 +79,51 @@ def test_lumber_accepts_overlap_options() -> None:
     assert all(chunk.document_title == "sample.md" for chunk in chunks)
 
 
+def test_lumber_accepts_heading_splitter() -> None:
+    chunks = lumber(
+        MERGED_SECTION_FIXTURE,
+        document_title="development.md",
+        splitter="heading",
+        max_tokens=1000,
+        skip_empty_sections=False,
+    )
+
+    assert [chunk.headings for chunk in chunks] == [
+        ((1, "Development Guide"),),
+        ((1, "Development Guide"), (2, "Current Scope")),
+        ((1, "Development Guide"), (2, "Milestones")),
+        ((1, "Development Guide"), (2, "Milestones"), (3, "M0")),
+        ((1, "Development Guide"), (2, "Milestones"), (3, "M1")),
+    ]
+
+
+def test_lumber_semantic_splitter_matches_default() -> None:
+    default_chunks = lumber(
+        MERGED_SECTION_FIXTURE,
+        document_title="development.md",
+        max_tokens=1000,
+    )
+    semantic_chunks = lumber(
+        MERGED_SECTION_FIXTURE,
+        document_title="development.md",
+        splitter="semantic",
+        max_tokens=1000,
+    )
+
+    assert [asdict(chunk) for chunk in semantic_chunks] == [
+        asdict(chunk) for chunk in default_chunks
+    ]
+
+
+def test_lumber_rejects_unknown_splitter() -> None:
+    try:
+        lumber(FIXTURE, splitter="unknown")
+    except ValueError as e:
+        assert str(e) == "Unsupported splitter: unknown"
+    else:
+        raise AssertionError("Expected unsupported splitter to raise ValueError")
+
+
 def test_lumber_can_disable_setext_headings() -> None:
     chunks = lumber(
         "Title\n=====\n\nbody",

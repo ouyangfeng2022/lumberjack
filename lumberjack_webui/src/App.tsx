@@ -20,9 +20,11 @@ const DEFAULT_OPTIONS: Options = {
   merge_small_chunks: true,
   isolate_front_matter: true,
   skip_empty_sections: true,
+  recursive_split: false,
   split_oversized_blocks: 'paragraph,blockquote,html_block',
   disable_lheading: false,
   tokenizer: 'simple',
+  splitter: 'semantic',
   document_title: 'document.md',
 };
 
