@@ -159,6 +159,7 @@ def test_create_splitter_routes_semantic_default_and_heading() -> None:
     assert isinstance(
         create_splitter("heading", SimpleCharTokenizer(), options), HeadingSplitter
     )
+    assert not issubclass(HeadingSplitter, MarkdownSplitter)
 
 
 def test_heading_splitter_keeps_sections_separate_without_repeating_children() -> None:

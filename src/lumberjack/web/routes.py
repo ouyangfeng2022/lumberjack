@@ -72,7 +72,6 @@ def _build_split_options(
     )
 
 
-
 @router.post("/split")
 async def split(
     text: str | None = Form(None),

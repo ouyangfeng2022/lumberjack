@@ -111,7 +111,6 @@ def test_split_can_disable_setext_headings(client: TestClient) -> None:
     assert chunk["headings"] == []
 
 
-
 def test_unprefixed_api_path_is_not_registered(client: TestClient) -> None:
     response = client.post("/api/split", data={"text": SIMPLE_MD})
     assert response.status_code == 405
