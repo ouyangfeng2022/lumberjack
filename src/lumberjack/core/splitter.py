@@ -819,8 +819,13 @@ class _BaseMarkdownSplitter(SplitterProtocol):
         return join_markdown(parts)
 
 
-class MarkdownSplitter(_BaseMarkdownSplitter):
-    """Split a parsed Markdown document into token-bounded chunks."""
+class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
+    """Recursively split a Markdown document into token-bounded chunks.
+
+    Unlike SectionSplitter which keeps each heading section intact, this splitter
+    recursively breaks down oversized sections and merges small adjacent chunks
+    to stay within the configured max_tokens budget.
+    """
 
     def _post_process_drafts(self, drafts: list[_ChunkDraft]) -> list[_ChunkDraft]:
         if self.options.merge_small_chunks:
@@ -995,8 +1000,12 @@ class MarkdownSplitter(_BaseMarkdownSplitter):
         return merged
 
 
-class HeadingSplitter(_BaseMarkdownSplitter):
-    """Split a document into non-overlapping chunks by heading section."""
+class SectionMarkdownSplitter(_BaseMarkdownSplitter):
+    """Split a document into non-overlapping chunks by heading section.
+
+    Each heading-defined section becomes its own chunk. When ``recursive_split``
+    is enabled, oversized section bodies are further split by token budget.
+    """
 
     def _split_section(self, section: _MeasuredSection) -> list[_ChunkDraft]:
         """Return one direct-body draft per section, then recurse into children."""
@@ -1040,9 +1049,9 @@ class HeadingSplitter(_BaseMarkdownSplitter):
 
 
 SPLITTER_REGISTRY: dict[str, type[_BaseMarkdownSplitter]] = {
-    "default": MarkdownSplitter,
-    "heading": HeadingSplitter,
-    "semantic": MarkdownSplitter,
+    "default": RecursiveMarkdownSplitter,
+    "section": SectionMarkdownSplitter,
+    "recursive": RecursiveMarkdownSplitter,
 }
 
 

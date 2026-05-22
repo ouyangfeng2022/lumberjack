@@ -4,14 +4,15 @@
 
 Markdown document splitter for RAG preprocessing. Python 3.13+, `src/` layout, built with `hatchling` + `hatch-vcs`.
 
-Current runtime dependency:
+Current runtime dependencies:
 
-- `markdown-it-py` for the default GFM-like parser
+- `markdown-it-py[linkify,plugins]>=4.0.0` for the default GFM-like parser
+- `pyyaml>=6.0` for YAML front matter parsing
 
 Optional dependencies:
 
-- `tiktoken` for model-based token counting
-- `fastapi`, `uvicorn`, `python-multipart` for the web server (install via `--group web`)
+- `tiktoken>=0.9.0`, `cachetools>=7.1.1` for model-based token counting (install via `--extra tokenizers`)
+- `fastapi>=0.115.0`, `uvicorn>=0.34.0`, `python-multipart>=0.0.18` for the web server (install via `--group web`)
 
 ## Commands
 
@@ -52,22 +53,29 @@ uv run python xxx.py
 
 Core pipeline:
 
-`Markdown text -> parser tokens -> DocumentAST -> MarkdownSplitter -> Chunk[]`
+`Markdown text -> parser tokens -> DocumentAST -> _BaseMarkdownSplitter -> Chunk[]`
 
 Main components:
 
 - **Parser**: `src/lumberjack/core/parser.py`
   - `MarkdownParser` currently aliases `MarkdownItParser`
-  - Uses `MarkdownIt("gfm-like")` token streams for the default parser
+  - Uses `MarkdownIt("gfm-like")` with built-in plugins: `dollarmath_plugin`, `front_matter_plugin`, `brackets_math_plugin`
+  - Supports `disable_lheading` to disable Setext heading parsing
+  - Parses YAML front matter and resolves document title from: user-provided > front matter `title` > first H1 > "Anonymous"
   - Preserves heading hierarchy, block content, inline structure, reference definitions, and line ranges
+- **Plugins**: `src/lumberjack/core/plugins/`
+  - `brackets_math_plugin`: adds `\[...\]` block math and `\(...\)` inline math syntax support
 - **Splitter**: `src/lumberjack/core/splitter.py`
-  - Splits by whole document first, then section tree, then block/text fallback
-  - Preserves heading context when enabled
-  - Deduplicates shared parent headings in merged chunks
-  - Never splits fenced code blocks, even when oversized
+  - `_BaseMarkdownSplitter` provides shared state and helpers (front matter isolation, chunk finalization, token measurement)
+  - `RecursiveMarkdownSplitter` (registry: "default", "recursive"): structure-first, budget-aware; merges adjacent sibling sections when they fit
+  - `SectionMarkdownSplitter` (registry: "section"): one chunk per heading section direct body; child sections are separate chunks
+  - `TextSplitter`: handles oversized block splitting via paragraph/line/sentence/word/hard boundaries
+  - Thematic breaks are attached to preceding blocks of kind paragraph, blockquote, html_block, math_block, or math_block_eqno
+  - Front matter is isolated as the first chunk when `isolate_front_matter=True`
+  - Empty sections (heading-only, no body) are skipped when `skip_empty_sections=True`
 - **Tokenizer**: `src/lumberjack/core/tokenizers.py`
-  - `SimpleCharTokenizer` is the default
-  - `TiktokenTokenizer` is optional
+  - `SimpleCharTokenizer` is the default (counts characters)
+  - `TiktokenTokenizer` is optional (model-based token counting with LRU cache)
 - **Public API**: `src/lumberjack/api.py`
   - `lumber`
 - **Web API**: `src/lumberjack/web/`
@@ -90,10 +98,11 @@ Defined in `src/lumberjack/models.py`:
 
 - `MarkdownInline`: normalized inline node with `kind`, `text`, `children`, and `attrs`
 - `MarkdownBlock`: block node with rendered text, line range, inline children, nested blocks, and attrs
-- `SectionNode`: heading-tree node with `path`, `blocks`, `children`, and title inline nodes
-- `DocumentAST`: parsed document with `root`, raw `source`, `metadata`, and `reference_definitions`
-- `SplitOptions`: `max_tokens`, `merge_below_tokens`, `retain_headings`, `include_common_headings`, `merge_small_chunks`, `overlap_tokens`, `split_oversized_blocks`
-- `Chunk`: final chunk payload with `chunk_type`, `body`, `token_count`, `headings`, document metadata, and line range
+- `SectionNode`: heading-tree node with `path`, `blocks`, `children`, `start_line`, `title_inlines`, and `index`
+- `DocumentAST`: parsed document with `root`, raw `source`, `metadata`, and `reference_definitions`; title resolved from front matter or first H1
+- `SplitOptions`: `max_tokens`, `merge_below_tokens`, `overlap_tokens`, `retain_headings`, `include_common_headings`, `merge_small_chunks`, `isolate_front_matter`, `skip_empty_sections`, `recursive_split`, `split_oversized_blocks`
+  - Default `split_oversized_blocks`: `frozenset({"paragraph", "blockquote", "html_block"})`
+- `Chunk`: final chunk payload with `chunk_id`, `chunk_type`, `body`, `token_count`, `estimated_token_count`, `headings`, `section_level`, `document_title`, `document_path`, `start_line`, `end_line`
 
 ## Web API
 
@@ -101,7 +110,7 @@ Implemented in `src/lumberjack/web/`.
 
 - Endpoint: `POST /lumber/api/split`
 - Input: form data with `text` (string) or `file` (upload), plus split options
-- Split options: `max_tokens`, `merge_below_tokens`, `overlap_tokens`, `retain_headings`, `include_common_headings`, `merge_small_chunks`, `split_oversized_blocks`, `tokenizer`, `document_title`
+- Split options: `max_tokens`, `merge_below_tokens`, `overlap_tokens`, `retain_headings`, `include_common_headings`, `merge_small_chunks`, `isolate_front_matter`, `skip_empty_sections`, `recursive_split`, `split_oversized_blocks`, `tokenizer`, `disable_lheading`, `splitter`
 - Response: JSON with `document`, `chunk_count`, and `chunks` array
 - Valid block types for `split_oversized_blocks`: `paragraph`, `blockquote`, `list`, `table`, `code_block`, `code_fence`, `html_block`
 - Server CLI: `lumberjack-serve` with `--host` (default `127.0.0.1`), `--port` (default `8000`), `--reload`
@@ -126,14 +135,20 @@ Implemented in `src/lumberjack/main.py`.
 - Output formats: `json` or `markdown`
 - Tokenizers: `simple`, `tiktoken`
 - Parser choices exposed by CLI: `default`, `markdown-it`
+- Splitter choices: `recursive`, `section` (CLI default: `recursive`)
 - `--retain-headings` is opt-in on the CLI
+- `--no-include-common-headings` excludes common heading prefix (only effective with `--retain-headings`)
+- `--no-isolate-front-matter` disables front matter isolation
+- `--disable-lheading` disables Setext heading parsing
+- `--recursive-split` enables block/text fallback for oversized section bodies (effective with `--splitter heading`)
+- `--split-oversized-block <kind>` can be repeated; valid kinds: `paragraph`, `blockquote`, `list`, `table`, `code_block`, `code_fence`, `html_block`
 - JSON output serializes dataclasses with `dataclasses.asdict`
 
 ## Current Parsing Coverage
 
 The parser currently normalizes these block-level structures:
 
-- headings
+- headings (ATX and Setext)
 - paragraphs
 - block quotes
 - lists and list items
@@ -142,7 +157,13 @@ The parser currently normalizes these block-level structures:
 - indented code blocks
 - HTML blocks
 - thematic breaks
-- link reference definitions metadata
+- link reference definitions
+- YAML front matter
+- math blocks (`$$...$$`, dollarmath plugin)
+- math blocks with equation numbers (dollarmath plugin)
+- bracket math blocks (`\[...\]`)
+- bracket math blocks with equation numbers (`\[...\](label)`)
+- plugin-generated blocks preserved as plugin-specific kinds
 
 The parser currently captures these inline structures in headings and paragraphs:
 
@@ -155,22 +176,31 @@ The parser currently captures these inline structures in headings and paragraphs
 - strikethrough
 - inline HTML
 - soft and hard line breaks
+- math inline (`$...$`, dollarmath plugin)
+- bracket math inline (`\(...\)`)
+- footnote references and anchors
+- plugin-generated inlines preserved with source token metadata
 
 ## Splitting Rules
 
 - Whole document is kept as one chunk when it already fits the budget
-- Otherwise the splitter descends through heading sections before falling back to block/text splitting
+- `RecursiveMarkdownSplitter` (default): merges adjacent sibling sections when they fit within `max_tokens`
+- `SectionMarkdownSplitter`: emits one chunk per heading section direct body; child sections become separate chunks
 - Text fallback order is paragraph break -> line break -> sentence -> word -> hard split
 - `retain_headings=True` prepends rendered heading breadcrumbs to `Chunk.body`
 - `include_common_headings=True` includes the shared common heading prefix in `Chunk.body` (only effective with `retain_headings=True`); when False, `body` contains only relative sub-headings and content
 - `retain_headings=False` makes `Chunk.body` pure content without any headings; use `render_heading_path(Chunk.headings)` + `Chunk.body` to reconstruct
 - Short tails from fragment or text fallback splitting are merged only when they share the same heading path and the estimated merged size still fits within `max_tokens`
+- `isolate_front_matter=True` always emits front matter as the first chunk (`chunk_type="front_matter"`)
+- `skip_empty_sections=True` discards chunks that contain only a heading with no body content
+- Thematic breaks are attached to preceding blocks of kind paragraph, blockquote, html_block, math_block, or math_block_eqno
+- `recursive_split=True` enables block/text fallback for oversized section bodies in `SectionMarkdownSplitter`
+- Default `split_oversized_blocks` includes `paragraph`, `blockquote`, `html_block`
 
 ## Constraints
 
 - Markdown only; no PDF/HTML/DOCX ingestion pipeline is planned here
-- `demo.py` is reference material, not production implementation
-- Fenced code blocks are preserved intact even when they exceed `max_tokens`
+- Fenced code blocks are preserved intact even when they exceed `max_tokens` (unless `code_block`/`code_fence` is in `split_oversized_blocks`)
 - CLI should stay orchestration-only; parsing/splitting logic belongs in `src/lumberjack/core/`
 - There is no LangChain dependency
 
@@ -211,6 +241,7 @@ After Python code changes:
 
 - `src/lumberjack/base/` - protocol interfaces
 - `src/lumberjack/core/parser.py` - parser factory and default parser alias
+- `src/lumberjack/core/plugins/` - custom markdown-it plugins (brackets_math)
 - `src/lumberjack/core/splitter.py` - section/block/text chunking
 - `src/lumberjack/core/tokenizers.py` - tokenizer implementations
 - `src/lumberjack/core/visitor.py` - lightweight visitor hooks
@@ -226,10 +257,11 @@ After Python code changes:
 Keep docs aligned with the code, especially when any of these change:
 
 - CLI flags or defaults
-- parser coverage
+- parser coverage or built-in plugins
 - tokenizer names
 - chunk metadata fields
 - test commands or dependency groups
 - parser implementation strategy
 - web API endpoints or parameters
 - frontend component structure
+- splitter registry names or defaults

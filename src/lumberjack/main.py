@@ -38,8 +38,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--splitter",
-        choices=("semantic", "heading"),
-        default="semantic",
+        choices=("recursive", "section"),
+        default="recursive",
         help="Splitter implementation",
     )
     parser.add_argument(
@@ -60,7 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--recursive-split",
         action="store_true",
-        help="Split oversized direct section bodies when using --splitter heading",
+        help="Split oversized direct section bodies when using --splitter section",
     )
     parser.add_argument(
         "--retain-headings", action="store_true", help="Retain headings in each chunk"

@@ -81,7 +81,7 @@ def test_split_accepts_heading_splitter_with_recursive_split(
         data={
             "text": "# Parent\n\nParent intro.\n\n## Child\n\nChild body.",
             "max_tokens": "500",
-            "splitter": "heading",
+            "splitter": "section",
             "recursive_split": "true",
         },
     )

@@ -38,10 +38,10 @@ def lumber(
     disable_lheading: bool = False,
     tokenizer: str | TokenizerProtocol = "simple",
     parser: str | MarkdownParserProtocol = "default",
-    splitter: str | SplitterProtocol = "semantic",
+    splitter: str | SplitterProtocol = "recursive",
     document_metadata: dict[str, object] | None = None,
 ) -> list[Chunk]:
-    """Split markdown text into semantic chunks."""
+    """Split markdown text into chunks recursively."""
     tokenizer_impl = (
         create_tokenizer(tokenizer) if isinstance(tokenizer, str) else tokenizer
     )

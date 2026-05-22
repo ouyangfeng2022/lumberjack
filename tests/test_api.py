@@ -79,11 +79,11 @@ def test_lumber_accepts_overlap_options() -> None:
     assert all(chunk.document_title == "sample.md" for chunk in chunks)
 
 
-def test_lumber_accepts_heading_splitter() -> None:
+def test_lumber_accepts_section_splitter() -> None:
     chunks = lumber(
         MERGED_SECTION_FIXTURE,
         document_title="development.md",
-        splitter="heading",
+        splitter="section",
         max_tokens=1000,
         skip_empty_sections=False,
     )
@@ -97,20 +97,20 @@ def test_lumber_accepts_heading_splitter() -> None:
     ]
 
 
-def test_lumber_semantic_splitter_matches_default() -> None:
+def test_lumber_recursive_splitter_matches_default() -> None:
     default_chunks = lumber(
         MERGED_SECTION_FIXTURE,
         document_title="development.md",
         max_tokens=1000,
     )
-    semantic_chunks = lumber(
+    recursive_chunks = lumber(
         MERGED_SECTION_FIXTURE,
         document_title="development.md",
-        splitter="semantic",
+        splitter="recursive",
         max_tokens=1000,
     )
 
-    assert [asdict(chunk) for chunk in semantic_chunks] == [
+    assert [asdict(chunk) for chunk in recursive_chunks] == [
         asdict(chunk) for chunk in default_chunks
     ]
 

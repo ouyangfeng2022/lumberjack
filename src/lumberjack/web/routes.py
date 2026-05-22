@@ -88,7 +88,7 @@ async def split(
     split_oversized_blocks: str = Form("paragraph,blockquote,html_block"),
     disable_lheading: bool = Form(False),
     tokenizer: str = Form("simple"),
-    splitter: str = Form("semantic"),
+    splitter: str = Form("recursive"),
 ) -> dict:
     """Split Markdown text or an uploaded file into chunks and return JSON results."""
     try:
