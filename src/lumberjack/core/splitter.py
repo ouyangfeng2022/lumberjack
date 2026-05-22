@@ -1007,16 +1007,6 @@ class MarkdownSplitter(SplitterProtocol):
 class HeadingSplitter(MarkdownSplitter):
     """Split a document into non-overlapping chunks by heading section."""
 
-    def _do_heading_split(
-        self, document: DocumentAST
-    ) -> tuple[_MeasuredSection, list[_ChunkDraft], MarkdownBlock | None]:
-        """Core heading split logic shared by ``split`` and web visualisation."""
-        self._validate_options()
-        front_matter_block = self._extract_front_matter(document.root)
-        measured_root = self._measure_section(document.root)
-        drafts = self._split_heading_sections(measured_root)
-        return measured_root, drafts, front_matter_block
-
     def _finalize_with_front_matter(
         self,
         drafts: list[_ChunkDraft],
@@ -1033,8 +1023,18 @@ class HeadingSplitter(MarkdownSplitter):
 
     def split(self, document: DocumentAST) -> list[Chunk]:
         """Split *document* by direct ``SectionNode`` bodies in document order."""
-        _, drafts, front_matter_block = self._do_heading_split(document)
-        return self._finalize_with_front_matter(drafts, front_matter_block, document)
+        self._validate_options()
+        front_matter_block = self._extract_front_matter(document.root)
+        measured_root = self._measure_section(document.root)
+        drafts = self._split_heading_sections(measured_root)
+
+        # Finalise drafts into chunks and prepend front-matter if present.
+        finalized = self._finalize_chunks(drafts, document)
+        if front_matter_block is not None:
+            finalized.insert(
+                0, self._make_front_matter_chunk(front_matter_block, document)
+            )
+        return finalized
 
     def _split_heading_sections(self, section: _MeasuredSection) -> list[_ChunkDraft]:
         """Return one direct-body draft per section, then recurse into children."""

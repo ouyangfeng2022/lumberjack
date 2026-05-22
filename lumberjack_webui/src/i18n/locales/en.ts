@@ -2,13 +2,8 @@ const en = {
   // App
   app_title: 'Lumberjack',
   app_subtitle: 'Markdown document splitter',
-  tab_split: 'Split',
-  tab_pipeline: 'Pipeline',
-  view_tabs: 'Workspace view',
   btn_split: 'Start Split',
-  btn_pipeline: 'Run Pipeline',
   btn_splitting: 'Splitting...',
-  btn_running: 'Running...',
   html_title: 'Lumberjack - Markdown Splitter',
   panel_input_kicker: 'Source',
   panel_options_kicker: 'Control',
@@ -17,8 +12,6 @@ const en = {
   result_budget_use: 'Largest chunk budget use',
   empty_split_title: 'Ready to split',
   empty_split_body: 'Paste Markdown or upload a file, tune the token budget, then run the splitter to preview chunked output.',
-  empty_pipeline_title: 'Pipeline preview waits here',
-  empty_pipeline_body: 'Run the pipeline view to inspect raw text, parser tokens, AST construction, split planning, and final chunks.',
 
   // Markdown Input
   md_label: 'Markdown Input',
@@ -68,47 +61,9 @@ const en = {
   chunks_count_plural: '{{count}} chunks',
   chunks_total_tokens: '{{count}} total tokens',
 
-  // Pipeline View
-  step_raw_text: 'Raw Text',
-  step_tokens: 'Tokens',
-  step_ast: 'AST',
-  step_splitting: 'Splitting',
-  step_chunks: 'Chunks',
-  nav_previous: 'Previous',
-  nav_next: 'Next',
-
-  // Step Raw Text
+  // Step Raw Text (reused by input stats)
   stats_characters: 'Characters',
   stats_lines: 'Lines',
-  stats_words: 'Words',
-
-  // Step Tokens
-  tokens_produced_suffix: 'tokens produced by markdown-it parser',
-  tok_col_index: '#',
-  tok_col_type: 'Type',
-  tok_col_tag: 'Tag',
-  tok_col_nesting: 'Nesting',
-  tok_col_content: 'Content',
-  tok_col_lines: 'Lines',
-
-  // Step AST
-  ast_blocks: '{{count}} blocks',
-  ast_children: '{{count}} children',
-
-  // Step Split
-  split_budget: 'Budget',
-  split_tokens: 'tokens',
-  split_overlap: 'Overlap',
-  split_entries: 'Entries',
-  split_draft_chunks: 'Draft chunks',
-  split_over_budget: 'over budget',
-  split_entry_label: 'Entry {{index}}',
-  split_chunk_label: 'Chunk {{index}}',
-
-  // Step Chunks
-  step_chunks_label: 'Chunks',
-  step_total_tokens: 'Total Tokens',
-  step_document: 'Document',
 };
 
 export default en;

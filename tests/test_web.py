@@ -111,63 +111,6 @@ def test_split_can_disable_setext_headings(client: TestClient) -> None:
     assert chunk["headings"] == []
 
 
-def test_pipeline_uses_lumber_prefix(client: TestClient) -> None:
-    response = client.post(
-        "/lumber/api/pipeline",
-        data={"text": SIMPLE_MD, "max_tokens": "500"},
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["stage_5_chunks"]["chunk_count"] >= 1
-
-
-def test_pipeline_uses_selected_heading_splitter(client: TestClient) -> None:
-    response = client.post(
-        "/lumber/api/pipeline",
-        data={
-            "text": "# Parent\n\nParent intro.\n\n## Child\n\nChild body.",
-            "max_tokens": "500",
-            "splitter": "heading",
-        },
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["stage_4_split"]["options"]["splitter"] == "heading"
-    assert len(body["stage_4_split"]["drafts"]) == 2
-
-
-def test_pipeline_split_entries_expose_only_rendering_inputs(
-    client: TestClient,
-) -> None:
-    response = client.post(
-        "/lumber/api/pipeline",
-        data={"text": SIMPLE_MD, "max_tokens": "500"},
-    )
-
-    assert response.status_code == 200
-    entry = response.json()["stage_4_split"]["entries"][0]
-    assert set(entry) == {
-        "headings",
-        "body",
-        "start_line",
-        "end_line",
-        "body_token_count",
-    }
-
-
-def test_pipeline_ast_does_not_expose_splitter_token_counts(client: TestClient) -> None:
-    response = client.post(
-        "/lumber/api/pipeline",
-        data={"text": SIMPLE_MD, "max_tokens": "500"},
-    )
-
-    assert response.status_code == 200
-    root = response.json()["stage_3_ast"]["root"]
-    assert "title_token_count" not in root
-    assert "body_token_count" not in root
-    assert "subtree_token_count" not in root
-
 
 def test_unprefixed_api_path_is_not_registered(client: TestClient) -> None:
     response = client.post("/api/split", data={"text": SIMPLE_MD})

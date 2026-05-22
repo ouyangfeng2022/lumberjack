@@ -5,11 +5,7 @@ from dataclasses import asdict
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from lumberjack.api import lumber
-from lumberjack.core import create_tokenizer
-from lumberjack.core.splitter import SPLITTER_REGISTRY
-from lumberjack.models import DocumentAST, SplitOptions
-
-from .pipeline import WebHeadingSplitter, WebParser, WebSplitter
+from lumberjack.models import SplitOptions
 
 router = APIRouter()
 
@@ -76,27 +72,6 @@ def _build_split_options(
     )
 
 
-_WEB_SPLITTER_MAP: dict[type, type] = {
-    SPLITTER_REGISTRY["semantic"]: WebSplitter,
-    SPLITTER_REGISTRY["heading"]: WebHeadingSplitter,
-}
-
-
-def _build_web_splitter(
-    name: str,
-    *,
-    tokenizer: str,
-    options: SplitOptions,
-) -> WebSplitter | WebHeadingSplitter:
-    """Build a web splitter with pipeline instrumentation."""
-    tokenizer_impl = create_tokenizer(tokenizer)
-    normalized = name.strip().lower()
-    core_cls = SPLITTER_REGISTRY.get(normalized)
-    if core_cls is None:
-        raise ValueError(f"Unsupported splitter: {name}")
-    web_cls = _WEB_SPLITTER_MAP.get(core_cls, WebSplitter)
-    return web_cls(tokenizer=tokenizer_impl, options=options)
-
 
 @router.post("/split")
 async def split(
@@ -160,98 +135,4 @@ async def split(
         "document": chunks[0].document_title if chunks else "Anonymous",
         "chunk_count": len(chunks),
         "chunks": [asdict(c) for c in chunks],
-    }
-
-
-@router.post("/pipeline")
-async def pipeline(
-    text: str | None = Form(None),
-    file: UploadFile | None = _file_default,
-    max_tokens: int = Form(1200),
-    merge_below_tokens: int = Form(50),
-    overlap_tokens: int = Form(0),
-    retain_headings: bool = Form(True),
-    include_common_headings: bool = Form(True),
-    merge_small_chunks: bool = Form(True),
-    isolate_front_matter: bool = Form(True),
-    skip_empty_sections: bool = Form(True),
-    recursive_split: bool = Form(False),
-    split_oversized_blocks: str = Form("paragraph,blockquote,html_block"),
-    disable_lheading: bool = Form(False),
-    tokenizer: str = Form("simple"),
-    splitter: str = Form("semantic"),
-) -> dict:
-    """Return all intermediate pipeline stages for visualization."""
-    try:
-        content, document_title = await _resolve_input(text, file)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-
-    options = _build_split_options(
-        max_tokens=max_tokens,
-        merge_below_tokens=merge_below_tokens,
-        overlap_tokens=overlap_tokens,
-        retain_headings=retain_headings,
-        include_common_headings=include_common_headings,
-        merge_small_chunks=merge_small_chunks,
-        isolate_front_matter=isolate_front_matter,
-        skip_empty_sections=skip_empty_sections,
-        recursive_split=recursive_split,
-        split_oversized_blocks=split_oversized_blocks,
-    )
-
-    # Stage 1: Raw text info
-    lines = content.splitlines()
-
-    # Stage 2: Parser tokens
-    parser_impl = WebParser(disable_lheading=disable_lheading)
-    tokens = parser_impl.parse_tokens(content)
-
-    # Stage 3: Document AST
-    document: DocumentAST = parser_impl.parse(content, document_title=document_title)
-
-    # Stage 4-5: Splitting with intermediate data
-    try:
-        web_splitter = _build_web_splitter(
-            splitter,
-            tokenizer=tokenizer,
-            options=options,
-        )
-        steps = web_splitter.split_with_steps(document)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-    return {
-        "stage_1_raw": {
-            "char_count": len(content),
-            "line_count": len(lines),
-            "word_count": len(content.split()),
-            "full_text": content,
-        },
-        "stage_2_tokens": {
-            "count": len(tokens),
-            "tokens": tokens,
-        },
-        "stage_3_ast": {
-            "document_title": document.title,
-            "root": asdict(document.root),
-            "reference_definitions": document.reference_definitions,
-        },
-        "stage_4_split": {
-            "entries": [asdict(e) for e in steps.entries],
-            "drafts": [asdict(d) for d in steps.drafts_after_merge],
-            "options": {
-                "max_tokens": max_tokens,
-                "merge_below_tokens": merge_below_tokens,
-                "overlap_tokens": overlap_tokens,
-                "disable_lheading": disable_lheading,
-                "splitter": splitter,
-                "recursive_split": recursive_split,
-            },
-        },
-        "stage_5_chunks": {
-            "document": document.title,
-            "chunk_count": len(steps.chunks),
-            "chunks": [asdict(c) for c in steps.chunks],
-        },
     }

@@ -3,12 +3,9 @@ import { useTranslation } from 'react-i18next';
 import MarkdownInput from './components/MarkdownInput';
 import SplitOptions from './components/SplitOptions';
 import ChunkList from './components/ChunkList';
-import PipelineView from './components/PipelineView';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import { splitMarkdown } from './api/split';
-import { fetchPipeline } from './api/pipeline';
 import type { SplitResponse, SplitOptions as Options } from './types/chunk';
-import type { PipelineResponse } from './types/pipeline';
 import styles from './App.module.css';
 
 const DEFAULT_OPTIONS: Options = {
@@ -93,18 +90,14 @@ If you encounter issues, check the following:
 For more help, consult the FAQ or open a GitHub issue.
 `;
 
-type View = 'split' | 'pipeline';
-
 export default function App() {
   const { t, i18n } = useTranslation();
-  const [view, setView] = useState<View>('split');
   const [text, setText] = useState(SAMPLE_MD);
   const [file, setFile] = useState<File | null>(null);
   const [fileContent, setFileContent] = useState('');
   const [options, setOptions] = useState<Options>(DEFAULT_OPTIONS);
   const [result, setResult] = useState<SplitResponse | null>(null);
   const [splitElapsedMs, setSplitElapsedMs] = useState<number | null>(null);
-  const [pipelineResult, setPipelineResult] = useState<PipelineResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -138,44 +131,26 @@ export default function App() {
 
   const handleSubmit = async () => {
     setError(null);
-    if (view === 'split') {
-      setResult(null);
-      setSplitElapsedMs(null);
-    } else {
-      setPipelineResult(null);
-    }
+    setResult(null);
+    setSplitElapsedMs(null);
     setLoading(true);
 
     try {
       const opts = { ...options, document_title: file?.name ?? options.document_title };
-      if (view === 'split') {
-        const startedAt = performance.now();
-        const data = await splitMarkdown(text, file, opts);
-        const elapsedMs = Math.max(0, performance.now() - startedAt);
-        if ('error' in data) {
-          setError((data as { error: string }).error);
-        } else {
-          setSplitElapsedMs(elapsedMs);
-          setResult(data as SplitResponse);
-        }
+      const startedAt = performance.now();
+      const data = await splitMarkdown(text, file, opts);
+      const elapsedMs = Math.max(0, performance.now() - startedAt);
+      if ('error' in data) {
+        setError((data as { error: string }).error);
       } else {
-        const data = await fetchPipeline(text, file, opts);
-        if ('error' in data) {
-          setError((data as { error: string }).error);
-        } else {
-          setPipelineResult(data as PipelineResponse);
-        }
+        setSplitElapsedMs(elapsedMs);
+        setResult(data as SplitResponse);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleViewChange = (v: View) => {
-    setView(v);
-    setError(null);
   };
 
   return (
@@ -189,20 +164,6 @@ export default function App() {
           </div>
         </div>
         <div className={styles.headerActions}>
-          <div className={styles.tabBar} aria-label={t('view_tabs')}>
-            <button
-              className={`${styles.tab} ${view === 'split' ? styles.tabActive : ''}`}
-              onClick={() => handleViewChange('split')}
-            >
-              {t('tab_split')}
-            </button>
-            <button
-              className={`${styles.tab} ${view === 'pipeline' ? styles.tabActive : ''}`}
-              onClick={() => handleViewChange('pipeline')}
-            >
-              {t('tab_pipeline')}
-            </button>
-          </div>
           <LanguageSwitcher />
         </div>
       </header>
@@ -242,13 +203,7 @@ export default function App() {
               disabled={!canSubmit || loading}
               onClick={handleSubmit}
             >
-              {loading
-                ? view === 'split'
-                  ? t('btn_splitting')
-                  : t('btn_running')
-                : view === 'split'
-                  ? t('btn_split')
-                  : t('btn_pipeline')}
+              {loading ? t('btn_splitting') : t('btn_split')}
             </button>
             <div className={styles.optionHint}>
               <span>{inputStats.name}</span>
@@ -262,7 +217,7 @@ export default function App() {
               <p className={styles.kicker}>{t('panel_results_kicker')}</p>
               <h2 className={styles.panelTitle}>{t('panel_results_title')}</h2>
             </div>
-            {resultStats && view === 'split' && (
+            {resultStats && (
               <div className={styles.resultMeter} aria-label={t('result_budget_use')}>
                 <span>{resultStats.budgetUse}%</span>
                 <div className={styles.meterTrack}>
@@ -277,23 +232,13 @@ export default function App() {
 
           {error && <div className={styles.error}>{error}</div>}
 
-          {view === 'split' && result && (
-            <ChunkList result={result} elapsedMs={splitElapsedMs} />
-          )}
-          {view === 'pipeline' && pipelineResult && <PipelineView data={pipelineResult} />}
+          {result && <ChunkList result={result} elapsedMs={splitElapsedMs} />}
 
-          {view === 'split' && !result && !error && (
+          {!result && !error && (
             <div className={styles.emptyState}>
               <span className={styles.emptyIndex}>01</span>
               <h3>{t('empty_split_title')}</h3>
               <p>{t('empty_split_body')}</p>
-            </div>
-          )}
-          {view === 'pipeline' && !pipelineResult && !error && (
-            <div className={styles.emptyState}>
-              <span className={styles.emptyIndex}>05</span>
-              <h3>{t('empty_pipeline_title')}</h3>
-              <p>{t('empty_pipeline_body')}</p>
             </div>
           )}
         </section>
