@@ -139,7 +139,12 @@ def test_lumber_can_disable_setext_headings() -> None:
 
 
 def test_chunk_to_dict_serializes_heading_path() -> None:
-    chunk = lumber(FIXTURE, document_title="sample.md", max_tokens=180)[-1]
+    chunk = lumber(
+        FIXTURE,
+        document_title="sample.md",
+        max_tokens=180,
+        standalone_blocks=frozenset(),
+    )[-1]
 
     payload = asdict(chunk)
 
@@ -183,6 +188,7 @@ def test_parse_markdown_and_split_preserve_line_ranges_with_single_parser() -> N
         document_title="sample.md",
         max_tokens=200,
         document_metadata={"path": "/tmp/sample.md"},
+        standalone_blocks=frozenset(),
     )
 
     assert len(chunks) == 5

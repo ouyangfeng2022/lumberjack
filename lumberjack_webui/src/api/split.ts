@@ -31,6 +31,7 @@ export async function splitMarkdown(
     blocks.unshift('paragraph');
   }
   formData.append('split_oversized_blocks', blocks.join(','));
+  formData.append('standalone_blocks', options.standalone_blocks);
   formData.append('tokenizer', options.tokenizer);
   formData.append('splitter', options.splitter);
   formData.append('document_title', options.document_title);

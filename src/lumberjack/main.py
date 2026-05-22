@@ -95,6 +95,26 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disable markdown-it setext heading parsing via parser.disable('lheading')",
     )
+    parser.add_argument(
+        "--standalone-block",
+        action="append",
+        default=None,
+        choices=(
+            "paragraph",
+            "blockquote",
+            "list",
+            "table",
+            "code_block",
+            "code_fence",
+            "html_block",
+        ),
+        help="Block kind that must be emitted as an independent chunk; repeat to add multiple (default: table code_block code_fence)",
+    )
+    parser.add_argument(
+        "--no-standalone-blocks",
+        action="store_true",
+        help="Disable all standalone block isolation",
+    )
     return parser
 
 
@@ -113,6 +133,14 @@ def main() -> None:
     args = parser.parse_args()
     input_path = Path(args.input)
     text = input_path.read_text(encoding="utf-8")
+    standalone_blocks: frozenset[str]
+    if args.no_standalone_blocks:
+        standalone_blocks = frozenset()
+    elif args.standalone_block is not None:
+        standalone_blocks = frozenset(args.standalone_block)
+    else:
+        standalone_blocks = frozenset({"table", "code_block", "code_fence"})
+
     chunks = lumber(
         text,
         max_tokens=args.max_tokens,
@@ -122,6 +150,7 @@ def main() -> None:
         include_common_headings=not args.no_include_common_headings,
         isolate_front_matter=not args.no_isolate_front_matter,
         split_oversized_blocks=frozenset(args.split_oversized_block),
+        standalone_blocks=standalone_blocks,
         disable_lheading=args.disable_lheading,
         tokenizer=args.tokenizer,
         parser=args.parser,

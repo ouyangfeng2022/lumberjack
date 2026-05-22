@@ -35,6 +35,13 @@ def lumber(
             "html_block",
         }
     ),
+    standalone_blocks: Iterable[str] = frozenset(
+        {
+            "table",
+            "code_block",
+            "code_fence",
+        }
+    ),
     disable_lheading: bool = False,
     tokenizer: str | TokenizerProtocol = "simple",
     parser: str | MarkdownParserProtocol = "default",
@@ -66,6 +73,7 @@ def lumber(
         skip_empty_sections=skip_empty_sections,
         recursive_split=recursive_split,
         split_oversized_blocks=frozenset(split_oversized_blocks),
+        standalone_blocks=frozenset(standalone_blocks),
     )
     splitter_impl = (
         create_splitter(splitter, tokenizer=tokenizer_impl, options=options)

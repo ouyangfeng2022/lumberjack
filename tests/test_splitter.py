@@ -1211,3 +1211,240 @@ def test_empty_section_between_non_empty_sections_is_skipped() -> None:
     chunks = splitter.split(document)
 
     assert all(chunk.body.strip() for chunk in chunks)
+
+
+# --- standalone_blocks tests ---
+
+
+STANDALONE_TABLE_FIXTURE = """# Doc
+
+Intro paragraph.
+
+| A | B |
+|---|---|
+| 1 | 2 |
+
+Outro paragraph.
+"""
+
+STANDALONE_CODE_FENCE_IN_SECTION = """# Doc
+
+## Section
+
+Some text before.
+
+```python
+print("hello")
+```
+
+Some text after.
+"""
+
+
+def test_standalone_table_is_isolated_even_when_budget_allows_merge() -> None:
+    """Table is emitted as its own chunk even when whole doc fits in budget."""
+    document = MarkdownParser().parse(
+        STANDALONE_TABLE_FIXTURE, document_title="standalone.md"
+    )
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=1000,
+            merge_below_tokens=0,
+            standalone_blocks=frozenset({"table"}),
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    types = [c.chunk_type for c in chunks]
+    assert "table" in types
+    table_chunks = [c for c in chunks if c.chunk_type == "table"]
+    assert len(table_chunks) == 1
+    assert "| A | B |" in table_chunks[0].body
+    assert "Intro paragraph." not in table_chunks[0].body
+    assert "Outro paragraph." not in table_chunks[0].body
+    assert any("Intro" in c.body for c in chunks)
+    assert any("Outro" in c.body for c in chunks)
+
+
+def test_standalone_blocks_empty_frozenset_restores_merge_behavior() -> None:
+    """Empty standalone_blocks merges table back with paragraphs."""
+    document = MarkdownParser().parse(
+        STANDALONE_TABLE_FIXTURE, document_title="standalone.md"
+    )
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=1000,
+            merge_below_tokens=0,
+            standalone_blocks=frozenset(),
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 1
+    assert "Intro paragraph." in chunks[0].body
+    assert "| A | B |" in chunks[0].body
+    assert "Outro paragraph." in chunks[0].body
+    assert chunks[0].chunk_type == "paragraph"
+
+
+def test_standalone_chunk_not_merged_by_merge_small_chunks() -> None:
+    """Small standalone chunks are not merged back into adjacent paragraphs."""
+    document = MarkdownParser().parse(
+        STANDALONE_CODE_FENCE_IN_SECTION, document_title="standalone.md"
+    )
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=1000,
+            merge_below_tokens=100,
+            merge_small_chunks=True,
+            standalone_blocks=frozenset({"code_fence"}),
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    code_chunks = [c for c in chunks if c.chunk_type == "code_fence"]
+    assert len(code_chunks) == 1
+    assert 'print("hello")' in code_chunks[0].body
+    assert "Some text before." not in code_chunks[0].body
+    assert "Some text after." not in code_chunks[0].body
+
+
+def test_oversized_standalone_code_fence_with_split_oversized() -> None:
+    """Oversized standalone code fence splits into independent code chunks."""
+    long_code = "```python\n" + "\n".join(f"line{i}" for i in range(30)) + "\n```"
+    md = f"# Code\n\n{long_code}"
+    document = MarkdownParser().parse(md, document_title="code.md")
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=50,
+            merge_below_tokens=0,
+            merge_small_chunks=False,
+            standalone_blocks=frozenset({"code_fence"}),
+            split_oversized_blocks=frozenset({"code_fence"}),
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) > 1
+    assert all(c.chunk_type == "code_fence" for c in chunks)
+    assert all("```python" in c.body for c in chunks)
+    assert all(c.body.endswith("```") for c in chunks)
+
+
+def test_oversized_standalone_code_fence_without_split_stays_intact() -> None:
+    """Oversized standalone code fence stays as one chunk when split_oversized_blocks is empty."""
+    long_code = "```python\n" + "\n".join(f"line{i}" for i in range(30)) + "\n```"
+    md = f"# Code\n\n{long_code}"
+    document = MarkdownParser().parse(md, document_title="code.md")
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=50,
+            merge_below_tokens=0,
+            standalone_blocks=frozenset({"code_fence"}),
+            split_oversized_blocks=frozenset(),
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].chunk_type == "code_fence"
+    assert chunks[0].estimated_token_count > 50
+
+
+def test_section_splitter_isolates_standalone_blocks_in_body() -> None:
+    """SectionMarkdownSplitter isolates standalone blocks from direct body."""
+    md = """# Doc
+
+Intro.
+
+| A |
+|---|
+| 1 |
+
+Outro.
+
+## Child
+
+Child body.
+"""
+    document = MarkdownParser().parse(md, document_title="section.md")
+    splitter = SectionMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=1000,
+            merge_below_tokens=0,
+            standalone_blocks=frozenset({"table"}),
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    table_chunks = [c for c in chunks if c.chunk_type == "table"]
+    assert len(table_chunks) == 1
+    assert "| A |" in table_chunks[0].body
+    assert "Intro." not in table_chunks[0].body
+    assert any("Child body." in c.body for c in chunks)
+
+
+def test_standalone_block_preserves_heading_context() -> None:
+    """Standalone chunk retains heading breadcrumbs when retain_headings is True."""
+    document = MarkdownParser().parse(
+        STANDALONE_CODE_FENCE_IN_SECTION, document_title="headings.md"
+    )
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=1000,
+            merge_below_tokens=0,
+            standalone_blocks=frozenset({"code_fence"}),
+            retain_headings=True,
+        ),
+    )
+
+    chunks = splitter.split(document)
+    code_chunks = [c for c in chunks if c.chunk_type == "code_fence"]
+
+    assert len(code_chunks) == 1
+    assert code_chunks[0].headings == ((1, "Doc"), (2, "Section"))
+
+
+def test_standalone_blocks_in_nested_section_tree() -> None:
+    """Standalone blocks in nested children prevent whole-tree merge."""
+    md = """# Root
+
+## Parent
+
+Parent intro.
+
+### Child
+
+| Data |
+|------|
+| val  |
+
+"""
+    document = MarkdownParser().parse(md, document_title="nested.md")
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=500,
+            merge_below_tokens=0,
+            standalone_blocks=frozenset({"table"}),
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    table_chunks = [c for c in chunks if c.chunk_type == "table"]
+    assert len(table_chunks) == 1
+    assert "Parent intro." not in table_chunks[0].body

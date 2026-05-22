@@ -17,6 +17,12 @@ const SPLIT_BLOCK_OPTIONS = [
   'html_block',
 ];
 
+const STANDALONE_BLOCK_OPTIONS = [
+  'table',
+  'code_block',
+  'code_fence',
+];
+
 export default function SplitOptions({ options, onChange }: Props) {
   const { t } = useTranslation();
   const [showAdvanced, setShowAdvanced] = useState(true);
@@ -46,8 +52,23 @@ export default function SplitOptions({ options, onChange }: Props) {
     update('split_oversized_blocks', next.join(','));
   };
 
+  const toggleStandaloneBlock = (block: string, checked: boolean) => {
+    const current = options.standalone_blocks
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const next = checked
+      ? [...current, block]
+      : current.filter((b) => b !== block);
+    update('standalone_blocks', next.join(','));
+  };
+
   const selectedBlocks = new Set(
     options.split_oversized_blocks.split(',').map((s) => s.trim()),
+  );
+
+  const selectedStandaloneBlocks = new Set(
+    options.standalone_blocks.split(',').map((s) => s.trim()),
   );
 
   return (
@@ -162,8 +183,9 @@ export default function SplitOptions({ options, onChange }: Props) {
               value={options.splitter}
               onChange={(e) => update('splitter', e.target.value)}
             >
-              <option value="semantic">{t('opts_splitter_semantic')}</option>
-              <option value="heading">{t('opts_splitter_heading')}</option>
+              <option value="default">{t('opts_splitter_default')}</option>
+              <option value="section">{t('opts_splitter_section')}</option>
+              <option value="recursive">{t('opts_splitter_recursive')}</option>
             </select>
           </div>
 
@@ -183,12 +205,12 @@ export default function SplitOptions({ options, onChange }: Props) {
             <span className={styles.fieldLabel}>{t('opts_split_oversized')}</span>
             <div className={styles.checkGroup}>
               <label
-                className={`${styles.checkField} ${options.splitter !== 'heading' ? styles.checkDisabled : ''}`}
+                className={`${styles.checkField} ${options.splitter !== 'section' ? styles.checkDisabled : ''}`}
               >
                 <input
                   type="checkbox"
                   checked={options.recursive_split}
-                  disabled={options.splitter !== 'heading'}
+                  disabled={options.splitter !== 'section'}
                   onChange={(e) => update('recursive_split', e.target.checked)}
                 />
                 <span>{t('opts_recursive_split')}</span>
@@ -199,6 +221,22 @@ export default function SplitOptions({ options, onChange }: Props) {
                     type="checkbox"
                     checked={selectedBlocks.has(block)}
                     onChange={(e) => toggleBlock(block, e.target.checked)}
+                  />
+                  <span>{BLOCK_LABELS[block]}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>{t('opts_standalone_blocks')}</span>
+            <div className={styles.checkGroup}>
+              {STANDALONE_BLOCK_OPTIONS.map((block) => (
+                <label key={block} className={styles.checkField}>
+                  <input
+                    type="checkbox"
+                    checked={selectedStandaloneBlocks.has(block)}
+                    onChange={(e) => toggleStandaloneBlock(block, e.target.checked)}
                   />
                   <span>{BLOCK_LABELS[block]}</span>
                 </label>

@@ -114,3 +114,40 @@ def test_split_can_disable_setext_headings(client: TestClient) -> None:
 def test_unprefixed_api_path_is_not_registered(client: TestClient) -> None:
     response = client.post("/api/split", data={"text": SIMPLE_MD})
     assert response.status_code == 405
+
+
+def test_split_with_standalone_blocks(client: TestClient) -> None:
+    md = "# Doc\n\nIntro.\n\n| A |\n|---|\n| 1 |\n\nOutro."
+    response = client.post(
+        "/lumber/api/split",
+        data={
+            "text": md,
+            "max_tokens": "500",
+            "standalone_blocks": "table",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    table_chunks = [c for c in body["chunks"] if c["chunk_type"] == "table"]
+    assert len(table_chunks) == 1
+    assert "| A |" in table_chunks[0]["body"]
+    assert "Intro." not in table_chunks[0]["body"]
+
+
+def test_split_standalone_blocks_default_applies_when_field_not_sent(
+    client: TestClient,
+) -> None:
+    """Default standalone_blocks (table, code_block, code_fence) applies when field is absent."""
+    md = "# Doc\n\nIntro.\n\n| A |\n|---|\n| 1 |\n\nOutro."
+    response = client.post(
+        "/lumber/api/split",
+        data={
+            "text": md,
+            "max_tokens": "500",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    table_chunks = [c for c in body["chunks"] if c["chunk_type"] == "table"]
+    assert len(table_chunks) == 1
+    assert "Intro." not in table_chunks[0]["body"]

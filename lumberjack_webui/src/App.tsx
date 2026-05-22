@@ -19,9 +19,10 @@ const DEFAULT_OPTIONS: Options = {
   skip_empty_sections: true,
   recursive_split: false,
   split_oversized_blocks: 'paragraph,blockquote,html_block',
+  standalone_blocks: 'table,code_block,code_fence',
   disable_lheading: false,
   tokenizer: 'simple',
-  splitter: 'semantic',
+  splitter: 'default',
   document_title: 'document.md',
 };
 

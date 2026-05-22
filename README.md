@@ -73,6 +73,8 @@ Supported CLI options today:
 - `--no-include-common-headings`: exclude common heading prefix from chunk body (only effective with `--retain-headings`)
 - `--no-isolate-front-matter`: do not isolate front matter as the first chunk
 - `--split-oversized-block <kind>`: opt in to splitting oversized `list`, `code_block`, `code_fence`, `table`, and other supported block kinds; repeat the flag to enable multiple kinds
+- `--standalone-block <kind>`: block kind that must be emitted as an independent chunk, never merged with adjacent blocks; repeat to add multiple (default: `table code_block code_fence`)
+- `--no-standalone-blocks`: disable standalone block isolation entirely
 - `--disable-lheading`: disable Setext heading parsing
 
 Parser note:
@@ -129,6 +131,7 @@ chunks = lumber(
     isolate_front_matter=True,
     skip_empty_sections=True,
     split_oversized_blocks=("paragraph", "blockquote", "html_block"),
+    standalone_blocks=("table", "code_block", "code_fence"),
     recursive_split=False,
     disable_lheading=False,
     tokenizer="simple",
@@ -242,6 +245,7 @@ Important details:
   heading path and the estimated merged size still fits within `max_tokens`.
 - Optional overlap is only applied when a single oversized block must be split by paragraph, line, sentence, word, or hard boundaries
 - Default `split_oversized_blocks` includes `paragraph`, `blockquote`, and `html_block`; oversized lists and code blocks stay intact by default but can be made splittable
+- `standalone_blocks` (default: `table`, `code_block`, `code_fence`) forces matched block kinds into their own chunks, never merged with adjacent paragraphs.  If a standalone block also exceeds `max_tokens` and is listed in `split_oversized_blocks`, it is split into independent pieces that each carry the original block kind as `chunk_type`.
 - Long URL-like spans are treated as unsplittable and will not be hard-split across chunks
 - `isolate_front_matter=True` always emits front matter as the first chunk (`chunk_type="front_matter"`)
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content

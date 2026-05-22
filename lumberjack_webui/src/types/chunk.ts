@@ -28,6 +28,7 @@ export interface SplitOptions {
   skip_empty_sections: boolean;
   recursive_split: boolean;
   split_oversized_blocks: string;
+  standalone_blocks: string;
   disable_lheading: boolean;
   tokenizer: string;
   splitter: string;
