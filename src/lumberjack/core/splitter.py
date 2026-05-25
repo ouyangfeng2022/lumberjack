@@ -39,19 +39,6 @@ def max_line(left: int | None, right: int | None) -> int | None:
     return max(lines, default=None)
 
 
-def count_joined(
-    tokenizer: TokenizerProtocol,
-    current: str,
-    next_part: str,
-    separator: str = "\n\n",
-) -> int:
-    if not current:
-        return tokenizer.count(next_part)
-    if not next_part:
-        return tokenizer.count(current)
-    return tokenizer.count(f"{current}{separator}{next_part}")
-
-
 def heading_path_token_count(tokenizer: TokenizerProtocol, path: HeadingPath) -> int:
     if not path:
         return 0
@@ -330,9 +317,10 @@ class TextSplitter:
         current_joined = ""
         current_tokens = 0
         for part in parts:
-            candidate_tokens = count_joined(
-                self.tokenizer, current_joined, part, separator
+            candidate_text = (
+                current_joined + separator + part if current_joined else part
             )
+            candidate_tokens = self.tokenizer.count(candidate_text)
             if current_parts and candidate_tokens > max_tokens:
                 packed.append(current_joined)
                 overlap_parts, _ = self.tail_parts_within_budget(
@@ -620,9 +608,12 @@ class _BaseMarkdownSplitter(SplitterProtocol):
                 continue
 
             block_tokens = self.tokenizer.count(f"{block.text}{SEPARATOR}", cache=True)
-            candidate_body_tokens = count_joined(
-                self.tokenizer, current_joined, block.text
+            candidate_text = (
+                current_joined + SEPARATOR + block.text
+                if current_joined
+                else block.text
             )
+            candidate_body_tokens = self.tokenizer.count(candidate_text)
             candidate_total = prefix_tokens + candidate_body_tokens
             if current_parts and candidate_total > max_tokens:
                 chunks.append(draft_current())
@@ -635,14 +626,13 @@ class _BaseMarkdownSplitter(SplitterProtocol):
             single_block_total = prefix_tokens + block_tokens
             if single_block_total <= max_tokens:
                 current_parts.append(block.text)
-                current_body_tokens = count_joined(
-                    self.tokenizer, current_joined, block.text
-                )
-                current_joined = (
-                    f"{current_joined}{SEPARATOR}{block.text}"
+                candidate_text = (
+                    current_joined + SEPARATOR + block.text
                     if current_joined
                     else block.text
                 )
+                current_body_tokens = self.tokenizer.count(candidate_text)
+                current_joined = candidate_text
                 if block.start_line is not None and (
                     current_start_line is None or block.start_line < current_start_line
                 ):
@@ -891,12 +881,14 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
         if not (section.node.blocks or section.children or section.node.level > 0):
             return []
 
-        entries = self._entries_from_section(section)
-        chunk_token = self._estimate_entries(entries)
+        chunk_token = section.counts.subtree - (
+            0 if self.options.render_common_headings else section.counts.title
+        )
 
         if chunk_token <= self.options.max_tokens and not self._has_standalone_blocks(
             section
         ):
+            entries = self._entries_from_section(section)
             return [
                 _ChunkDraft(
                     entries=entries,
