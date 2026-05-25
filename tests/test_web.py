@@ -62,7 +62,7 @@ def test_split_with_options(client: TestClient) -> None:
             "max_tokens": "100",
             "merge_below_tokens": "10",
             "overlap_tokens": "5",
-            "retain_headings": "true",
+            "render_common_headings": "true",
             "merge_small_chunks": "false",
             "split_oversized_blocks": "paragraph",
             "tokenizer": "simple",
@@ -100,7 +100,6 @@ def test_split_can_disable_setext_headings(client: TestClient) -> None:
         data={
             "text": "Title\n=====\n\nbody",
             "max_tokens": "500",
-            "retain_headings": "false",
             "disable_lheading": "true",
         },
     )
@@ -109,6 +108,22 @@ def test_split_can_disable_setext_headings(client: TestClient) -> None:
     chunk = response.json()["chunks"][0]
     assert chunk["body"] == "Title\n=====\n\nbody"
     assert chunk["headings"] == []
+
+
+def test_split_accepts_render_common_headings_false(client: TestClient) -> None:
+    response = client.post(
+        "/lumber/api/split",
+        data={
+            "text": "# Parent\n\n## Child\n\nChild body.",
+            "max_tokens": "500",
+            "render_common_headings": "false",
+        },
+    )
+
+    assert response.status_code == 200
+    chunk = response.json()["chunks"][0]
+    assert chunk["headings"] == [[1, "Parent"], [2, "Child"]]
+    assert chunk["body"] == "Child body."
 
 
 def test_unprefixed_api_path_is_not_registered(client: TestClient) -> None:

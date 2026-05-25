@@ -456,11 +456,6 @@ class _BaseMarkdownSplitter(SplitterProtocol):
             raise ValueError("merge_below_tokens must be smaller than max_tokens")
         if self.options.overlap_tokens >= self.options.max_tokens:
             raise ValueError("overlap_tokens must be smaller than max_tokens")
-        if self.options.include_common_headings and not self.options.retain_headings:
-            print(
-                "include_common_headings cannot be True when retain_headings is False, setting include_common_headings to False"
-            )
-            object.__setattr__(self.options, "include_common_headings", False)
 
     def _extract_front_matter(self, root: SectionNode) -> MarkdownBlock | None:
         if (
@@ -500,7 +495,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
                     block.text + SEPARATOR, cache=True
                 )
 
-        if section.level > 0 and self.options.retain_headings:
+        if section.level > 0:
             title_token_count = self.tokenizer.count(
                 "#" * section.level + " " + section.title + SEPARATOR, cache=True
             )
@@ -528,11 +523,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
     ) -> list[_ChunkDraft]:
         """Split a section's own blocks into fragments, then into chunk drafts."""
         node = section.node
-        include_prefix = (
-            self.options.retain_headings
-            and self.options.include_common_headings
-            and node.level > 0
-        )
+        include_prefix = self.options.render_common_headings and node.level > 0
         headings = node.path
         blocks = attach_thematic_breaks(node.blocks)
         max_tokens = self.options.max_tokens
@@ -817,12 +808,9 @@ class _BaseMarkdownSplitter(SplitterProtocol):
         if not entries:
             return 0
 
-        if not self.options.retain_headings:
-            return sum(entry.body_token_count for entry in entries)
-
         parts: list[int] = []
         common_headings = common_heading_path(entry.headings for entry in entries)
-        if self.options.include_common_headings and common_headings:
+        if self.options.render_common_headings and common_headings:
             parts.append(heading_path_token_count(self.tokenizer, common_headings))
 
         previous_headings = common_headings
@@ -850,18 +838,15 @@ class _BaseMarkdownSplitter(SplitterProtocol):
     ) -> str:
         """Render entries into Markdown body content.
 
-        When ``retain_headings`` is True the rendered heading prefix is prepended;
-        otherwise only the pure entry body text is included.
+        Rendered heading breadcrumbs are prepended to each entry. When
+        ``render_common_headings`` is False, omit the shared prefix already carried
+        by ``Chunk.headings``.
         """
         if not entries:
             return ""
 
-        if not self.options.retain_headings:
-            parts = [entry.body for entry in entries if entry.body]
-            return join_markdown(parts)
-
         parts: list[str] = []
-        include_common = self.options.include_common_headings
+        include_common = self.options.render_common_headings
         if include_common and common_headings:
             parts.append(render_heading_path(common_headings))
 
@@ -906,19 +891,15 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
         if not (section.node.blocks or section.children or section.node.level > 0):
             return []
 
-        common_heading_token_count: int = (
-            heading_path_token_count(self.tokenizer, section.node.path[:-1])
-            if self.options.include_common_headings
-            else 0
-        )
-        chunk_token = common_heading_token_count + section.counts.subtree
+        entries = self._entries_from_section(section)
+        chunk_token = self._estimate_entries(entries)
 
         if chunk_token <= self.options.max_tokens and not self._has_standalone_blocks(
             section
         ):
             return [
                 _ChunkDraft(
-                    entries=self._entries_from_section(section),
+                    entries=entries,
                     token_count=chunk_token,
                 )
             ]
@@ -940,7 +921,7 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
 
         common_heading_token_count: int = (
             heading_path_token_count(self.tokenizer, node.path)
-            if self.options.include_common_headings
+            if self.options.render_common_headings
             else 0
         )
         budget_token_count = self.options.max_tokens - common_heading_token_count

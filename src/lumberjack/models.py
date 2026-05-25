@@ -120,10 +120,9 @@ class SplitOptions:
             fragment or text fallback splitting. This is not a final minimum
             chunk size.
         overlap_tokens: Number of tokens to duplicate between adjacent chunks.
-        retain_headings: Prepend rendered heading breadcrumbs to :attr:`Chunk.body`.
-        include_common_headings: When ``retain_headings`` is True, include the shared
-            common heading prefix in :attr:`Chunk.body`.  Only effective when
-            ``retain_headings`` is also True.
+        render_common_headings: Include the shared common heading prefix in
+            :attr:`Chunk.body`. The full heading path is always returned on
+            :attr:`Chunk.headings`.
         merge_small_chunks: Combine adjacent chunks that share the same heading path.
         isolate_front_matter: Always emit front matter as the first chunk.
         skip_empty_sections: When True, discard chunks that contain only a heading
@@ -142,8 +141,7 @@ class SplitOptions:
     max_tokens: int = 1200
     merge_below_tokens: int = 50
     overlap_tokens: int = 0
-    retain_headings: bool = True
-    include_common_headings: bool = True
+    render_common_headings: bool = True
     merge_small_chunks: bool = True
     isolate_front_matter: bool = True
     skip_empty_sections: bool = True

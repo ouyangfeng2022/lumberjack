@@ -21,8 +21,7 @@ export interface SplitOptions {
   max_tokens: number;
   merge_below_tokens: number;
   overlap_tokens: number;
-  retain_headings: boolean;
-  include_common_headings: boolean;
+  render_common_headings: boolean;
   merge_small_chunks: boolean;
   isolate_front_matter: boolean;
   skip_empty_sections: boolean;

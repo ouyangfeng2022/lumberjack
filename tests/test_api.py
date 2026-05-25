@@ -97,6 +97,21 @@ def test_lumber_accepts_section_splitter() -> None:
     ]
 
 
+def test_lumber_render_common_headings_false_omits_common_rendered_prefix() -> None:
+    chunks = lumber(
+        MERGED_SECTION_FIXTURE,
+        document_title="development.md",
+        max_tokens=1000,
+        render_common_headings=False,
+    )
+
+    assert chunks[0].headings == ((1, "Development Guide"),)
+    assert chunks[0].body == (
+        "## Current Scope\n\nScope body.\n\n## Milestones\n\n### M0\n\nM0 body.\n\n"
+        "### M1\n\nM1 body."
+    )
+
+
 def test_lumber_recursive_splitter_matches_default() -> None:
     default_chunks = lumber(
         MERGED_SECTION_FIXTURE,
@@ -129,7 +144,6 @@ def test_lumber_can_disable_setext_headings() -> None:
         "Title\n=====\n\nbody",
         document_title="setext.md",
         max_tokens=500,
-        retain_headings=False,
         disable_lheading=True,
     )
 
@@ -227,7 +241,6 @@ def test_lumber_accepts_markdown_it_parser_with_plugins() -> None:
         document_title="tasks.md",
         max_tokens=500,
         parser=parser,
-        retain_headings=False,
     )
 
     assert len(chunks) == 1

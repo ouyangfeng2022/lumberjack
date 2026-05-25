@@ -69,8 +69,7 @@ Supported CLI options today:
 - `--merge-below-tokens`: soft threshold for small-chunk merging, default `50`
 - `--overlap-tokens`: optional token overlap used only for text fallback splits, default `0`
 - `--recursive-split`: split oversized direct section bodies when using `--splitter section`
-- `--retain-headings`: include heading context in rendered chunk text
-- `--no-include-common-headings`: exclude common heading prefix from chunk body (only effective with `--retain-headings`)
+- `--no-render-common-headings`: exclude the common heading prefix from chunk body
 - `--no-isolate-front-matter`: do not isolate front matter as the first chunk
 - `--split-oversized-block <kind>`: opt in to splitting oversized `list`, `code_block`, `code_fence`, `table`, and other supported block kinds; repeat the flag to enable multiple kinds
 - `--standalone-block <kind>`: block kind that must be emitted as an independent chunk, never merged with adjacent blocks; repeat to add multiple (default: `table code_block code_fence`)
@@ -125,8 +124,7 @@ chunks = lumber(
     max_tokens=1200,
     merge_below_tokens=50,
     overlap_tokens=0,
-    retain_headings=True,
-    include_common_headings=True,
+    render_common_headings=True,
     merge_small_chunks=True,
     isolate_front_matter=True,
     skip_empty_sections=True,
@@ -231,9 +229,9 @@ Recursive splitting follows this order:
 
 Important details:
 
-- Heading context is preserved in `Chunk.body` when `retain_headings=True`
+- Heading context is always preserved in `Chunk.body`
 - Shared parent headings are deduplicated when sibling sections are merged into one chunk
-- `Chunk.body` excludes the common heading prefix already represented by `Chunk.headings` when `include_common_headings=False`
+- `Chunk.body` excludes the common heading prefix already represented by `Chunk.headings` when `render_common_headings=False`
 - `estimated_token_count` is the additive budget estimate used for splitting:
   section body, heading title, and subtree counts are cached bottom-up. Heading
   markers (the leading `#` run) and Markdown separators each count as one token.

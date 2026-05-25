@@ -69,8 +69,7 @@ uv run lumber --help
 - `--merge-below-tokens`：小分块合并软阈值，默认 `50`
 - `--overlap-tokens`：仅在文本回退切分时使用的可选 token 重叠量，默认 `0`
 - `--recursive-split`：使用 `--splitter section` 时递归拆分超大的章节直接正文
-- `--retain-headings`：在渲染的分块文本中包含标题上下文
-- `--no-include-common-headings`：排除分块正文中的公共标题前缀（需配合 `--retain-headings` 使用）
+- `--no-render-common-headings`：排除分块正文中的公共标题前缀
 - `--no-isolate-front-matter`：不将 front matter 作为第一个分块隔离
 - `--split-oversized-block <kind>`：允许切分超大的 `list`、`code_block`、`code_fence`、`table` 等受支持的块类型；可重复指定以启用多种类型
 - `--disable-lheading`：禁用 Setext 标题解析
@@ -120,8 +119,7 @@ chunks = lumber(
     max_tokens=1200,
     merge_below_tokens=50,
     overlap_tokens=0,
-    retain_headings=True,
-    include_common_headings=True,
+    render_common_headings=True,
     merge_small_chunks=True,
     isolate_front_matter=True,
     skip_empty_sections=True,
@@ -226,9 +224,9 @@ API 默认值为 `splitter="recursive"`。
 
 重要细节：
 
-- 当 `retain_headings=True` 时，标题上下文保留在 `Chunk.body` 中
+- 标题上下文始终保留在 `Chunk.body` 中
 - 当同级章节合并为一个分块时，共享的父标题会去重
-- `include_common_headings=False` 时，`Chunk.body` 不包含已由 `Chunk.headings` 表示的公共标题前缀
+- `render_common_headings=False` 时，`Chunk.body` 不包含已由 `Chunk.headings` 表示的公共标题前缀
 - `estimated_token_count` 是用于切分的加法预算估算：章节正文、标题文本和子树计数自底向上缓存。标题标记（前导 `#` 序列）和 Markdown 分隔符各计为一个 token。`token_count` 仍从最终渲染的分块正文一次性计数用于报告。
 - `merge_below_tokens` 不是最终分块的最小 token 数，而是针对 fragment 或文本回退切分产生的短尾块的合并软阈值：低于该值的相邻短尾块只会在标题路径相同且估算合并大小仍不超过 `max_tokens` 时被合并。
 - 可选重叠仅在单个超大块必须按段落、行、句子、单词或硬边界切分时应用

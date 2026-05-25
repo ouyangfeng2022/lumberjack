@@ -88,21 +88,10 @@ export default function SplitOptions({ options, onChange }: Props) {
           <label className={styles.checkField}>
             <input
               type="checkbox"
-              checked={options.retain_headings}
-              onChange={(e) => update('retain_headings', e.target.checked)}
+              checked={options.render_common_headings}
+              onChange={(e) => update('render_common_headings', e.target.checked)}
             />
-            <span>{t('opts_retain_headings')}</span>
-          </label>
-          <label
-            className={`${styles.checkField} ${!options.retain_headings ? styles.checkDisabled : ''}`}
-          >
-            <input
-              type="checkbox"
-              checked={options.include_common_headings}
-              disabled={!options.retain_headings}
-              onChange={(e) => update('include_common_headings', e.target.checked)}
-            />
-            <span>{t('opts_include_common_headings')}</span>
+            <span>{t('opts_render_common_headings')}</span>
           </label>
         </div>
       </div>

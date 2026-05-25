@@ -247,16 +247,6 @@ def test_heading_splitter_respects_empty_section_options() -> None:
             skip_empty_sections=False,
         ),
     ).split(document)
-    hidden_heading_chunks = SectionMarkdownSplitter(
-        tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=1000,
-            merge_below_tokens=0,
-            retain_headings=False,
-            skip_empty_sections=False,
-        ),
-    ).split(document)
-
     assert [chunk.headings for chunk in default_chunks] == [
         ((1, "Empty"), (2, "Child")),
     ]
@@ -265,7 +255,6 @@ def test_heading_splitter_respects_empty_section_options() -> None:
         ((1, "Empty"), (2, "Child")),
     ]
     assert kept_chunks[0].body == "# Empty"
-    assert [chunk.body for chunk in hidden_heading_chunks] == ["Child body."]
 
 
 def test_splitter_respects_budget_except_unsplittable_code_fence() -> None:
@@ -303,21 +292,19 @@ def test_splitter_deduplicates_shared_parent_heading_in_merged_chunk() -> None:
     assert chunks[0].section_level == 1
 
 
-def test_splitter_omits_headings_from_body_when_disabled() -> None:
+def test_splitter_omits_common_headings_from_body_when_disabled() -> None:
     document = MarkdownParser().parse(
         MERGED_SECTION_FIXTURE, document_title="development.md"
     )
 
     with_headings = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=1000, merge_below_tokens=20, retain_headings=True
-        ),
+        options=SplitOptions(max_tokens=1000, merge_below_tokens=20),
     ).split(document)
     without_headings = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
-            max_tokens=1000, merge_below_tokens=20, retain_headings=False
+            max_tokens=1000, merge_below_tokens=20, render_common_headings=False
         ),
     ).split(document)
 
@@ -326,8 +313,8 @@ def test_splitter_omits_headings_from_body_when_disabled() -> None:
     assert "# Development Guide" in with_headings[0].body
     assert "## Current Scope" in with_headings[0].body
     assert "# Development Guide" not in without_headings[0].body
-    assert "## Current Scope" not in without_headings[0].body
-    assert "## Milestones" not in without_headings[0].body
+    assert "## Current Scope" in without_headings[0].body
+    assert "## Milestones" in without_headings[0].body
     assert "Scope body." in without_headings[0].body
     assert "M0 body." in without_headings[0].body
     assert without_headings[0].headings == ((1, "Development Guide"),)
@@ -343,9 +330,7 @@ def test_splitter_recursively_descends_heading_levels_when_section_is_oversized(
     )
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=90, merge_below_tokens=80, retain_headings=True
-        ),
+        options=SplitOptions(max_tokens=90, merge_below_tokens=80),
     )
 
     chunks = splitter.split(document)
@@ -371,9 +356,7 @@ def test_splitter_checks_whole_document_before_splitting_by_top_level_headings()
     )
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=200, merge_below_tokens=20, retain_headings=True
-        ),
+        options=SplitOptions(max_tokens=200, merge_below_tokens=20),
     )
 
     chunks = splitter.split(document)
@@ -388,9 +371,7 @@ def test_splitter_greedily_merges_same_level_siblings_before_descending() -> Non
     )
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=62, merge_below_tokens=20, retain_headings=True
-        ),
+        options=SplitOptions(max_tokens=62, merge_below_tokens=20),
     )
 
     chunks = splitter.split(document)
@@ -407,7 +388,7 @@ def test_splitter_exposes_body_without_common_headings_for_single_leaf_chunk() -
     )
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=40, merge_below_tokens=0, retain_headings=True),
+        options=SplitOptions(max_tokens=40, merge_below_tokens=0),
     )
 
     chunks = splitter.split(document)
@@ -422,9 +403,7 @@ def test_splitter_exposes_body_without_common_headings_for_multi_entry_chunk() -
     )
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=110, merge_below_tokens=0, retain_headings=True
-        ),
+        options=SplitOptions(max_tokens=110, merge_below_tokens=0),
     )
 
     chunks = splitter.split(document)
@@ -446,8 +425,7 @@ def test_splitter_exclude_common_headings_drops_shared_prefix() -> None:
         options=SplitOptions(
             max_tokens=110,
             merge_below_tokens=0,
-            retain_headings=True,
-            include_common_headings=False,
+            render_common_headings=False,
         ),
     )
 
@@ -467,8 +445,7 @@ def test_splitter_exclude_common_headings_single_entry() -> None:
         options=SplitOptions(
             max_tokens=22,
             merge_below_tokens=0,
-            retain_headings=True,
-            include_common_headings=False,
+            render_common_headings=False,
         ),
     )
 
@@ -478,7 +455,7 @@ def test_splitter_exclude_common_headings_single_entry() -> None:
     assert chunks[0].body == "Alpha body."
 
 
-def test_splitter_exclude_common_headings_ignored_when_retain_headings_false() -> None:
+def test_splitter_render_common_headings_false_keeps_sibling_headings() -> None:
     document = MarkdownParser().parse(
         MULTI_ROOT_FIXTURE, document_title="multi-root.md"
     )
@@ -487,49 +464,46 @@ def test_splitter_exclude_common_headings_ignored_when_retain_headings_false() -
         options=SplitOptions(
             max_tokens=200,
             merge_below_tokens=0,
-            retain_headings=False,
-            include_common_headings=False,
+            render_common_headings=False,
         ),
     )
 
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].body == "First body.\n\nSecond body."
+    assert chunks[0].body == "# First\n\nFirst body.\n\n# Second\n\nSecond body."
 
 
-def test_splitter_body_is_pure_content_when_headings_are_hidden() -> None:
+def test_splitter_body_includes_headings_by_default() -> None:
     document = MarkdownParser().parse(
         MULTI_ROOT_FIXTURE, document_title="multi-root.md"
     )
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=200, merge_below_tokens=0, retain_headings=False
-        ),
+        options=SplitOptions(max_tokens=200, merge_below_tokens=0),
     )
 
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].body == "First body.\n\nSecond body."
+    assert chunks[0].body == "# First\n\nFirst body.\n\n# Second\n\nSecond body."
 
 
-def test_splitter_body_drops_all_headings_when_headings_are_hidden() -> None:
+def test_splitter_body_includes_nested_headings_by_default() -> None:
     document = MarkdownParser().parse(
         THIRD_LEVEL_FIXTURE, document_title="third-level.md"
     )
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=60, merge_below_tokens=0, retain_headings=False
-        ),
+        options=SplitOptions(max_tokens=60, merge_below_tokens=0),
     )
 
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].body == "Alpha body.\n\nBeta body."
+    assert chunks[0].body == (
+        "# Root\n\n## Scope\n\n### A\n\nAlpha body.\n\n### B\n\nBeta body."
+    )
 
 
 def test_splitter_measures_section_token_counts_bottom_up() -> None:
@@ -539,7 +513,6 @@ def test_splitter_measures_section_token_counts_bottom_up() -> None:
         options=SplitOptions(
             max_tokens=7,
             merge_below_tokens=0,
-            retain_headings=True,
             split_oversized_blocks=frozenset(),
         ),
     )
@@ -569,7 +542,6 @@ def test_splitter_uses_estimated_tokens_for_budget_decisions() -> None:
         options=SplitOptions(
             max_tokens=7,
             merge_below_tokens=0,
-            retain_headings=True,
             split_oversized_blocks=frozenset(),
         ),
     )
@@ -589,9 +561,7 @@ def test_heading_estimate_counts_title_once_and_marker_as_one_token() -> None:
     tokenizer = RecordingTokenizer()
     splitter = RecursiveMarkdownSplitter(
         tokenizer=tokenizer,
-        options=SplitOptions(
-            max_tokens=100, merge_below_tokens=0, retain_headings=True
-        ),
+        options=SplitOptions(max_tokens=100, merge_below_tokens=0),
     )
 
     measured_root = splitter._measure_section(document.root)
@@ -601,42 +571,27 @@ def test_heading_estimate_counts_title_once_and_marker_as_one_token() -> None:
     assert "### Cacheable Title\n\n" in tokenizer.counted
 
 
-def test_estimated_tokens_follow_heading_visibility_options() -> None:
+def test_estimated_tokens_follow_common_heading_render_option() -> None:
     document = MarkdownParser().parse(
         THIRD_LEVEL_FIXTURE, document_title="third-level.md"
     )
 
     with_headings = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=100, merge_below_tokens=0, retain_headings=True
-        ),
-    ).split(document)
-    without_headings = RecursiveMarkdownSplitter(
-        tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=100, merge_below_tokens=0, retain_headings=False
-        ),
+        options=SplitOptions(max_tokens=100, merge_below_tokens=0),
     ).split(document)
     without_common = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
             max_tokens=100,
             merge_below_tokens=0,
-            retain_headings=True,
-            include_common_headings=False,
+            render_common_headings=False,
         ),
     ).split(document)
 
     assert (
-        with_headings[0].estimated_token_count
-        > without_headings[0].estimated_token_count
+        with_headings[0].estimated_token_count > without_common[0].estimated_token_count
     )
-    assert (
-        with_headings[0].estimated_token_count
-        >= without_common[0].estimated_token_count
-    )
-    assert without_headings[0].estimated_token_count == 25
 
 
 def test_splitter_does_not_count_oversized_section_rendering_for_budget_trials() -> (
@@ -660,7 +615,7 @@ Three body.
     tokenizer = RecordingTokenizer()
     splitter = RecursiveMarkdownSplitter(
         tokenizer=tokenizer,
-        options=SplitOptions(max_tokens=35, merge_below_tokens=0, retain_headings=True),
+        options=SplitOptions(max_tokens=35, merge_below_tokens=0),
     )
 
     chunks = splitter.split(document)
@@ -681,8 +636,7 @@ def test_section_chunk_estimate_respects_hidden_common_headings_without_entries(
         options=SplitOptions(
             max_tokens=100,
             merge_below_tokens=0,
-            retain_headings=True,
-            include_common_headings=False,
+            render_common_headings=False,
         ),
     )
     measured_root = splitter._measure_section(document.root)
@@ -694,20 +648,18 @@ def test_section_chunk_estimate_respects_hidden_common_headings_without_entries(
     assert chunk_token_count == 31
 
 
-def test_section_chunk_estimate_respects_hidden_headings_without_entries() -> None:
+def test_section_chunk_estimate_includes_heading_tokens_without_entries() -> None:
     document = MarkdownParser().parse(
         THIRD_LEVEL_FIXTURE, document_title="third-level.md"
     )
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=100, merge_below_tokens=0, retain_headings=False
-        ),
+        options=SplitOptions(max_tokens=100, merge_below_tokens=0),
     )
     measured_root = splitter._measure_section(document.root)
     measured_scope = measured_root.children[0].children[0]
 
-    assert measured_scope.counts.subtree == 25
+    assert measured_scope.counts.subtree == 49
 
 
 def test_splitter_adds_overlap_only_for_text_fallback_splits() -> None:
@@ -721,7 +673,6 @@ def test_splitter_adds_overlap_only_for_text_fallback_splits() -> None:
             max_tokens=16,
             merge_below_tokens=0,
             overlap_tokens=5,
-            retain_headings=False,
             merge_small_chunks=False,
         ),
     )
@@ -761,14 +712,13 @@ def test_merge_below_tokens_does_not_merge_past_rendered_budget() -> None:
         options=SplitOptions(
             max_tokens=60,
             merge_below_tokens=10,
-            retain_headings=False,
         ),
     )
 
     chunks = splitter.split(document)
 
-    assert [chunk.token_count for chunk in chunks] == [62, 1]
-    assert chunks[1].body == "y"
+    assert [chunk.token_count for chunk in chunks] == [60, 13]
+    assert chunks[1].body == "# A\n\nx x x\n\ny"
     assert all(chunk.estimated_token_count <= 60 for chunk in chunks)
 
 
@@ -836,9 +786,7 @@ def test_splitter_keeps_oversized_lists_intact_by_default() -> None:
     document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=20, merge_below_tokens=0, retain_headings=False
-        ),
+        options=SplitOptions(max_tokens=20, merge_below_tokens=0),
     )
 
     chunks = splitter.split(document)
@@ -855,7 +803,6 @@ def test_splitter_can_split_oversized_lists_when_enabled() -> None:
         options=SplitOptions(
             max_tokens=20,
             merge_below_tokens=0,
-            retain_headings=False,
             merge_small_chunks=False,
             split_oversized_blocks=frozenset({"list"}),
         ),
@@ -881,7 +828,6 @@ def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
         options=SplitOptions(
             max_tokens=28,
             merge_below_tokens=0,
-            retain_headings=False,
             merge_small_chunks=False,
             split_oversized_blocks=frozenset({"code_fence"}),
         ),
@@ -904,7 +850,6 @@ def test_splitter_never_splits_oversized_urls() -> None:
         options=SplitOptions(
             max_tokens=30,
             merge_below_tokens=0,
-            retain_headings=False,
             merge_small_chunks=False,
         ),
     )
@@ -1026,9 +971,7 @@ def test_thematic_break_never_appears_as_standalone_chunk() -> None:
     document = MarkdownParser().parse(THEMATIC_BREAK_FIXTURE, document_title="hr.md")
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=500, merge_below_tokens=0, retain_headings=False
-        ),
+        options=SplitOptions(max_tokens=500, merge_below_tokens=0),
     )
 
     chunks = splitter.split(document)
@@ -1047,7 +990,6 @@ def test_thematic_break_sticks_to_neighbor_at_chunk_boundary() -> None:
         options=SplitOptions(
             max_tokens=40,
             merge_below_tokens=0,
-            retain_headings=True,
             merge_small_chunks=False,
         ),
     )
@@ -1063,9 +1005,7 @@ def test_thematic_break_at_document_start_stays_standalone() -> None:
     document = MarkdownParser().parse(md, document_title="hr-first.md")
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=500, merge_below_tokens=0, retain_headings=False
-        ),
+        options=SplitOptions(max_tokens=500, merge_below_tokens=0),
     )
 
     chunks = splitter.split(document)
@@ -1075,7 +1015,7 @@ def test_thematic_break_at_document_start_stays_standalone() -> None:
 
 def test_thematic_break_after_front_matter_stays_in_body_content() -> None:
     md = "---\ntitle: T\n---\n\n---\n\nBody"
-    chunks = lumber(md, max_tokens=100, merge_below_tokens=0, retain_headings=False)
+    chunks = lumber(md, max_tokens=100, merge_below_tokens=0)
 
     assert chunks[0].chunk_type == "front_matter"
     assert chunks[0].body == "---\ntitle: T\n---"
@@ -1089,7 +1029,6 @@ def test_thematic_break_after_split_list_is_preserved() -> None:
         md,
         max_tokens=50,
         merge_below_tokens=0,
-        retain_headings=False,
         split_oversized_blocks={"list", "paragraph"},
     )
 
@@ -1109,16 +1048,14 @@ If you encounter issues, check the following.
 """
 
 
-def test_empty_section_discarded_when_retain_headings_false() -> None:
-    """Heading-only chunks always discarded when retain_headings=False (0 tokens)."""
+def test_empty_section_discarded_by_default() -> None:
+    """Heading-only chunks are discarded by default."""
     document = MarkdownParser().parse(
         EMPTY_SECTION_FIXTURE, document_title="empty-section.md"
     )
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=500, merge_below_tokens=0, retain_headings=False
-        ),
+        options=SplitOptions(max_tokens=500, merge_below_tokens=0),
     )
 
     chunks = splitter.split(document)
@@ -1128,7 +1065,7 @@ def test_empty_section_discarded_when_retain_headings_false() -> None:
     assert "If you encounter issues" in chunks[0].body
 
 
-def test_empty_section_discarded_by_default_with_retain_headings() -> None:
+def test_empty_section_discarded_by_default_with_headings() -> None:
     """Heading-only chunks discarded by default (skip_empty_sections=True)."""
     document = MarkdownParser().parse(
         EMPTY_SECTION_FIXTURE, document_title="empty-section.md"
@@ -1138,7 +1075,6 @@ def test_empty_section_discarded_by_default_with_retain_headings() -> None:
         options=SplitOptions(
             max_tokens=50,
             merge_below_tokens=0,
-            retain_headings=True,
             skip_empty_sections=True,
         ),
     )
@@ -1153,7 +1089,7 @@ def test_empty_section_discarded_by_default_with_retain_headings() -> None:
 
 
 def test_empty_section_kept_when_skip_empty_sections_false() -> None:
-    """Heading-only chunks kept when skip_empty_sections=False and retain_headings=True."""
+    """Heading-only chunks kept when skip_empty_sections=False."""
     document = MarkdownParser().parse(
         EMPTY_SECTION_FIXTURE, document_title="empty-section.md"
     )
@@ -1162,7 +1098,6 @@ def test_empty_section_kept_when_skip_empty_sections_false() -> None:
         options=SplitOptions(
             max_tokens=500,
             merge_below_tokens=0,
-            retain_headings=True,
             skip_empty_sections=False,
         ),
     )
@@ -1172,10 +1107,8 @@ def test_empty_section_kept_when_skip_empty_sections_false() -> None:
     assert any("## Installation" in chunk.body for chunk in chunks)
 
 
-def test_empty_section_discarded_even_with_skip_false_when_retain_headings_false() -> (
-    None
-):
-    """Zero-token chunks always discarded regardless of skip_empty_sections."""
+def test_empty_section_kept_with_skip_false() -> None:
+    """Heading-only chunks are kept when skip_empty_sections=False."""
     document = MarkdownParser().parse(
         EMPTY_SECTION_FIXTURE, document_title="empty-section.md"
     )
@@ -1184,7 +1117,6 @@ def test_empty_section_discarded_even_with_skip_false_when_retain_headings_false
         options=SplitOptions(
             max_tokens=500,
             merge_below_tokens=0,
-            retain_headings=False,
             skip_empty_sections=False,
         ),
     )
@@ -1192,7 +1124,7 @@ def test_empty_section_discarded_even_with_skip_false_when_retain_headings_false
     chunks = splitter.split(document)
 
     assert all(chunk.body.strip() for chunk in chunks)
-    assert not any("Installation" in chunk.body for chunk in chunks)
+    assert any("Installation" in chunk.body for chunk in chunks)
 
 
 def test_empty_section_between_non_empty_sections_is_skipped() -> None:
@@ -1204,7 +1136,6 @@ def test_empty_section_between_non_empty_sections_is_skipped() -> None:
         options=SplitOptions(
             max_tokens=50,
             merge_below_tokens=0,
-            retain_headings=True,
         ),
     )
 
@@ -1397,7 +1328,7 @@ Child body.
 
 
 def test_standalone_block_preserves_heading_context() -> None:
-    """Standalone chunk retains heading breadcrumbs when retain_headings is True."""
+    """Standalone chunk retains heading breadcrumbs."""
     document = MarkdownParser().parse(
         STANDALONE_CODE_FENCE_IN_SECTION, document_title="headings.md"
     )
@@ -1407,7 +1338,6 @@ def test_standalone_block_preserves_heading_context() -> None:
             max_tokens=1000,
             merge_below_tokens=0,
             standalone_blocks=frozenset({"code_fence"}),
-            retain_headings=True,
         ),
     )
 
