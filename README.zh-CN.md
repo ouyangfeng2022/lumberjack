@@ -21,13 +21,14 @@ Markdown 文本 -> 解析器 token -> DocumentAST -> splitter -> Chunk[]
 
 - 构建标题树，并将块节点归属到对应章节
 - 解析 YAML front matter；按用户输入、front matter 或首个 H1 解析文档标题
-- 保留段落、列表、引用块、代码块、HTML 块、分隔线、数学块等块级结构
+- 保留段落、列表、引用块、代码块、HTML 块、数学块等块级结构
 - 捕获标题和段落中的行内节点，包括行内数学和脚注引用
 - 在文档模型中跟踪链接引用定义
 - 尽可能保留标题和块的源码行范围
 - 按整篇文档 -> 章节树 -> 块/文本 回退 的顺序切分
 - 围栏代码块默认保持完整，即使超出 token 预算
 - 将 front matter 作为第一个分块隔离；跳过仅有标题无正文的空章节
+- 除 YAML front matter 分隔符外，解析时忽略普通分隔线
 
 ## 安装
 
@@ -166,7 +167,6 @@ plugin_chunks = lumber(
 - 围栏代码块
 - 缩进代码块
 - HTML 块
-- 分隔线
 - 链接引用定义
 - YAML front matter
 - 数学块（`$$...$$`）
@@ -231,7 +231,7 @@ API 默认值为 `splitter="recursive"`。
 - 长的 URL 样式文本被视为不可切分，不会跨分块硬切分
 - `isolate_front_matter=True` 始终将 front matter 作为第一个分块（`chunk_type="front_matter"`）
 - `skip_empty_sections=True` 丢弃仅有标题无正文的空章节分块
-- 分隔线会附加到前面的段落、引用块、HTML 块、数学块或带编号数学块上
+- front matter 分隔符会保留在 front matter 分块中；其他分隔线会在解析时忽略
 - 对 `section` 切分器，`recursive_split=False` 会保留超大的章节正文。
   设置 `recursive_split=True` 后，超大的章节直接正文会复用同一套块/文本回退切分逻辑。
 

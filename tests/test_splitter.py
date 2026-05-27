@@ -853,7 +853,7 @@ Second paragraph.
 """
 
 
-def test_thematic_break_never_appears_as_standalone_chunk() -> None:
+def test_thematic_break_is_ignored_in_chunk_body() -> None:
     document = MarkdownParser().parse(THEMATIC_BREAK_FIXTURE, document_title="hr.md")
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
@@ -863,13 +863,12 @@ def test_thematic_break_never_appears_as_standalone_chunk() -> None:
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert "---" in chunks[0].body
+    assert "---" not in chunks[0].body
     assert "First paragraph." in chunks[0].body
     assert "Second paragraph." in chunks[0].body
 
 
-def test_thematic_break_sticks_to_neighbor_at_chunk_boundary() -> None:
-    """Even with a tight budget, the thematic_break is not emitted alone."""
+def test_thematic_break_is_ignored_at_chunk_boundary() -> None:
     document = MarkdownParser().parse(THEMATIC_BREAK_FIXTURE, document_title="hr.md")
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
@@ -882,11 +881,11 @@ def test_thematic_break_sticks_to_neighbor_at_chunk_boundary() -> None:
 
     chunks = splitter.split(document)
 
-    assert any("---" in chunk.body for chunk in chunks)
+    assert not any("---" in chunk.body for chunk in chunks)
     assert all(chunk.body.strip() != "---" for chunk in chunks)
 
 
-def test_thematic_break_at_document_start_stays_standalone() -> None:
+def test_thematic_break_at_document_start_is_ignored() -> None:
     md = "---\n\nParagraph text."
     document = MarkdownParser().parse(md, document_title="hr-first.md")
     splitter = RecursiveMarkdownSplitter(
@@ -896,20 +895,21 @@ def test_thematic_break_at_document_start_stays_standalone() -> None:
 
     chunks = splitter.split(document)
     assert len(chunks) == 1
-    assert "---" in chunks[0].body
+    assert "---" not in chunks[0].body
+    assert "Paragraph text." in chunks[0].body
 
 
-def test_thematic_break_after_front_matter_stays_in_body_content() -> None:
+def test_thematic_break_after_front_matter_is_ignored_in_body_content() -> None:
     md = "---\ntitle: T\n---\n\n---\n\nBody"
     chunks = lumber(md, max_tokens=100, merge_below_tokens=0)
 
     assert chunks[0].chunk_type == "front_matter"
     assert chunks[0].body == "---\ntitle: T\n---"
-    assert "---" in chunks[1].body
+    assert "---" not in chunks[1].body
     assert "Body" in chunks[1].body
 
 
-def test_thematic_break_after_split_list_is_preserved() -> None:
+def test_thematic_break_after_split_list_is_ignored() -> None:
     md = f"- {'a' * 40}\n- {'b' * 40}\n\n---\n\nAfter"
     chunks = lumber(
         md,
@@ -918,7 +918,7 @@ def test_thematic_break_after_split_list_is_preserved() -> None:
         split_oversized_blocks={"list", "paragraph"},
     )
 
-    assert any("---" in chunk.body for chunk in chunks)
+    assert not any("---" in chunk.body for chunk in chunks)
     assert all(chunk.body.strip() != "---" for chunk in chunks)
 
 

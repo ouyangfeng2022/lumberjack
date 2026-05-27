@@ -62,6 +62,7 @@ Main components:
   - Uses `MarkdownIt("gfm-like")` with built-in plugins: `dollarmath_plugin`, `front_matter_plugin`, `brackets_math_plugin`
   - Supports `disable_lheading` to disable Setext heading parsing
   - Parses YAML front matter and resolves document title from: user-provided > front matter `title` > first H1 > "Anonymous"
+  - Ignores ordinary thematic breaks during parsing; front matter delimiters remain part of the `front_matter` block
   - Preserves heading hierarchy, block content, inline structure, reference definitions, and line ranges
 - **Plugins**: `src/lumberjack/core/plugins/`
   - `brackets_math_plugin`: adds `\[...\]` block math and `\(...\)` inline math syntax support
@@ -70,7 +71,6 @@ Main components:
   - `RecursiveMarkdownSplitter` (registry: "default", "recursive"): structure-first, budget-aware; merges adjacent sibling sections when they fit
   - `SectionMarkdownSplitter` (registry: "section"): one chunk per heading section direct body; child sections are separate chunks
   - `TextSplitter`: handles oversized block splitting via paragraph/line/sentence/word/hard boundaries
-  - Thematic breaks are attached to preceding blocks of kind paragraph, blockquote, html_block, math_block, or math_block_eqno
   - Front matter is isolated as the first chunk when `isolate_front_matter=True`
   - Empty sections (heading-only, no body) are skipped when `skip_empty_sections=True`
 - **Tokenizer**: `src/lumberjack/core/tokenizers.py`
@@ -155,7 +155,6 @@ The parser currently normalizes these block-level structures:
 - fenced code blocks
 - indented code blocks
 - HTML blocks
-- thematic breaks
 - link reference definitions
 - YAML front matter
 - math blocks (`$$...$$`, dollarmath plugin)
@@ -192,7 +191,7 @@ The parser currently captures these inline structures in headings and paragraphs
 - Short tails from fragment or text fallback splitting are merged only when they share the same heading path and the estimated merged size still fits within `max_tokens`
 - `isolate_front_matter=True` always emits front matter as the first chunk (`chunk_type="front_matter"`)
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
-- Thematic breaks are attached to preceding blocks of kind paragraph, blockquote, html_block, math_block, or math_block_eqno
+- Front matter delimiters are preserved inside the front matter chunk; other thematic breaks are ignored during parsing
 - `recursive_split=True` enables block/text fallback for oversized section bodies in `SectionMarkdownSplitter`
 - Default `split_oversized_blocks` includes `paragraph`, `blockquote`, `html_block`
 

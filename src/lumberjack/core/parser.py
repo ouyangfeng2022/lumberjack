@@ -569,15 +569,7 @@ class MarkdownItParser:
             )
 
         if token.type == "hr":
-            return (
-                MarkdownBlock(
-                    kind="thematic_break",
-                    text=slice_source(source_lines, token.map) or "---",
-                    start_line=start_line(token),
-                    end_line=end_line(token),
-                ),
-                index + 1,
-            )
+            return (None, index + 1)
 
         if token.type == "table_open":
             close_index = self._find_matching_close(tokens, index)

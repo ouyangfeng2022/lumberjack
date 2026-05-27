@@ -32,7 +32,7 @@ class MarkdownBlock:
     Attributes:
         kind: Block type (e.g. ``"paragraph"``, ``"heading"``, ``"code_fence"``,
             ``"blockquote"``, ``"list"``, ``"list_item"``, ``"table"``,
-            ``"html_block"``, ``"hr"``).
+            ``"html_block"``, ``"math_block"``).
         text: Rendered source text of this block.
         start_line: 1-based line number where the block begins.
         end_line: 1-based line number where the block ends.

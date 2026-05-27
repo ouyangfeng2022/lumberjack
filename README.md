@@ -21,13 +21,14 @@ Current behavior:
 
 - Builds a heading tree with section-local blocks
 - Parses YAML front matter; resolves document title from user input, front matter, or first H1
-- Preserves block structure for paragraphs, lists, block quotes, code blocks, HTML blocks, thematic breaks, and math blocks
+- Preserves block structure for paragraphs, lists, block quotes, code blocks, HTML blocks, and math blocks
 - Captures inline nodes for headings and paragraphs including math inline and footnote references
 - Tracks link reference definitions in the document model
 - Preserves line ranges for headings and blocks when source matching is possible
 - Splits by whole document -> section tree -> block/text fallback
 - Keeps fenced code blocks intact by default even when they exceed the token budget
 - Isolates front matter as the first chunk; skips empty heading-only sections
+- Ignores thematic breaks during parsing, except when they delimit YAML front matter
 
 ## Install
 
@@ -171,7 +172,6 @@ The current parser normalizes these block-level structures:
 - fenced code blocks
 - indented code blocks
 - HTML blocks
-- thematic breaks
 - link reference definitions
 - YAML front matter
 - math blocks (`$$...$$`)
@@ -244,7 +244,7 @@ Important details:
 - Long URL-like spans are treated as unsplittable and will not be hard-split across chunks
 - `isolate_front_matter=True` always emits front matter as the first chunk (`chunk_type="front_matter"`)
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
-- Thematic breaks are attached to preceding blocks of kind paragraph, blockquote, html_block, math_block, or math_block_eqno
+- Front matter delimiters are preserved inside the front matter chunk; other thematic breaks are ignored during parsing
 - For `section` splitter, `recursive_split=False` keeps oversized section bodies intact.
   Set `recursive_split=True` to use the same block/text fallback for oversized
   direct section bodies.

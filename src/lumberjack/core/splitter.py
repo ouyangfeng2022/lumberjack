@@ -23,20 +23,6 @@ SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?\u3002\uFF01\uFF1F])\s+")
 PROTECTED_SPAN_RE = re.compile(r"<https?://[^\s>]+>|https?://[^\s)>\]]+")
 SEPARATOR = "\n\n"
 SplitOrigin = Literal["section", "fragment", "text_piece"]
-THEMATIC_BREAK_ATTACH_PREVIOUS_KINDS = frozenset(
-    {
-        "paragraph",
-        "blockquote",
-        "html_block",
-        "math_block",
-        "math_block_eqno",
-    }
-)
-
-
-def max_line(left: int | None, right: int | None) -> int | None:
-    lines = [line for line in (left, right) if line is not None]
-    return max(lines, default=None)
 
 
 def heading_path_token_count(tokenizer: TokenizerProtocol, path: HeadingPath) -> int:
@@ -64,51 +50,6 @@ def common_heading_path(paths: Iterable[HeadingPath]) -> HeadingPath:
         if not common:
             break
     return common
-
-
-def attach_thematic_breaks(blocks: list[MarkdownBlock]) -> list[MarkdownBlock]:
-    attached: list[MarkdownBlock] = []
-    pending: list[MarkdownBlock] = []
-
-    for block in blocks:
-        if block.kind == "thematic_break":
-            if attached and attached[-1].kind in THEMATIC_BREAK_ATTACH_PREVIOUS_KINDS:
-                attached[-1] = MarkdownBlock(
-                    kind=attached[-1].kind,
-                    text=join_markdown([attached[-1].text, block.text]),
-                    start_line=attached[-1].start_line,
-                    end_line=max_line(attached[-1].end_line, block.end_line),
-                    children=attached[-1].children,
-                    inlines=attached[-1].inlines,
-                    attrs=attached[-1].attrs,
-                )
-            else:
-                pending.append(block)
-            continue
-
-        if pending:
-            start_lines = [break_block.start_line for break_block in pending]
-            start_lines.append(block.start_line)
-            block = MarkdownBlock(
-                kind=block.kind,
-                text=join_markdown(
-                    [*(break_block.text for break_block in pending), block.text]
-                ),
-                start_line=min(
-                    (line for line in start_lines if line is not None), default=None
-                ),
-                end_line=block.end_line,
-                children=block.children,
-                inlines=block.inlines,
-                attrs=block.attrs,
-            )
-            pending = []
-        attached.append(block)
-
-    if pending:
-        attached.extend(pending)
-
-    return attached
 
 
 @dataclass(slots=True)
@@ -512,7 +453,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
         """Split a section's own blocks into fragments, then into chunk drafts."""
         node = section.node
         headings = node.path
-        blocks = attach_thematic_breaks(node.blocks)
+        blocks = node.blocks
         max_tokens = self.options.max_tokens
         standalone = self.options.standalone_blocks
 
