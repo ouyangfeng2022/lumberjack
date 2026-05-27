@@ -104,11 +104,14 @@ class _MeasuredSection:
     Attributes:
         node: The original SectionNode.
         counts: Cached token counts for the section's title, body, and full subtree.
+        can_emit_as_single_chunk: Whether the section subtree can be emitted as one
+            chunk without isolating standalone blocks.
         children: Measured child sections with the same structure as the original.
     """
 
     node: SectionNode
     counts: _SectionTokenCounts
+    can_emit_as_single_chunk: bool
     children: tuple[_MeasuredSection, ...] = ()
 
 
@@ -436,6 +439,12 @@ class _BaseMarkdownSplitter(SplitterProtocol):
             + body_token_count
             + sum(child.counts.subtree for child in children)
         )
+        body_has_standalone = bool(self.options.standalone_blocks) and any(
+            block.kind in self.options.standalone_blocks for block in section.blocks
+        )
+        can_emit_as_single_chunk = not body_has_standalone and all(
+            child.can_emit_as_single_chunk for child in children
+        )
         return _MeasuredSection(
             node=section,
             counts=_SectionTokenCounts(
@@ -443,6 +452,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
                 body=body_token_count,
                 subtree=subtree_token_count,
             ),
+            can_emit_as_single_chunk=can_emit_as_single_chunk,
             children=children,
         )
 
@@ -726,14 +736,6 @@ class _BaseMarkdownSplitter(SplitterProtocol):
             chunk_type=chunk_type,
         )
 
-    def _has_standalone_blocks(self, section: _MeasuredSection) -> bool:
-        standalone = self.options.standalone_blocks
-        if not standalone:
-            return False
-        if any(block.kind in standalone for block in section.node.blocks):
-            return True
-        return any(self._has_standalone_blocks(child) for child in section.children)
-
     def _estimate_entries(self, entries: list[_Entry]) -> int:
         if not entries:
             return 0
@@ -817,9 +819,7 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
 
         chunk_token = section.counts.subtree
 
-        if chunk_token <= self.options.max_tokens and not self._has_standalone_blocks(
-            section
-        ):
+        if chunk_token <= self.options.max_tokens and section.can_emit_as_single_chunk:
             entries = self._entries_from_section(section)
             return [
                 _ChunkDraft(
@@ -889,7 +889,7 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
 
         if node.blocks:
             body_token_count = section.counts.body
-            body_has_standalone = self.options.standalone_blocks and any(
+            body_has_standalone = bool(self.options.standalone_blocks) and any(
                 b.kind in self.options.standalone_blocks for b in node.blocks
             )
             if body_has_standalone:
@@ -911,7 +911,7 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
                 continue
 
             if child.counts.subtree <= budget_token_count:
-                if self._has_standalone_blocks(child):
+                if not child.can_emit_as_single_chunk:
                     flush_current()
                     chunks.extend(self._split_section(child))
                 else:

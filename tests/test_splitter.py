@@ -548,6 +548,62 @@ def test_section_chunk_estimate_includes_heading_tokens_without_entries() -> Non
     assert measured_scope.counts.subtree == 49
 
 
+def test_measured_section_caches_single_chunk_eligibility_from_standalone_blocks() -> (
+    None
+):
+    document = MarkdownParser().parse(
+        """# Root
+
+Intro.
+
+## Plain
+
+Plain body.
+
+## With Table
+
+| Data |
+|------|
+| val  |
+""",
+        document_title="standalone-cache.md",
+    )
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=500,
+            merge_below_tokens=0,
+            standalone_blocks=frozenset({"table"}),
+        ),
+    )
+
+    measured_root = splitter._measure_section(document.root)
+    measured_h1 = measured_root.children[0]
+    measured_plain = measured_h1.children[0]
+    measured_table = measured_h1.children[1]
+
+    assert measured_plain.can_emit_as_single_chunk is True
+    assert measured_table.can_emit_as_single_chunk is False
+    assert measured_h1.can_emit_as_single_chunk is False
+    assert measured_root.can_emit_as_single_chunk is False
+
+    disabled_splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=500,
+            merge_below_tokens=0,
+            standalone_blocks=frozenset(),
+        ),
+    )
+
+    measured_disabled_root = disabled_splitter._measure_section(document.root)
+
+    assert measured_disabled_root.can_emit_as_single_chunk is True
+    assert (
+        measured_disabled_root.children[0].children[1].can_emit_as_single_chunk is True
+    )
+
+
 def test_splitter_adds_overlap_only_for_text_fallback_splits() -> None:
     document = MarkdownParser().parse(
         "alpha beta gamma delta epsilon zeta",
