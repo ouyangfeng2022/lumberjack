@@ -67,6 +67,7 @@ Supported CLI options today:
 - `--parser {default,markdown-it}`: parser selector exposed by the CLI
 - `--splitter {recursive,section}`: splitting strategy, default `recursive`
 - `--max-tokens`: maximum chunk budget, default `1200`
+- `--ideal-max-tokens-ratio`: preferred split budget as a ratio of `--max-tokens`, default `0.8`
 - `--merge-below-tokens`: soft threshold for small-chunk merging, default `50`
 - `--overlap-tokens`: optional token overlap used only for text fallback splits, default `0`
 - `--recursive-split`: split oversized direct section bodies when using `--splitter section`
@@ -122,6 +123,7 @@ chunks = lumber(
     markdown_text,
     document_title="guide.md",
     max_tokens=1200,
+    ideal_max_tokens_ratio=0.8,
     merge_below_tokens=50,
     overlap_tokens=0,
     merge_small_chunks=True,
@@ -234,10 +236,13 @@ Important details:
   markers (the leading `#` run) and Markdown separators each count as one token.
   `token_count` is still counted once from the final rendered chunk body for
   reporting.
+- `ideal_max_tokens_ratio` sets the preferred split budget as a ratio of
+  `max_tokens`. Initial section, block, and text fallback splits target this
+  ideal budget; small-chunk merge passes can accumulate chunks up to the hard
+  `max_tokens` limit.
 - `merge_below_tokens` is not a final minimum chunk size. It is a soft merge
-  threshold for short tails produced by fragment or text fallback splitting:
-  adjacent tails below this value are merged only when they share the same
-  heading path and the estimated merged size still fits within `max_tokens`.
+  threshold for adjacent same-parent chunks: tails below this value are merged
+  bottom-up when the estimated merged size still fits within `max_tokens`.
 - Optional overlap is only applied when a single oversized block must be split by paragraph, line, sentence, word, or hard boundaries
 - Default `split_oversized_blocks` includes `paragraph`, `blockquote`, and `html_block`; oversized lists and code blocks stay intact by default but can be made splittable
 - `standalone_blocks` (default: `table`, `code_block`, `code_fence`) forces matched block kinds into their own chunks, never merged with adjacent paragraphs.  If a standalone block also exceeds `max_tokens` and is listed in `split_oversized_blocks`, it is split into independent pieces that each carry the original block kind as `chunk_type`.

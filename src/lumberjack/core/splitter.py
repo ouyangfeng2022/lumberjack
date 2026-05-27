@@ -79,6 +79,7 @@ class _ChunkDraft:
     token_count: int
     split_origin: SplitOrigin = "section"
     chunk_type: str = "paragraph"
+    parent_headings: HeadingPath = ()
 
 
 @dataclass(slots=True, frozen=True)
@@ -377,17 +378,30 @@ class _BaseMarkdownSplitter(SplitterProtocol):
     def _post_process_drafts(self, drafts: list[_ChunkDraft]) -> list[_ChunkDraft]:
         return drafts
 
+    @property
+    def _ideal_max_tokens(self) -> int:
+        return max(
+            1, int(self.options.max_tokens * self.options.ideal_max_tokens_ratio)
+        )
+
     def _validate_options(self) -> None:
         if self.options.max_tokens <= 0:
             raise ValueError("max_tokens must be greater than 0")
+        if not 0 < self.options.ideal_max_tokens_ratio <= 1:
+            raise ValueError(
+                "ideal_max_tokens_ratio must be greater than 0 and at most 1"
+            )
         if self.options.merge_below_tokens < 0:
             raise ValueError("merge_below_tokens must be non-negative")
         if self.options.overlap_tokens < 0:
             raise ValueError("overlap_tokens must be non-negative")
         if self.options.merge_below_tokens >= self.options.max_tokens:
             raise ValueError("merge_below_tokens must be smaller than max_tokens")
-        if self.options.overlap_tokens >= self.options.max_tokens:
-            raise ValueError("overlap_tokens must be smaller than max_tokens")
+        if self.options.overlap_tokens >= self._ideal_max_tokens:
+            raise ValueError(
+                f"overlap_tokens ({self.options.overlap_tokens}) must be smaller than "
+                f"ideal_max_tokens ({self._ideal_max_tokens})"
+            )
 
     def _extract_front_matter(self, root: SectionNode) -> MarkdownBlock | None:
         if (
@@ -464,7 +478,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
         node = section.node
         headings = node.path
         blocks = node.blocks
-        max_tokens = self.options.max_tokens
+        max_tokens = self._ideal_max_tokens
         standalone = self.options.standalone_blocks
 
         prefix_tokens = (
@@ -477,6 +491,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
                     entries=[entry],
                     token_count=prefix_tokens + entry.body_token_count,
                     split_origin="fragment",
+                    parent_headings=node.path,
                 )
             ]
 
@@ -501,6 +516,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
                     )
                 ],
                 split_origin="fragment",
+                parent_headings=node.path,
             )
 
         for block in blocks:
@@ -537,6 +553,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
                                 ],
                                 split_origin="text_piece",
                                 chunk_type=block.kind,
+                                parent_headings=node.path,
                             )
                         )
                 else:
@@ -553,6 +570,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
                             ],
                             split_origin="fragment",
                             chunk_type=block.kind,
+                            parent_headings=node.path,
                         )
                     )
                 continue
@@ -611,6 +629,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
                             )
                         ],
                         split_origin="fragment",
+                        parent_headings=node.path,
                     )
                 )
                 current_parts = []
@@ -634,6 +653,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
                             )
                         ],
                         split_origin="text_piece",
+                        parent_headings=node.path,
                     )
                 )
 
@@ -727,6 +747,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
         *,
         split_origin: SplitOrigin = "section",
         chunk_type: str = "paragraph",
+        parent_headings: HeadingPath = (),
     ) -> _ChunkDraft:
         """Build a chunk draft using cached/additive token estimates."""
         return _ChunkDraft(
@@ -734,6 +755,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
             token_count=self._estimate_entries(entries),
             split_origin=split_origin,
             chunk_type=chunk_type,
+            parent_headings=parent_headings,
         )
 
     def _estimate_entries(self, entries: list[_Entry]) -> int:
@@ -804,14 +826,11 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
     to stay within the configured max_tokens budget.
     """
 
-    def _post_process_drafts(self, drafts: list[_ChunkDraft]) -> list[_ChunkDraft]:
-        if self.options.merge_small_chunks:
-            return self._merge_small_chunks(drafts)
-        return drafts
-
     def _split_section(
         self,
         section: _MeasuredSection,
+        *,
+        parent_headings: HeadingPath = (),
     ) -> list[_ChunkDraft]:
         """Recursively split a section into chunk drafts."""
         if not (section.node.blocks or section.children or section.node.level > 0):
@@ -819,19 +838,21 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
 
         chunk_token = section.counts.subtree
 
-        if chunk_token <= self.options.max_tokens and section.can_emit_as_single_chunk:
+        if chunk_token <= self._ideal_max_tokens and section.can_emit_as_single_chunk:
             entries = self._entries_from_section(section)
             return [
                 _ChunkDraft(
                     entries=entries,
                     token_count=chunk_token,
+                    parent_headings=parent_headings,
                 )
             ]
 
         if section.children:
             return self._split_section_children(section)  # include section.body
 
-        return self._split_section_body(section)
+        chunks = self._split_section_body(section)
+        return self._merge_small_chunks(chunks, parent_headings=section.node.path)
 
     def _split_section_children(
         self,
@@ -844,7 +865,7 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
         current_token_count: int = 0
 
         common_heading_token_count = heading_path_token_count(self.tokenizer, node.path)
-        budget_token_count = self.options.max_tokens - common_heading_token_count
+        budget_token_count = self._ideal_max_tokens - common_heading_token_count
 
         def flush_current() -> None:
             nonlocal current_entries, current_token_count
@@ -856,6 +877,7 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
                 _ChunkDraft(
                     entries=current_entries,
                     token_count=current_token_count,
+                    parent_headings=node.path,
                 )
             )
             current_entries = []
@@ -878,7 +900,7 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
             candidate_entries = [*current_entries, *entries]
             candidate_token_count = current_token_count + token_count
 
-            if candidate_token_count > self.options.max_tokens:
+            if candidate_token_count > self._ideal_max_tokens:
                 flush_current()
                 current_entries = entries.copy()
                 current_token_count = common_heading_token_count + token_count
@@ -913,17 +935,17 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
             if child.counts.subtree <= budget_token_count:
                 if not child.can_emit_as_single_chunk:
                     flush_current()
-                    chunks.extend(self._split_section(child))
+                    chunks.extend(self._split_section(child, parent_headings=node.path))
                 else:
                     entries = self._entries_from_section(child)
                     add_packable(entries, child.counts.subtree)
                 continue
 
             flush_current()
-            chunks.extend(self._split_section(child))
+            chunks.extend(self._split_section(child, parent_headings=node.path))
 
         flush_current()
-        return chunks
+        return self._merge_small_chunks(chunks, parent_headings=node.path)
 
     def _entries_from_section(self, section: _MeasuredSection) -> list[_Entry]:
         """Render-ready entries for a section selected as a chunk."""
@@ -946,8 +968,12 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
     def _merge_small_chunks(
         self,
         chunks: list[_ChunkDraft],
+        *,
+        parent_headings: HeadingPath | None = None,
     ) -> list[_ChunkDraft]:
-        """Merge adjacent fragment/text-piece tails below *merge_below_tokens*."""
+        """Merge adjacent same-parent chunks below *merge_below_tokens*."""
+        if not self.options.merge_small_chunks:
+            return chunks
         if not chunks:
             return chunks
 
@@ -956,25 +982,24 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
             previous = merged[-1]
             merged_entries = [*previous.entries, *chunk.entries]
             merged_token_count = self._estimate_entries(merged_entries)
-            prev_headings = {e.headings for e in previous.entries}
             can_merge = (
-                len(prev_headings) == 1
+                (parent_headings is None or previous.parent_headings == parent_headings)
+                and previous.parent_headings == chunk.parent_headings
                 and chunk.entries
-                and prev_headings == {e.headings for e in chunk.entries}
             )
             if (
                 can_merge
                 and merged_token_count <= self.options.max_tokens
                 and chunk.token_count < self.options.merge_below_tokens
-                and chunk.split_origin in {"fragment", "text_piece"}
                 and previous.chunk_type == "paragraph"
                 and chunk.chunk_type == "paragraph"
             ):
-                # TODO: prefix tokens ?
                 merged[-1] = _ChunkDraft(
                     entries=merged_entries,
                     token_count=merged_token_count,
                     split_origin=previous.split_origin,
+                    chunk_type=previous.chunk_type,
+                    parent_headings=previous.parent_headings,
                 )
             else:
                 merged.append(chunk)
@@ -988,7 +1013,12 @@ class SectionMarkdownSplitter(_BaseMarkdownSplitter):
     is enabled, oversized section bodies are further split by token budget.
     """
 
-    def _split_section(self, section: _MeasuredSection) -> list[_ChunkDraft]:
+    def _split_section(
+        self,
+        section: _MeasuredSection,
+        *,
+        parent_headings: HeadingPath = (),
+    ) -> list[_ChunkDraft]:
         """Return one direct-body draft per section, then recurse into children."""
         chunks: list[_ChunkDraft] = []
         node = section.node
@@ -999,7 +1029,7 @@ class SectionMarkdownSplitter(_BaseMarkdownSplitter):
             )
             if (
                 self.options.recursive_split
-                and section.counts.subtree > self.options.max_tokens
+                and section.counts.subtree > self._ideal_max_tokens
             ) or body_has_standalone:
                 chunks.extend(self._split_section_body(section))
             else:
@@ -1012,11 +1042,12 @@ class SectionMarkdownSplitter(_BaseMarkdownSplitter):
                     _ChunkDraft(
                         entries=[entry],
                         token_count=section.counts.subtree,
+                        parent_headings=parent_headings,
                     )
                 )
 
         for child in section.children:
-            chunks.extend(self._split_section(child))
+            chunks.extend(self._split_section(child, parent_headings=node.path))
 
         return chunks
 

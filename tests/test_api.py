@@ -84,6 +84,22 @@ def test_lumber_accepts_overlap_options() -> None:
     assert all(chunk.document_title == "sample.md" for chunk in chunks)
 
 
+def test_lumber_accepts_ideal_max_tokens_ratio() -> None:
+    chunks = lumber(
+        "# A\n\nalpha1\n\nbravo2",
+        document_title="ideal.md",
+        max_tokens=30,
+        ideal_max_tokens_ratio=0.5,
+        merge_below_tokens=0,
+        merge_small_chunks=False,
+    )
+
+    assert [chunk.body for chunk in chunks] == [
+        "# A\n\nalpha1",
+        "# A\n\nbravo2",
+    ]
+
+
 def test_lumber_accepts_section_splitter() -> None:
     chunks = lumber(
         MERGED_SECTION_FIXTURE,

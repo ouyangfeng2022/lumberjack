@@ -116,6 +116,9 @@ class SplitOptions:
 
     Attributes:
         max_tokens: Target maximum token count per chunk.
+        ideal_max_tokens_ratio: Ratio of ``max_tokens`` used as the preferred
+            split budget before post-processing merge passes. Must be greater
+            than 0 and at most 1.
         merge_below_tokens: Soft threshold for merging short tails produced by
             fragment or text fallback splitting. This is not a final minimum
             chunk size.
@@ -136,6 +139,7 @@ class SplitOptions:
     """
 
     max_tokens: int = 1200
+    ideal_max_tokens_ratio: float = 0.8
     merge_below_tokens: int = 50
     overlap_tokens: int = 0
     merge_small_chunks: bool = True

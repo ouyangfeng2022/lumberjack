@@ -26,6 +26,7 @@ const zh = {
   opts_basic_section: '基础设置',
   opts_strategy_section: '拆分策略',
   opts_max_tokens: '最大词元数',
+  opts_ideal_max_tokens_ratio: '理想最大比例',
   opts_show_advanced: '显示高级选项',
   opts_hide_advanced: '隐藏高级选项',
   opts_merge_below_tokens: '低于此词元数时合并',

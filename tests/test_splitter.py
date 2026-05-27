@@ -413,7 +413,11 @@ def test_splitter_body_includes_nested_headings_by_default() -> None:
     )
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=60, merge_below_tokens=0),
+        options=SplitOptions(
+            max_tokens=60,
+            ideal_max_tokens_ratio=1,
+            merge_below_tokens=0,
+        ),
     )
 
     chunks = splitter.split(document)
@@ -613,6 +617,7 @@ def test_splitter_adds_overlap_only_for_text_fallback_splits() -> None:
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
             max_tokens=16,
+            ideal_max_tokens_ratio=1,
             merge_below_tokens=0,
             overlap_tokens=5,
             merge_small_chunks=False,
@@ -639,9 +644,112 @@ def test_splitter_rejects_overlap_budget_that_consumes_the_whole_chunk() -> None
     try:
         splitter.split(document)
     except ValueError as exc:
-        assert str(exc) == "overlap_tokens must be smaller than max_tokens"
+        assert str(exc) == "overlap_tokens (10) must be smaller than ideal_max_tokens (8)"
     else:
         raise AssertionError("Expected overlap validation to fail")
+
+
+def test_splitter_rejects_invalid_ideal_max_tokens_ratio() -> None:
+    document = MarkdownParser().parse("alpha beta", document_title="invalid.md")
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=10, ideal_max_tokens_ratio=0),
+    )
+
+    try:
+        splitter.split(document)
+    except ValueError as exc:
+        assert str(exc) == "ideal_max_tokens_ratio must be greater than 0 and at most 1"
+    else:
+        raise AssertionError("Expected ideal_max_tokens_ratio validation to fail")
+
+
+def test_splitter_rejects_overlap_budget_that_consumes_ideal_chunk() -> None:
+    document = MarkdownParser().parse("alpha beta", document_title="invalid.md")
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=20,
+            ideal_max_tokens_ratio=0.5,
+            merge_below_tokens=0,
+            overlap_tokens=10,
+        ),
+    )
+
+    try:
+        splitter.split(document)
+    except ValueError as exc:
+        assert str(exc) == "overlap_tokens (10) must be smaller than ideal_max_tokens (10)"
+    else:
+        raise AssertionError("Expected overlap validation to fail")
+
+
+def test_recursive_splitter_uses_ideal_budget_for_initial_splitting() -> None:
+    document = MarkdownParser().parse(
+        "# A\n\nalpha1\n\nbravo2",
+        document_title="ideal-budget.md",
+    )
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=30,
+            ideal_max_tokens_ratio=0.5,
+            merge_below_tokens=0,
+            merge_small_chunks=False,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert [chunk.body for chunk in chunks] == [
+        "# A\n\nalpha1",
+        "# A\n\nbravo2",
+    ]
+    assert all(chunk.token_count <= 15 for chunk in chunks)
+
+
+def test_merge_small_chunks_can_exceed_ideal_budget_up_to_max_tokens() -> None:
+    document = MarkdownParser().parse(
+        "# A\n\nalpha1\n\nbravo2",
+        document_title="ideal-budget.md",
+    )
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=30,
+            ideal_max_tokens_ratio=0.5,
+            merge_below_tokens=29,
+            merge_small_chunks=True,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert [chunk.body for chunk in chunks] == ["# A\n\nalpha1\n\nbravo2"]
+    assert 15 < chunks[0].token_count <= 30
+
+
+def test_merge_small_chunks_combines_sibling_sections_with_same_parent() -> None:
+    document = MarkdownParser().parse(
+        "# Parent\n\n## One\n\nA\n\n## Two\n\nB",
+        document_title="same-parent.md",
+    )
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=40,
+            ideal_max_tokens_ratio=0.5,
+            merge_below_tokens=39,
+            merge_small_chunks=True,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert [chunk.body for chunk in chunks] == [
+        "# Parent\n\n## One\n\nA\n\n## Two\n\nB"
+    ]
+    assert 20 < chunks[0].token_count <= 40
 
 
 def test_merge_below_tokens_does_not_merge_past_rendered_budget() -> None:
@@ -653,6 +761,7 @@ def test_merge_below_tokens_does_not_merge_past_rendered_budget() -> None:
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
             max_tokens=60,
+            ideal_max_tokens_ratio=1,
             merge_below_tokens=10,
         ),
     )
@@ -664,7 +773,7 @@ def test_merge_below_tokens_does_not_merge_past_rendered_budget() -> None:
     assert all(chunk.estimated_token_count <= 60 for chunk in chunks)
 
 
-def test_merge_below_tokens_only_absorbs_fragment_or_text_piece_tails() -> None:
+def test_merge_below_tokens_absorbs_same_parent_paragraph_tails() -> None:
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(max_tokens=100, merge_below_tokens=10),
@@ -719,7 +828,7 @@ def test_merge_below_tokens_only_absorbs_fragment_or_text_piece_tails() -> None:
         split_origin="text_piece",
     )
 
-    assert splitter._merge_small_chunks([left, section_tail]) == [left, section_tail]
+    assert len(splitter._merge_small_chunks([left, section_tail])[0].entries) == 2
     assert len(splitter._merge_small_chunks([left, fragment_tail])[0].entries) == 2
     assert len(splitter._merge_small_chunks([left, text_piece_tail])[0].entries) == 2
 
@@ -744,6 +853,7 @@ def test_splitter_can_split_oversized_lists_when_enabled() -> None:
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
             max_tokens=20,
+            ideal_max_tokens_ratio=1,
             merge_below_tokens=0,
             merge_small_chunks=False,
             split_oversized_blocks=frozenset({"list"}),
@@ -769,6 +879,7 @@ def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
             max_tokens=28,
+            ideal_max_tokens_ratio=1,
             merge_below_tokens=0,
             merge_small_chunks=False,
             split_oversized_blocks=frozenset({"code_fence"}),

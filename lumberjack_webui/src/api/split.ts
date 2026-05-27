@@ -14,6 +14,7 @@ export async function splitMarkdown(
   }
 
   formData.append('max_tokens', String(options.max_tokens));
+  formData.append('ideal_max_tokens_ratio', String(options.ideal_max_tokens_ratio));
   formData.append('merge_below_tokens', String(options.merge_below_tokens));
   formData.append('overlap_tokens', String(options.overlap_tokens));
   formData.append('merge_small_chunks', String(options.merge_small_chunks));

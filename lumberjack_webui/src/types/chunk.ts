@@ -19,6 +19,7 @@ export interface SplitResponse {
 
 export interface SplitOptions {
   max_tokens: number;
+  ideal_max_tokens_ratio: number;
   merge_below_tokens: number;
   overlap_tokens: number;
   merge_small_chunks: boolean;

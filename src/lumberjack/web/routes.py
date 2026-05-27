@@ -47,6 +47,7 @@ def _parse_block_types(raw: str) -> frozenset[str]:
 def _build_split_options(
     *,
     max_tokens: int,
+    ideal_max_tokens_ratio: float,
     merge_below_tokens: int,
     overlap_tokens: int,
     merge_small_chunks: bool,
@@ -59,6 +60,7 @@ def _build_split_options(
     """Build core split options from web form values."""
     return SplitOptions(
         max_tokens=max_tokens,
+        ideal_max_tokens_ratio=ideal_max_tokens_ratio,
         merge_below_tokens=merge_below_tokens,
         overlap_tokens=overlap_tokens,
         merge_small_chunks=merge_small_chunks,
@@ -75,6 +77,7 @@ async def split(
     text: str | None = Form(None),
     file: UploadFile | None = _file_default,
     max_tokens: int = Form(1200),
+    ideal_max_tokens_ratio: float = Form(0.8),
     merge_below_tokens: int = Form(50),
     overlap_tokens: int = Form(0),
     merge_small_chunks: bool = Form(True),
@@ -95,6 +98,7 @@ async def split(
 
     options = _build_split_options(
         max_tokens=max_tokens,
+        ideal_max_tokens_ratio=ideal_max_tokens_ratio,
         merge_below_tokens=merge_below_tokens,
         overlap_tokens=overlap_tokens,
         merge_small_chunks=merge_small_chunks,
@@ -110,6 +114,7 @@ async def split(
             content,
             document_title=document_title,
             max_tokens=options.max_tokens,
+            ideal_max_tokens_ratio=options.ideal_max_tokens_ratio,
             merge_below_tokens=options.merge_below_tokens,
             overlap_tokens=options.overlap_tokens,
             merge_small_chunks=options.merge_small_chunks,

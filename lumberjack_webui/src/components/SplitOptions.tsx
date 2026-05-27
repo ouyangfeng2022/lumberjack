@@ -98,6 +98,21 @@ export default function SplitOptions({ options, onChange }: Props) {
           <div className={styles.sectionTitle}>{t('opts_strategy_section')}</div>
           <div className={styles.row}>
             <label className={styles.field}>
+              <span className={styles.fieldLabel}>{t('opts_ideal_max_tokens_ratio')}</span>
+              <input
+                type="number"
+                min="0.01"
+                max="1"
+                step="0.05"
+                className={styles.numberInput}
+                value={options.ideal_max_tokens_ratio}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  if (!isNaN(val)) update('ideal_max_tokens_ratio', val);
+                }}
+              />
+            </label>
+            <label className={styles.field}>
               <span className={styles.fieldLabel}>{t('opts_merge_below_tokens')}</span>
               <input
                 type="number"

@@ -46,6 +46,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-tokens", type=int, default=1200, help="Maximum tokens per chunk"
     )
     parser.add_argument(
+        "--ideal-max-tokens-ratio",
+        type=float,
+        default=0.8,
+        help="Preferred split budget as a ratio of --max-tokens",
+    )
+    parser.add_argument(
         "--merge-below-tokens",
         type=int,
         default=50,
@@ -136,6 +142,7 @@ def main() -> None:
     chunks = lumber(
         text,
         max_tokens=args.max_tokens,
+        ideal_max_tokens_ratio=args.ideal_max_tokens_ratio,
         merge_below_tokens=args.merge_below_tokens,
         overlap_tokens=args.overlap_tokens,
         isolate_front_matter=not args.no_isolate_front_matter,

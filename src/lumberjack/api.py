@@ -20,6 +20,7 @@ def lumber(
     *,
     document_title: str | None = None,
     max_tokens: int = 1200,
+    ideal_max_tokens_ratio: float = 0.8,
     merge_below_tokens: int = 50,
     overlap_tokens: int = 0,
     merge_small_chunks: bool = True,
@@ -62,6 +63,7 @@ def lumber(
     )
     options = SplitOptions(
         max_tokens=max_tokens,
+        ideal_max_tokens_ratio=ideal_max_tokens_ratio,
         merge_below_tokens=merge_below_tokens,
         overlap_tokens=overlap_tokens,
         merge_small_chunks=merge_small_chunks,
