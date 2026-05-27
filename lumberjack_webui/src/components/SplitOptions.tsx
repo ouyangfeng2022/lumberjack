@@ -84,16 +84,6 @@ export default function SplitOptions({ options, onChange }: Props) {
             onChange={(e) => update('max_tokens', Number(e.target.value))}
           />
         </label>
-        <div className={styles.checkLine} >
-          <label className={styles.checkField}>
-            <input
-              type="checkbox"
-              checked={options.render_common_headings}
-              onChange={(e) => update('render_common_headings', e.target.checked)}
-            />
-            <span>{t('opts_render_common_headings')}</span>
-          </label>
-        </div>
       </div>
 
       <button

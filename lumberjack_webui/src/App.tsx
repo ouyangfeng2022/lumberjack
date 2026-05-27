@@ -12,7 +12,6 @@ const DEFAULT_OPTIONS: Options = {
   max_tokens: 1200,
   merge_below_tokens: 50,
   overlap_tokens: 0,
-  render_common_headings: true,
   merge_small_chunks: true,
   isolate_front_matter: true,
   skip_empty_sections: true,

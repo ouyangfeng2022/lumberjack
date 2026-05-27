@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import fields
 from pathlib import Path
 
 from lumberjack.api import lumber
@@ -10,7 +11,6 @@ from lumberjack.core.splitter import (
     _ChunkDraft,
     _Entry,
     create_splitter,
-    heading_path_token_count,
 )
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 from lumberjack.models import SplitOptions
@@ -292,34 +292,10 @@ def test_splitter_deduplicates_shared_parent_heading_in_merged_chunk() -> None:
     assert chunks[0].section_level == 1
 
 
-def test_splitter_omits_common_headings_from_body_when_disabled() -> None:
-    document = MarkdownParser().parse(
-        MERGED_SECTION_FIXTURE, document_title="development.md"
-    )
+def test_split_options_no_longer_exposes_render_common_headings() -> None:
+    option_names = {field.name for field in fields(SplitOptions)}
 
-    with_headings = RecursiveMarkdownSplitter(
-        tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=1000, merge_below_tokens=20),
-    ).split(document)
-    without_headings = RecursiveMarkdownSplitter(
-        tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=1000, merge_below_tokens=20, render_common_headings=False
-        ),
-    ).split(document)
-
-    assert len(with_headings) == 1
-    assert len(without_headings) == 1
-    assert "# Development Guide" in with_headings[0].body
-    assert "## Current Scope" in with_headings[0].body
-    assert "# Development Guide" not in without_headings[0].body
-    assert "## Current Scope" in without_headings[0].body
-    assert "## Milestones" in without_headings[0].body
-    assert "Scope body." in without_headings[0].body
-    assert "M0 body." in without_headings[0].body
-    assert without_headings[0].headings == ((1, "Development Guide"),)
-    assert without_headings[0].token_count == len(without_headings[0].body)
-    assert without_headings[0].token_count < with_headings[0].token_count
+    assert "render_common_headings" not in option_names
 
 
 def test_splitter_recursively_descends_heading_levels_when_section_is_oversized() -> (
@@ -414,64 +390,6 @@ def test_splitter_exposes_body_without_common_headings_for_multi_entry_chunk() -
         chunks[0].body
         == "# Root\n\n## Scope\n\n### A\n\nAlpha body.\n\n### B\n\nBeta body."
     )
-
-
-def test_splitter_exclude_common_headings_drops_shared_prefix() -> None:
-    document = MarkdownParser().parse(
-        THIRD_LEVEL_FIXTURE, document_title="third-level.md"
-    )
-    splitter = RecursiveMarkdownSplitter(
-        tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=110,
-            merge_below_tokens=0,
-            render_common_headings=False,
-        ),
-    )
-
-    chunks = splitter.split(document)
-
-    assert len(chunks) == 1
-    assert chunks[0].headings == ((1, "Root"), (2, "Scope"))
-    assert chunks[0].body == "### A\n\nAlpha body.\n\n### B\n\nBeta body."
-
-
-def test_splitter_exclude_common_headings_single_entry() -> None:
-    document = MarkdownParser().parse(
-        THIRD_LEVEL_FIXTURE, document_title="third-level.md"
-    )
-    splitter = RecursiveMarkdownSplitter(
-        tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=22,
-            merge_below_tokens=0,
-            render_common_headings=False,
-        ),
-    )
-
-    chunks = splitter.split(document)
-
-    assert chunks[0].headings == ((1, "Root"), (2, "Scope"), (3, "A"))
-    assert chunks[0].body == "Alpha body."
-
-
-def test_splitter_render_common_headings_false_keeps_sibling_headings() -> None:
-    document = MarkdownParser().parse(
-        MULTI_ROOT_FIXTURE, document_title="multi-root.md"
-    )
-    splitter = RecursiveMarkdownSplitter(
-        tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=200,
-            merge_below_tokens=0,
-            render_common_headings=False,
-        ),
-    )
-
-    chunks = splitter.split(document)
-
-    assert len(chunks) == 1
-    assert chunks[0].body == "# First\n\nFirst body.\n\n# Second\n\nSecond body."
 
 
 def test_splitter_body_includes_headings_by_default() -> None:
@@ -571,27 +489,18 @@ def test_heading_estimate_counts_title_once_and_marker_as_one_token() -> None:
     assert "### Cacheable Title\n\n" in tokenizer.counted
 
 
-def test_estimated_tokens_follow_common_heading_render_option() -> None:
+def test_estimated_tokens_include_rendered_heading_path() -> None:
     document = MarkdownParser().parse(
         THIRD_LEVEL_FIXTURE, document_title="third-level.md"
     )
 
-    with_headings = RecursiveMarkdownSplitter(
+    chunks = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(max_tokens=100, merge_below_tokens=0),
     ).split(document)
-    without_common = RecursiveMarkdownSplitter(
-        tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=100,
-            merge_below_tokens=0,
-            render_common_headings=False,
-        ),
-    ).split(document)
 
-    assert (
-        with_headings[0].estimated_token_count > without_common[0].estimated_token_count
-    )
+    assert chunks[0].body.startswith("# Root\n\n## Scope\n\n")
+    assert chunks[0].estimated_token_count >= chunks[0].token_count
 
 
 def test_splitter_does_not_count_oversized_section_rendering_for_budget_trials() -> (
@@ -623,29 +532,6 @@ Three body.
     oversized_rendering = "# Parent\n\n## One\n\nOne body.\n\n## Two\n\nTwo body.\n\n## Three\n\nThree body."
     assert oversized_rendering not in tokenizer.counted
     assert all(chunk.estimated_token_count <= 35 for chunk in chunks)
-
-
-def test_section_chunk_estimate_respects_hidden_common_headings_without_entries() -> (
-    None
-):
-    document = MarkdownParser().parse(
-        THIRD_LEVEL_FIXTURE, document_title="third-level.md"
-    )
-    splitter = RecursiveMarkdownSplitter(
-        tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=100,
-            merge_below_tokens=0,
-            render_common_headings=False,
-        ),
-    )
-    measured_root = splitter._measure_section(document.root)
-    measured_scope = measured_root.children[0].children[0]
-    chunk_token_count = measured_scope.counts.subtree - heading_path_token_count(
-        splitter.tokenizer, measured_scope.node.path
-    )
-
-    assert chunk_token_count == 31
 
 
 def test_section_chunk_estimate_includes_heading_tokens_without_entries() -> None:

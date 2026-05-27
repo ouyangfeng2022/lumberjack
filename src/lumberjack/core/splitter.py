@@ -511,14 +511,13 @@ class _BaseMarkdownSplitter(SplitterProtocol):
     ) -> list[_ChunkDraft]:
         """Split a section's own blocks into fragments, then into chunk drafts."""
         node = section.node
-        include_prefix = self.options.render_common_headings and node.level > 0
         headings = node.path
         blocks = attach_thematic_breaks(node.blocks)
         max_tokens = self.options.max_tokens
         standalone = self.options.standalone_blocks
 
         prefix_tokens = (
-            heading_path_token_count(self.tokenizer, headings) if include_prefix else 0
+            heading_path_token_count(self.tokenizer, headings) if node.level > 0 else 0
         )
         if prefix_tokens >= max_tokens or not blocks:
             entry = self._entry_from_blocks(headings, blocks)
@@ -800,7 +799,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
 
         parts: list[int] = []
         common_headings = common_heading_path(entry.headings for entry in entries)
-        if self.options.render_common_headings and common_headings:
+        if common_headings:
             parts.append(heading_path_token_count(self.tokenizer, common_headings))
 
         previous_headings = common_headings
@@ -826,18 +825,12 @@ class _BaseMarkdownSplitter(SplitterProtocol):
         *,
         common_headings: HeadingPath,
     ) -> str:
-        """Render entries into Markdown body content.
-
-        Rendered heading breadcrumbs are prepended to each entry. When
-        ``render_common_headings`` is False, omit the shared prefix already carried
-        by ``Chunk.headings``.
-        """
+        """Render entries into Markdown body content."""
         if not entries:
             return ""
 
         parts: list[str] = []
-        include_common = self.options.render_common_headings
-        if include_common and common_headings:
+        if common_headings:
             parts.append(render_heading_path(common_headings))
 
         previous_headings = common_headings
@@ -881,9 +874,7 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
         if not (section.node.blocks or section.children or section.node.level > 0):
             return []
 
-        chunk_token = section.counts.subtree - (
-            0 if self.options.render_common_headings else section.counts.title
-        )
+        chunk_token = section.counts.subtree
 
         if chunk_token <= self.options.max_tokens and not self._has_standalone_blocks(
             section
@@ -911,11 +902,7 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
         current_entries: list[_Entry] = []
         current_token_count: int = 0
 
-        common_heading_token_count: int = (
-            heading_path_token_count(self.tokenizer, node.path)
-            if self.options.render_common_headings
-            else 0
-        )
+        common_heading_token_count = heading_path_token_count(self.tokenizer, node.path)
         budget_token_count = self.options.max_tokens - common_heading_token_count
 
         def flush_current() -> None:

@@ -100,7 +100,7 @@ Defined in `src/lumberjack/models.py`:
 - `MarkdownBlock`: block node with rendered text, line range, inline children, nested blocks, and attrs
 - `SectionNode`: heading-tree node with `path`, `blocks`, `children`, `start_line`, `title_inlines`, and `index`
 - `DocumentAST`: parsed document with `root`, raw `source`, `metadata`, and `reference_definitions`; title resolved from front matter or first H1
-- `SplitOptions`: `max_tokens`, `merge_below_tokens`, `overlap_tokens`, `retain_headings`, `include_common_headings`, `merge_small_chunks`, `isolate_front_matter`, `skip_empty_sections`, `recursive_split`, `split_oversized_blocks`
+- `SplitOptions`: `max_tokens`, `merge_below_tokens`, `overlap_tokens`, `merge_small_chunks`, `isolate_front_matter`, `skip_empty_sections`, `recursive_split`, `split_oversized_blocks`
   - Default `split_oversized_blocks`: `frozenset({"paragraph", "blockquote", "html_block"})`
 - `Chunk`: final chunk payload with `chunk_id`, `chunk_type`, `body`, `token_count`, `estimated_token_count`, `headings`, `section_level`, `document_title`, `document_path`, `start_line`, `end_line`
 
@@ -110,7 +110,7 @@ Implemented in `src/lumberjack/web/`.
 
 - Endpoint: `POST /lumber/api/split`
 - Input: form data with `text` (string) or `file` (upload), plus split options
-- Split options: `max_tokens`, `merge_below_tokens`, `overlap_tokens`, `retain_headings`, `include_common_headings`, `merge_small_chunks`, `isolate_front_matter`, `skip_empty_sections`, `recursive_split`, `split_oversized_blocks`, `tokenizer`, `disable_lheading`, `splitter`
+- Split options: `max_tokens`, `merge_below_tokens`, `overlap_tokens`, `merge_small_chunks`, `isolate_front_matter`, `skip_empty_sections`, `recursive_split`, `split_oversized_blocks`, `tokenizer`, `disable_lheading`, `splitter`
 - Response: JSON with `document`, `chunk_count`, and `chunks` array
 - Valid block types for `split_oversized_blocks`: `paragraph`, `blockquote`, `list`, `table`, `code_block`, `code_fence`, `html_block`
 - Server CLI: `lumberjack-serve` with `--host` (default `127.0.0.1`), `--port` (default `8000`), `--reload`
@@ -137,7 +137,6 @@ Implemented in `src/lumberjack/main.py`.
 - Parser choices exposed by CLI: `default`, `markdown-it`
 - Splitter choices: `recursive`, `section` (CLI default: `recursive`)
 - `--retain-headings` is opt-in on the CLI
-- `--no-include-common-headings` excludes common heading prefix (only effective with `--retain-headings`)
 - `--no-isolate-front-matter` disables front matter isolation
 - `--disable-lheading` disables Setext heading parsing
 - `--recursive-split` enables block/text fallback for oversized section bodies (effective with `--splitter heading`)
@@ -188,7 +187,7 @@ The parser currently captures these inline structures in headings and paragraphs
 - `SectionMarkdownSplitter`: emits one chunk per heading section direct body; child sections become separate chunks
 - Text fallback order is paragraph break -> line break -> sentence -> word -> hard split
 - `retain_headings=True` prepends rendered heading breadcrumbs to `Chunk.body`
-- `include_common_headings=True` includes the shared common heading prefix in `Chunk.body` (only effective with `retain_headings=True`); when False, `body` contains only relative sub-headings and content
+- `Chunk.body` always includes rendered heading context; shared parent headings are deduplicated when sibling sections are merged into one chunk
 - `retain_headings=False` makes `Chunk.body` pure content without any headings; use `render_heading_path(Chunk.headings)` + `Chunk.body` to reconstruct
 - Short tails from fragment or text fallback splitting are merged only when they share the same heading path and the estimated merged size still fits within `max_tokens`
 - `isolate_front_matter=True` always emits front matter as the first chunk (`chunk_type="front_matter"`)

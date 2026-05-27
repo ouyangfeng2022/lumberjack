@@ -26,7 +26,6 @@ const en = {
   opts_basic_section: 'Basic Settings',
   opts_strategy_section: 'Split Strategy',
   opts_max_tokens: 'Max tokens',
-  opts_render_common_headings: 'Render common headings',
   opts_show_advanced: 'Show advanced options',
   opts_hide_advanced: 'Hide advanced options',
   opts_merge_below_tokens: 'Merge below tokens',

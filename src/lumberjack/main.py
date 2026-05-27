@@ -63,11 +63,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Split oversized direct section bodies when using --splitter section",
     )
     parser.add_argument(
-        "--no-render-common-headings",
-        action="store_true",
-        help="Exclude common heading prefix from chunk body",
-    )
-    parser.add_argument(
         "--no-isolate-front-matter",
         action="store_true",
         help="Do not isolate front matter as the first chunk",
@@ -143,7 +138,6 @@ def main() -> None:
         max_tokens=args.max_tokens,
         merge_below_tokens=args.merge_below_tokens,
         overlap_tokens=args.overlap_tokens,
-        render_common_headings=not args.no_render_common_headings,
         isolate_front_matter=not args.no_isolate_front_matter,
         split_oversized_blocks=frozenset(args.split_oversized_block),
         standalone_blocks=standalone_blocks,

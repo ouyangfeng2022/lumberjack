@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 from dataclasses import asdict
+from inspect import signature
 from pathlib import Path
 
 from mdit_py_plugins.tasklists import tasklists_plugin
@@ -37,6 +38,10 @@ def test_package_exports_lumber_as_only_top_level_api() -> None:
     assert not hasattr(lumberjack, "split_markdown_file")
     assert not hasattr(lumberjack, "split_markdown_text")
     assert not hasattr(lumberjack, "parse_markdown")
+
+
+def test_lumber_api_no_longer_exposes_render_common_headings_option() -> None:
+    assert "render_common_headings" not in signature(lumber).parameters
 
 
 def test_parser_uses_document_title() -> None:
@@ -97,18 +102,17 @@ def test_lumber_accepts_section_splitter() -> None:
     ]
 
 
-def test_lumber_render_common_headings_false_omits_common_rendered_prefix() -> None:
+def test_lumber_body_always_renders_full_common_heading_path() -> None:
     chunks = lumber(
         MERGED_SECTION_FIXTURE,
         document_title="development.md",
         max_tokens=1000,
-        render_common_headings=False,
     )
 
     assert chunks[0].headings == ((1, "Development Guide"),)
     assert chunks[0].body == (
-        "## Current Scope\n\nScope body.\n\n## Milestones\n\n### M0\n\nM0 body.\n\n"
-        "### M1\n\nM1 body."
+        "# Development Guide\n\n## Current Scope\n\nScope body.\n\n## Milestones\n\n"
+        "### M0\n\nM0 body.\n\n### M1\n\nM1 body."
     )
 
 

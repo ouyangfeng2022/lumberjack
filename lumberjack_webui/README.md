@@ -65,7 +65,7 @@ lumberjack_webui/
 ## 功能
 
 - **双模式输入**：直接输入 Markdown 文本或上传 `.md` / `.markdown` / `.txt` 文件
-- **基础选项**：max_tokens、render_common_headings
+- **基础选项**：max_tokens
 - **高级选项**：merge_below_tokens、overlap_tokens、merge_small_chunks、tokenizer 选择、可拆分块类型
 - **结果展示**：Chunk 列表，显示 token 数、行范围、标题层级，支持展开/折叠和 text/body 切换
 
