@@ -971,38 +971,40 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
         *,
         parent_headings: HeadingPath | None = None,
     ) -> list[_ChunkDraft]:
-        """Merge adjacent same-parent chunks below *merge_below_tokens*."""
+        """Merge adjacent same-parent chunks below *merge_below_tokens*, bottom-up."""
         if not self.options.merge_small_chunks:
             return chunks
         if not chunks:
             return chunks
 
-        merged: list[_ChunkDraft] = [chunks[0]]
-        for chunk in chunks[1:]:
-            previous = merged[-1]
-            merged_entries = [*previous.entries, *chunk.entries]
+        merged: list[_ChunkDraft] = list(chunks)
+        i = len(merged) - 1
+        while i > 0:
+            current = merged[i]
+            previous = merged[i - 1]
+            merged_entries = [*previous.entries, *current.entries]
             merged_token_count = self._estimate_entries(merged_entries)
             can_merge = (
                 (parent_headings is None or previous.parent_headings == parent_headings)
-                and previous.parent_headings == chunk.parent_headings
-                and chunk.entries
+                and previous.parent_headings == current.parent_headings
+                and current.entries
             )
             if (
                 can_merge
                 and merged_token_count <= self.options.max_tokens
-                and chunk.token_count < self.options.merge_below_tokens
+                and current.token_count < self.options.merge_below_tokens
                 and previous.chunk_type == "paragraph"
-                and chunk.chunk_type == "paragraph"
+                and current.chunk_type == "paragraph"
             ):
-                merged[-1] = _ChunkDraft(
+                merged[i - 1] = _ChunkDraft(
                     entries=merged_entries,
                     token_count=merged_token_count,
                     split_origin=previous.split_origin,
                     chunk_type=previous.chunk_type,
                     parent_headings=previous.parent_headings,
                 )
-            else:
-                merged.append(chunk)
+                del merged[i]
+            i -= 1
         return merged
 
 
