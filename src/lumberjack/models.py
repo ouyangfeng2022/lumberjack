@@ -119,6 +119,9 @@ class SplitOptions:
         ideal_max_tokens_ratio: Ratio of ``max_tokens`` used as the preferred
             split budget before post-processing merge passes. Must be greater
             than 0 and at most 1.
+        ideal_max_tokens: Computed as ``max(1, int(max_tokens *
+            ideal_max_tokens_ratio))``.  This is the effective split budget
+            used during chunking.
         merge_below_tokens: Soft threshold for merging short tails produced by
             fragment or text fallback splitting. This is not a final minimum
             chunk size.
@@ -145,6 +148,12 @@ class SplitOptions:
 
     max_tokens: int = 1200
     ideal_max_tokens_ratio: float = 0.8
+
+    @property
+    def ideal_max_tokens(self) -> int:
+        """Effective split budget: ``max(1, int(max_tokens * ideal_max_tokens_ratio))``."""
+        return max(1, int(self.max_tokens * self.ideal_max_tokens_ratio))
+
     merge_below_tokens: int = 50
     overlap_tokens: int = 0
     merge_small_chunks: bool = True

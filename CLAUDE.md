@@ -1,1 +1,1 @@
-D:/coding/Python/lumberjack/AGENTS.md
+AGENTS.md
