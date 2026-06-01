@@ -1431,3 +1431,135 @@ Parent intro.
     table_chunks = [c for c in chunks if c.chunk_type == "table"]
     assert len(table_chunks) == 1
     assert "Parent intro." not in table_chunks[0].body
+
+
+# ---------------------------------------------------------------------------
+# split_oversized_blocks_max_tokens – per-block-kind budget overrides
+# ---------------------------------------------------------------------------
+
+
+def test_split_oversized_blocks_max_tokens_defaults_to_empty_dict() -> None:
+    """Default split_oversized_blocks_max_tokens is an empty dict."""
+    options = SplitOptions()
+    assert options.split_oversized_blocks_max_tokens == {}
+
+
+def test_per_block_max_tokens_overrides_budget_for_paragraph() -> None:
+    """Paragraph splitting respects per-block max_tokens override."""
+    # No heading so prefix_tokens=0 and budget equals the override directly.
+    long_para = " ".join(f"word{i}" for i in range(100))
+    document = MarkdownParser().parse(long_para, document_title="override.md")
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=500,
+            ideal_max_tokens_ratio=1,
+            merge_below_tokens=0,
+            merge_small_chunks=False,
+            split_oversized_blocks=frozenset({"paragraph"}),
+            split_oversized_blocks_max_tokens={"paragraph": 30},
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    # With a 30-token override the paragraph should be split into many chunks
+    assert len(chunks) > 1
+    assert all(c.token_count <= 30 for c in chunks)
+
+
+def test_per_block_max_tokens_falls_back_to_unified_max_tokens() -> None:
+    """Block kinds not in the override dict use the unified budget."""
+    # Short paragraph (30 words ≈ 210 tokens) fits within max_tokens=500.
+    short_para = " ".join(f"word{i}" for i in range(30))
+    md = f"# Title\n\n{short_para}"
+    document = MarkdownParser().parse(md, document_title="fallback.md")
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=500,
+            ideal_max_tokens_ratio=1,
+            merge_below_tokens=0,
+            merge_small_chunks=False,
+            split_oversized_blocks=frozenset({"paragraph"}),
+            # Override for blockquote, not paragraph → paragraph uses unified 500
+            split_oversized_blocks_max_tokens={"blockquote": 30},
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    # The paragraph fits within 500 tokens → single chunk
+    assert len(chunks) == 1
+
+
+def test_per_block_max_tokens_for_code_fence() -> None:
+    """Per-block override works for standalone code fences."""
+    long_code = "```python\n" + "\n".join(f"line{i}" for i in range(30)) + "\n```"
+    md = f"# Code\n\n{long_code}"
+    document = MarkdownParser().parse(md, document_title="code-override.md")
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=500,
+            merge_below_tokens=0,
+            merge_small_chunks=False,
+            standalone_blocks=frozenset({"code_fence"}),
+            split_oversized_blocks=frozenset({"code_fence"}),
+            split_oversized_blocks_max_tokens={"code_fence": 25},
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) > 1
+    assert all(c.chunk_type == "code_fence" for c in chunks)
+    assert all("```python" in c.body for c in chunks)
+    assert all(c.body.endswith("```") for c in chunks)
+
+
+def test_per_block_max_tokens_validation_rejects_non_positive() -> None:
+    """Validation raises ValueError for non-positive override values."""
+    document = MarkdownParser().parse("alpha beta", document_title="invalid.md")
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            split_oversized_blocks_max_tokens={"paragraph": 0},
+        ),
+    )
+
+    try:
+        splitter.split(document)
+    except ValueError as exc:
+        assert "must be positive" in str(exc)
+    else:
+        raise AssertionError("Expected non-positive override validation to fail")
+
+    splitter2 = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            split_oversized_blocks_max_tokens={"paragraph": -10},
+        ),
+    )
+    try:
+        splitter2.split(document)
+    except ValueError as exc:
+        assert "must be positive" in str(exc)
+    else:
+        raise AssertionError("Expected negative override validation to fail")
+
+
+def test_lumber_api_accepts_split_oversized_blocks_max_tokens() -> None:
+    """lumber() accepts and respects split_oversized_blocks_max_tokens."""
+    long_para = " ".join(f"word{i}" for i in range(100))
+    chunks = lumber(
+        long_para,
+        max_tokens=500,
+        ideal_max_tokens_ratio=1,
+        merge_below_tokens=0,
+        merge_small_chunks=False,
+        split_oversized_blocks={"paragraph"},
+        split_oversized_blocks_max_tokens={"paragraph": 30},
+    )
+    assert len(chunks) > 1
+    assert all(c.token_count <= 30 for c in chunks)

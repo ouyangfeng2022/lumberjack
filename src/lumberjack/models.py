@@ -133,6 +133,11 @@ class SplitOptions:
         split_oversized_blocks: Block kinds to split when they exceed ``max_tokens``.
             Must be a frozenset of lowercase strings matching :attr:`MarkdownBlock.kind`
             values.
+        split_oversized_blocks_max_tokens: Per-block-kind max_tokens overrides for
+            oversized block splitting.  Keys are block kind strings (lowercase); values
+            are the max_tokens to use for that kind.  When empty (the default), the
+            unified ``max_tokens`` is used for all block kinds.  When a kind is absent
+            from this dict, the unified ``max_tokens`` is the fallback.
         standalone_blocks: Block kinds that must be emitted as independent chunks,
             never merged with adjacent blocks. Defaults to ``{"table", "code_block",
             "code_fence"}``.  Set to an empty frozenset to disable.
@@ -153,6 +158,7 @@ class SplitOptions:
             "html_block",
         }
     )
+    split_oversized_blocks_max_tokens: dict[str, int] = field(default_factory=dict)
     standalone_blocks: frozenset[str] = frozenset(
         {
             "table",

@@ -44,6 +44,27 @@ def _parse_block_types(raw: str) -> frozenset[str]:
     )
 
 
+def _parse_block_max_tokens(raw: str) -> dict[str, int]:
+    """Parse a comma-separated ``kind:tokens`` string into a validated dict."""
+    result: dict[str, int] = {}
+    for part in raw.split(","):
+        part = part.strip()
+        if not part or ":" not in part:
+            continue
+        kind, _, value = part.partition(":")
+        kind = kind.strip().lower()
+        tokens_str = value.strip()
+        if kind not in _VALID_SPLIT_BLOCKS or not tokens_str:
+            continue
+        try:
+            tokens = int(tokens_str)
+        except ValueError:
+            continue
+        if tokens > 0:
+            result[kind] = tokens
+    return result
+
+
 def _build_split_options(
     *,
     max_tokens: int,
@@ -55,6 +76,7 @@ def _build_split_options(
     skip_empty_sections: bool,
     recursive_split: bool,
     split_oversized_blocks: str,
+    split_oversized_blocks_max_tokens: str,
     standalone_blocks: str,
 ) -> SplitOptions:
     """Build core split options from web form values."""
@@ -68,6 +90,9 @@ def _build_split_options(
         skip_empty_sections=skip_empty_sections,
         recursive_split=recursive_split,
         split_oversized_blocks=_parse_block_types(split_oversized_blocks),
+        split_oversized_blocks_max_tokens=_parse_block_max_tokens(
+            split_oversized_blocks_max_tokens
+        ),
         standalone_blocks=_parse_block_types(standalone_blocks),
     )
 
@@ -85,6 +110,7 @@ async def split(
     skip_empty_sections: bool = Form(True),
     recursive_split: bool = Form(False),
     split_oversized_blocks: str = Form("paragraph,blockquote,html_block"),
+    split_oversized_blocks_max_tokens: str = Form(""),
     standalone_blocks: str = Form("table,code_block,code_fence"),
     disable_lheading: bool = Form(False),
     tokenizer: str = Form("simple"),
@@ -106,6 +132,7 @@ async def split(
         skip_empty_sections=skip_empty_sections,
         recursive_split=recursive_split,
         split_oversized_blocks=split_oversized_blocks,
+        split_oversized_blocks_max_tokens=split_oversized_blocks_max_tokens,
         standalone_blocks=standalone_blocks,
     )
 
@@ -121,6 +148,7 @@ async def split(
             isolate_front_matter=options.isolate_front_matter,
             skip_empty_sections=options.skip_empty_sections,
             split_oversized_blocks=options.split_oversized_blocks,
+            split_oversized_blocks_max_tokens=options.split_oversized_blocks_max_tokens,
             standalone_blocks=options.standalone_blocks,
             disable_lheading=disable_lheading,
             tokenizer=tokenizer,

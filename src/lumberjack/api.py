@@ -34,6 +34,7 @@ def lumber(
             "html_block",
         }
     ),
+    split_oversized_blocks_max_tokens: dict[str, int] | None = None,
     standalone_blocks: Iterable[str] = frozenset(
         {
             "table",
@@ -71,6 +72,7 @@ def lumber(
         skip_empty_sections=skip_empty_sections,
         recursive_split=recursive_split,
         split_oversized_blocks=frozenset(split_oversized_blocks),
+        split_oversized_blocks_max_tokens=split_oversized_blocks_max_tokens or {},
         standalone_blocks=frozenset(standalone_blocks),
     )
     splitter_impl = (

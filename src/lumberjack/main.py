@@ -12,6 +12,31 @@ if TYPE_CHECKING:
     from .models import Chunk
 
 
+def _parse_block_max_tokens(pairs: list[str]) -> dict[str, int]:
+    """Parse ``KIND:TOKENS`` strings into a ``{kind: tokens}`` dict."""
+    result: dict[str, int] = {}
+    for pair in pairs:
+        if ":" not in pair:
+            raise ValueError(
+                f"Invalid format: {pair!r} (expected KIND:TOKENS, e.g. paragraph:800)"
+            )
+        kind, _, value = pair.partition(":")
+        kind = kind.strip().lower()
+        try:
+            tokens = int(value.strip())
+        except ValueError:
+            raise ValueError(
+                f"Invalid token count in: {pair!r} (expected KIND:TOKENS)"
+            ) from None
+        if tokens <= 0:
+            raise ValueError(f"Token count must be positive in: {pair!r}")
+        result[kind] = tokens
+    return result
+
+if TYPE_CHECKING:
+    from .models import Chunk
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser with all split options."""
     parser = argparse.ArgumentParser(description="Markdown splitter")
@@ -89,6 +114,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Allow splitting oversized blocks of the given kind; repeat the flag to enable multiple kinds",
     )
     parser.add_argument(
+        "--split-oversized-max-tokens",
+        action="append",
+        default=[],
+        metavar="KIND:TOKENS",
+        help="Override max_tokens for a specific block kind when splitting oversized blocks (e.g., paragraph:800); repeat for multiple kinds",
+    )
+    parser.add_argument(
         "--disable-lheading",
         action="store_true",
         help="Disable markdown-it setext heading parsing via parser.disable('lheading')",
@@ -139,6 +171,7 @@ def main() -> None:
     else:
         standalone_blocks = frozenset({"table", "code_block", "code_fence"})
 
+    split_overrides = _parse_block_max_tokens(args.split_oversized_max_tokens)
     chunks = lumber(
         text,
         max_tokens=args.max_tokens,
@@ -147,6 +180,7 @@ def main() -> None:
         overlap_tokens=args.overlap_tokens,
         isolate_front_matter=not args.no_isolate_front_matter,
         split_oversized_blocks=frozenset(args.split_oversized_block),
+        split_oversized_blocks_max_tokens=split_overrides or None,
         standalone_blocks=standalone_blocks,
         disable_lheading=args.disable_lheading,
         tokenizer=args.tokenizer,

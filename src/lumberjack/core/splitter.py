@@ -384,6 +384,13 @@ class _BaseMarkdownSplitter(SplitterProtocol):
             1, int(self.options.max_tokens * self.options.ideal_max_tokens_ratio)
         )
 
+    def _block_budget(self, block_kind: str, default_budget: int) -> int:
+        """Return the per-block max_tokens override, or *default_budget*."""
+        override = self.options.split_oversized_blocks_max_tokens.get(
+            block_kind.lower()
+        )
+        return override if override and override > 0 else default_budget
+
     def _validate_options(self) -> None:
         if self.options.max_tokens <= 0:
             raise ValueError("max_tokens must be greater than 0")
@@ -402,6 +409,12 @@ class _BaseMarkdownSplitter(SplitterProtocol):
                 f"overlap_tokens ({self.options.overlap_tokens}) must be smaller than "
                 f"ideal_max_tokens ({self._ideal_max_tokens})"
             )
+        for kind, tokens in self.options.split_oversized_blocks_max_tokens.items():
+            if tokens <= 0:
+                raise ValueError(
+                    f"split_oversized_blocks_max_tokens[{kind!r}] must be positive, "
+                    f"got {tokens}"
+                )
 
     def _extract_front_matter(self, root: SectionNode) -> MarkdownBlock | None:
         if (
@@ -534,7 +547,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
                 )
                 block_pieces = self._text_splitter.split_oversized_block(
                     block,
-                    max_tokens=budget,
+                    max_tokens=self._block_budget(block.kind, budget),
                     allowed_kinds=self.options.split_oversized_blocks,
                 )
                 if block_pieces is not None:
@@ -613,7 +626,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
 
             block_pieces = self._text_splitter.split_oversized_block(
                 block,
-                max_tokens=budget,
+                max_tokens=self._block_budget(block.kind, budget),
                 allowed_kinds=self.options.split_oversized_blocks,
             )
             if block_pieces is None:
