@@ -23,7 +23,6 @@ export interface SplitOptions {
   merge_below_tokens: number;
   overlap_tokens: number;
   merge_small_chunks: boolean;
-  isolate_front_matter: boolean;
   skip_empty_sections: boolean;
   recursive_split: boolean;
   block_handling: string;

@@ -44,6 +44,10 @@ def test_lumber_api_no_longer_exposes_render_common_headings_option() -> None:
     assert "render_common_headings" not in signature(lumber).parameters
 
 
+def test_lumber_api_no_longer_exposes_isolate_front_matter_option() -> None:
+    assert "isolate_front_matter" not in signature(lumber).parameters
+
+
 def test_parser_uses_document_title() -> None:
     document = create_parser("default").parse(
         FIXTURE,

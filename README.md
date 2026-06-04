@@ -27,7 +27,7 @@ Current behavior:
 - Preserves line ranges for headings and blocks when source matching is possible
 - Splits by whole document -> section tree -> block/text fallback
 - Keeps fenced code blocks intact by default even when they exceed the token budget
-- Isolates front matter as the first chunk; skips empty heading-only sections
+- Keeps front matter as a normal block; skips empty heading-only sections
 - Ignores thematic breaks during parsing, except when they delimit YAML front matter
 
 ## Install
@@ -71,10 +71,9 @@ Supported CLI options today:
 - `--merge-below-tokens`: soft threshold for small-chunk merging, default `50`
 - `--overlap-tokens`: optional token overlap used only for text fallback splits, default `0`
 - `--recursive-split`: split oversized direct section bodies when using `--splitter section`
-- `--no-isolate-front-matter`: do not isolate front matter as the first chunk
-- `--split-oversized-block <kind>`: opt in to splitting oversized `list`, `code_block`, `code_fence`, `table`, and other supported block kinds; repeat the flag to enable multiple kinds
-- `--standalone-block <kind>`: block kind that must be emitted as an independent chunk, never merged with adjacent blocks; repeat to add multiple (default: `table code_block code_fence`)
-- `--no-standalone-blocks`: disable standalone block isolation entirely
+- `--block-handling KIND:POLICY`: override a block kind's merge policy; repeat to add multiple. Policies: `default`, `isolate`
+- `--nosplit-kinds KIND,...`: block kinds that should not be split when oversized, default empty
+- `--block-max-tokens KIND:TOKENS`: override the split budget for a block kind; repeat to add multiple
 - `--disable-lheading`: disable Setext heading parsing
 
 Parser note:
@@ -127,10 +126,10 @@ chunks = lumber(
     merge_below_tokens=50,
     overlap_tokens=0,
     merge_small_chunks=True,
-    isolate_front_matter=True,
     skip_empty_sections=True,
-    split_oversized_blocks=("paragraph", "blockquote", "html_block"),
-    standalone_blocks=("table", "code_block", "code_fence"),
+    block_handling={"table": "isolate"},
+    nosplit_kinds={"code_fence"},
+    block_max_tokens={"table": 800},
     recursive_split=False,
     disable_lheading=False,
     tokenizer="simple",
@@ -244,12 +243,14 @@ Important details:
   threshold for adjacent same-parent chunks: tails below this value are merged
   bottom-up when the estimated merged size still fits within `max_tokens`.
 - Optional overlap is only applied when a single oversized block must be split by paragraph, line, sentence, word, or hard boundaries
-- Default `split_oversized_blocks` includes `paragraph`, `blockquote`, and `html_block`; oversized lists and code blocks stay intact by default but can be made splittable
-- `standalone_blocks` (default: `table`, `code_block`, `code_fence`) forces matched block kinds into their own chunks, never merged with adjacent paragraphs.  If a standalone block also exceeds `max_tokens` and is listed in `split_oversized_blocks`, it is split into independent pieces that each carry the original block kind as `chunk_type`.
+- All known block kinds are splittable by default. Use `nosplit_kinds` to keep selected oversized block kinds intact.
+- Oversized Markdown pipe tables are split by rows. When a header delimiter row is detected, each table fragment repeats the original header and delimiter row. If a single data row with its header exceeds the budget, that row is kept as a valid oversized table fragment.
+- `block_handling` controls merge policy only. Set a kind to `isolate` to emit that block kind as independent chunks instead of merging it with adjacent content.
+- `block_max_tokens` can override the split budget for specific block kinds such as `table`.
 - Long URL-like spans are treated as unsplittable and will not be hard-split across chunks
-- `isolate_front_matter=True` always emits front matter as the first chunk (`chunk_type="front_matter"`)
+- YAML front matter is handled as a normal `front_matter` block. Use `block_handling={"front_matter": "isolate"}` when it should be emitted as its own chunk.
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
-- Front matter delimiters are preserved inside the front matter chunk; other thematic breaks are ignored during parsing
+- Front matter delimiters are preserved inside the `front_matter` block; other thematic breaks are ignored during parsing
 - For `section` splitter, `recursive_split=False` keeps oversized section bodies intact.
   Set `recursive_split=True` to use the same block/text fallback for oversized
   direct section bodies.

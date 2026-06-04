@@ -27,7 +27,7 @@ Markdown 文本 -> 解析器 token -> DocumentAST -> splitter -> Chunk[]
 - 尽可能保留标题和块的源码行范围
 - 按整篇文档 -> 章节树 -> 块/文本 回退 的顺序切分
 - 围栏代码块默认保持完整，即使超出 token 预算
-- 将 front matter 作为第一个分块隔离；跳过仅有标题无正文的空章节
+- 将 front matter 作为普通块处理；跳过仅有标题无正文的空章节
 - 除 YAML front matter 分隔符外，解析时忽略普通分隔线
 
 ## 安装
@@ -67,11 +67,13 @@ uv run lumber --help
 - `--parser {default,markdown-it}`：命令行暴露的解析器选择器
 - `--splitter {recursive,section}`：切分策略，默认 `recursive`
 - `--max-tokens`：最大分块预算，默认 `1200`
+- `--ideal-max-tokens-ratio`：按 `--max-tokens` 计算的优先切分预算比例，默认 `0.8`
 - `--merge-below-tokens`：小分块合并软阈值，默认 `50`
 - `--overlap-tokens`：仅在文本回退切分时使用的可选 token 重叠量，默认 `0`
 - `--recursive-split`：使用 `--splitter section` 时递归拆分超大的章节直接正文
-- `--no-isolate-front-matter`：不将 front matter 作为第一个分块隔离
-- `--split-oversized-block <kind>`：允许切分超大的 `list`、`code_block`、`code_fence`、`table` 等受支持的块类型；可重复指定以启用多种类型
+- `--block-handling KIND:POLICY`：覆盖指定块类型的合并策略；可重复指定。策略为 `default`、`isolate`
+- `--nosplit-kinds KIND,...`：逗号分隔的块类型，表示这些块超长时也不拆分；默认空
+- `--block-max-tokens KIND:TOKENS`：覆盖指定块类型的切分预算；可重复指定
 - `--disable-lheading`：禁用 Setext 标题解析
 
 解析器说明：
@@ -117,12 +119,14 @@ chunks = lumber(
     markdown_text,
     document_title="guide.md",
     max_tokens=1200,
+    ideal_max_tokens_ratio=0.8,
     merge_below_tokens=50,
     overlap_tokens=0,
     merge_small_chunks=True,
-    isolate_front_matter=True,
     skip_empty_sections=True,
-    split_oversized_blocks=("paragraph", "blockquote", "html_block"),
+    block_handling={"table": "isolate"},
+    nosplit_kinds={"code_fence"},
+    block_max_tokens={"table": 800},
     recursive_split=False,
     disable_lheading=False,
     tokenizer="simple",
@@ -227,11 +231,14 @@ API 默认值为 `splitter="recursive"`。
 - `estimated_token_count` 是用于切分的加法预算估算：章节正文、标题文本和子树计数自底向上缓存。标题标记（前导 `#` 序列）和 Markdown 分隔符各计为一个 token。`token_count` 仍从最终渲染的分块正文一次性计数用于报告。
 - `merge_below_tokens` 不是最终分块的最小 token 数，而是针对 fragment 或文本回退切分产生的短尾块的合并软阈值：低于该值的相邻短尾块只会在标题路径相同且估算合并大小仍不超过 `max_tokens` 时被合并。
 - 可选重叠仅在单个超大块必须按段落、行、句子、单词或硬边界切分时应用
-- 默认 `split_oversized_blocks` 包含 `paragraph`、`blockquote` 和 `html_block`；超大列表和代码块默认保持完整，但可通过设置变为可切分
+- 所有已知块类型默认都允许拆分。使用 `nosplit_kinds` 可以让指定块类型在超长时保持完整。
+- 超长 Markdown 管道表格会按数据行拆分。检测到表头分隔行时，每个表格片段都会重复原始表头和分隔行。如果单个数据行连同表头已经超过预算，则保留为一个合法但超预算的表格片段。
+- `block_handling` 只控制合并策略。将某个块类型设为 `isolate` 后，它会作为独立分块输出，不与相邻内容合并。
+- `block_max_tokens` 可覆盖特定块类型的切分预算，例如 `table`。
 - 长的 URL 样式文本被视为不可切分，不会跨分块硬切分
-- `isolate_front_matter=True` 始终将 front matter 作为第一个分块（`chunk_type="front_matter"`）
+- YAML front matter 会作为普通 `front_matter` 块处理。需要独立输出时，使用 `block_handling={"front_matter": "isolate"}`。
 - `skip_empty_sections=True` 丢弃仅有标题无正文的空章节分块
-- front matter 分隔符会保留在 front matter 分块中；其他分隔线会在解析时忽略
+- front matter 分隔符会保留在 `front_matter` 块中；其他分隔线会在解析时忽略
 - 对 `section` 切分器，`recursive_split=False` 会保留超大的章节正文。
   设置 `recursive_split=True` 后，超大的章节直接正文会复用同一套块/文本回退切分逻辑。
 

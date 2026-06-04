@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
 SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?\u3002\uFF01\uFF1F])\s+")
 PROTECTED_SPAN_RE = re.compile(r"<https?://[^\s>]+>|https?://[^\s)>\]]+")
+TABLE_DELIMITER_CELL_RE = re.compile(r":?-+(:?-+)*:?"  )
 SEPARATOR = "\n\n"
 SplitOrigin = Literal["section", "fragment", "text_piece"]
 
@@ -139,6 +140,9 @@ class TextSplitter:
         if block.kind == "list" and block.children:
             return self.split_list_block(block, max_tokens=max_tokens)
 
+        if block.kind == "table":
+            return self.split_table_block(block, max_tokens=max_tokens)
+
         return self.split_text(block.text, max_tokens=max_tokens)
 
     def split_code_block(
@@ -159,6 +163,53 @@ class TextSplitter:
         code_budget = max_tokens - wrapper_tokens
         pieces = self.split_text(literal, max_tokens=code_budget)
         return [f"{open_fence}\n{piece}\n{close_fence}" for piece in pieces]
+
+    def split_table_block(
+        self,
+        block: MarkdownBlock,
+        *,
+        max_tokens: int,
+    ) -> list[str]:
+        lines = [line.rstrip() for line in block.text.splitlines() if line.strip()]
+        if len(lines) < 3 or not self.is_table_delimiter_row(lines[1]):
+            return self.split_text(block.text, max_tokens=max_tokens)
+
+        header = lines[:2]
+        rows = lines[2:]
+        pieces: list[str] = []
+        current_rows: list[str] = []
+
+        for row in rows:
+            candidate_rows = [*current_rows, row]
+            candidate = self.render_table_piece(header, candidate_rows)
+            if current_rows and self.tokenizer.count(candidate) > max_tokens:
+                pieces.append(self.render_table_piece(header, current_rows))
+                current_rows = [row]
+                single_row = self.render_table_piece(header, current_rows)
+                if self.tokenizer.count(single_row) > max_tokens:
+                    pieces.append(single_row)
+                    current_rows = []
+                continue
+
+            if not current_rows and self.tokenizer.count(candidate) > max_tokens:
+                pieces.append(candidate)
+                continue
+
+            current_rows = candidate_rows
+
+        if current_rows:
+            pieces.append(self.render_table_piece(header, current_rows))
+
+        return pieces or [block.text]
+
+    def is_table_delimiter_row(self, line: str) -> bool:
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        return bool(cells) and all(
+            cell and TABLE_DELIMITER_CELL_RE.fullmatch(cell) for cell in cells
+        )
+
+    def render_table_piece(self, header: list[str], rows: list[str]) -> str:
+        return "\n".join([*header, *rows])
 
     def split_list_block(
         self,
@@ -361,16 +412,10 @@ class _BaseMarkdownSplitter(SplitterProtocol):
 
     def split(self, document: DocumentAST) -> list[Chunk]:
         self._validate_options()
-        front_matter_block = self._extract_front_matter(document.root)
         measured_root = self._measure_section(document.root)
         drafts = self._split_section(measured_root)
         drafts = self._post_process_drafts(drafts)
-        finalized = self._finalize_chunks(drafts, document)
-        if front_matter_block is not None:
-            finalized.insert(
-                0, self._make_front_matter_chunk(front_matter_block, document)
-            )
-        return finalized
+        return self._finalize_chunks(drafts, document)
 
     def _split_section(self, root: _MeasuredSection) -> list[_ChunkDraft]:
         raise NotImplementedError
@@ -406,33 +451,6 @@ class _BaseMarkdownSplitter(SplitterProtocol):
                 raise ValueError(
                     f"block_max_tokens[{kind!r}] must be positive, got {tokens}"
                 )
-
-    def _extract_front_matter(self, root: SectionNode) -> MarkdownBlock | None:
-        if (
-            self.options.isolate_front_matter
-            and root.blocks
-            and root.blocks[0].kind == "front_matter"
-        ):
-            return root.blocks.pop(0)
-        return None
-
-    def _make_front_matter_chunk(
-        self, block: MarkdownBlock, document: DocumentAST
-    ) -> Chunk:
-        token_count = self.tokenizer.count(block.text)
-        return Chunk(
-            chunk_id="chunk-0000",
-            chunk_type="front_matter",
-            body=block.text,
-            token_count=token_count,
-            estimated_token_count=token_count,
-            headings=(),
-            section_level=0,
-            document_title=document.title,
-            document_path=document.metadata.get("path"),
-            start_line=block.start_line,
-            end_line=block.end_line,
-        )
 
     def _measure_section(self, section: SectionNode) -> _MeasuredSection:
         """Return a measured wrapper for *section* and all descendants."""

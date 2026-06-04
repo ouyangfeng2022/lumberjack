@@ -1,28 +1,26 @@
 .container {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 16px 18px 0;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) 0;
 }
 
 .sectionTitle {
-  color: #16284a;
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  color: var(--ink-secondary);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: var(--space-2);
 }
 
 .basicRow {
   display: flex;
-  justify-content: space-between;
-  gap: 10px;
+  gap: var(--space-2);
   align-items: start;
 }
 
@@ -30,94 +28,86 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 6px;
-  color: #43536e;
-  font-size: 13px;
+  gap: var(--space-1);
   flex: 1;
 }
 
 .fieldLabel {
-  color: #687792;
-  font-size: 12px;
-  font-weight: 750;
+  color: var(--ink-secondary);
+  font-size: 0.6875rem;
+  font-weight: 500;
 }
 
 .numberInput,
 .select {
   width: 100%;
-  min-height: 40px;
-  padding: 8px 10px;
-  border: 1px solid #cfd9e7;
-  border-radius: 7px;
-  background: linear-gradient(180deg, #fff, #f9fbff);
-  color: #16284a;
-  font-size: 13px;
-  font-weight: 700;
+  min-height: 32px;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 0.8125rem;
+  font-weight: 400;
 }
 
 .numberInput:focus,
 .select:focus {
-  border-color: #2f86ff;
+  border-color: var(--border-focus);
   outline: none;
-  box-shadow: 0 0 0 3px rgba(47, 134, 255, 0.13);
-}
-
-.checkLine {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .checkRow,
 .checkGroup {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
 .checkField {
   display: flex;
-  min-height: 34px;
+  min-height: 26px;
   align-items: center;
-  gap: 8px;
-  color: #40516d;
-  font-size: 12px;
-  font-weight: 750;
+  gap: var(--space-2);
+  color: var(--ink-secondary);
+  font-size: 0.6875rem;
+  font-weight: 500;
   cursor: pointer;
 }
 
-.checkField input {
-  width: 16px;
-  height: 16px;
+.checkField input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
   margin: 0;
-  accent-color: #1f6bff;
+  flex-shrink: 0;
+  accent-color: var(--primary);
 }
 
 .toggleBtn {
   display: inline-flex;
   align-self: flex-start;
-  min-height: 32px;
+  min-height: 24px;
   align-items: center;
   padding: 0;
   border: none;
   background: transparent;
-  color: #1e63f2;
-  font-size: 12px;
-  font-weight: 850;
+  color: var(--primary);
+  font-size: 0.6875rem;
+  font-weight: 500;
   cursor: pointer;
 }
 
 .toggleBtn:hover {
-  color: #155dfc;
+  color: var(--primary-hover);
 }
 
 .advanced {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(139, 155, 179, 0.18);
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
 }
 
 .checkDisabled {
@@ -128,54 +118,86 @@
 .blockHandlingGrid {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-1);
 }
 
 .blockHandlingRow {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2);
 }
 
 .blockKindLabel {
   flex: 1;
-  color: #40516d;
-  font-size: 12px;
-  font-weight: 750;
+  min-width: 0;
+  color: var(--ink-secondary);
+  font-size: 0.6875rem;
+  font-weight: 500;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .blockPolicySelect {
-  width: 130px;
-  min-height: 32px;
-  padding: 4px 8px;
-  border: 1px solid #cfd9e7;
-  border-radius: 7px;
-  background: linear-gradient(180deg, #fff, #f9fbff);
-  color: #16284a;
-  font-size: 12px;
-  font-weight: 700;
+  width: 90px;
+  min-height: 26px;
+  padding: var(--space-1) var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  flex-shrink: 0;
 }
 
 .blockPolicySelect:focus {
-  border-color: #2f86ff;
+  border-color: var(--border-focus);
   outline: none;
-  box-shadow: 0 0 0 3px rgba(47, 134, 255, 0.13);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
-@media (max-width: 460px) {
+.blockNosplit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
 
-  .row,
-  .basicRow,
+@media (max-width: 860px) {
+  .row {
+    grid-template-columns: 1fr;
+  }
+
   .checkRow,
   .checkGroup {
-    grid-template-columns: 1fr;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+
+  .checkField {
+    font-size: 0.75rem;
+    min-height: 32px;
+  }
+
+  .checkField input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
   }
 
   .blockHandlingRow {
     flex-direction: column;
     align-items: stretch;
-    gap: 4px;
+    gap: var(--space-1);
+  }
+
+  .blockKindLabel {
+    white-space: normal;
   }
 
   .blockPolicySelect {

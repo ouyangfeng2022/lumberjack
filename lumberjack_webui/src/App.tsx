@@ -14,7 +14,6 @@ const DEFAULT_OPTIONS: Options = {
   merge_below_tokens: 50,
   overlap_tokens: 0,
   merge_small_chunks: true,
-  isolate_front_matter: true,
   skip_empty_sections: true,
   recursive_split: false,
   block_handling: '',
@@ -169,35 +168,31 @@ export default function App() {
       </header>
 
       <main className={styles.main}>
-        <div className={styles.controlsGrid}>
-          <section className={`${styles.panel} ${styles.inputPanel}`}>
-            <div className={styles.panelHeader}>
-              <div>
-                <p className={styles.kicker}>{t('panel_input_kicker')}</p>
-                <h2 className={styles.panelTitle}>{t('md_label')}</h2>
-              </div>
-              <div className={styles.inputStats}>
-                <span>{t('stats_lines')}: {inputStats.lines}</span>
-                <span>{t('stats_characters')}: {inputStats.characters}</span>
-              </div>
+        <section className={`${styles.panel} ${styles.inputPanel}`}>
+          <div className={styles.panelHeader}>
+            <h2 className={styles.panelTitle}>{t('md_label')}</h2>
+            <div className={styles.inputStats}>
+              <span>{t('stats_lines')}: {inputStats.lines}</span>
+              <span>{t('stats_characters')}: {inputStats.characters}</span>
             </div>
-            <MarkdownInput
-              text={text}
-              file={file}
-              onTextChange={setText}
-              onFileChange={setFile}
-              onFileContentChange={setFileContent}
-            />
-          </section>
+          </div>
+          <MarkdownInput
+            text={text}
+            file={file}
+            onTextChange={setText}
+            onFileChange={setFile}
+            onFileContentChange={setFileContent}
+          />
+        </section>
 
-          <aside className={`${styles.panel} ${styles.optionsPanel}`}>
-            <div className={styles.panelHeader}>
-              <div>
-                <p className={styles.kicker}>{t('panel_options_kicker')}</p>
-                <h2 className={styles.panelTitle}>{t('opts_label')}</h2>
-              </div>
-            </div>
+        <aside className={`${styles.panel} ${styles.optionsPanel}`}>
+          <div className={styles.panelHeader}>
+            <h2 className={styles.panelTitle}>{t('opts_label')}</h2>
+          </div>
+          <div className={styles.optionsScroll}>
             <SplitOptions options={options} onChange={setOptions} />
+          </div>
+          <div className={styles.optionsFooter}>
             <button
               className={styles.splitBtn}
               disabled={!canSubmit || loading}
@@ -208,15 +203,12 @@ export default function App() {
             <div className={styles.optionHint}>
               <span>{inputStats.name}</span>
             </div>
-          </aside>
-        </div>
+          </div>
+        </aside>
 
         <section className={`${styles.panel} ${styles.resultsPanel}`}>
           <div className={styles.panelHeader}>
-            <div>
-              <p className={styles.kicker}>{t('panel_results_kicker')}</p>
-              <h2 className={styles.panelTitle}>{t('panel_results_title')}</h2>
-            </div>
+            <h2 className={styles.panelTitle}>{t('panel_results_title')}</h2>
             {resultStats && (
               <div className={styles.resultMeter} aria-label={t('result_budget_use')}>
                 <span>{resultStats.budgetUse}%</span>
@@ -236,7 +228,6 @@ export default function App() {
 
           {!result && !error && (
             <div className={styles.emptyState}>
-              <span className={styles.emptyIndex}>01</span>
               <h3>{t('empty_split_title')}</h3>
               <p>{t('empty_split_body')}</p>
             </div>

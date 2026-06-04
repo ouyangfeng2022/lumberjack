@@ -1,83 +1,78 @@
 .card {
   overflow: hidden;
-  border: 1px solid rgba(139, 155, 179, 0.24);
-  border-radius: 8px;
-  background: #fff;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  transition: border-color var(--duration-fast) ease-out;
 }
 
 .card:hover {
-  transform: translateY(-1px);
-  border-color: rgba(31, 107, 255, 0.28);
-  box-shadow: 0 18px 34px rgba(43, 63, 95, 0.1);
+  border-color: var(--border-strong);
 }
 
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
-  border-bottom: 1px solid rgba(139, 155, 179, 0.16);
-  background: #fbfdff;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-raised);
 }
 
 .headerLeft {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .index {
-  display: inline-grid;
-  min-width: 38px;
-  height: 28px;
-  place-items: center;
-  border-radius: 7px;
-  background: linear-gradient(135deg, #1f6bff, #40a5ff);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 900;
+  display: inline-flex;
+  min-width: 32px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: var(--white);
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 .tokenBadge,
 .lineRange {
-  color: #566983;
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 0.75rem;
+  font-weight: 500;
 }
 
 .tokenBadge {
-  color: #1e63f2;
+  color: var(--primary);
+}
+
+.lineRange {
+  color: var(--ink-muted);
 }
 
 .breadcrumb {
-  padding: 12px 16px 0;
-  color: #132443;
-  font-size: 17px;
-  font-weight: 900;
+  padding: var(--space-3) var(--space-4) 0;
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 
 .content {
-  max-height: 360px;
-  margin: 12px 16px 16px;
+  max-height: 320px;
+  margin: var(--space-3) var(--space-4) var(--space-4);
   overflow: auto;
-  padding: 16px 18px;
-  border: 1px solid #e1e8f2;
-  border-radius: 8px;
-  background:
-    repeating-linear-gradient(
-      180deg,
-      transparent 0,
-      transparent 25px,
-      rgba(44, 74, 122, 0.045) 26px
-    ),
-    #fbfdff;
-  color: #263958;
-  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
-  font-size: 12px;
-  line-height: 26px;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.65;
   white-space: pre-wrap;
   word-break: break-word;
 }

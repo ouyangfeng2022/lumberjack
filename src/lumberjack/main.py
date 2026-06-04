@@ -128,11 +128,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Split oversized direct section bodies when using --splitter section",
     )
     parser.add_argument(
-        "--no-isolate-front-matter",
-        action="store_true",
-        help="Do not isolate front matter as the first chunk",
-    )
-    parser.add_argument(
         "--block-handling",
         action="append",
         default=[],
@@ -194,7 +189,6 @@ def main() -> None:
         ideal_max_tokens_ratio=args.ideal_max_tokens_ratio,
         merge_below_tokens=args.merge_below_tokens,
         overlap_tokens=args.overlap_tokens,
-        isolate_front_matter=not args.no_isolate_front_matter,
         block_handling=block_handling,
         nosplit_kinds=nosplit_kinds,
         block_max_tokens=block_max_tokens or None,

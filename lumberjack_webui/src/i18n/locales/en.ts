@@ -5,13 +5,10 @@ const en = {
   btn_split: 'Start Split',
   btn_splitting: 'Splitting...',
   html_title: 'Lumberjack - Markdown Splitter',
-  panel_input_kicker: 'Source',
-  panel_options_kicker: 'Control',
-  panel_results_kicker: 'Output',
   panel_results_title: 'Split Results',
   result_budget_use: 'Largest chunk budget use',
   empty_split_title: 'Ready to split',
-  empty_split_body: 'Paste Markdown or upload a file, tune the token budget, then run the splitter to preview chunked output.',
+  empty_split_body: 'Paste Markdown or upload a file, adjust the token budget, then run the splitter to preview chunked output.',
 
   // Markdown Input
   md_label: 'Markdown Input',
@@ -23,8 +20,8 @@ const en = {
 
   // Split Options
   opts_label: 'Split Settings',
-  opts_basic_section: 'Basic Settings',
-  opts_strategy_section: 'Split Strategy',
+  opts_basic_section: 'Basic',
+  opts_strategy_section: 'Strategy',
   opts_max_tokens: 'Max tokens',
   opts_ideal_max_tokens_ratio: 'Ideal max ratio',
   opts_show_advanced: 'Show advanced options',
@@ -32,7 +29,6 @@ const en = {
   opts_merge_below_tokens: 'Merge below tokens',
   opts_overlap_tokens: 'Overlap tokens',
   opts_merge_small: 'Merge small chunks',
-  opts_isolate_front_matter: 'Isolate front matter',
   opts_skip_empty_sections: 'Skip empty sections',
   opts_disable_lheading: 'Disable Setext headings',
   opts_splitter: 'Splitter',
@@ -54,6 +50,7 @@ const en = {
   opts_block_code_block: 'Code block',
   opts_block_code_fence: 'Code fence',
   opts_block_html_block: 'HTML block',
+  opts_block_front_matter: 'Front matter',
 
   // Chunk Result
   chunk_tokens: '{{count}} tokens',
@@ -64,7 +61,7 @@ const en = {
   chunks_count_plural: '{{count}} chunks',
   chunks_total_tokens: '{{count}} total tokens',
 
-  // Step Raw Text (reused by input stats)
+  // Stats
   stats_characters: 'Characters',
   stats_lines: 'Lines',
 };

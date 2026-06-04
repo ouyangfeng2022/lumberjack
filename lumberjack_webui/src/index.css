@@ -1,14 +1,73 @@
 :root {
-  font-family:
-    "Segoe UI Variable",
-    "Segoe UI",
-    "Noto Sans SC",
-    "Microsoft YaHei",
-    sans-serif;
+  /* Surfaces */
+  --white: oklch(1.000 0 0);
+  --bg: oklch(1.000 0.000 0);
+  --surface: oklch(0.975 0.003 290);
+  --surface-raised: oklch(0.985 0.002 290);
+  --surface-sunken: oklch(0.955 0.004 290);
+
+  /* Text */
+  --ink: oklch(0.200 0.020 290);
+  --ink-secondary: oklch(0.400 0.015 290);
+  --ink-muted: oklch(0.550 0.012 290);
+  --ink-faint: oklch(0.720 0.008 290);
+
+  /* Brand */
+  --primary: oklch(0.500 0.160 290);
+  --primary-hover: oklch(0.450 0.170 290);
+  --primary-light: oklch(0.940 0.040 290);
+  --primary-subtle: oklch(0.970 0.015 290);
+
+  /* Accent */
+  --accent: oklch(0.550 0.130 165);
+  --accent-light: oklch(0.940 0.035 165);
+
+  /* Semantic */
+  --error: oklch(0.500 0.150 25);
+  --error-bg: oklch(0.960 0.025 25);
+  --warning: oklch(0.650 0.160 85);
+  --info: oklch(0.550 0.130 250);
+
+  /* Borders */
+  --border: oklch(0.880 0.010 290);
+  --border-strong: oklch(0.780 0.015 290);
+  --border-focus: oklch(0.550 0.140 290);
+  --focus-ring: oklch(0.550 0.140 290 / 0.15);
+  --accent-border: oklch(0.550 0.130 165 / 0.25);
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-panel: 0 1px 3px oklch(0.000 0 0 / 0.06), 0 1px 2px oklch(0.000 0 0 / 0.04);
+  --shadow-hover: 0 2px 8px oklch(0.000 0 0 / 0.08);
+
+  /* Typography */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "Cascadia Code", "SFMono-Regular", "Menlo", "Consolas", monospace;
+
+  /* Motion */
+  --duration-fast: 150ms;
+
+  font-family: var(--font-sans);
   font-size: 16px;
   line-height: 1.5;
-  color: #14213d;
-  background: #eef4fb;
+  color: var(--ink);
+  background: var(--bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -43,10 +102,19 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid rgba(47, 134, 255, 0.22);
-  outline-offset: 2px;
+  outline: 2px solid var(--border-focus);
+  outline-offset: 1px;
 }
 
 #root {
   min-height: 100vh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
 }

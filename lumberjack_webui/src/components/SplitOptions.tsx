@@ -16,6 +16,7 @@ const BLOCK_HANDLING_OPTIONS = [
   'code_block',
   'code_fence',
   'html_block',
+  'front_matter',
 ] as const;
 
 type BlockPolicy = 'default' | 'isolate';
@@ -27,6 +28,7 @@ const DEFAULT_HANDLING: Record<string, BlockPolicy> = {
   table: 'default',
   code_block: 'default',
   code_fence: 'default',
+  front_matter: 'default',
 };
 
 function parseBlockHandling(raw: string): Record<string, BlockPolicy> {
@@ -84,6 +86,7 @@ export default function SplitOptions({ options, onChange }: Props) {
     code_block: t('opts_block_code_block'),
     code_fence: t('opts_block_code_fence'),
     html_block: t('opts_block_html_block'),
+    front_matter: t('opts_block_front_matter'),
   };
 
   const update = <K extends keyof Options>(key: K, value: Options[K]) => {
@@ -182,15 +185,6 @@ export default function SplitOptions({ options, onChange }: Props) {
             <label className={styles.checkField}>
               <input
                 type="checkbox"
-                checked={options.isolate_front_matter}
-                onChange={(e) => update('isolate_front_matter', e.target.checked)}
-              />
-              <span>{t('opts_isolate_front_matter')}</span>
-            </label>
-
-            <label className={styles.checkField}>
-              <input
-                type="checkbox"
                 checked={options.skip_empty_sections}
                 onChange={(e) => update('skip_empty_sections', e.target.checked)}
               />
@@ -263,14 +257,13 @@ export default function SplitOptions({ options, onChange }: Props) {
                       </option>
                     ))}
                   </select>
-                  <label className={styles.checkField}>
-                    <input
-                      type="checkbox"
-                      checked={!nosplitSet.has(kind)}
-                      onChange={() => toggleNosplit(kind)}
-                    />
-                    <span>{t('opts_nosplit')}</span>
-                  </label>
+                  <input
+                    className={styles.blockNosplit}
+                    type="checkbox"
+                    title={t('opts_nosplit')}
+                    checked={!nosplitSet.has(kind)}
+                    onChange={() => toggleNosplit(kind)}
+                  />
                 </div>
               ))}
             </div>

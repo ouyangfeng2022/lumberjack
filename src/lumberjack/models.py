@@ -170,7 +170,6 @@ class SplitOptions:
             chunk size.
         overlap_tokens: Number of tokens to duplicate between adjacent chunks.
         merge_small_chunks: Combine adjacent chunks that share the same heading path.
-        isolate_front_matter: Always emit front matter as the first chunk.
         skip_empty_sections: When True, discard chunks that contain only a heading
             with no body content. Chunks with zero rendered tokens are always discarded
             regardless of this setting.
@@ -201,7 +200,6 @@ class SplitOptions:
     merge_below_tokens: int = 50
     overlap_tokens: int = 0
     merge_small_chunks: bool = True
-    isolate_front_matter: bool = True
     skip_empty_sections: bool = True
     recursive_split: bool = False
     block_handling: dict[str, BlockHandling] = field(default_factory=dict)

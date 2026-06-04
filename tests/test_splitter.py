@@ -298,6 +298,12 @@ def test_split_options_no_longer_exposes_render_common_headings() -> None:
     assert "render_common_headings" not in option_names
 
 
+def test_split_options_no_longer_exposes_isolate_front_matter() -> None:
+    option_names = {field.name for field in fields(SplitOptions)}
+
+    assert "isolate_front_matter" not in option_names
+
+
 def test_splitter_recursively_descends_heading_levels_when_section_is_oversized() -> (
     None
 ):
@@ -880,6 +886,126 @@ def test_splitter_can_split_oversized_lists_by_default() -> None:
     assert all(chunk.estimated_token_count <= 20 for chunk in chunks)
 
 
+def test_splitter_splits_oversized_tables_by_rows_with_repeated_header() -> None:
+    md = """# Data
+
+| Name | Value |
+| ---- | ----- |
+| Alpha | 100 |
+| Beta | 200 |
+| Gamma | 300 |
+| Delta | 400 |
+"""
+    document = MarkdownParser().parse(md, document_title="table.md")
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=58,
+            ideal_max_tokens_ratio=1,
+            merge_below_tokens=0,
+            merge_small_chunks=False,
+            block_handling={"table": BlockHandling.ISOLATE},
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 4
+    assert all(chunk.chunk_type == "table" for chunk in chunks)
+    assert all("| Name | Value |" in chunk.body for chunk in chunks)
+    assert all("| ---- | ----- |" in chunk.body for chunk in chunks)
+    assert [chunk.body.splitlines()[-1] for chunk in chunks] == [
+        "| Alpha | 100 |",
+        "| Beta | 200 |",
+        "| Gamma | 300 |",
+        "| Delta | 400 |",
+    ]
+
+
+def test_splitter_keeps_oversized_tables_intact_when_in_nosplit_kinds() -> None:
+    md = """| Name | Value |
+| ---- | ----- |
+| Alpha | 100 |
+| Beta | 200 |
+| Gamma | 300 |
+| Delta | 400 |
+"""
+    document = MarkdownParser().parse(md, document_title="table.md")
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=58,
+            ideal_max_tokens_ratio=1,
+            merge_below_tokens=0,
+            merge_small_chunks=False,
+            nosplit_kinds=frozenset({"table"}),
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].body == md.strip()
+    assert chunks[0].token_count > 58
+
+
+def test_splitter_uses_block_max_tokens_for_table_row_packing() -> None:
+    md = """| Name | Value |
+| ---- | ----- |
+| Alpha | 100 |
+| Beta | 200 |
+| Gamma | 300 |
+"""
+    document = MarkdownParser().parse(md, document_title="table.md")
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=80,
+            ideal_max_tokens_ratio=1,
+            merge_below_tokens=0,
+            merge_small_chunks=False,
+            block_max_tokens={"table": 60},
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 3
+    assert all("| Name | Value |" in chunk.body for chunk in chunks)
+    assert [chunk.body.splitlines()[-1] for chunk in chunks] == [
+        "| Alpha | 100 |",
+        "| Beta | 200 |",
+        "| Gamma | 300 |",
+    ]
+
+
+def test_splitter_preserves_oversized_single_table_rows() -> None:
+    md = """| Name | Value |
+| ---- | ----- |
+| Alpha | very very very very very very very very long |
+| Beta | short |
+"""
+    document = MarkdownParser().parse(md, document_title="table.md")
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=58,
+            ideal_max_tokens_ratio=1,
+            merge_below_tokens=0,
+            merge_small_chunks=False,
+            block_handling={"table": BlockHandling.ISOLATE},
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 2
+    assert "| Alpha | very very very very very very very very long |" in chunks[0].body
+    assert chunks[0].estimated_token_count > 58
+    assert "| Beta | short |" in chunks[1].body
+    assert all("| ---- | ----- |" in chunk.body for chunk in chunks)
+
+
 def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
     document = MarkdownParser().parse(CODE_FENCE_FIXTURE, document_title="code.md")
     splitter = RecursiveMarkdownSplitter(
@@ -937,33 +1063,32 @@ Body content here.
 """
 
 
-def test_front_matter_isolated_as_first_chunk_by_default() -> None:
+def test_front_matter_is_handled_as_normal_block_by_default() -> None:
     document = MarkdownParser().parse(FRONT_MATTER_FIXTURE, document_title="doc.md")
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
             max_tokens=500,
             merge_below_tokens=0,
-            isolate_front_matter=True,
         ),
     )
 
     chunks = splitter.split(document)
 
-    assert len(chunks) >= 2
-    assert chunks[0].chunk_id == "chunk-0000"
-    assert chunks[0].chunk_type == "front_matter"
+    assert len(chunks) == 1
+    assert chunks[0].chunk_id == "chunk-0001"
+    assert chunks[0].chunk_type == "paragraph"
     assert (
-        chunks[0].body
-        == "---\ntitle: Test Document\nauthor: Alice\ndate: 2024-01-01\n---"
+        "---\ntitle: Test Document\nauthor: Alice\ndate: 2024-01-01\n---"
+        in chunks[0].body
     )
-    assert chunks[0].headings == ()
-    assert chunks[0].section_level == 0
+    assert "# Introduction" in chunks[0].body
+    assert "# Body" in chunks[0].body
     assert chunks[0].start_line == 1
-    assert chunks[0].end_line == 5
+    assert chunks[0].end_line == 13
 
 
-def test_heading_splitter_isolates_front_matter_before_heading_chunks() -> None:
+def test_section_splitter_handles_front_matter_as_root_body_chunk() -> None:
     document = MarkdownParser().parse(FRONT_MATTER_FIXTURE, document_title="doc.md")
     splitter = SectionMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
@@ -972,30 +1097,37 @@ def test_heading_splitter_isolates_front_matter_before_heading_chunks() -> None:
 
     chunks = splitter.split(document)
 
-    assert chunks[0].chunk_type == "front_matter"
-    assert chunks[0].chunk_id == "chunk-0000"
+    assert chunks[0].chunk_type == "paragraph"
+    assert chunks[0].chunk_id == "chunk-0001"
+    assert chunks[0].body == (
+        "---\ntitle: Test Document\nauthor: Alice\ndate: 2024-01-01\n---"
+    )
     assert [chunk.headings for chunk in chunks[1:]] == [
         ((1, "Introduction"),),
         ((1, "Body"),),
     ]
 
 
-def test_front_matter_included_normally_when_isolation_disabled() -> None:
+def test_front_matter_can_be_isolated_with_block_handling() -> None:
     document = MarkdownParser().parse(FRONT_MATTER_FIXTURE, document_title="doc.md")
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
             max_tokens=500,
             merge_below_tokens=0,
-            isolate_front_matter=False,
+            block_handling={"front_matter": BlockHandling.ISOLATE},
         ),
     )
 
     chunks = splitter.split(document)
 
     assert chunks[0].chunk_id == "chunk-0001"
-    assert chunks[0].chunk_id != "chunk-0000"
-    assert chunks[0].chunk_type == "paragraph"
+    assert chunks[0].chunk_type == "front_matter"
+    assert chunks[0].body == (
+        "---\ntitle: Test Document\nauthor: Alice\ndate: 2024-01-01\n---"
+    )
+    assert "# Introduction" in chunks[1].body
+    assert "# Body" in chunks[1].body
 
 
 def test_no_front_matter_works_normally() -> None:
@@ -1007,7 +1139,6 @@ def test_no_front_matter_works_normally() -> None:
         options=SplitOptions(
             max_tokens=500,
             merge_below_tokens=0,
-            isolate_front_matter=True,
         ),
     )
 
@@ -1077,10 +1208,11 @@ def test_thematic_break_after_front_matter_is_ignored_in_body_content() -> None:
     md = "---\ntitle: T\n---\n\n---\n\nBody"
     chunks = lumber(md, max_tokens=100, merge_below_tokens=0)
 
-    assert chunks[0].chunk_type == "front_matter"
-    assert chunks[0].body == "---\ntitle: T\n---"
-    assert "---" not in chunks[1].body
-    assert "Body" in chunks[1].body
+    assert len(chunks) == 1
+    assert chunks[0].chunk_type == "paragraph"
+    assert "---\ntitle: T\n---" in chunks[0].body
+    assert chunks[0].body.count("---") == 2
+    assert "Body" in chunks[0].body
 
 
 def test_thematic_break_after_split_list_is_ignored() -> None:
