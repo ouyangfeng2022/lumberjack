@@ -5,23 +5,12 @@ from dataclasses import asdict
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from lumberjack.api import lumber
-from lumberjack.models import SplitOptions
+from lumberjack.core.parser import MarkdownItParser
+from lumberjack.models import BlockHandling, SplitOptions
 
 router = APIRouter()
 
 _file_default = File(None)
-
-_VALID_SPLIT_BLOCKS = frozenset(
-    {
-        "paragraph",
-        "blockquote",
-        "list",
-        "table",
-        "code_block",
-        "code_fence",
-        "html_block",
-    }
-)
 
 
 async def _resolve_input(
@@ -37,31 +26,76 @@ async def _resolve_input(
     raise ValueError("Provide either markdown text or upload a file")
 
 
-def _parse_block_types(raw: str) -> frozenset[str]:
-    """Parse a comma-separated block-type string into a validated frozenset."""
-    return frozenset(
-        b.strip() for b in raw.split(",") if b.strip() in _VALID_SPLIT_BLOCKS
-    )
+def _parse_block_handling(raw: str) -> dict[str, BlockHandling]:
+    """Parse a comma-separated ``kind:policy`` string into a validated dict.
+
+    Returns the default handling merged with any overrides from *raw*.
+    """
+    result = dict(MarkdownItParser.default_registry().default_handling())
+    if not raw or not raw.strip():
+        return result
+    for part in raw.split(","):
+        part = part.strip()
+        if not part or ":" not in part:
+            raise ValueError(
+                f"Invalid format: {part!r} (expected kind:policy, e.g. table:isolate)"
+            )
+        kind, _, value = part.partition(":")
+        kind = kind.strip().lower()
+        value = value.strip().lower()
+        MarkdownItParser.default_registry().validate_kind(kind)
+        if not value:
+            raise ValueError(f"Missing policy in: {part!r} (expected kind:policy)")
+        try:
+            result[kind] = BlockHandling(value)
+        except ValueError:
+            valid = ", ".join(h.value for h in BlockHandling)
+            raise ValueError(
+                f"Invalid policy in: {part!r} (valid policies: {valid})"
+            ) from None
+    return result
+
+
+def _parse_nosplit_kinds(raw: str) -> frozenset[str]:
+    """Parse a comma-separated string of block kinds into a frozenset."""
+    if not raw or not raw.strip():
+        return frozenset()
+    kinds: set[str] = set()
+    for part in raw.split(","):
+        kind = part.strip().lower()
+        if not kind:
+            continue
+        MarkdownItParser.default_registry().validate_kind(kind)
+        kinds.add(kind)
+    return frozenset(kinds)
 
 
 def _parse_block_max_tokens(raw: str) -> dict[str, int]:
     """Parse a comma-separated ``kind:tokens`` string into a validated dict."""
     result: dict[str, int] = {}
+    if not raw or not raw.strip():
+        return result
     for part in raw.split(","):
         part = part.strip()
         if not part or ":" not in part:
-            continue
+            raise ValueError(
+                f"Invalid format: {part!r} (expected kind:tokens, e.g. paragraph:800)"
+            )
         kind, _, value = part.partition(":")
         kind = kind.strip().lower()
         tokens_str = value.strip()
-        if kind not in _VALID_SPLIT_BLOCKS or not tokens_str:
-            continue
+        MarkdownItParser.default_registry().validate_kind(kind)
+        if not tokens_str:
+            raise ValueError(f"Missing token count in: {part!r} (expected kind:tokens)")
         try:
             tokens = int(tokens_str)
         except ValueError:
-            continue
-        if tokens > 0:
-            result[kind] = tokens
+            raise ValueError(
+                f"Invalid token count in: {part!r} (expected kind:tokens)"
+            ) from None
+        if tokens <= 0:
+            raise ValueError(f"Token count must be positive in: {part!r}")
+        result[kind] = tokens
     return result
 
 
@@ -75,9 +109,9 @@ def _build_split_options(
     isolate_front_matter: bool,
     skip_empty_sections: bool,
     recursive_split: bool,
-    split_oversized_blocks: str,
-    split_oversized_blocks_max_tokens: str,
-    standalone_blocks: str,
+    block_handling: str,
+    block_max_tokens: str,
+    nosplit_kinds: str,
 ) -> SplitOptions:
     """Build core split options from web form values."""
     return SplitOptions(
@@ -89,11 +123,9 @@ def _build_split_options(
         isolate_front_matter=isolate_front_matter,
         skip_empty_sections=skip_empty_sections,
         recursive_split=recursive_split,
-        split_oversized_blocks=_parse_block_types(split_oversized_blocks),
-        split_oversized_blocks_max_tokens=_parse_block_max_tokens(
-            split_oversized_blocks_max_tokens
-        ),
-        standalone_blocks=_parse_block_types(standalone_blocks),
+        block_handling=_parse_block_handling(block_handling),
+        nosplit_kinds=_parse_nosplit_kinds(nosplit_kinds),
+        block_max_tokens=_parse_block_max_tokens(block_max_tokens),
     )
 
 
@@ -109,9 +141,9 @@ async def split(
     isolate_front_matter: bool = Form(True),
     skip_empty_sections: bool = Form(True),
     recursive_split: bool = Form(False),
-    split_oversized_blocks: str = Form("paragraph,blockquote,html_block"),
-    split_oversized_blocks_max_tokens: str = Form(""),
-    standalone_blocks: str = Form("table,code_block,code_fence"),
+    block_handling: str = Form(""),
+    block_max_tokens: str = Form(""),
+    nosplit_kinds: str = Form(""),
     disable_lheading: bool = Form(False),
     tokenizer: str = Form("simple"),
     splitter: str = Form("recursive"),
@@ -131,9 +163,9 @@ async def split(
         isolate_front_matter=isolate_front_matter,
         skip_empty_sections=skip_empty_sections,
         recursive_split=recursive_split,
-        split_oversized_blocks=split_oversized_blocks,
-        split_oversized_blocks_max_tokens=split_oversized_blocks_max_tokens,
-        standalone_blocks=standalone_blocks,
+        block_handling=block_handling,
+        block_max_tokens=block_max_tokens,
+        nosplit_kinds=nosplit_kinds,
     )
 
     try:
@@ -147,9 +179,9 @@ async def split(
             merge_small_chunks=options.merge_small_chunks,
             isolate_front_matter=options.isolate_front_matter,
             skip_empty_sections=options.skip_empty_sections,
-            split_oversized_blocks=options.split_oversized_blocks,
-            split_oversized_blocks_max_tokens=options.split_oversized_blocks_max_tokens,
-            standalone_blocks=options.standalone_blocks,
+            block_handling=options.block_handling,
+            nosplit_kinds=options.nosplit_kinds,
+            block_max_tokens=options.block_max_tokens,
             disable_lheading=disable_lheading,
             tokenizer=tokenizer,
             splitter=splitter,

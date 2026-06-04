@@ -64,7 +64,7 @@ def test_split_with_options(client: TestClient) -> None:
             "merge_below_tokens": "10",
             "overlap_tokens": "5",
             "merge_small_chunks": "false",
-            "split_oversized_blocks": "paragraph",
+            "block_handling": "paragraph:default",
             "tokenizer": "simple",
         },
     )
@@ -133,14 +133,14 @@ def test_unprefixed_api_path_is_not_registered(client: TestClient) -> None:
     assert response.status_code == 405
 
 
-def test_split_with_standalone_blocks(client: TestClient) -> None:
+def test_split_with_block_handling(client: TestClient) -> None:
     md = "# Doc\n\nIntro.\n\n| A |\n|---|\n| 1 |\n\nOutro."
     response = client.post(
         "/lumber/api/split",
         data={
             "text": md,
             "max_tokens": "500",
-            "standalone_blocks": "table",
+            "block_handling": "table:isolate",
         },
     )
     assert response.status_code == 200
@@ -151,10 +151,10 @@ def test_split_with_standalone_blocks(client: TestClient) -> None:
     assert "Intro." not in table_chunks[0]["body"]
 
 
-def test_split_standalone_blocks_default_applies_when_field_not_sent(
+def test_split_block_handling_default_applies_when_field_not_sent(
     client: TestClient,
 ) -> None:
-    """Default standalone_blocks (table, code_block, code_fence) applies when field is absent."""
+    """Default block_handling (all DEFAULT, allow merge) applies when field is absent."""
     md = "# Doc\n\nIntro.\n\n| A |\n|---|\n| 1 |\n\nOutro."
     response = client.post(
         "/lumber/api/split",
@@ -165,6 +165,6 @@ def test_split_standalone_blocks_default_applies_when_field_not_sent(
     )
     assert response.status_code == 200
     body = response.json()
-    table_chunks = [c for c in body["chunks"] if c["chunk_type"] == "table"]
-    assert len(table_chunks) == 1
-    assert "Intro." not in table_chunks[0]["body"]
+    # With default DEFAULT policy, table can merge with adjacent content
+    # So all content should be in one chunk
+    assert body["chunk_count"] == 1

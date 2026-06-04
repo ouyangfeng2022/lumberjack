@@ -125,6 +125,44 @@
   pointer-events: none;
 }
 
+.blockHandlingGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.blockHandlingRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.blockKindLabel {
+  flex: 1;
+  color: #40516d;
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.blockPolicySelect {
+  width: 130px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid #cfd9e7;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #fff, #f9fbff);
+  color: #16284a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.blockPolicySelect:focus {
+  border-color: #2f86ff;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(47, 134, 255, 0.13);
+}
+
 @media (max-width: 460px) {
 
   .row,
@@ -132,5 +170,15 @@
   .checkRow,
   .checkGroup {
     grid-template-columns: 1fr;
+  }
+
+  .blockHandlingRow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .blockPolicySelect {
+    width: 100%;
   }
 }

@@ -22,15 +22,8 @@ export async function splitMarkdown(
   formData.append('skip_empty_sections', String(options.skip_empty_sections));
   formData.append('recursive_split', String(options.recursive_split));
   formData.append('disable_lheading', String(options.disable_lheading));
-  const blocks = options.split_oversized_blocks
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (!blocks.includes('paragraph')) {
-    blocks.unshift('paragraph');
-  }
-  formData.append('split_oversized_blocks', blocks.join(','));
-  formData.append('standalone_blocks', options.standalone_blocks);
+  formData.append('block_handling', options.block_handling);
+  formData.append('nosplit_kinds', options.nosplit_kinds);
   formData.append('tokenizer', options.tokenizer);
   formData.append('splitter', options.splitter);
   formData.append('document_title', options.document_title);

@@ -513,3 +513,26 @@ def test_multiple_thematic_breaks_are_ignored_by_parser() -> None:
     assert blocks[1].text == "Para 2"
     assert blocks[2].kind == "paragraph"
     assert blocks[2].text == "Para 3"
+
+
+def test_default_block_kinds_match_parser() -> None:
+    """default_registry().kinds must stay in sync with a fresh default parser."""
+    registry = MarkdownItParser.default_registry()
+    parser = MarkdownItParser()
+    assert registry.kinds == parser.block_kinds
+
+
+def test_block_kinds_reflect_parser_configuration() -> None:
+    """block_kinds is auto-detected from the parser's active block rules."""
+    parser = MarkdownItParser()
+    kinds = parser.block_kinds
+    assert "paragraph" in kinds
+    assert "code_fence" in kinds
+    assert "table" in kinds
+    assert "math_block" in kinds
+    assert "front_matter" in kinds
+    # heading/lheading rules produce SectionNodes, not block kinds
+    assert "heading" not in kinds
+    assert "lheading" not in kinds
+    # hr is skipped
+    assert "hr" not in kinds

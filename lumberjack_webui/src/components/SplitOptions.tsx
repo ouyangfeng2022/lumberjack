@@ -8,19 +8,68 @@ interface Props {
   onChange: (options: Options) => void;
 }
 
-const SPLIT_BLOCK_OPTIONS = [
+const BLOCK_HANDLING_OPTIONS = [
+  'paragraph',
   'blockquote',
   'list',
   'table',
   'code_block',
   'code_fence',
   'html_block',
-];
+] as const;
 
-const STANDALONE_BLOCK_OPTIONS = [
-  'table',
-  'code_block',
-  'code_fence',
+type BlockPolicy = 'default' | 'isolate';
+
+const DEFAULT_HANDLING: Record<string, BlockPolicy> = {
+  paragraph: 'default',
+  blockquote: 'default',
+  html_block: 'default',
+  table: 'default',
+  code_block: 'default',
+  code_fence: 'default',
+};
+
+function parseBlockHandling(raw: string): Record<string, BlockPolicy> {
+  const result: Record<string, BlockPolicy> = { ...DEFAULT_HANDLING };
+  if (!raw || !raw.trim()) return result;
+  for (const part of raw.split(',')) {
+    const trimmed = part.trim();
+    if (!trimmed || !trimmed.includes(':')) continue;
+    const colonIdx = trimmed.indexOf(':');
+    const kind = trimmed.slice(0, colonIdx).trim().toLowerCase();
+    const policy = trimmed.slice(colonIdx + 1).trim().toLowerCase() as BlockPolicy;
+    if (kind && ['default', 'isolate'].includes(policy)) {
+      result[kind] = policy;
+    }
+  }
+  return result;
+}
+
+function serializeBlockHandling(handling: Record<string, BlockPolicy>): string {
+  const entries = Object.entries(handling)
+    .filter(([kind]) => BLOCK_HANDLING_OPTIONS.includes(kind as typeof BLOCK_HANDLING_OPTIONS[number]))
+    .filter(([kind, policy]) => {
+      const def = DEFAULT_HANDLING[kind];
+      return def !== policy;
+    });
+  if (entries.length === 0) return '';
+  return entries.map(([kind, policy]) => `${kind}:${policy}`).join(',');
+}
+
+function parseNosplitKinds(raw: string): Set<string> {
+  if (!raw || !raw.trim()) return new Set();
+  return new Set(
+    raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+  );
+}
+
+function serializeNosplitKinds(kinds: Set<string>): string {
+  return Array.from(kinds).join(',');
+}
+
+const POLICIES: { value: BlockPolicy; labelKey: string }[] = [
+  { value: 'default', labelKey: 'opts_policy_default' },
+  { value: 'isolate', labelKey: 'opts_policy_isolate' },
 ];
 
 export default function SplitOptions({ options, onChange }: Props) {
@@ -41,35 +90,23 @@ export default function SplitOptions({ options, onChange }: Props) {
     onChange({ ...options, [key]: value });
   };
 
-  const toggleBlock = (block: string, checked: boolean) => {
-    const current = options.split_oversized_blocks
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const next = checked
-      ? [...current, block]
-      : current.filter((b) => b !== block);
-    update('split_oversized_blocks', next.join(','));
+  const handlingMap = parseBlockHandling(options.block_handling);
+  const nosplitSet = parseNosplitKinds(options.nosplit_kinds);
+
+  const setBlockPolicy = (kind: string, policy: BlockPolicy) => {
+    const updated = { ...handlingMap, [kind]: policy };
+    update('block_handling', serializeBlockHandling(updated));
   };
 
-  const toggleStandaloneBlock = (block: string, checked: boolean) => {
-    const current = options.standalone_blocks
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const next = checked
-      ? [...current, block]
-      : current.filter((b) => b !== block);
-    update('standalone_blocks', next.join(','));
+  const toggleNosplit = (kind: string) => {
+    const next = new Set(nosplitSet);
+    if (next.has(kind)) {
+      next.delete(kind);
+    } else {
+      next.add(kind);
+    }
+    update('nosplit_kinds', serializeNosplitKinds(next));
   };
-
-  const selectedBlocks = new Set(
-    options.split_oversized_blocks.split(',').map((s) => s.trim()),
-  );
-
-  const selectedStandaloneBlocks = new Set(
-    options.standalone_blocks.split(',').map((s) => s.trim()),
-  );
 
   return (
     <div className={styles.container}>
@@ -195,45 +232,46 @@ export default function SplitOptions({ options, onChange }: Props) {
             </select>
           </div>
 
-          <div className={styles.field}>
-            <span className={styles.fieldLabel}>{t('opts_split_oversized')}</span>
-            <div className={styles.checkGroup}>
-              <label
-                className={`${styles.checkField} ${options.splitter !== 'section' ? styles.checkDisabled : ''}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={options.recursive_split}
-                  disabled={options.splitter !== 'section'}
-                  onChange={(e) => update('recursive_split', e.target.checked)}
-                />
-                <span>{t('opts_recursive_split')}</span>
-              </label>
-              {SPLIT_BLOCK_OPTIONS.map((block) => (
-                <label key={block} className={styles.checkField}>
-                  <input
-                    type="checkbox"
-                    checked={selectedBlocks.has(block)}
-                    onChange={(e) => toggleBlock(block, e.target.checked)}
-                  />
-                  <span>{BLOCK_LABELS[block]}</span>
-                </label>
-              ))}
-            </div>
+          <div className={styles.checkRow}>
+            <label
+              className={`${styles.checkField} ${options.splitter !== 'section' ? styles.checkDisabled : ''}`}
+            >
+              <input
+                type="checkbox"
+                checked={options.recursive_split}
+                disabled={options.splitter !== 'section'}
+                onChange={(e) => update('recursive_split', e.target.checked)}
+              />
+              <span>{t('opts_recursive_split')}</span>
+            </label>
           </div>
 
           <div className={styles.field}>
-            <span className={styles.fieldLabel}>{t('opts_standalone_blocks')}</span>
-            <div className={styles.checkGroup}>
-              {STANDALONE_BLOCK_OPTIONS.map((block) => (
-                <label key={block} className={styles.checkField}>
-                  <input
-                    type="checkbox"
-                    checked={selectedStandaloneBlocks.has(block)}
-                    onChange={(e) => toggleStandaloneBlock(block, e.target.checked)}
-                  />
-                  <span>{BLOCK_LABELS[block]}</span>
-                </label>
+            <span className={styles.fieldLabel}>{t('opts_block_handling')}</span>
+            <div className={styles.blockHandlingGrid}>
+              {BLOCK_HANDLING_OPTIONS.map((kind) => (
+                <div key={kind} className={styles.blockHandlingRow}>
+                  <span className={styles.blockKindLabel}>{BLOCK_LABELS[kind]}</span>
+                  <select
+                    className={styles.blockPolicySelect}
+                    value={handlingMap[kind] || 'default'}
+                    onChange={(e) => setBlockPolicy(kind, e.target.value as BlockPolicy)}
+                  >
+                    {POLICIES.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {t(p.labelKey)}
+                      </option>
+                    ))}
+                  </select>
+                  <label className={styles.checkField}>
+                    <input
+                      type="checkbox"
+                      checked={!nosplitSet.has(kind)}
+                      onChange={() => toggleNosplit(kind)}
+                    />
+                    <span>{t('opts_nosplit')}</span>
+                  </label>
+                </div>
               ))}
             </div>
           </div>

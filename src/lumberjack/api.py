@@ -3,16 +3,38 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .core import create_parser, create_splitter, create_tokenizer
-from .models import Chunk, SplitOptions
+from .models import BlockHandling, Chunk, SplitOptions
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
     from .base.interfaces import (
         MarkdownParserProtocol,
         SplitterProtocol,
         TokenizerProtocol,
     )
+
+
+def _normalize_block_handling(
+    raw: dict[str, BlockHandling | str] | None,
+) -> dict[str, BlockHandling]:
+    """Convert a dict with str/BlockHandling values to a pure BlockHandling dict."""
+    if raw is None:
+        return {}
+    result: dict[str, BlockHandling] = {}
+    for key, value in raw.items():
+        if isinstance(value, BlockHandling):
+            result[key] = value
+        else:
+            result[key] = BlockHandling(value)
+    return result
+
+
+def _normalize_nosplit_kinds(
+    raw: frozenset[str] | set[str] | list[str] | None,
+) -> frozenset[str]:
+    """Normalize nosplit_kinds to a frozenset of lowercase kind strings."""
+    if raw is None:
+        return frozenset()
+    return frozenset(k.strip().lower() for k in raw if k.strip())
 
 
 def lumber(
@@ -27,21 +49,9 @@ def lumber(
     isolate_front_matter: bool = True,
     skip_empty_sections: bool = True,
     recursive_split: bool = False,
-    split_oversized_blocks: Iterable[str] = frozenset(
-        {
-            "paragraph",
-            "blockquote",
-            "html_block",
-        }
-    ),
-    split_oversized_blocks_max_tokens: dict[str, int] | None = None,
-    standalone_blocks: Iterable[str] = frozenset(
-        {
-            "table",
-            "code_block",
-            "code_fence",
-        }
-    ),
+    block_handling: dict[str, BlockHandling | str] | None = None,
+    nosplit_kinds: frozenset[str] | set[str] | list[str] | None = None,
+    block_max_tokens: dict[str, int] | None = None,
     disable_lheading: bool = False,
     tokenizer: str | TokenizerProtocol = "simple",
     parser: str | MarkdownParserProtocol = "default",
@@ -62,6 +72,8 @@ def lumber(
         document_title=document_title,
         document_metadata=document_metadata,
     )
+    normalized_handling = _normalize_block_handling(block_handling)
+    normalized_nosplit = _normalize_nosplit_kinds(nosplit_kinds)
     options = SplitOptions(
         max_tokens=max_tokens,
         ideal_max_tokens_ratio=ideal_max_tokens_ratio,
@@ -71,9 +83,10 @@ def lumber(
         isolate_front_matter=isolate_front_matter,
         skip_empty_sections=skip_empty_sections,
         recursive_split=recursive_split,
-        split_oversized_blocks=frozenset(split_oversized_blocks),
-        split_oversized_blocks_max_tokens=split_oversized_blocks_max_tokens or {},
-        standalone_blocks=frozenset(standalone_blocks),
+        block_handling=normalized_handling,
+        nosplit_kinds=normalized_nosplit,
+        block_max_tokens=block_max_tokens or {},
+        block_kinds=parser_impl.block_kinds,
     )
     splitter_impl = (
         create_splitter(splitter, tokenizer=tokenizer_impl, options=options)

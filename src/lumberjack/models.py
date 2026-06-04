@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -110,6 +111,48 @@ class DocumentAST:
     reference_definitions: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
+class BlockHandling(enum.StrEnum):
+    """Controls merge behavior for a block kind during splitting.
+
+    Splitting is enabled by default for all block kinds. Use ``nosplit_kinds``
+    on :class:`SplitOptions` to opt out of splitting for specific kinds.
+
+    Attributes:
+        DEFAULT: Block can be merged with adjacent content.
+        ISOLATE: Block is always emitted as its own chunk (no merge).
+    """
+
+    DEFAULT = "default"
+    ISOLATE = "isolate"
+
+
+class BlockKindRegistry:
+    """Registry of block kinds the splitter handles for merge/split decisions.
+
+    Create an instance by passing the known block kinds from a parser:
+        registry = BlockKindRegistry(parser.block_kinds)
+    """
+
+    def __init__(self, kinds: frozenset[str]) -> None:
+        self._kinds = kinds
+
+    @property
+    def kinds(self) -> frozenset[str]:
+        """All registered block kind names."""
+        return self._kinds
+
+    def default_handling(self) -> dict[str, BlockHandling]:
+        """Return all registered kinds mapped to :attr:`BlockHandling.DEFAULT`."""
+        return dict.fromkeys(sorted(self._kinds), BlockHandling.DEFAULT)
+
+    def validate_kind(self, kind: str) -> str:
+        """Validate and return *kind*, raising :class:`ValueError` if unknown."""
+        if kind not in self._kinds:
+            valid = ", ".join(sorted(self._kinds))
+            raise ValueError(f"Unknown block kind: {kind!r} (valid: {valid})")
+        return kind
+
+
 @dataclass(slots=True, frozen=True)
 class SplitOptions:
     """Parameters controlling how documents are split into chunks.
@@ -133,48 +176,87 @@ class SplitOptions:
             regardless of this setting.
         recursive_split: When True, split oversized direct section bodies in splitters
             that support strict heading-level output.
-        split_oversized_blocks: Block kinds to split when they exceed ``max_tokens``.
-            Must be a frozenset of lowercase strings matching :attr:`MarkdownBlock.kind`
-            values.
-        split_oversized_blocks_max_tokens: Per-block-kind max_tokens overrides for
-            oversized block splitting.  Keys are block kind strings (lowercase); values
-            are the max_tokens to use for that kind.  When empty (the default), the
-            unified ``max_tokens`` is used for all block kinds.  When a kind is absent
-            from this dict, the unified ``max_tokens`` is the fallback.
-        standalone_blocks: Block kinds that must be emitted as independent chunks,
-            never merged with adjacent blocks. Defaults to ``{"table", "code_block",
-            "code_fence"}``.  Set to an empty frozenset to disable.
+        block_handling: Per-block-kind merge policy.  Keys are lowercase block
+            kind strings matching :attr:`MarkdownBlock.kind` values; values are
+            :class:`BlockHandling` members.  Default: all blocks use
+            ``BlockHandling.DEFAULT`` (allow merge).  Set specific kinds to
+            ``ISOLATE`` to prevent merging.
+        nosplit_kinds: Block kinds that should NOT be split when oversized.
+            By default all block kinds allow splitting.  Add kind names here
+            to opt out.
+        block_max_tokens: Per-block-kind max_tokens overrides.  Keys are block kind
+            strings (lowercase); values are the max_tokens to use for that kind.
+            When empty (the default), the unified ``max_tokens`` is used for all
+            block kinds.  Only effective for block kinds that allow splitting
+            (not in ``nosplit_kinds``).
+        block_kinds: Block kinds from the parser instance.  Used to populate
+            ``block_handling`` defaults when empty.  When ``None``, falls back
+            to the built-in ``_DEFAULT_BLOCK_KINDS`` set.
+        splittable_kinds: Block kinds that allow splitting (cached).
+        standalone_kinds: Block kinds whose handling includes isolation (cached).
     """
 
     max_tokens: int = 1200
     ideal_max_tokens_ratio: float = 0.8
-
-    @property
-    def ideal_max_tokens(self) -> int:
-        """Effective split budget: ``max(1, int(max_tokens * ideal_max_tokens_ratio))``."""
-        return max(1, int(self.max_tokens * self.ideal_max_tokens_ratio))
-
     merge_below_tokens: int = 50
     overlap_tokens: int = 0
     merge_small_chunks: bool = True
     isolate_front_matter: bool = True
     skip_empty_sections: bool = True
     recursive_split: bool = False
-    split_oversized_blocks: frozenset[str] = frozenset(
-        {
-            "paragraph",
-            "blockquote",
-            "html_block",
-        }
-    )
-    split_oversized_blocks_max_tokens: dict[str, int] = field(default_factory=dict)
-    standalone_blocks: frozenset[str] = frozenset(
-        {
-            "table",
-            "code_block",
-            "code_fence",
-        }
-    )
+    block_handling: dict[str, BlockHandling] = field(default_factory=dict)
+    nosplit_kinds: frozenset[str] = field(default_factory=frozenset)
+    block_max_tokens: dict[str, int] = field(default_factory=dict)
+    block_kinds: frozenset[str] | None = None
+
+    # Cached derived fields — computed in __post_init__.
+    ideal_max_tokens: int = field(init=False, repr=False)
+    splittable_kinds: frozenset[str] = field(init=False, repr=False)
+    standalone_kinds: frozenset[str] = field(init=False, repr=False)
+
+    @staticmethod
+    def _default_block_kinds() -> frozenset[str]:
+        """Lazy accessor for default block kinds from the default parser registry.
+
+        Uses a local import to avoid circular dependencies (models ↔ parser).
+        """
+        from .core.parser import MarkdownItParser
+
+        return MarkdownItParser.default_registry().kinds
+
+    def __post_init__(self) -> None:
+        if not self.block_handling:
+            kinds = (
+                self.block_kinds
+                if self.block_kinds is not None
+                else self._default_block_kinds()
+            )
+            object.__setattr__(
+                self,
+                "block_handling",
+                dict.fromkeys(sorted(kinds), BlockHandling.DEFAULT),
+            )
+        object.__setattr__(
+            self,
+            "ideal_max_tokens",
+            max(1, int(self.max_tokens * self.ideal_max_tokens_ratio)),
+        )
+        object.__setattr__(
+            self,
+            "splittable_kinds",
+            frozenset(
+                kind for kind in self.block_handling if kind not in self.nosplit_kinds
+            ),
+        )
+        object.__setattr__(
+            self,
+            "standalone_kinds",
+            frozenset(
+                kind
+                for kind, h in self.block_handling.items()
+                if h == BlockHandling.ISOLATE
+            ),
+        )
 
 
 @dataclass(slots=True, frozen=True)

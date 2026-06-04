@@ -17,6 +17,8 @@ class TokenizerProtocol(Protocol):
 class MarkdownParserProtocol(Protocol):
     """Turn markdown text into the internal document model."""
 
+    block_kinds: frozenset[str]
+
     def parse(
         self,
         text: str,

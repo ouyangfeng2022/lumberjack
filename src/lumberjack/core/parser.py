@@ -13,13 +13,20 @@ from ..utils import join_markdown
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
+    from typing import ClassVar
 
     from markdown_it.token import Token
 
     from ..base.interfaces import MarkdownParserProtocol
     from ..models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
 
-from ..models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
+from ..models import (
+    BlockKindRegistry,
+    DocumentAST,
+    MarkdownBlock,
+    MarkdownInline,
+    SectionNode,
+)
 
 LINK_REFERENCE_DEFINITION_RE = re.compile(r"^[ ]{0,3}\[([^\]]+)\]:")
 
@@ -299,6 +306,75 @@ class InlineNormalizer:
 class MarkdownItParser:
     """Parse Markdown with markdown-it-py and normalize tokens into lumberjack's document model."""
 
+    # Token-type → MarkdownBlock.kind mapping for simple (non-container) blocks.
+    # Used by _build_block to look up block kinds from token types.
+    _BLOCK_KIND_MAP: ClassVar[dict[str, str]] = {
+        "paragraph_open": "paragraph",
+        "fence": "code_fence",
+        "math_block": "math_block",
+        "math_block_eqno": "math_block_eqno",
+        "code_block": "code_block",
+        "html_block": "html_block",
+    }
+
+    # Block rule name → block kind(s) produced by that rule.
+    # Used by _compute_block_kinds() to translate active rules into block kinds.
+    # Rules not listed here (hr, reference, heading, lheading) produce no block kinds.
+    _RULE_TO_KINDS: ClassVar[dict[str, str | tuple[str, ...]]] = {
+        "paragraph": "paragraph",
+        "fence": "code_fence",
+        "code": "code_block",
+        "html_block": "html_block",
+        "blockquote": "blockquote",
+        "list": ("list", "list_item"),
+        "table": "table",
+        "front_matter": "front_matter",
+        "math_block": "math_block",
+        "math_block_eqno": "math_block_eqno",
+    }
+
+    # Block kinds that are always present regardless of active rules,
+    # produced by structural handling in _build_block.
+    _STRUCTURAL_KINDS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "paragraph",  # heading_open fallback when allow_headings=False
+            "list_item",  # list_item_open inside list containers
+        }
+    )
+
+    def _compute_block_kinds(self) -> frozenset[str]:
+        """Compute block kinds from the parser's active block rules."""
+        active_rules = self._parser.get_active_rules().get("block", [])
+        kinds: set[str] = set(self._STRUCTURAL_KINDS)
+        for rule in active_rules:
+            mapped = self._RULE_TO_KINDS.get(rule)
+            if mapped is None:
+                continue
+            if isinstance(mapped, str):
+                kinds.add(mapped)
+            else:
+                kinds.update(mapped)
+        return frozenset(kinds)
+
+    @property
+    def block_kinds(self) -> frozenset[str]:
+        """Block kinds this parser instance can produce, based on active rules."""
+        return self._block_kinds
+
+    _default_registry: BlockKindRegistry | None = None
+
+    @classmethod
+    def default_registry(cls) -> BlockKindRegistry:
+        """Lazy-loaded registry built from the default parser configuration.
+
+        This is the single source of truth for default block kinds — used by
+        CLI, web routes, and ``SplitOptions`` when no explicit ``block_kinds``
+        are provided.
+        """
+        if cls._default_registry is None:
+            cls._default_registry = BlockKindRegistry(cls().block_kinds)
+        return cls._default_registry
+
     def __init__(
         self,
         preset: str = "gfm-like",
@@ -316,6 +392,7 @@ class MarkdownItParser:
             self._parser.use(plugin)
         if disable_lheading:
             self._parser.disable("lheading")
+        self._block_kinds = self._compute_block_kinds()
 
     def parse(
         self,
@@ -648,9 +725,11 @@ class MarkdownItParser:
         if not text.strip():
             return (None, close_index + 1)
 
+        kind = token.type.removesuffix("_open")
+
         return (
             MarkdownBlock(
-                kind=token.type.removesuffix("_open"),
+                kind=kind,
                 text=text,
                 start_line=start_line(token),
                 end_line=end_line(token),

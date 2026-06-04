@@ -2,6 +2,8 @@
 
 ## Project
 
+The project is in the **development stage** and compatibility does not need to be considered. Allow all disruptive changes.
+
 Markdown document splitter for RAG preprocessing. Python 3.13+, `src/` layout, built with `hatchling` + `hatch-vcs`.
 
 Current runtime dependencies:
@@ -100,8 +102,11 @@ Defined in `src/lumberjack/models.py`:
 - `MarkdownBlock`: block node with rendered text, line range, inline children, nested blocks, and attrs
 - `SectionNode`: heading-tree node with `path`, `blocks`, `children`, `start_line`, `title_inlines`, and `index`
 - `DocumentAST`: parsed document with `root`, raw `source`, `metadata`, and `reference_definitions`; title resolved from front matter or first H1
-- `SplitOptions`: `max_tokens`, `merge_below_tokens`, `overlap_tokens`, `merge_small_chunks`, `isolate_front_matter`, `skip_empty_sections`, `recursive_split`, `split_oversized_blocks`
-  - Default `split_oversized_blocks`: `frozenset({"paragraph", "blockquote", "html_block"})`
+- `BlockHandling`: enum with values `DEFAULT`, `ISOLATE` (controls merge only)
+- `SplitOptions`: `max_tokens`, `merge_below_tokens`, `overlap_tokens`, `merge_small_chunks`, `isolate_front_matter`, `skip_empty_sections`, `recursive_split`, `block_handling`, `nosplit_kinds`, `block_max_tokens`
+  - Default `block_handling`: all blocks default to `DEFAULT` (allow merge)
+  - Default `nosplit_kinds`: empty (all blocks allow splitting)
+  - Properties `splittable_kinds` and `standalone_kinds` derive frozensets from `block_handling` and `nosplit_kinds`
 - `Chunk`: final chunk payload with `chunk_id`, `chunk_type`, `body`, `token_count`, `estimated_token_count`, `headings`, `section_level`, `document_title`, `document_path`, `start_line`, `end_line`
 
 ## Web API
@@ -110,9 +115,10 @@ Implemented in `src/lumberjack/web/`.
 
 - Endpoint: `POST /lumber/api/split`
 - Input: form data with `text` (string) or `file` (upload), plus split options
-- Split options: `max_tokens`, `merge_below_tokens`, `overlap_tokens`, `merge_small_chunks`, `isolate_front_matter`, `skip_empty_sections`, `recursive_split`, `split_oversized_blocks`, `tokenizer`, `disable_lheading`, `splitter`
+- Split options: `max_tokens`, `merge_below_tokens`, `overlap_tokens`, `merge_small_chunks`, `isolate_front_matter`, `skip_empty_sections`, `recursive_split`, `block_handling`, `nosplit_kinds`, `block_max_tokens`, `tokenizer`, `disable_lheading`, `splitter`
 - Response: JSON with `document`, `chunk_count`, and `chunks` array
-- Valid block types for `split_oversized_blocks`: `paragraph`, `blockquote`, `list`, `table`, `code_block`, `code_fence`, `html_block`
+- `block_handling`: comma-separated `kind:policy` pairs (e.g. `"table:isolate"`); valid policies: `default`, `isolate`; valid block kinds: `paragraph`, `blockquote`, `list`, `table`, `code_block`, `code_fence`, `html_block`
+- `nosplit_kinds`: comma-separated block kinds that should NOT be split when oversized (e.g. `"table,code_fence"`)
 - Server CLI: `lumberjack-serve` with `--host` (default `127.0.0.1`), `--port` (default `8000`), `--reload`
 - Thin wrapper around `lumber()` — no splitting logic in the web layer
 
@@ -140,7 +146,9 @@ Implemented in `src/lumberjack/main.py`.
 - `--no-isolate-front-matter` disables front matter isolation
 - `--disable-lheading` disables Setext heading parsing
 - `--recursive-split` enables block/text fallback for oversized section bodies (effective with `--splitter heading`)
-- `--split-oversized-block <kind>` can be repeated; valid kinds: `paragraph`, `blockquote`, `list`, `table`, `code_block`, `code_fence`, `html_block`
+- `--block-handling KIND:POLICY` overrides the merge policy for a block kind; can be repeated; valid policies: `default`, `isolate`; valid kinds: `paragraph`, `blockquote`, `list`, `table`, `code_block`, `code_fence`, `html_block`
+- `--nosplit-kinds KIND,...` comma-separated block kinds that should NOT be split when oversized (e.g. `table,code_fence`); default: all kinds allow splitting
+- `--block-max-tokens KIND:TOKENS` overrides the max_tokens budget for a specific block kind; can be repeated
 - JSON output serializes dataclasses with `dataclasses.asdict`
 
 ## Current Parsing Coverage
@@ -193,12 +201,14 @@ The parser currently captures these inline structures in headings and paragraphs
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
 - Front matter delimiters are preserved inside the front matter chunk; other thematic breaks are ignored during parsing
 - `recursive_split=True` enables block/text fallback for oversized section bodies in `SectionMarkdownSplitter`
-- Default `split_oversized_blocks` includes `paragraph`, `blockquote`, `html_block`
+- `block_handling` maps block kinds to `BlockHandling` merge policies: `DEFAULT` (allow merge), `ISOLATE` (no merge); splitting is enabled by default for all kinds
+- Default `block_handling`: all blocks → `DEFAULT` (allow merge); users opt out of merging by setting `ISOLATE`
+- `nosplit_kinds` lists block kinds that should NOT be split when oversized; default: empty (all kinds allow splitting)
 
 ## Constraints
 
 - Markdown only; no PDF/HTML/DOCX ingestion pipeline is planned here
-- Fenced code blocks are preserved intact even when they exceed `max_tokens` (unless `code_block`/`code_fence` is in `split_oversized_blocks`)
+- Fenced code blocks are preserved intact even when they exceed `max_tokens` (unless `code_block`/`code_fence` is not in `nosplit_kinds`)
 - CLI should stay orchestration-only; parsing/splitting logic belongs in `src/lumberjack/core/`
 - There is no LangChain dependency
 

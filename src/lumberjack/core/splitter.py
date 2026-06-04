@@ -380,9 +380,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
 
     def _block_budget(self, block_kind: str, default_budget: int) -> int:
         """Return the per-block max_tokens override, or *default_budget*."""
-        override = self.options.split_oversized_blocks_max_tokens.get(
-            block_kind.lower()
-        )
+        override = self.options.block_max_tokens.get(block_kind.lower())
         return override if override and override > 0 else default_budget
 
     def _validate_options(self) -> None:
@@ -403,11 +401,10 @@ class _BaseMarkdownSplitter(SplitterProtocol):
                 f"overlap_tokens ({self.options.overlap_tokens}) must be smaller than "
                 f"ideal_max_tokens ({self.options.ideal_max_tokens})"
             )
-        for kind, tokens in self.options.split_oversized_blocks_max_tokens.items():
+        for kind, tokens in self.options.block_max_tokens.items():
             if tokens <= 0:
                 raise ValueError(
-                    f"split_oversized_blocks_max_tokens[{kind!r}] must be positive, "
-                    f"got {tokens}"
+                    f"block_max_tokens[{kind!r}] must be positive, got {tokens}"
                 )
 
     def _extract_front_matter(self, root: SectionNode) -> MarkdownBlock | None:
@@ -460,8 +457,8 @@ class _BaseMarkdownSplitter(SplitterProtocol):
             + body_token_count
             + sum(child.counts.subtree for child in children)
         )
-        body_has_standalone = bool(self.options.standalone_blocks) and any(
-            block.kind in self.options.standalone_blocks for block in section.blocks
+        body_has_standalone = any(
+            block.kind in self.options.standalone_kinds for block in section.blocks
         )
         can_emit_as_single_chunk = not body_has_standalone and all(
             child.can_emit_as_single_chunk for child in children
@@ -486,7 +483,8 @@ class _BaseMarkdownSplitter(SplitterProtocol):
         headings = node.path
         blocks = node.blocks
         max_tokens = self.options.ideal_max_tokens
-        standalone = self.options.standalone_blocks
+        splittable_kinds = self.options.splittable_kinds
+        standalone = self.options.standalone_kinds
 
         prefix_tokens = (
             heading_path_token_count(self.tokenizer, headings) if node.level > 0 else 0
@@ -542,7 +540,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
                 block_pieces = self._text_splitter.split_oversized_block(
                     block,
                     max_tokens=self._block_budget(block.kind, budget),
-                    allowed_kinds=self.options.split_oversized_blocks,
+                    allowed_kinds=splittable_kinds,
                 )
                 if block_pieces is not None:
                     for piece in block_pieces:
@@ -621,7 +619,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
             block_pieces = self._text_splitter.split_oversized_block(
                 block,
                 max_tokens=self._block_budget(block.kind, budget),
-                allowed_kinds=self.options.split_oversized_blocks,
+                allowed_kinds=splittable_kinds,
             )
             if block_pieces is None:
                 chunks.append(
@@ -845,7 +843,10 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
 
         chunk_token = section.counts.subtree
 
-        if chunk_token <= self.options.ideal_max_tokens and section.can_emit_as_single_chunk:
+        if (
+            chunk_token <= self.options.ideal_max_tokens
+            and section.can_emit_as_single_chunk
+        ):
             entries = self._entries_from_section(section)
             return [
                 _ChunkDraft(
@@ -870,6 +871,7 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
         chunks: list[_ChunkDraft] = []
         current_entries: list[_Entry] = []
         current_token_count: int = 0
+        standalone_kinds = self.options.standalone_kinds
 
         common_heading_token_count = heading_path_token_count(self.tokenizer, node.path)
         budget_token_count = self.options.ideal_max_tokens - common_heading_token_count
@@ -918,9 +920,7 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
 
         if node.blocks:
             body_token_count = section.counts.body
-            body_has_standalone = bool(self.options.standalone_blocks) and any(
-                b.kind in self.options.standalone_blocks for b in node.blocks
-            )
+            body_has_standalone = any(b.kind in standalone_kinds for b in node.blocks)
             if body_has_standalone:
                 flush_current()
                 chunks.extend(self._split_section_body(section))
@@ -1033,8 +1033,8 @@ class SectionMarkdownSplitter(_BaseMarkdownSplitter):
         node = section.node
 
         if node.blocks or node.level > 0:
-            body_has_standalone = bool(self.options.standalone_blocks) and any(
-                b.kind in self.options.standalone_blocks for b in node.blocks
+            body_has_standalone = any(
+                b.kind in self.options.standalone_kinds for b in node.blocks
             )
             if (
                 self.options.recursive_split
