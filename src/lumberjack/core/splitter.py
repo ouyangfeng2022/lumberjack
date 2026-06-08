@@ -508,11 +508,21 @@ class _BaseMarkdownSplitter(SplitterProtocol):
         # 3. Count subtree tokens
         subtree_token_count = title_token_count + body_token_count
         previous_tail = section.blocks[-1].text if section.blocks else ""
+        prev_child: _MeasuredSection | None = None
         for child in children:
-            if previous_tail:
+            # When the previous child is a leaf section with no body
+            # blocks, its heading's trailing \n\n (from
+            # heading_path_token_count) already serves as the separator
+            # to this child.  Adding sep_delta would double-count it.
+            if previous_tail and not (
+                prev_child is not None
+                and not prev_child.node.blocks
+                and not prev_child.children
+            ):
                 subtree_token_count += self._separator_delta_after(previous_tail)
             subtree_token_count += child.counts.subtree
             previous_tail = child.tail_text
+            prev_child = child
 
         if previous_tail:
             tail_text = previous_tail
@@ -775,13 +785,28 @@ class _BaseMarkdownSplitter(SplitterProtocol):
                 continue
             index += 1
             token_count = self.tokenizer.count(body)
+            # Adjust the estimate for the trailing phantom \n\n in the last
+            # entry.  When the last entry has empty body, its heading's
+            # trailing \n\n (from heading_path_token_count) was counted in
+            # the incremental estimate but is never rendered — there is no
+            # next entry for it to separate from.
+            estimated = chunk.token_count
+            if chunk.entries:
+                last = chunk.entries[-1]
+                if not last.body.strip():
+                    relative = last.headings[len(headings) :]
+                    if relative:
+                        ht = render_heading_path(relative)
+                        estimated -= self.tokenizer.count(
+                            ht + SEPARATOR, cache=True
+                        ) - self.tokenizer.count(ht, cache=True)
             finalized.append(
                 Chunk(
                     chunk_id=f"chunk-{index:04d}",
                     chunk_type=chunk.chunk_type,
                     body=body,
                     token_count=token_count,
-                    estimated_token_count=chunk.token_count,
+                    estimated_token_count=estimated,
                     headings=headings,
                     section_level=headings[-1][0] if headings else 0,
                     document_title=document.title,
@@ -854,9 +879,16 @@ class _BaseMarkdownSplitter(SplitterProtocol):
 
         # Account for the \n\n separator between the last left entry and
         # the first right entry introduced by join_markdown during rendering.
+        #
+        # When the last left entry has empty body, its heading's trailing
+        # \n\n (from heading_path_token_count in _measure_section) already
+        # serves as the separator to the next entry.  Adding sep_delta here
+        # would double-count that separator.
         if left_draft.entries and right_draft.entries:
-            left_tail = self._entry_group_tail(left_draft.entries)
-            body_token_count += self._separator_delta_after(left_tail)
+            last_left = left_draft.entries[-1]
+            if last_left.body:
+                left_tail = self._entry_group_tail(left_draft.entries)
+                body_token_count += self._separator_delta_after(left_tail)
 
         return _ChunkDraft(
             entries=[*left_draft.entries, *right_draft.entries],
