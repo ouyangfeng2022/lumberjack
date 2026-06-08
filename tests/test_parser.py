@@ -359,6 +359,18 @@ def test_parser_preserves_line_ranges_for_normalized_block_syntax() -> None:
     assert indented.end_line == 9
 
 
+def test_parser_normalizes_only_surrounding_newlines_on_block_text() -> None:
+    document = MarkdownParser().parse(
+        "# A\n\n    print('indented')\n",
+        document_title="indented.md",
+    )
+
+    block = document.root.children[0].blocks[0]
+
+    assert block.kind == "code_block"
+    assert block.text == "    print('indented')"
+
+
 def test_user_provided_title_takes_priority_over_front_matter() -> None:
     """User-provided document_title takes priority over front matter title."""
     md = "---\ntitle: FM Title\n---\n\n# Heading\n\nBody."

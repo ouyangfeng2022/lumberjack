@@ -38,7 +38,7 @@ def slice_source(source_lines: list[str], line_map: Any) -> str:
     start, end = int(line_map[0]), int(line_map[1])
     if start < 0 or end < start:
         return ""
-    return "\n".join(source_lines[start:end])
+    return "\n".join(source_lines[start:end]).strip("\n")
 
 
 def start_line(token: Token) -> int | None:

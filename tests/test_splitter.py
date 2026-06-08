@@ -449,7 +449,7 @@ def test_splitter_measures_section_token_counts_bottom_up() -> None:
     chunks = splitter.split(document)
 
     measured_section = measured_root.children[0]
-    assert measured_section.counts.body == len("Body\n\n")
+    assert measured_section.counts.body == len("Body")
     assert measured_section.counts.title == len("# A\n\n")
     assert measured_section.counts.subtree == (
         measured_section.counts.title + measured_section.counts.body
@@ -459,7 +459,7 @@ def test_splitter_measures_section_token_counts_bottom_up() -> None:
     assert not hasattr(document.root.children[0], "subtree_token_count")
     assert len(chunks) == 1
     assert chunks[0].body == "# A\n\nBody"
-    assert chunks[0].estimated_token_count == 11
+    assert chunks[0].estimated_token_count == len("# A\n\nBody")
     assert chunks[0].token_count == len("# A\n\nBody")
 
 
@@ -477,9 +477,85 @@ def test_splitter_uses_estimated_tokens_for_budget_decisions() -> None:
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].estimated_token_count == 11
+    assert chunks[0].estimated_token_count == 9
     assert chunks[0].token_count == 9
     assert chunks[0].estimated_token_count > splitter.options.max_tokens
+
+
+def test_estimated_tokens_do_not_include_trailing_separator_for_last_block() -> None:
+    document = MarkdownParser().parse(
+        "# A\n\nOne\n\nTwo",
+        document_title="multi-block.md",
+    )
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=100, merge_below_tokens=0),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].body == "# A\n\nOne\n\nTwo"
+    assert chunks[0].estimated_token_count == chunks[0].token_count
+    assert chunks[0].estimated_token_count == len("# A\n\nOne\n\nTwo")
+
+
+def test_estimated_tokens_do_not_use_tail_window_between_blocks() -> None:
+    long_block = "a" * 80
+    document = MarkdownParser().parse(
+        f"# A\n\n{long_block}\n\nb",
+        document_title="block-join.md",
+    )
+    tokenizer = RecordingTokenizer()
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=tokenizer,
+        options=SplitOptions(max_tokens=500, merge_below_tokens=0),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].estimated_token_count == chunks[0].token_count
+    assert f"{long_block}\n\n" in tokenizer.counted
+    assert f"{long_block[-64:]}\n\n" not in tokenizer.counted
+
+
+def test_entry_merge_uses_tail_window_only_between_entry_groups() -> None:
+    long_body = "a" * 80
+    tokenizer = RecordingTokenizer()
+    splitter = RecursiveMarkdownSplitter(
+        tokenizer=tokenizer,
+        options=SplitOptions(max_tokens=500, merge_below_tokens=0),
+    )
+    left = [
+        _Entry(
+            headings=((1, "A"),),
+            body=long_body,
+            start_line=1,
+            end_line=1,
+            body_token_count=len(long_body),
+        )
+    ]
+    right = [
+        _Entry(
+            headings=((1, "A"),),
+            body="b",
+            start_line=2,
+            end_line=2,
+            body_token_count=1,
+        )
+    ]
+
+    estimate = splitter._estimate_entries(
+        left,
+        right,
+        left_token_count=splitter._estimate_entries(left),
+        right_token_count=splitter._estimate_entries(right),
+    )
+
+    assert estimate == len("# A\n\n" + long_body + "\n\nb")
+    assert f"{long_body}\n\n" not in tokenizer.counted
+    assert f"{long_body[-64:]}\n\n" in tokenizer.counted
 
 
 def test_heading_estimate_counts_title_once_and_marker_as_one_token() -> None:
@@ -555,7 +631,7 @@ def test_section_chunk_estimate_includes_heading_tokens_without_entries() -> Non
     measured_root = splitter._measure_section(document.root)
     measured_scope = measured_root.children[0].children[0]
 
-    assert measured_scope.counts.subtree == 49
+    assert measured_scope.counts.subtree == 47
 
 
 def test_measured_section_caches_single_chunk_eligibility_from_standalone_blocks() -> (
@@ -759,6 +835,7 @@ def test_merge_small_chunks_combines_sibling_sections_with_same_parent() -> None
     assert [chunk.body for chunk in chunks] == [
         "# Parent\n\n## One\n\nA\n\n## Two\n\nB"
     ]
+    assert chunks[0].estimated_token_count == chunks[0].token_count
     assert 20 < chunks[0].token_count <= 40
 
 
@@ -960,7 +1037,7 @@ def test_splitter_uses_block_max_tokens_for_table_row_packing() -> None:
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
-            max_tokens=80,
+            max_tokens=79,
             ideal_max_tokens_ratio=1,
             merge_below_tokens=0,
             merge_small_chunks=False,

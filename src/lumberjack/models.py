@@ -269,7 +269,15 @@ class Chunk:
         token_count: Token count measured by the configured tokenizer.
         estimated_token_count: Estimated token count when exact counting is unavailable.
         headings: Tuple of ``(level, title)`` pairs representing the heading path.
+
+            ``# H1 \\n\\n ## H2.1 \\n\\n Content1``, headings=[(1, "H1"), (2, "H2.1")].
+
+            ``# H1 \\n\\n ## H2.1 \\n\\n Content1 ## H2.2 \\n\\n Content2``, headings=[(1, "H1")].
+
         section_level: Deepest heading level in this chunk.
+
+            ``section_level = max((level for level, _ in headings), default=0)``.
+
         document_title: Title of the source document.
         document_path: File path of the source document, if split from a file.
         start_line: 1-based line number where this chunk begins in the source.

@@ -28,6 +28,8 @@ class TiktokenTokenizer(TokenizerProtocol):
         *,
         cache: bool = False,
     ) -> tuple[int, ...]:
+        if not text:
+            return ()
 
         if cache:
             with self._lock:
@@ -48,6 +50,8 @@ class TiktokenTokenizer(TokenizerProtocol):
         *,
         cache: bool = False,
     ) -> int:
+        if not text:
+            return 0
         return len(self.encode(text, cache=cache))
 
     def clear_cache(self) -> None:

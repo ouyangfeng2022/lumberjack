@@ -8,8 +8,8 @@ if TYPE_CHECKING:
 
 def join_markdown(parts: list[str]) -> str:
     """Join non-empty Markdown parts with double-newline separators."""
-    cleaned = [part.strip("\n") for part in parts if part and part.strip()]
-    return "\n\n".join(cleaned).strip()
+    cleaned = [part for part in parts if part]
+    return "\n\n".join(cleaned)
 
 
 def render_heading(level: int, title: str) -> str:
