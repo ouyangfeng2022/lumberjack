@@ -32,10 +32,19 @@ Current behavior:
 
 ## Install
 
-Runtime install:
+Install from PyPI:
 
 ```bash
-uv sync
+pip install lumberjack
+
+# With optional tokenizer support
+pip install "lumberjack[tokenizers]"
+
+# With web UI support
+pip install "lumberjack[web]"
+
+# Everything
+pip install "lumberjack[all]"
 ```
 
 Development install with tests, linting, and optional `tiktoken` support:

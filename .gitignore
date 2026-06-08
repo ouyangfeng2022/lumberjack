@@ -17,3 +17,17 @@ src/lumberjack/web/static/
 # Datasets
 data/
 output/
+
+# Tool caches
+.ruff_cache/
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
