@@ -836,36 +836,6 @@ class _BaseMarkdownSplitter(SplitterProtocol):
             return "#" * level + " " + title
         return ""
 
-    def _estimate_entry_group(self, entries: list[_Entry]) -> int:
-        if not entries:
-            return 0
-
-        tokens = 0
-        common_headings = common_heading_path(entry.headings for entry in entries)
-        if common_headings:
-            tokens += heading_path_token_count(self.tokenizer, common_headings)
-
-        previous_headings = common_headings
-        previous_tail = ""
-        for entry in entries:
-            if previous_tail:
-                tokens += self._separator_delta_after(previous_tail)
-
-            shared_headings = common_heading_path((previous_headings, entry.headings))
-            if len(shared_headings) < len(common_headings):
-                shared_headings = common_headings
-            relative_headings = entry.headings[len(shared_headings) :]
-            entry_token_count = (
-                heading_path_token_count(self.tokenizer, relative_headings)
-                + entry.body_token_count
-            )
-
-            tokens += entry_token_count
-            previous_tail = entry.body if entry.body else ""
-            previous_headings = entry.headings
-
-        return tokens
-
     def _merge_drafts(
         self,
         left_draft: _ChunkDraft,
@@ -896,63 +866,6 @@ class _BaseMarkdownSplitter(SplitterProtocol):
             token_count=headings_token_count + body_token_count,
             split_origin=f"merge({left_draft.split_origin}+{right_draft.split_origin})",
             chunk_type=left_draft.chunk_type,
-        )
-
-    def _estimate_entries(
-        self,
-        left_entries: list[_Entry],
-        right_entries: list[_Entry] | None = None,
-        *,
-        left_token_count: int | None = None,
-        right_token_count: int | None = None,
-    ) -> int:
-        if right_entries is None:
-            return self._estimate_entry_group(left_entries)
-
-        if not left_entries:
-            return (
-                right_token_count
-                if right_token_count is not None
-                else self._estimate_entry_group(right_entries)
-            )
-        if not right_entries:
-            return (
-                left_token_count
-                if left_token_count is not None
-                else self._estimate_entry_group(left_entries)
-            )
-
-        left_tokens = (
-            left_token_count
-            if left_token_count is not None
-            else self._estimate_entry_group(left_entries)
-        )
-        right_tokens = (
-            right_token_count
-            if right_token_count is not None
-            else self._estimate_entry_group(right_entries)
-        )
-
-        left_tail = self._entry_group_tail(left_entries)
-        shared_headings = common_heading_path(
-            (left_entries[-1].headings, right_entries[0].headings)
-        )
-        right_common_headings = common_heading_path(
-            entry.headings for entry in right_entries
-        )
-        right_first_relative_headings = right_entries[0].headings[
-            len(shared_headings) :
-        ]
-        duplicated_heading_tokens = heading_path_token_count(
-            self.tokenizer, right_common_headings
-        ) - heading_path_token_count(self.tokenizer, right_first_relative_headings)
-        duplicated_heading_tokens = max(0, duplicated_heading_tokens)
-
-        return (
-            left_tokens
-            + self._separator_delta_after(left_tail)
-            + right_tokens
-            - duplicated_heading_tokens
         )
 
     def _render_body(
@@ -1180,12 +1093,6 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
         while i > 0:
             current = merged[i]
             previous = merged[i - 1]
-            merged_token_count = self._estimate_entries(
-                previous.entries,
-                current.entries,
-                left_token_count=previous.token_count,
-                right_token_count=current.token_count,
-            )
             can_merge = (
                 (parent_headings is None or previous.headings == parent_headings)
                 and previous.headings == current.headings
@@ -1193,22 +1100,14 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
             )
             if (
                 can_merge
-                and merged_token_count <= self.options.max_tokens
                 and current.token_count < self.options.merge_below_tokens
                 and previous.chunk_type == "paragraph"
                 and current.chunk_type == "paragraph"
             ):
-                merged_entries = [*previous.entries, *current.entries]
-                merged[i - 1] = _ChunkDraft(
-                    entries=merged_entries,
-                    headings=previous.headings,
-                    headings_token_count=previous.headings_token_count,
-                    body_token_count=merged_token_count - previous.headings_token_count,
-                    token_count=merged_token_count,
-                    split_origin=previous.split_origin,
-                    chunk_type=previous.chunk_type,
-                )
-                del merged[i]
+                merged_draft = self._merge_drafts(previous, current)
+                if merged_draft.token_count <= self.options.max_tokens:
+                    merged[i - 1] = merged_draft
+                    del merged[i]
             i -= 1
         return merged
 
