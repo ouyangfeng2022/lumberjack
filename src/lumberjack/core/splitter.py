@@ -1217,8 +1217,6 @@ class SectionMarkdownSplitter(_BaseMarkdownSplitter):
     def _split_section(
         self,
         section: _MeasuredSection,
-        *,
-        parent_headings: HeadingPath = (),
     ) -> list[_ChunkDraft]:
         """Return one direct-body draft per section, then recurse into children."""
         chunks: list[_ChunkDraft] = []
