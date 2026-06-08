@@ -647,8 +647,8 @@ class _BaseMarkdownSplitter(SplitterProtocol):
                             entries=[entry],
                             headings=headings,
                             headings_token_count=prefix_tokens,
-                            body_token_count=piece_tokens,
-                            token_count=prefix_tokens + piece_tokens,
+                            body_token_count=block_tokens,
+                            token_count=prefix_tokens + block_tokens,
                             split_origin="fragment",
                             chunk_type=block.kind,
                         )
@@ -881,6 +881,12 @@ class _BaseMarkdownSplitter(SplitterProtocol):
         right_body_token_count = right_draft.token_count - headings_token_count
 
         body_token_count = left_body_token_count + right_body_token_count
+
+        # Account for the \n\n separator between the last left entry and
+        # the first right entry introduced by join_markdown during rendering.
+        if left_draft.entries and right_draft.entries:
+            left_tail = self._entry_group_tail(left_draft.entries)
+            body_token_count += self._separator_delta_after(left_tail)
 
         return _ChunkDraft(
             entries=[*left_draft.entries, *right_draft.entries],
