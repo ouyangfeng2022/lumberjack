@@ -17,6 +17,12 @@ export interface SplitResponse {
   chunks: ChunkData[];
 }
 
+export interface BlockConfigState {
+  isolated?: boolean;
+  split?: boolean;
+  max_tokens?: number | null;
+}
+
 export interface SplitOptions {
   max_tokens: number;
   ideal_max_tokens_ratio: number;
@@ -25,8 +31,7 @@ export interface SplitOptions {
   merge_small_chunks: boolean;
   skip_empty_sections: boolean;
   recursive_split: boolean;
-  block_handling: string;
-  nosplit_kinds: string;
+  block_configs: Record<string, BlockConfigState> | null;
   disable_lheading: boolean;
   tokenizer: string;
   splitter: string;

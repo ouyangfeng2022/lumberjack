@@ -80,9 +80,8 @@ Supported CLI options today:
 - `--merge-below-tokens`: soft threshold for small-chunk merging, default `50`
 - `--overlap-tokens`: optional token overlap used only for text fallback splits, default `0`
 - `--recursive-split`: split oversized direct section bodies when using `--splitter section`
-- `--block-handling KIND:POLICY`: override a block kind's merge policy; repeat to add multiple. Policies: `default`, `isolate`
-- `--nosplit-kinds KIND,...`: block kinds that should not be split when oversized, default empty
-- `--block-max-tokens KIND:TOKENS`: override the split budget for a block kind; repeat to add multiple
+- `--block-config KIND[:POLICY][:nosplit][:TOKENS]`: per-block-kind configuration; repeat to add multiple. Examples: `table:isolated`, `code_fence:nosplit`, `paragraph:800`, `table:isolated:nosplit:500`. Policies: `isolated`. `nosplit` disables splitting. Integer sets per-kind max_tokens.
+  Valid block kinds: `paragraph`, `blockquote`, `list`, `list_item`, `table`, `code_block`, `code_fence`, `html_block`, `front_matter`, `math_block`, `math_block_eqno`
 - `--disable-lheading`: disable Setext heading parsing
 
 Parser note:
@@ -119,14 +118,16 @@ Each chunk is serialized from the `Chunk` dataclass and includes fields such as:
 
 ## Python API
 
-The public API lives in [`src/lumberjack/api.py`](src/lumberjack/api.py).
+The public API lives in [`src/lumberjack/__init__.py`](src/lumberjack/__init__.py).
 
 The top-level Python API is intentionally small: pass Markdown text to `lumberjack.lumber()`
 and receive a list of `Chunk` objects. File reading is handled by callers.
 
 ```python
 from lumberjack import lumber
+from lumberjack.core.models import BlockConfig
 
+# Basic usage
 chunks = lumber(
     markdown_text,
     document_title="guide.md",
@@ -136,9 +137,6 @@ chunks = lumber(
     overlap_tokens=0,
     merge_small_chunks=True,
     skip_empty_sections=True,
-    block_handling={"table": "isolate"},
-    nosplit_kinds={"code_fence"},
-    block_max_tokens={"table": 800},
     recursive_split=False,
     disable_lheading=False,
     tokenizer="simple",
@@ -146,6 +144,37 @@ chunks = lumber(
     splitter="recursive",
 )
 
+# With per-block-kind configuration
+#
+# BlockConfig fields:
+#   isolated  — whether to emit this block kind as standalone chunks instead of merging (bool, default False)
+#   split     — whether to allow splitting oversized blocks (bool, default True)
+#   max_tokens— per-kind token budget override (int or None, default None = use global max_tokens)
+#
+# Valid block kinds: paragraph, blockquote, list, list_item, table,
+#   code_block, code_fence, html_block, front_matter, math_block, math_block_eqno
+chunks = lumber(
+    markdown_text,
+    document_title="guide.md",
+    block_options={
+        # Isolate tables as standalone chunks, disable splitting, budget 500 tokens
+        "table": BlockConfig(isolated=True, split=False, max_tokens=500),
+        # Keep code fences intact when oversized
+        "code_fence": BlockConfig(split=False),
+        # Custom budget for paragraphs
+        "paragraph": BlockConfig(max_tokens=800),
+    },
+)
+
+# block_options also accepts plain dicts
+chunks = lumber(
+    markdown_text,
+    block_options={
+        "table": {"isolated": True, "split": False},
+    },
+)
+
+# Custom parser with plugins
 from mdit_py_plugins.tasklists import tasklists_plugin
 from lumberjack.core.parser import MarkdownItParser
 
@@ -158,6 +187,167 @@ plugin_chunks = lumber(
 
 Only `lumber` is exported from [`src/lumberjack/__init__.py`](src/lumberjack/__init__.py).
 Advanced parser, splitter, tokenizer, and model types remain available from their internal modules.
+
+## Web API
+
+Install with web support:
+
+```bash
+pip install "lumberjack[web]"
+```
+
+Start the server:
+
+```bash
+# Development (auto-reload)
+lumberjack-serve --reload
+
+# Production
+lumberjack-serve --host 0.0.0.0 --port 8000
+```
+
+Server CLI options:
+
+- `--host`: bind address, default `127.0.0.1`
+- `--port`: port number, default `8000`
+- `--reload`: enable auto-reload for development
+
+### POST `/lumber/api/split`
+
+Accepts `multipart/form-data` with the following fields:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `text` | string | — | Markdown text input (use `text` **or** `file`, not both) |
+| `file` | upload | — | Markdown file upload |
+| `max_tokens` | int | `1200` | Maximum chunk token budget |
+| `ideal_max_tokens_ratio` | float | `0.8` | Preferred split budget ratio |
+| `merge_below_tokens` | int | `50` | Soft merge threshold for small chunks |
+| `overlap_tokens` | int | `0` | Token overlap for text fallback splits |
+| `merge_small_chunks` | bool | `true` | Merge adjacent small chunks |
+| `skip_empty_sections` | bool | `true` | Discard heading-only chunks |
+| `recursive_split` | bool | `false` | Enable block/text fallback for section splitter |
+| `block_configs` | string | `""` | JSON object for per-block-kind config (see below) |
+| `disable_lheading` | bool | `false` | Disable Setext heading parsing |
+| `tokenizer` | string | `"simple"` | Tokenizer: `simple` or `tiktoken` |
+| `splitter` | string | `"recursive"` | Splitter: `recursive` or `section` |
+
+`block_configs` is a JSON object mapping block kinds to config dicts. Each value has optional keys: `isolated` (boolean), `split` (boolean), `max_tokens` (integer or null).
+
+```json
+{
+  "table": {"isolated": true, "split": false, "max_tokens": 500},
+  "code_fence": {"split": false}
+}
+```
+
+Example requests:
+
+```bash
+# Split text
+curl -X POST http://localhost:8000/lumber/api/split \
+  -F "text=# Hello\n\nWorld" \
+  -F "max_tokens=500"
+
+# Upload a file
+curl -X POST http://localhost:8000/lumber/api/split \
+  -F "file=@guide.md" \
+  -F "splitter=section"
+
+# With block configs
+curl -X POST http://localhost:8000/lumber/api/split \
+  -F "text=# Data\n\n| A | B |\n|---|---|\n| 1 | 2 |" \
+  -F 'block_configs={"table":{"isolated":true,"split":false}}' \
+  -F "max_tokens=200"
+```
+
+Python client example:
+
+```python
+import json
+from pathlib import Path
+
+import httpx
+
+API_URL = "http://localhost:8000/lumber/api/split"
+
+
+def split_text(md: str, **kwargs) -> dict:
+    """Split markdown text via the Web API."""
+    data: dict = {"text": md}
+    for key in (
+        "max_tokens", "ideal_max_tokens_ratio", "merge_below_tokens",
+        "overlap_tokens", "merge_small_chunks", "skip_empty_sections",
+        "recursive_split", "disable_lheading", "tokenizer", "splitter",
+    ):
+        if key in kwargs:
+            data[key] = kwargs[key]
+    if "block_configs" in kwargs:
+        data["block_configs"] = json.dumps(kwargs["block_configs"])
+    resp = httpx.post(API_URL, data=data)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def split_file(path: str | Path, **kwargs) -> dict:
+    """Upload a markdown file via the Web API."""
+    p = Path(path)
+    data: dict = {}
+    for key in (
+        "max_tokens", "ideal_max_tokens_ratio", "merge_below_tokens",
+        "overlap_tokens", "merge_small_chunks", "skip_empty_sections",
+        "recursive_split", "disable_lheading", "tokenizer", "splitter",
+    ):
+        if key in kwargs:
+            data[key] = kwargs[key]
+    if "block_configs" in kwargs:
+        data["block_configs"] = json.dumps(kwargs["block_configs"])
+    with p.open("rb") as f:
+        resp = httpx.post(API_URL, data=data, files={"file": (p.name, f, "text/markdown")})
+    resp.raise_for_status()
+    return resp.json()
+
+
+# Usage
+result = split_text(
+    "# Hello\n\nWorld",
+    max_tokens=500,
+    block_configs={"table": {"isolated": True, "split": False}},
+)
+print(f"Chunks: {result['chunk_count']}")
+
+result = split_file("guide.md", splitter="section", max_tokens=800)
+print(f"Document: {result['document']}, Chunks: {result['chunk_count']}")
+```
+
+Response JSON:
+
+```json
+{
+  "document": "guide.md",
+  "chunk_count": 2,
+  "chunks": [
+    {
+      "chunk_id": "chunk-001",
+      "chunk_type": "heading",
+      "body": "# Hello\n\nWorld",
+      "token_count": 8,
+      "estimated_token_count": 8,
+      "headings": [[1, "Hello"]],
+      "section_level": 1,
+      "document_title": "guide.md",
+      "document_path": null,
+      "start_line": 1,
+      "end_line": 3
+    }
+  ]
+}
+```
+
+### Web UI
+
+When the server is running, the built-in Web UI is available at `http://localhost:8000/`.
+It provides a visual interface for text/file input, split options, and chunk result visualization.
 
 ## Internal Model
 
@@ -252,12 +442,12 @@ Important details:
   threshold for adjacent same-parent chunks: tails below this value are merged
   bottom-up when the estimated merged size still fits within `max_tokens`.
 - Optional overlap is only applied when a single oversized block must be split by paragraph, line, sentence, word, or hard boundaries
-- All known block kinds are splittable by default. Use `nosplit_kinds` to keep selected oversized block kinds intact.
+- All known block kinds are splittable by default. Set `BlockConfig(split=False)` to keep selected oversized block kinds intact.
 - Oversized Markdown pipe tables are split by rows. When a header delimiter row is detected, each table fragment repeats the original header and delimiter row. If a single data row with its header exceeds the budget, that row is kept as a valid oversized table fragment.
-- `block_handling` controls merge policy only. Set a kind to `isolate` to emit that block kind as independent chunks instead of merging it with adjacent content.
-- `block_max_tokens` can override the split budget for specific block kinds such as `table`.
+- `BlockConfig.isolated` controls merge policy. Set `isolated=True` to emit that block kind as independent chunks instead of merging it with adjacent content.
+- `BlockConfig.max_tokens` can override the split budget for specific block kinds such as `table`.
 - Long URL-like spans are treated as unsplittable and will not be hard-split across chunks
-- YAML front matter is handled as a normal `front_matter` block. Use `block_handling={"front_matter": "isolate"}` when it should be emitted as its own chunk.
+- YAML front matter is handled as a normal `front_matter` block. Use `block_options={"front_matter": BlockConfig(isolated=True)}` when it should be emitted as its own chunk.
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
 - Front matter delimiters are preserved inside the `front_matter` block; other thematic breaks are ignored during parsing
 - For `section` splitter, `recursive_split=False` keeps oversized section bodies intact.
@@ -279,7 +469,7 @@ If `tiktoken` is not installed and `TiktokenTokenizer` is requested, the library
 src/lumberjack/base/          Protocol interfaces
 src/lumberjack/core/          Parser, splitter, tokenizer, and visitor implementations
 src/lumberjack/core/plugins/  Custom markdown-it plugins (bracket math)
-src/lumberjack/api.py         Public Python API
+src/lumberjack/__init__.py    Public Python API
 src/lumberjack/models.py      Internal data models
 src/lumberjack/utils.py       Markdown rendering helpers
 src/lumberjack/main.py        CLI orchestration

@@ -458,8 +458,10 @@ class _BaseMarkdownSplitter(SplitterProtocol):
 
     def _block_budget(self, block_kind: str, default_budget: int) -> int:
         """Return the per-block max_tokens override, or *default_budget*."""
-        override = self.options.block_max_tokens.get(block_kind.lower())
-        return override if override and override > 0 else default_budget
+        cfg = self.options.block_options.get(block_kind.lower())
+        if cfg and cfg.max_tokens and cfg.max_tokens > 0:
+            return cfg.max_tokens
+        return default_budget
 
     def _separator_delta_after(self, text: str) -> int:
         """Estimate the token delta caused by appending the Markdown separator."""
@@ -488,10 +490,10 @@ class _BaseMarkdownSplitter(SplitterProtocol):
                 f"overlap_tokens ({self.options.overlap_tokens}) must be smaller than "
                 f"ideal_max_tokens ({self.options.ideal_max_tokens})"
             )
-        for kind, tokens in self.options.block_max_tokens.items():
-            if tokens <= 0:
+        for kind, cfg in self.options.block_options.items():
+            if cfg.max_tokens is not None and cfg.max_tokens <= 0:
                 raise ValueError(
-                    f"block_max_tokens[{kind!r}] must be positive, got {tokens}"
+                    f"block_options[{kind!r}].max_tokens must be positive, got {cfg.max_tokens}"
                 )
 
     def _measure_section(self, section: SectionNode) -> _MeasuredSection:

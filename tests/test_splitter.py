@@ -4,7 +4,7 @@ from dataclasses import fields
 from pathlib import Path
 
 from lumberjack import lumber
-from lumberjack.core.models import BlockHandling, SplitOptions
+from lumberjack.core.models import BlockConfig, SplitOptions
 from lumberjack.core.parser import MarkdownParser
 from lumberjack.core.splitter import (
     RecursiveMarkdownSplitter,
@@ -197,7 +197,7 @@ def test_heading_splitter_keeps_oversized_section_intact_by_default() -> None:
         options=SplitOptions(
             max_tokens=25,
             merge_below_tokens=0,
-            block_handling={"paragraph": BlockHandling.DEFAULT},
+            block_options={"paragraph": BlockConfig()},
         ),
     )
 
@@ -219,7 +219,7 @@ def test_heading_splitter_recursively_splits_oversized_section_body() -> None:
             max_tokens=35,
             merge_below_tokens=0,
             recursive_split=True,
-            block_handling={"paragraph": BlockHandling.DEFAULT},
+            block_options={"paragraph": BlockConfig()},
         ),
     )
 
@@ -447,7 +447,7 @@ def test_splitter_measures_section_token_counts_bottom_up() -> None:
         options=SplitOptions(
             max_tokens=7,
             merge_below_tokens=0,
-            block_handling={},
+            block_options={},
         ),
     )
 
@@ -476,7 +476,7 @@ def test_splitter_uses_estimated_tokens_for_budget_decisions() -> None:
         options=SplitOptions(
             max_tokens=7,
             merge_below_tokens=0,
-            block_handling={},
+            block_options={},
         ),
     )
 
@@ -674,7 +674,7 @@ Plain body.
         options=SplitOptions(
             max_tokens=500,
             merge_below_tokens=0,
-            block_handling={"table": BlockHandling.ISOLATE},
+            block_options={"table": BlockConfig(isolated=True)},
         ),
     )
 
@@ -693,7 +693,7 @@ Plain body.
         options=SplitOptions(
             max_tokens=500,
             merge_below_tokens=0,
-            block_handling={},
+            block_options={},
         ),
     )
 
@@ -959,7 +959,7 @@ def test_splitter_keeps_oversized_lists_intact_when_in_nosplit_kinds() -> None:
         options=SplitOptions(
             max_tokens=20,
             merge_below_tokens=0,
-            nosplit_kinds=frozenset({"list"}),
+            block_options={"list": BlockConfig(split=False)},
         ),
     )
 
@@ -1013,7 +1013,7 @@ def test_splitter_splits_oversized_tables_by_rows_with_repeated_header() -> None
             ideal_max_tokens_ratio=1,
             merge_below_tokens=0,
             merge_small_chunks=False,
-            block_handling={"table": BlockHandling.ISOLATE},
+            block_options={"table": BlockConfig(isolated=True)},
         ),
     )
 
@@ -1047,7 +1047,7 @@ def test_splitter_keeps_oversized_tables_intact_when_in_nosplit_kinds() -> None:
             ideal_max_tokens_ratio=1,
             merge_below_tokens=0,
             merge_small_chunks=False,
-            nosplit_kinds=frozenset({"table"}),
+            block_options={"table": BlockConfig(split=False)},
         ),
     )
 
@@ -1073,7 +1073,7 @@ def test_splitter_uses_block_max_tokens_for_table_row_packing() -> None:
             ideal_max_tokens_ratio=1,
             merge_below_tokens=0,
             merge_small_chunks=False,
-            block_max_tokens={"table": 60},
+            block_options={"table": BlockConfig(max_tokens=60)},
         ),
     )
 
@@ -1102,7 +1102,7 @@ def test_splitter_preserves_oversized_single_table_rows() -> None:
             ideal_max_tokens_ratio=1,
             merge_below_tokens=0,
             merge_small_chunks=False,
-            block_handling={"table": BlockHandling.ISOLATE},
+            block_options={"table": BlockConfig(isolated=True)},
         ),
     )
 
@@ -1124,7 +1124,7 @@ def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
             ideal_max_tokens_ratio=1,
             merge_below_tokens=0,
             merge_small_chunks=False,
-            block_handling={"code_fence": BlockHandling.DEFAULT},
+            block_options={"code_fence": BlockConfig()},
         ),
     )
 
@@ -1217,14 +1217,14 @@ def test_section_splitter_handles_front_matter_as_root_body_chunk() -> None:
     ]
 
 
-def test_front_matter_can_be_isolated_with_block_handling() -> None:
+def test_front_matter_can_be_isolated_with_block_config() -> None:
     document = MarkdownParser().parse(FRONT_MATTER_FIXTURE, document_title="doc.md")
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
             max_tokens=500,
             merge_below_tokens=0,
-            block_handling={"front_matter": BlockHandling.ISOLATE},
+            block_options={"front_matter": BlockConfig(isolated=True)},
         ),
     )
 
@@ -1330,9 +1330,9 @@ def test_thematic_break_after_split_list_is_ignored() -> None:
         md,
         max_tokens=50,
         merge_below_tokens=0,
-        block_handling={
-            "list": BlockHandling.DEFAULT,
-            "paragraph": BlockHandling.DEFAULT,
+        block_options={
+            "list": BlockConfig(),
+            "paragraph": BlockConfig(),
         },
     )
 
@@ -1486,7 +1486,7 @@ def test_standalone_table_is_isolated_even_when_budget_allows_merge() -> None:
         options=SplitOptions(
             max_tokens=1000,
             merge_below_tokens=0,
-            block_handling={"table": BlockHandling.ISOLATE},
+            block_options={"table": BlockConfig(isolated=True)},
         ),
     )
 
@@ -1504,7 +1504,7 @@ def test_standalone_table_is_isolated_even_when_budget_allows_merge() -> None:
 
 
 def test_standalone_blocks_empty_frozenset_restores_merge_behavior() -> None:
-    """Empty block_handling merges table back with paragraphs."""
+    """Empty standalone_kinds merges table back with paragraphs."""
     document = MarkdownParser().parse(
         STANDALONE_TABLE_FIXTURE, document_title="standalone.md"
     )
@@ -1513,7 +1513,7 @@ def test_standalone_blocks_empty_frozenset_restores_merge_behavior() -> None:
         options=SplitOptions(
             max_tokens=1000,
             merge_below_tokens=0,
-            block_handling={},
+            block_options={},
         ),
     )
 
@@ -1537,7 +1537,7 @@ def test_standalone_chunk_not_merged_by_merge_small_chunks() -> None:
             max_tokens=1000,
             merge_below_tokens=100,
             merge_small_chunks=True,
-            block_handling={"code_fence": BlockHandling.ISOLATE},
+            block_options={"code_fence": BlockConfig(isolated=True)},
         ),
     )
 
@@ -1561,7 +1561,7 @@ def test_oversized_standalone_code_fence_with_split_oversized() -> None:
             max_tokens=50,
             merge_below_tokens=0,
             merge_small_chunks=False,
-            block_handling={"code_fence": BlockHandling.ISOLATE},
+            block_options={"code_fence": BlockConfig(isolated=True)},
         ),
     )
 
@@ -1583,8 +1583,7 @@ def test_oversized_standalone_code_fence_without_split_stays_intact() -> None:
         options=SplitOptions(
             max_tokens=50,
             merge_below_tokens=0,
-            block_handling={"code_fence": BlockHandling.ISOLATE},
-            nosplit_kinds=frozenset({"code_fence"}),
+            block_options={"code_fence": BlockConfig(isolated=True, split=False)},
         ),
     )
 
@@ -1617,7 +1616,7 @@ Child body.
         options=SplitOptions(
             max_tokens=1000,
             merge_below_tokens=0,
-            block_handling={"table": BlockHandling.ISOLATE},
+            block_options={"table": BlockConfig(isolated=True)},
         ),
     )
 
@@ -1640,7 +1639,7 @@ def test_standalone_block_preserves_heading_context() -> None:
         options=SplitOptions(
             max_tokens=1000,
             merge_below_tokens=0,
-            block_handling={"code_fence": BlockHandling.ISOLATE},
+            block_options={"code_fence": BlockConfig(isolated=True)},
         ),
     )
 
@@ -1672,7 +1671,7 @@ Parent intro.
         options=SplitOptions(
             max_tokens=500,
             merge_below_tokens=0,
-            block_handling={"table": BlockHandling.ISOLATE},
+            block_options={"table": BlockConfig(isolated=True)},
         ),
     )
 
@@ -1688,10 +1687,11 @@ Parent intro.
 # ---------------------------------------------------------------------------
 
 
-def test_block_max_tokens_defaults_to_empty_dict() -> None:
-    """Default block_max_tokens is an empty dict."""
+def test_block_max_tokens_defaults_to_none() -> None:
+    """Default BlockConfig.max_tokens is None."""
     options = SplitOptions()
-    assert options.block_max_tokens == {}
+    for cfg in options.block_options.values():
+        assert cfg.max_tokens is None
 
 
 def test_per_block_max_tokens_overrides_budget_for_paragraph() -> None:
@@ -1706,8 +1706,7 @@ def test_per_block_max_tokens_overrides_budget_for_paragraph() -> None:
             ideal_max_tokens_ratio=1,
             merge_below_tokens=0,
             merge_small_chunks=False,
-            block_handling={"paragraph": BlockHandling.DEFAULT},
-            block_max_tokens={"paragraph": 30},
+            block_options={"paragraph": BlockConfig(max_tokens=30)},
         ),
     )
 
@@ -1731,9 +1730,10 @@ def test_per_block_max_tokens_falls_back_to_unified_max_tokens() -> None:
             ideal_max_tokens_ratio=1,
             merge_below_tokens=0,
             merge_small_chunks=False,
-            block_handling={"paragraph": BlockHandling.DEFAULT},
-            # Override for blockquote, not paragraph → paragraph uses unified 500
-            block_max_tokens={"blockquote": 30},
+            block_options={
+                "paragraph": BlockConfig(),
+                "blockquote": BlockConfig(max_tokens=30),
+            },
         ),
     )
 
@@ -1754,8 +1754,7 @@ def test_per_block_max_tokens_for_code_fence() -> None:
             max_tokens=500,
             merge_below_tokens=0,
             merge_small_chunks=False,
-            block_handling={"code_fence": BlockHandling.ISOLATE},
-            block_max_tokens={"code_fence": 25},
+            block_options={"code_fence": BlockConfig(isolated=True, max_tokens=25)},
         ),
     )
 
@@ -1773,7 +1772,7 @@ def test_per_block_max_tokens_validation_rejects_non_positive() -> None:
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
-            block_max_tokens={"paragraph": 0},
+            block_options={"paragraph": BlockConfig(max_tokens=0)},
         ),
     )
 
@@ -1787,7 +1786,7 @@ def test_per_block_max_tokens_validation_rejects_non_positive() -> None:
     splitter2 = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
-            block_max_tokens={"paragraph": -10},
+            block_options={"paragraph": BlockConfig(max_tokens=-10)},
         ),
     )
     try:
@@ -1799,7 +1798,7 @@ def test_per_block_max_tokens_validation_rejects_non_positive() -> None:
 
 
 def test_lumber_api_accepts_block_max_tokens() -> None:
-    """lumber() accepts and respects block_max_tokens."""
+    """lumber() accepts and respects per-block max_tokens via BlockConfig."""
     long_para = " ".join(f"word{i}" for i in range(100))
     chunks = lumber(
         long_para,
@@ -1807,8 +1806,7 @@ def test_lumber_api_accepts_block_max_tokens() -> None:
         ideal_max_tokens_ratio=1,
         merge_below_tokens=0,
         merge_small_chunks=False,
-        block_handling={"paragraph": BlockHandling.DEFAULT},
-        block_max_tokens={"paragraph": 30},
+        block_options={"paragraph": {"max_tokens": 30}},
     )
     assert len(chunks) > 1
     assert all(c.token_count <= 30 for c in chunks)

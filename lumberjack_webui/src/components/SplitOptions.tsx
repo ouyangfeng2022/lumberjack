@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { SplitOptions as Options } from '../types/chunk';
+import type { BlockConfigState, SplitOptions as Options } from '../types/chunk';
 import styles from './SplitOptions.module.css';
 
 interface Props {
@@ -8,7 +8,7 @@ interface Props {
   onChange: (options: Options) => void;
 }
 
-const BLOCK_HANDLING_OPTIONS = [
+const BLOCK_KINDS = [
   'paragraph',
   'blockquote',
   'list',
@@ -19,60 +19,24 @@ const BLOCK_HANDLING_OPTIONS = [
   'front_matter',
 ] as const;
 
-type BlockPolicy = 'default' | 'isolate';
+interface BlockState {
+  isolated: boolean;
+  split: boolean;
+}
 
-const DEFAULT_HANDLING: Record<string, BlockPolicy> = {
-  paragraph: 'default',
-  blockquote: 'default',
-  html_block: 'default',
-  table: 'default',
-  code_block: 'default',
-  code_fence: 'default',
-  front_matter: 'default',
-};
+const DEFAULT_BLOCK_STATE: BlockState = { isolated: false, split: true };
 
-function parseBlockHandling(raw: string): Record<string, BlockPolicy> {
-  const result: Record<string, BlockPolicy> = { ...DEFAULT_HANDLING };
-  if (!raw || !raw.trim()) return result;
-  for (const part of raw.split(',')) {
-    const trimmed = part.trim();
-    if (!trimmed || !trimmed.includes(':')) continue;
-    const colonIdx = trimmed.indexOf(':');
-    const kind = trimmed.slice(0, colonIdx).trim().toLowerCase();
-    const policy = trimmed.slice(colonIdx + 1).trim().toLowerCase() as BlockPolicy;
-    if (kind && ['default', 'isolate'].includes(policy)) {
-      result[kind] = policy;
-    }
+function getBlockStates(block_configs: Options['block_configs']): Record<string, BlockState> {
+  const result: Record<string, BlockState> = {};
+  for (const kind of BLOCK_KINDS) {
+    const cfg = block_configs?.[kind];
+    result[kind] = {
+      isolated: cfg?.isolated ?? false,
+      split: cfg?.split ?? true,
+    };
   }
   return result;
 }
-
-function serializeBlockHandling(handling: Record<string, BlockPolicy>): string {
-  const entries = Object.entries(handling)
-    .filter(([kind]) => BLOCK_HANDLING_OPTIONS.includes(kind as typeof BLOCK_HANDLING_OPTIONS[number]))
-    .filter(([kind, policy]) => {
-      const def = DEFAULT_HANDLING[kind];
-      return def !== policy;
-    });
-  if (entries.length === 0) return '';
-  return entries.map(([kind, policy]) => `${kind}:${policy}`).join(',');
-}
-
-function parseNosplitKinds(raw: string): Set<string> {
-  if (!raw || !raw.trim()) return new Set();
-  return new Set(
-    raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
-  );
-}
-
-function serializeNosplitKinds(kinds: Set<string>): string {
-  return Array.from(kinds).join(',');
-}
-
-const POLICIES: { value: BlockPolicy; labelKey: string }[] = [
-  { value: 'default', labelKey: 'opts_policy_default' },
-  { value: 'isolate', labelKey: 'opts_policy_isolate' },
-];
 
 export default function SplitOptions({ options, onChange }: Props) {
   const { t } = useTranslation();
@@ -93,22 +57,37 @@ export default function SplitOptions({ options, onChange }: Props) {
     onChange({ ...options, [key]: value });
   };
 
-  const handlingMap = parseBlockHandling(options.block_handling);
-  const nosplitSet = parseNosplitKinds(options.nosplit_kinds);
+  const blockStates = getBlockStates(options.block_configs);
 
-  const setBlockPolicy = (kind: string, policy: BlockPolicy) => {
-    const updated = { ...handlingMap, [kind]: policy };
-    update('block_handling', serializeBlockHandling(updated));
+  const setBlockIsolated = (kind: string, isolated: boolean) => {
+    const updated = { ...blockStates, [kind]: { ...blockStates[kind], isolated } };
+    const cfg: Record<string, BlockConfigState> = {};
+    for (const k of BLOCK_KINDS) {
+      const s = updated[k] ?? DEFAULT_BLOCK_STATE;
+      if (s.isolated || !s.split) {
+        const entry: BlockConfigState = {};
+        if (s.isolated) entry.isolated = true;
+        if (!s.split) entry.split = false;
+        cfg[k] = entry;
+      }
+    }
+    update('block_configs', Object.keys(cfg).length > 0 ? cfg : null);
   };
 
-  const toggleNosplit = (kind: string) => {
-    const next = new Set(nosplitSet);
-    if (next.has(kind)) {
-      next.delete(kind);
-    } else {
-      next.add(kind);
+  const toggleSplit = (kind: string) => {
+    const prev = blockStates[kind] ?? DEFAULT_BLOCK_STATE;
+    const updated = { ...blockStates, [kind]: { ...prev, split: !prev.split } };
+    const cfg: Record<string, BlockConfigState> = {};
+    for (const k of BLOCK_KINDS) {
+      const s = updated[k] ?? DEFAULT_BLOCK_STATE;
+      if (s.isolated || !s.split) {
+        const entry: BlockConfigState = {};
+        if (s.isolated) entry.isolated = true;
+        if (!s.split) entry.split = false;
+        cfg[k] = entry;
+      }
     }
-    update('nosplit_kinds', serializeNosplitKinds(next));
+    update('block_configs', Object.keys(cfg).length > 0 ? cfg : null);
   };
 
   return (
@@ -243,29 +222,28 @@ export default function SplitOptions({ options, onChange }: Props) {
           <div className={styles.field}>
             <span className={styles.fieldLabel}>{t('opts_block_handling')}</span>
             <div className={styles.blockHandlingGrid}>
-              {BLOCK_HANDLING_OPTIONS.map((kind) => (
-                <div key={kind} className={styles.blockHandlingRow}>
-                  <span className={styles.blockKindLabel}>{BLOCK_LABELS[kind]}</span>
-                  <select
-                    className={styles.blockPolicySelect}
-                    value={handlingMap[kind] || 'default'}
-                    onChange={(e) => setBlockPolicy(kind, e.target.value as BlockPolicy)}
-                  >
-                    {POLICIES.map((p) => (
-                      <option key={p.value} value={p.value}>
-                        {t(p.labelKey)}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    className={styles.blockNosplit}
-                    type="checkbox"
-                    title={t('opts_nosplit')}
-                    checked={!nosplitSet.has(kind)}
-                    onChange={() => toggleNosplit(kind)}
-                  />
-                </div>
-              ))}
+              {BLOCK_KINDS.map((kind) => {
+                const state = blockStates[kind] ?? DEFAULT_BLOCK_STATE;
+                return (
+                  <div key={kind} className={styles.blockHandlingRow}>
+                    <span className={styles.blockKindLabel}>{BLOCK_LABELS[kind]}</span>
+                    <input
+                      className={styles.blockNosplit}
+                      type="checkbox"
+                      title={t('opts_isolated')}
+                      checked={state.isolated}
+                      onChange={(e) => setBlockIsolated(kind, e.target.checked)}
+                    />
+                    <input
+                      className={styles.blockNosplit}
+                      type="checkbox"
+                      title={t('opts_nosplit')}
+                      checked={!state.split}
+                      onChange={() => toggleSplit(kind)}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

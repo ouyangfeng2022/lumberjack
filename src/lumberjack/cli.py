@@ -6,68 +6,24 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .api import lumber
-from .core.models import BlockHandling
+from . import lumber
+from .core.block_config import parse_block_config_entry
 from .core.parser import MarkdownItParser
 
 if TYPE_CHECKING:
-    from .core.models import Chunk
+    from .core.models import BlockConfig, Chunk
 
 
-def _parse_block_handling(pairs: list[str]) -> dict[str, BlockHandling]:
-    """Parse ``KIND:POLICY`` strings into a ``{kind: BlockHandling}`` dict."""
-    result: dict[str, BlockHandling] = {}
-    for pair in pairs:
-        if ":" not in pair:
-            raise ValueError(
-                f"Invalid format: {pair!r} (expected KIND:POLICY, e.g. table:isolate)"
-            )
-        kind, _, value = pair.partition(":")
-        kind = kind.strip().lower()
-        MarkdownItParser.default_registry().validate_kind(kind)
-        try:
-            result[kind] = BlockHandling(value.strip().lower())
-        except ValueError:
-            valid = ", ".join(h.value for h in BlockHandling)
-            raise ValueError(
-                f"Invalid policy in: {pair!r} (valid policies: {valid})"
-            ) from None
-    return result
+def _parse_block_configs(entries: list[str]) -> dict[str, BlockConfig]:
+    """Parse ``KIND[:isolated][:nosplit][:TOKENS]`` strings into a ``{kind: BlockConfig}`` dict.
 
-
-def _parse_nosplit_kinds(raw: str) -> frozenset[str]:
-    """Parse a comma-separated string of block kinds into a frozenset."""
-    if not raw or not raw.strip():
-        return frozenset()
-    kinds: set[str] = set()
-    for part in raw.split(","):
-        kind = part.strip().lower()
-        if not kind:
-            continue
-        MarkdownItParser.default_registry().validate_kind(kind)
-        kinds.add(kind)
-    return frozenset(kinds)
-
-
-def _parse_block_max_tokens(pairs: list[str]) -> dict[str, int]:
-    """Parse ``KIND:TOKENS`` strings into a ``{kind: tokens}`` dict."""
-    result: dict[str, int] = {}
-    for pair in pairs:
-        if ":" not in pair:
-            raise ValueError(
-                f"Invalid format: {pair!r} (expected KIND:TOKENS, e.g. paragraph:800)"
-            )
-        kind, _, value = pair.partition(":")
-        kind = kind.strip().lower()
-        try:
-            tokens = int(value.strip())
-        except ValueError:
-            raise ValueError(
-                f"Invalid token count in: {pair!r} (expected KIND:TOKENS)"
-            ) from None
-        if tokens <= 0:
-            raise ValueError(f"Token count must be positive in: {pair!r}")
-        result[kind] = tokens
+    Starts from the parser defaults, then applies user overrides.
+    """
+    registry = MarkdownItParser.default_registry()
+    result: dict[str, BlockConfig] = dict(registry.default_handling())
+    for entry in entries:
+        kind, cfg = parse_block_config_entry(entry, registry)
+        result[kind] = cfg
     return result
 
 
@@ -128,28 +84,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Split oversized direct section bodies when using --splitter section",
     )
     parser.add_argument(
-        "--block-handling",
+        "--block-config",
         action="append",
         default=[],
-        metavar="KIND:POLICY",
-        help="Override block merge policy for a specific kind "
-        "(e.g., table:isolate); may be repeated. "
-        "Policies: default, isolate",
-    )
-    parser.add_argument(
-        "--nosplit-kinds",
-        default="",
-        metavar="KIND,...",
-        help="Comma-separated block kinds that should NOT be split when oversized "
-        "(e.g., table,code_fence). Default: all kinds allow splitting.",
-    )
-    parser.add_argument(
-        "--block-max-tokens",
-        action="append",
-        default=[],
-        metavar="KIND:TOKENS",
-        help="Override max_tokens for a specific block kind "
-        "(e.g., paragraph:800); may be repeated",
+        metavar="KIND[:isolated][:nosplit][:TOKENS]",
+        help="Per-block-kind config (e.g., table:500:nosplit:isolated); "
+        "order-insensitive. Flags: isolated, nosplit; integer sets max_tokens",
     )
     parser.add_argument(
         "--disable-lheading",
@@ -175,13 +115,7 @@ def main() -> None:
     input_path = Path(args.input)
     text = input_path.read_text(encoding="utf-8")
 
-    # Build block_handling: start from defaults, apply user overrides
-    block_handling = dict(MarkdownItParser.default_registry().default_handling())
-    if args.block_handling:
-        block_handling.update(_parse_block_handling(args.block_handling))
-
-    block_max_tokens = _parse_block_max_tokens(args.block_max_tokens)
-    nosplit_kinds = _parse_nosplit_kinds(args.nosplit_kinds)
+    block_options = _parse_block_configs(args.block_config)
 
     chunks = lumber(
         text,
@@ -189,9 +123,7 @@ def main() -> None:
         ideal_max_tokens_ratio=args.ideal_max_tokens_ratio,
         merge_below_tokens=args.merge_below_tokens,
         overlap_tokens=args.overlap_tokens,
-        block_handling=block_handling,
-        nosplit_kinds=nosplit_kinds,
-        block_max_tokens=block_max_tokens or None,
+        block_options=block_options,
         disable_lheading=args.disable_lheading,
         tokenizer=args.tokenizer,
         parser=args.parser,

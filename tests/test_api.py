@@ -181,7 +181,7 @@ def test_chunk_to_dict_serializes_heading_path() -> None:
         FIXTURE,
         document_title="sample.md",
         max_tokens=180,
-        block_handling={},
+        block_options={},
     )[-1]
 
     payload = asdict(chunk)
@@ -226,7 +226,7 @@ def test_parse_markdown_and_split_preserve_line_ranges_with_single_parser() -> N
         document_title="sample.md",
         max_tokens=200,
         document_metadata={"path": "/tmp/sample.md"},
-        block_handling={},
+        block_options={},
     )
 
     assert len(chunks) == 5

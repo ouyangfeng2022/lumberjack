@@ -6,6 +6,7 @@ import ChunkList from './components/ChunkList';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import { splitMarkdown } from './api/split';
 import type { SplitResponse, SplitOptions as Options } from './types/chunk';
+import logo from './assets/lumberjack.png';
 import styles from './App.module.css';
 
 const DEFAULT_OPTIONS: Options = {
@@ -16,8 +17,7 @@ const DEFAULT_OPTIONS: Options = {
   merge_small_chunks: true,
   skip_empty_sections: true,
   recursive_split: false,
-  block_handling: '',
-  nosplit_kinds: '',
+  block_configs: null,
   disable_lheading: false,
   tokenizer: 'simple',
   splitter: 'default',
@@ -156,7 +156,7 @@ export default function App() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div className={styles.brand}>
-          <span className={styles.logoMark}>L</span>
+          <img className={styles.logoMark} src={logo} alt="Lumberjack" />
           <div>
             <h1 className={styles.title}>{t('app_title')}</h1>
             <p className={styles.subtitle}>{t('app_subtitle')}</p>

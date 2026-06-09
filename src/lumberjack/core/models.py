@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import enum
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -111,19 +110,24 @@ class DocumentAST:
     reference_definitions: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
-class BlockHandling(enum.StrEnum):
-    """Controls merge behavior for a block kind during splitting.
-
-    Splitting is enabled by default for all block kinds. Use ``nosplit_kinds``
-    on :class:`SplitOptions` to opt out of splitting for specific kinds.
+@dataclass(slots=True, frozen=True)
+class BlockConfig:
+    """Per-block-kind splitting and merge configuration.
 
     Attributes:
-        DEFAULT: Block can be merged with adjacent content.
-        ISOLATE: Block is always emitted as its own chunk (no merge).
+        isolated: When ``True``, the block is always emitted as its own
+            chunk (no merge with adjacent content).
+        split: Whether to allow splitting this block kind when oversized.
+            When ``False``, oversized blocks are kept intact even if they
+            exceed ``max_tokens``.
+        max_tokens: Per-block-kind token budget override.  When ``None``
+            (the default), the unified ``max_tokens`` from
+            :class:`SplitOptions` is used.
     """
 
-    DEFAULT = "default"
-    ISOLATE = "isolate"
+    isolated: bool = False
+    split: bool = True
+    max_tokens: int | None = None
 
 
 class BlockKindRegistry:
@@ -141,9 +145,9 @@ class BlockKindRegistry:
         """All registered block kind names."""
         return self._kinds
 
-    def default_handling(self) -> dict[str, BlockHandling]:
-        """Return all registered kinds mapped to :attr:`BlockHandling.DEFAULT`."""
-        return dict.fromkeys(sorted(self._kinds), BlockHandling.DEFAULT)
+    def default_handling(self) -> dict[str, BlockConfig]:
+        """Return all registered kinds mapped to default :class:`BlockConfig`."""
+        return dict.fromkeys(sorted(self._kinds), BlockConfig())
 
     def validate_kind(self, kind: str) -> str:
         """Validate and return *kind*, raising :class:`ValueError` if unknown."""
@@ -175,24 +179,15 @@ class SplitOptions:
             regardless of this setting.
         recursive_split: When True, split oversized direct section bodies in splitters
             that support strict heading-level output.
-        block_handling: Per-block-kind merge policy.  Keys are lowercase block
+        block_options: Per-block-kind configuration.  Keys are lowercase block
             kind strings matching :attr:`MarkdownBlock.kind` values; values are
-            :class:`BlockHandling` members.  Default: all blocks use
-            ``BlockHandling.DEFAULT`` (allow merge).  Set specific kinds to
-            ``ISOLATE`` to prevent merging.
-        nosplit_kinds: Block kinds that should NOT be split when oversized.
-            By default all block kinds allow splitting.  Add kind names here
-            to opt out.
-        block_max_tokens: Per-block-kind max_tokens overrides.  Keys are block kind
-            strings (lowercase); values are the max_tokens to use for that kind.
-            When empty (the default), the unified ``max_tokens`` is used for all
-            block kinds.  Only effective for block kinds that allow splitting
-            (not in ``nosplit_kinds``).
-        block_kinds: Block kinds from the parser instance.  Used to populate
-            ``block_handling`` defaults when empty.  When ``None``, falls back
-            to the built-in ``_DEFAULT_BLOCK_KINDS`` set.
+            :class:`BlockConfig` instances.  When empty (the default), all known
+            block kinds are auto-populated with default :class:`BlockConfig`.
+            Callers (``lumber()``, CLI, web) should always supply a fully
+            populated dict with defaults merged before constructing
+            :class:`SplitOptions`.
         splittable_kinds: Block kinds that allow splitting (cached).
-        standalone_kinds: Block kinds whose handling includes isolation (cached).
+        standalone_kinds: Block kinds marked as isolated (cached).
     """
 
     max_tokens: int = 1200
@@ -202,10 +197,7 @@ class SplitOptions:
     merge_small_chunks: bool = True
     skip_empty_sections: bool = True
     recursive_split: bool = False
-    block_handling: dict[str, BlockHandling] = field(default_factory=dict)
-    nosplit_kinds: frozenset[str] = field(default_factory=frozenset)
-    block_max_tokens: dict[str, int] = field(default_factory=dict)
-    block_kinds: frozenset[str] | None = None
+    block_options: dict[str, BlockConfig] = field(default_factory=dict)
 
     # Cached derived fields — computed in __post_init__.
     ideal_max_tokens: int = field(init=False, repr=False)
@@ -223,16 +215,12 @@ class SplitOptions:
         return MarkdownItParser.default_registry().kinds
 
     def __post_init__(self) -> None:
-        if not self.block_handling:
-            kinds = (
-                self.block_kinds
-                if self.block_kinds is not None
-                else self._default_block_kinds()
-            )
+        if not self.block_options:
+            kinds = self._default_block_kinds()
             object.__setattr__(
                 self,
-                "block_handling",
-                dict.fromkeys(sorted(kinds), BlockHandling.DEFAULT),
+                "block_options",
+                dict.fromkeys(sorted(kinds), BlockConfig()),
             )
         object.__setattr__(
             self,
@@ -242,18 +230,12 @@ class SplitOptions:
         object.__setattr__(
             self,
             "splittable_kinds",
-            frozenset(
-                kind for kind in self.block_handling if kind not in self.nosplit_kinds
-            ),
+            frozenset(kind for kind, cfg in self.block_options.items() if cfg.split),
         )
         object.__setattr__(
             self,
             "standalone_kinds",
-            frozenset(
-                kind
-                for kind, h in self.block_handling.items()
-                if h == BlockHandling.ISOLATE
-            ),
+            frozenset(kind for kind, cfg in self.block_options.items() if cfg.isolated),
         )
 
 

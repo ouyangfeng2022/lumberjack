@@ -64,7 +64,7 @@ def test_split_with_options(client: TestClient) -> None:
             "merge_below_tokens": "10",
             "overlap_tokens": "5",
             "merge_small_chunks": "false",
-            "block_handling": "paragraph:default",
+            "block_configs": '{"paragraph":{"isolated":false}}',
             "tokenizer": "simple",
         },
     )
@@ -133,14 +133,14 @@ def test_unprefixed_api_path_is_not_registered(client: TestClient) -> None:
     assert response.status_code == 405
 
 
-def test_split_with_block_handling(client: TestClient) -> None:
+def test_split_with_block_configs(client: TestClient) -> None:
     md = "# Doc\n\nIntro.\n\n| A |\n|---|\n| 1 |\n\nOutro."
     response = client.post(
         "/lumber/api/split",
         data={
             "text": md,
             "max_tokens": "500",
-            "block_handling": "table:isolate",
+            "block_configs": '{"table":{"isolated":true}}',
         },
     )
     assert response.status_code == 200
@@ -151,10 +151,10 @@ def test_split_with_block_handling(client: TestClient) -> None:
     assert "Intro." not in table_chunks[0]["body"]
 
 
-def test_split_block_handling_default_applies_when_field_not_sent(
+def test_split_block_configs_default_applies_when_field_not_sent(
     client: TestClient,
 ) -> None:
-    """Default block_handling (all DEFAULT, allow merge) applies when field is absent."""
+    """Default block_configs (all DEFAULT, allow merge) applies when field is absent."""
     md = "# Doc\n\nIntro.\n\n| A |\n|---|\n| 1 |\n\nOutro."
     response = client.post(
         "/lumber/api/split",

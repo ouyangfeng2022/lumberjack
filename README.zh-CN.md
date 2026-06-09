@@ -71,9 +71,8 @@ uv run lumber --help
 - `--merge-below-tokens`：小分块合并软阈值，默认 `50`
 - `--overlap-tokens`：仅在文本回退切分时使用的可选 token 重叠量，默认 `0`
 - `--recursive-split`：使用 `--splitter section` 时递归拆分超大的章节直接正文
-- `--block-handling KIND:POLICY`：覆盖指定块类型的合并策略；可重复指定。策略为 `default`、`isolate`
-- `--nosplit-kinds KIND,...`：逗号分隔的块类型，表示这些块超长时也不拆分；默认空
-- `--block-max-tokens KIND:TOKENS`：覆盖指定块类型的切分预算；可重复指定
+- `--block-config KIND[:POLICY][:nosplit][:TOKENS]`：按块类型配置切分行为；可重复指定。示例：`table:isolated`、`code_fence:nosplit`、`paragraph:800`、`table:isolated:nosplit:500`。策略为 `isolated`；`nosplit` 禁止拆分；整数设置该块类型的独立 max_tokens
+  可用的块类型：`paragraph`、`blockquote`、`list`、`list_item`、`table`、`code_block`、`code_fence`、`html_block`、`front_matter`、`math_block`、`math_block_eqno`
 - `--disable-lheading`：禁用 Setext 标题解析
 
 解析器说明：
@@ -110,11 +109,13 @@ JSON 命令行输出包含：
 
 ## Python API
 
-公共 API 位于 [`src/lumberjack/api.py`](src/lumberjack/api.py)。
+公共 API 位于 [`src/lumberjack/__init__.py`](src/lumberjack/__init__.py)。
 
 ```python
 from lumberjack import lumber
+from lumberjack.core.models import BlockConfig
 
+# 基本用法
 chunks = lumber(
     markdown_text,
     document_title="guide.md",
@@ -124,9 +125,6 @@ chunks = lumber(
     overlap_tokens=0,
     merge_small_chunks=True,
     skip_empty_sections=True,
-    block_handling={"table": "isolate"},
-    nosplit_kinds={"code_fence"},
-    block_max_tokens={"table": 800},
     recursive_split=False,
     disable_lheading=False,
     tokenizer="simple",
@@ -134,6 +132,37 @@ chunks = lumber(
     splitter="recursive",
 )
 
+# 按块类型配置切分行为
+#
+# BlockConfig 字段说明：
+#   isolated   — 是否作为独立分块输出而不与相邻内容合并（bool，默认 False）
+#   split      — 超长时是否允许拆分（bool，默认 True）
+#   max_tokens — 该块类型的独立 token 预算（int 或 None，默认 None = 使用全局 max_tokens）
+#
+# 可用的块类型：paragraph、blockquote、list、list_item、table、
+#   code_block、code_fence、html_block、front_matter、math_block、math_block_eqno
+chunks = lumber(
+    markdown_text,
+    document_title="guide.md",
+    block_options={
+        # 表格独立输出、禁止拆分、预算 500 tokens
+        "table": BlockConfig(isolated=True, split=False, max_tokens=500),
+        # 代码块超长时保持完整
+        "code_fence": BlockConfig(split=False),
+        # 段落自定义预算
+        "paragraph": BlockConfig(max_tokens=800),
+    },
+)
+
+# block_options 也接受普通字典
+chunks = lumber(
+    markdown_text,
+    block_options={
+        "table": {"isolated": True, "split": False},
+    },
+)
+
+# 自定义解析器插件
 from mdit_py_plugins.tasklists import tasklists_plugin
 from lumberjack.core.parser import MarkdownItParser
 
@@ -147,6 +176,167 @@ plugin_chunks = lumber(
 从 [`src/lumberjack/__init__.py`](src/lumberjack/__init__.py) 导出的公共类型：
 
 只导出 `lumber`。高级解析器、切分器、分词器和模型类型仍可从内部模块导入。
+
+## Web API
+
+安装 Web 支持：
+
+```bash
+pip install "lumberjack[web]"
+```
+
+启动服务器：
+
+```bash
+# 开发模式（自动重载）
+lumberjack-serve --reload
+
+# 生产模式
+lumberjack-serve --host 0.0.0.0 --port 8000
+```
+
+服务器 CLI 选项：
+
+- `--host`：绑定地址，默认 `127.0.0.1`
+- `--port`：端口号，默认 `8000`
+- `--reload`：启用开发自动重载
+
+### POST `/lumber/api/split`
+
+接受 `multipart/form-data`，字段如下：
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `text` | string | — | Markdown 文本输入（与 `file` 二选一） |
+| `file` | 上传文件 | — | Markdown 文件上传 |
+| `max_tokens` | int | `1200` | 最大分块 token 预算 |
+| `ideal_max_tokens_ratio` | float | `0.8` | 优先切分预算比例 |
+| `merge_below_tokens` | int | `50` | 小分块合并软阈值 |
+| `overlap_tokens` | int | `0` | 文本回退切分时的 token 重叠量 |
+| `merge_small_chunks` | bool | `true` | 合并相邻小分块 |
+| `skip_empty_sections` | bool | `true` | 丢弃仅有标题无正文的分块 |
+| `recursive_split` | bool | `false` | 启用 section 切分器的块/文本回退 |
+| `block_configs` | string | `""` | 按块类型配置的 JSON 对象（见下方说明） |
+| `disable_lheading` | bool | `false` | 禁用 Setext 标题解析 |
+| `tokenizer` | string | `"simple"` | 分词器：`simple` 或 `tiktoken` |
+| `splitter` | string | `"recursive"` | 切分器：`recursive` 或 `section` |
+
+`block_configs` 是一个 JSON 对象，键为块类型，值为配置字典。每个值支持的可选字段：`isolated`（布尔值）、`split`（布尔值）、`max_tokens`（整数或 null）。
+
+```json
+{
+  "table": {"isolated": true, "split": false, "max_tokens": 500},
+  "code_fence": {"split": false}
+}
+```
+
+示例请求：
+
+```bash
+# 切分文本
+curl -X POST http://localhost:8000/lumber/api/split \
+  -F "text=# Hello\n\nWorld" \
+  -F "max_tokens=500"
+
+# 上传文件
+curl -X POST http://localhost:8000/lumber/api/split \
+  -F "file=@guide.md" \
+  -F "splitter=section"
+
+# 带块类型配置
+curl -X POST http://localhost:8000/lumber/api/split \
+  -F "text=# Data\n\n| A | B |\n|---|---|\n| 1 | 2 |" \
+  -F 'block_configs={"table":{"isolated":true,"split":false}}' \
+  -F "max_tokens=200"
+```
+
+Python 客户端示例：
+
+```python
+import json
+from pathlib import Path
+
+import httpx
+
+API_URL = "http://localhost:8000/lumber/api/split"
+
+
+def split_text(md: str, **kwargs) -> dict:
+    """通过 Web API 切分 Markdown 文本。"""
+    data: dict = {"text": md}
+    for key in (
+        "max_tokens", "ideal_max_tokens_ratio", "merge_below_tokens",
+        "overlap_tokens", "merge_small_chunks", "skip_empty_sections",
+        "recursive_split", "disable_lheading", "tokenizer", "splitter",
+    ):
+        if key in kwargs:
+            data[key] = kwargs[key]
+    if "block_configs" in kwargs:
+        data["block_configs"] = json.dumps(kwargs["block_configs"])
+    resp = httpx.post(API_URL, data=data)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def split_file(path: str | Path, **kwargs) -> dict:
+    """通过 Web API 上传 Markdown 文件。"""
+    p = Path(path)
+    data: dict = {}
+    for key in (
+        "max_tokens", "ideal_max_tokens_ratio", "merge_below_tokens",
+        "overlap_tokens", "merge_small_chunks", "skip_empty_sections",
+        "recursive_split", "disable_lheading", "tokenizer", "splitter",
+    ):
+        if key in kwargs:
+            data[key] = kwargs[key]
+    if "block_configs" in kwargs:
+        data["block_configs"] = json.dumps(kwargs["block_configs"])
+    with p.open("rb") as f:
+        resp = httpx.post(API_URL, data=data, files={"file": (p.name, f, "text/markdown")})
+    resp.raise_for_status()
+    return resp.json()
+
+
+# 使用示例
+result = split_text(
+    "# Hello\n\nWorld",
+    max_tokens=500,
+    block_configs={"table": {"isolated": True, "split": False}},
+)
+print(f"Chunks: {result['chunk_count']}")
+
+result = split_file("guide.md", splitter="section", max_tokens=800)
+print(f"Document: {result['document']}, Chunks: {result['chunk_count']}")
+```
+
+响应 JSON：
+
+```json
+{
+  "document": "guide.md",
+  "chunk_count": 2,
+  "chunks": [
+    {
+      "chunk_id": "chunk-001",
+      "chunk_type": "heading",
+      "body": "# Hello\n\nWorld",
+      "token_count": 8,
+      "estimated_token_count": 8,
+      "headings": [[1, "Hello"]],
+      "section_level": 1,
+      "document_title": "guide.md",
+      "document_path": null,
+      "start_line": 1,
+      "end_line": 3
+    }
+  ]
+}
+```
+
+### Web UI
+
+服务器运行后，内置 Web UI 可通过 `http://localhost:8000/` 访问。
+提供文本/文件输入、切分选项配置和分块结果可视化的图形界面。
 
 ## 内部数据模型
 
@@ -231,12 +421,12 @@ API 默认值为 `splitter="recursive"`。
 - `estimated_token_count` 是用于切分的加法预算估算：章节正文、标题文本和子树计数自底向上缓存。标题标记（前导 `#` 序列）和 Markdown 分隔符各计为一个 token。`token_count` 仍从最终渲染的分块正文一次性计数用于报告。
 - `merge_below_tokens` 不是最终分块的最小 token 数，而是针对 fragment 或文本回退切分产生的短尾块的合并软阈值：低于该值的相邻短尾块只会在标题路径相同且估算合并大小仍不超过 `max_tokens` 时被合并。
 - 可选重叠仅在单个超大块必须按段落、行、句子、单词或硬边界切分时应用
-- 所有已知块类型默认都允许拆分。使用 `nosplit_kinds` 可以让指定块类型在超长时保持完整。
+- 所有已知块类型默认都允许拆分。设置 `BlockConfig(split=False)` 可以让指定块类型在超长时保持完整。
 - 超长 Markdown 管道表格会按数据行拆分。检测到表头分隔行时，每个表格片段都会重复原始表头和分隔行。如果单个数据行连同表头已经超过预算，则保留为一个合法但超预算的表格片段。
-- `block_handling` 只控制合并策略。将某个块类型设为 `isolate` 后，它会作为独立分块输出，不与相邻内容合并。
-- `block_max_tokens` 可覆盖特定块类型的切分预算，例如 `table`。
+- `BlockConfig.isolated` 控制合并策略。设置 `isolated=True` 后，该块类型会作为独立分块输出，不与相邻内容合并。
+- `BlockConfig.max_tokens` 可覆盖特定块类型的切分预算，例如 `table`。
 - 长的 URL 样式文本被视为不可切分，不会跨分块硬切分
-- YAML front matter 会作为普通 `front_matter` 块处理。需要独立输出时，使用 `block_handling={"front_matter": "isolate"}`。
+- YAML front matter 会作为普通 `front_matter` 块处理。需要独立输出时，使用 `block_options={"front_matter": BlockConfig(isolated=True)}`。
 - `skip_empty_sections=True` 丢弃仅有标题无正文的空章节分块
 - front matter 分隔符会保留在 `front_matter` 块中；其他分隔线会在解析时忽略
 - 对 `section` 切分器，`recursive_split=False` 会保留超大的章节正文。
@@ -257,7 +447,7 @@ API 默认值为 `splitter="recursive"`。
 src/lumberjack/base/          协议接口
 src/lumberjack/core/          解析器、切分器、分词器和访问器实现
 src/lumberjack/core/plugins/  自定义 markdown-it 插件（方括号数学）
-src/lumberjack/api.py         公共 Python API
+src/lumberjack/__init__.py    公共 Python API
 src/lumberjack/models.py      内部数据模型
 src/lumberjack/utils.py       Markdown 渲染辅助函数
 src/lumberjack/main.py        命令行编排
