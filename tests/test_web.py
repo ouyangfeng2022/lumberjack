@@ -18,8 +18,8 @@ SIMPLE_MD = "# Hello\n\nThis is a test paragraph.\n\n## Section\n\nAnother parag
 
 def test_split_with_text(client: TestClient) -> None:
     response = client.post(
-        "/lumber/api/split",
-        data={"text": SIMPLE_MD, "max_tokens": "500"},
+        "/lumber/api/split/text",
+        json={"text": SIMPLE_MD, "max_tokens": 500},
     )
     assert response.status_code == 200
     body = response.json()
@@ -37,7 +37,7 @@ def test_split_with_text(client: TestClient) -> None:
 def test_split_with_file(client: TestClient) -> None:
     md_file = io.BytesIO(SIMPLE_MD.encode("utf-8"))
     response = client.post(
-        "/lumber/api/split",
+        "/lumber/api/split/file",
         files={"file": ("guide.md", md_file, "text/markdown")},
         data={"max_tokens": "500"},
     )
@@ -48,23 +48,23 @@ def test_split_with_file(client: TestClient) -> None:
 
 
 def test_split_no_input(client: TestClient) -> None:
-    response = client.post("/lumber/api/split")
-    assert response.status_code == 400
+    response = client.post("/lumber/api/split/text", json={})
+    assert response.status_code == 422
     body = response.json()
     assert "detail" in body
 
 
 def test_split_with_options(client: TestClient) -> None:
     response = client.post(
-        "/lumber/api/split",
-        data={
+        "/lumber/api/split/text",
+        json={
             "text": SIMPLE_MD,
-            "max_tokens": "100",
-            "ideal_max_tokens_ratio": "0.8",
-            "merge_below_tokens": "10",
-            "overlap_tokens": "5",
-            "merge_small_chunks": "false",
-            "block_configs": '{"paragraph":{"isolated":false}}',
+            "max_tokens": 100,
+            "ideal_max_tokens_ratio": 0.8,
+            "merge_below_tokens": 10,
+            "overlap_tokens": 5,
+            "merge_small_chunks": False,
+            "block_configs": {"paragraph": {"isolated": False}},
             "tokenizer": "simple",
         },
     )
@@ -77,12 +77,12 @@ def test_split_accepts_heading_splitter_with_recursive_split(
     client: TestClient,
 ) -> None:
     response = client.post(
-        "/lumber/api/split",
-        data={
+        "/lumber/api/split/text",
+        json={
             "text": "# Parent\n\nParent intro.\n\n## Child\n\nChild body.",
-            "max_tokens": "500",
+            "max_tokens": 500,
             "splitter": "section",
-            "recursive_split": "true",
+            "recursive_split": True,
         },
     )
 
@@ -96,11 +96,11 @@ def test_split_accepts_heading_splitter_with_recursive_split(
 
 def test_split_can_disable_setext_headings(client: TestClient) -> None:
     response = client.post(
-        "/lumber/api/split",
-        data={
+        "/lumber/api/split/text",
+        json={
             "text": "Title\n=====\n\nbody",
-            "max_tokens": "500",
-            "disable_lheading": "true",
+            "max_tokens": 500,
+            "disable_lheading": True,
         },
     )
 
@@ -114,11 +114,11 @@ def test_split_ignores_legacy_render_common_headings_form_field(
     client: TestClient,
 ) -> None:
     response = client.post(
-        "/lumber/api/split",
-        data={
+        "/lumber/api/split/text",
+        json={
             "text": "# Parent\n\n## Child\n\nChild body.",
-            "max_tokens": "500",
-            "render_common_headings": "false",
+            "max_tokens": 500,
+            "render_common_headings": False,
         },
     )
 
@@ -129,18 +129,23 @@ def test_split_ignores_legacy_render_common_headings_form_field(
 
 
 def test_unprefixed_api_path_is_not_registered(client: TestClient) -> None:
-    response = client.post("/api/split", data={"text": SIMPLE_MD})
+    response = client.post("/api/split/text", json={"text": SIMPLE_MD})
+    assert response.status_code == 405
+
+
+def test_legacy_combined_split_path_is_not_registered(client: TestClient) -> None:
+    response = client.post("/lumber/api/split", data={"text": SIMPLE_MD})
     assert response.status_code == 405
 
 
 def test_split_with_block_configs(client: TestClient) -> None:
     md = "# Doc\n\nIntro.\n\n| A |\n|---|\n| 1 |\n\nOutro."
     response = client.post(
-        "/lumber/api/split",
-        data={
+        "/lumber/api/split/text",
+        json={
             "text": md,
-            "max_tokens": "500",
-            "block_configs": '{"table":{"isolated":true}}',
+            "max_tokens": 500,
+            "block_configs": {"table": {"isolated": True}},
         },
     )
     assert response.status_code == 200
@@ -151,16 +156,31 @@ def test_split_with_block_configs(client: TestClient) -> None:
     assert "Intro." not in table_chunks[0]["body"]
 
 
+def test_split_rejects_invalid_block_config_field(client: TestClient) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={
+            "text": "# Doc\n\n| A |\n|---|\n| 1 |",
+            "block_configs": {
+                "table": {"isolate": True, "split": True, "max_tokens": 500}
+            },
+        },
+    )
+
+    assert response.status_code == 400
+    assert "isolated" in response.json()["detail"]
+
+
 def test_split_block_configs_default_applies_when_field_not_sent(
     client: TestClient,
 ) -> None:
     """Default block_configs (all DEFAULT, allow merge) applies when field is absent."""
     md = "# Doc\n\nIntro.\n\n| A |\n|---|\n| 1 |\n\nOutro."
     response = client.post(
-        "/lumber/api/split",
-        data={
+        "/lumber/api/split/text",
+        json={
             "text": md,
-            "max_tokens": "500",
+            "max_tokens": 500,
         },
     )
     assert response.status_code == 200

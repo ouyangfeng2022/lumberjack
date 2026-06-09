@@ -201,13 +201,31 @@ lumberjack-serve --host 0.0.0.0 --port 8000
 - `--port`：端口号，默认 `8000`
 - `--reload`：启用开发自动重载
 
-### POST `/lumber/api/split`
+### POST `/lumber/api/split/text`
 
-接受 `multipart/form-data`，字段如下：
+接受 `application/json`，包含 Markdown 文本和切分选项：
 
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `text` | string | — | Markdown 文本输入（与 `file` 二选一） |
+| `text` | string | — | Markdown 文本输入 |
+| `max_tokens` | int | `1200` | 最大分块 token 预算 |
+| `ideal_max_tokens_ratio` | float | `0.8` | 优先切分预算比例 |
+| `merge_below_tokens` | int | `50` | 小分块合并软阈值 |
+| `overlap_tokens` | int | `0` | 文本回退切分时的 token 重叠量 |
+| `merge_small_chunks` | bool | `true` | 合并相邻小分块 |
+| `skip_empty_sections` | bool | `true` | 丢弃仅有标题无正文的分块 |
+| `recursive_split` | bool | `false` | 启用 section 切分器的块/文本回退 |
+| `block_configs` | object/null | `null` | 按块类型配置（见下方说明） |
+| `disable_lheading` | bool | `false` | 禁用 Setext 标题解析 |
+| `tokenizer` | string | `"simple"` | 分词器：`simple` 或 `tiktoken` |
+| `splitter` | string | `"recursive"` | 切分器：`recursive` 或 `section` |
+
+### POST `/lumber/api/split/file`
+
+接受 `multipart/form-data`，包含 Markdown 文件和相同的切分选项：
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
 | `file` | 上传文件 | — | Markdown 文件上传 |
 | `max_tokens` | int | `1200` | 最大分块 token 预算 |
 | `ideal_max_tokens_ratio` | float | `0.8` | 优先切分预算比例 |
@@ -221,7 +239,7 @@ lumberjack-serve --host 0.0.0.0 --port 8000
 | `tokenizer` | string | `"simple"` | 分词器：`simple` 或 `tiktoken` |
 | `splitter` | string | `"recursive"` | 切分器：`recursive` 或 `section` |
 
-`block_configs` 是一个 JSON 对象，键为块类型，值为配置字典。每个值支持的可选字段：`isolated`（布尔值）、`split`（布尔值）、`max_tokens`（整数或 null）。
+文本请求中，`block_configs` 是 JSON 对象；文件请求中，`block_configs` 是 JSON 编码的表单字符串。每个值支持的可选字段：`isolated`（布尔值）、`split`（布尔值）、`max_tokens`（整数或 null）。
 
 ```json
 {
@@ -234,20 +252,19 @@ lumberjack-serve --host 0.0.0.0 --port 8000
 
 ```bash
 # 切分文本
-curl -X POST http://localhost:8000/lumber/api/split \
-  -F "text=# Hello\n\nWorld" \
-  -F "max_tokens=500"
+curl -X POST http://localhost:8000/lumber/api/split/text \
+  -H "Content-Type: application/json" \
+  -d '{"text":"# Hello\n\nWorld","max_tokens":500}'
 
 # 上传文件
-curl -X POST http://localhost:8000/lumber/api/split \
+curl -X POST http://localhost:8000/lumber/api/split/file \
   -F "file=@guide.md" \
   -F "splitter=section"
 
 # 带块类型配置
-curl -X POST http://localhost:8000/lumber/api/split \
-  -F "text=# Data\n\n| A | B |\n|---|---|\n| 1 | 2 |" \
-  -F 'block_configs={"table":{"isolated":true,"split":false}}' \
-  -F "max_tokens=200"
+curl -X POST http://localhost:8000/lumber/api/split/text \
+  -H "Content-Type: application/json" \
+  -d '{"text":"# Data\n\n| A | B |\n|---|---|\n| 1 | 2 |","block_configs":{"table":{"isolated":true,"split":false}},"max_tokens":200}'
 ```
 
 Python 客户端示例：
@@ -258,22 +275,23 @@ from pathlib import Path
 
 import httpx
 
-API_URL = "http://localhost:8000/lumber/api/split"
+TEXT_API_URL = "http://localhost:8000/lumber/api/split/text"
+FILE_API_URL = "http://localhost:8000/lumber/api/split/file"
 
 
 def split_text(md: str, **kwargs) -> dict:
     """通过 Web API 切分 Markdown 文本。"""
-    data: dict = {"text": md}
+    payload: dict = {"text": md}
     for key in (
         "max_tokens", "ideal_max_tokens_ratio", "merge_below_tokens",
         "overlap_tokens", "merge_small_chunks", "skip_empty_sections",
         "recursive_split", "disable_lheading", "tokenizer", "splitter",
     ):
         if key in kwargs:
-            data[key] = kwargs[key]
+            payload[key] = kwargs[key]
     if "block_configs" in kwargs:
-        data["block_configs"] = json.dumps(kwargs["block_configs"])
-    resp = httpx.post(API_URL, data=data)
+        payload["block_configs"] = kwargs["block_configs"]
+    resp = httpx.post(TEXT_API_URL, json=payload)
     resp.raise_for_status()
     return resp.json()
 
@@ -292,7 +310,7 @@ def split_file(path: str | Path, **kwargs) -> dict:
     if "block_configs" in kwargs:
         data["block_configs"] = json.dumps(kwargs["block_configs"])
     with p.open("rb") as f:
-        resp = httpx.post(API_URL, data=data, files={"file": (p.name, f, "text/markdown")})
+        resp = httpx.post(FILE_API_URL, data=data, files={"file": (p.name, f, "text/markdown")})
     resp.raise_for_status()
     return resp.json()
 
