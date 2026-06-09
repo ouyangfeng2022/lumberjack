@@ -218,7 +218,7 @@ class SplitOptions:
 
         Uses a local import to avoid circular dependencies (models ↔ parser).
         """
-        from .core.parser import MarkdownItParser
+        from .parser import MarkdownItParser
 
         return MarkdownItParser.default_registry().kinds
 

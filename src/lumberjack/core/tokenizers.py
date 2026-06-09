@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from threading import RLock
 
-from ..base.interfaces import TokenizerProtocol
+from .protocols import TokenizerProtocol
 
 
 class TiktokenTokenizer(TokenizerProtocol):

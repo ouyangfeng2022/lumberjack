@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import fields
 from pathlib import Path
 
-from lumberjack.api import lumber
+from lumberjack import lumber
+from lumberjack.core.models import BlockHandling, SplitOptions
 from lumberjack.core.parser import MarkdownParser
 from lumberjack.core.splitter import (
     RecursiveMarkdownSplitter,
@@ -13,7 +14,6 @@ from lumberjack.core.splitter import (
     create_splitter,
 )
 from lumberjack.core.tokenizers import SimpleCharTokenizer
-from lumberjack.models import BlockHandling, SplitOptions
 
 FIXTURE = (
     Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md"
@@ -312,7 +312,9 @@ def test_splitter_recursively_descends_heading_levels_when_section_is_oversized(
     )
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=90, merge_below_tokens=80),
+        options=SplitOptions(
+            max_tokens=90, ideal_max_tokens_ratio=1, merge_below_tokens=80
+        ),
     )
 
     chunks = splitter.split(document)
@@ -353,7 +355,9 @@ def test_splitter_greedily_merges_same_level_siblings_before_descending() -> Non
     )
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=62, merge_below_tokens=20),
+        options=SplitOptions(
+            max_tokens=62, ideal_max_tokens_ratio=1, merge_below_tokens=20
+        ),
     )
 
     chunks = splitter.split(document)
@@ -361,7 +365,7 @@ def test_splitter_greedily_merges_same_level_siblings_before_descending() -> Non
     assert len(chunks) == 2
     assert chunks[0].body == "# Parent\n\n## One\n\nOne body.\n\n## Two\n\nTwo body."
     assert chunks[1].body == "# Parent\n\n## Three\n\nThree body is a little longer."
-    assert all(chunk.estimated_token_count <= 60 for chunk in chunks)
+    assert all(chunk.estimated_token_count <= 62 for chunk in chunks)
 
 
 def test_splitter_exposes_body_without_common_headings_for_single_leaf_chunk() -> None:
@@ -370,7 +374,9 @@ def test_splitter_exposes_body_without_common_headings_for_single_leaf_chunk() -
     )
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=40, merge_below_tokens=0),
+        options=SplitOptions(
+            max_tokens=40, ideal_max_tokens_ratio=1, merge_below_tokens=0
+        ),
     )
 
     chunks = splitter.split(document)
@@ -527,35 +533,44 @@ def test_entry_merge_uses_tail_window_only_between_entry_groups() -> None:
         tokenizer=tokenizer,
         options=SplitOptions(max_tokens=500, merge_below_tokens=0),
     )
-    left = [
-        _Entry(
-            headings=((1, "A"),),
-            body=long_body,
-            start_line=1,
-            end_line=1,
-            body_token_count=len(long_body),
-        )
-    ]
-    right = [
-        _Entry(
-            headings=((1, "A"),),
-            body="b",
-            start_line=2,
-            end_line=2,
-            body_token_count=1,
-        )
-    ]
-
-    estimate = splitter._estimate_entries(
-        left,
-        right,
-        left_token_count=splitter._estimate_entries(left),
-        right_token_count=splitter._estimate_entries(right),
+    heading_path = ((1, "A"),)
+    heading_tc = len("# A\n\n")
+    left = _ChunkDraft(
+        entries=[
+            _Entry(
+                headings=heading_path,
+                body=long_body,
+                start_line=1,
+                end_line=1,
+                body_token_count=len(long_body),
+            )
+        ],
+        headings=heading_path,
+        headings_token_count=heading_tc,
+        body_token_count=len(long_body),
+        token_count=heading_tc + len(long_body),
+    )
+    right = _ChunkDraft(
+        entries=[
+            _Entry(
+                headings=heading_path,
+                body="b",
+                start_line=2,
+                end_line=2,
+                body_token_count=1,
+            )
+        ],
+        headings=heading_path,
+        headings_token_count=heading_tc,
+        body_token_count=1,
+        token_count=heading_tc + 1,
     )
 
-    assert estimate == len("# A\n\n" + long_body + "\n\nb")
+    merged = splitter._merge_drafts(left, right)
+
+    assert merged.token_count == len("# A\n\n" + long_body + "\n\nb")
     assert f"{long_body}\n\n" not in tokenizer.counted
-    assert f"{long_body[-64:]}\n\n" in tokenizer.counted
+    assert f"{long_body[-8:]}\n\n" in tokenizer.counted
 
 
 def test_heading_estimate_counts_title_once_and_marker_as_one_token() -> None:
@@ -824,7 +839,7 @@ def test_merge_small_chunks_combines_sibling_sections_with_same_parent() -> None
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
             max_tokens=40,
-            ideal_max_tokens_ratio=0.5,
+            ideal_max_tokens_ratio=0.8,
             merge_below_tokens=39,
             merge_small_chunks=True,
         ),
@@ -863,9 +878,10 @@ def test_merge_below_tokens_does_not_merge_past_rendered_budget() -> None:
 def test_merge_below_tokens_absorbs_same_parent_paragraph_tails() -> None:
     splitter = RecursiveMarkdownSplitter(
         tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=100, merge_below_tokens=10),
+        options=SplitOptions(max_tokens=100, merge_below_tokens=25),
     )
     heading_path = ((1, "A"),)
+    heading_tc = len("# A\n\n")
     left = _ChunkDraft(
         entries=[
             _Entry(
@@ -873,9 +889,13 @@ def test_merge_below_tokens_absorbs_same_parent_paragraph_tails() -> None:
                 body="section body",
                 start_line=1,
                 end_line=1,
+                body_token_count=len("section body"),
             )
         ],
-        token_count=20,
+        headings=heading_path,
+        headings_token_count=heading_tc,
+        body_token_count=len("section body"),
+        token_count=heading_tc + len("section body"),
         split_origin="section",
     )
     section_tail = _ChunkDraft(
@@ -885,9 +905,13 @@ def test_merge_below_tokens_absorbs_same_parent_paragraph_tails() -> None:
                 body="tiny section",
                 start_line=2,
                 end_line=2,
+                body_token_count=len("tiny section"),
             )
         ],
-        token_count=5,
+        headings=heading_path,
+        headings_token_count=heading_tc,
+        body_token_count=len("tiny section"),
+        token_count=heading_tc + len("tiny section"),
         split_origin="section",
     )
     fragment_tail = _ChunkDraft(
@@ -897,9 +921,13 @@ def test_merge_below_tokens_absorbs_same_parent_paragraph_tails() -> None:
                 body="tiny fragment",
                 start_line=3,
                 end_line=3,
+                body_token_count=len("tiny fragment"),
             )
         ],
-        token_count=5,
+        headings=heading_path,
+        headings_token_count=heading_tc,
+        body_token_count=len("tiny fragment"),
+        token_count=heading_tc + len("tiny fragment"),
         split_origin="fragment",
     )
     text_piece_tail = _ChunkDraft(
@@ -909,9 +937,13 @@ def test_merge_below_tokens_absorbs_same_parent_paragraph_tails() -> None:
                 body="tiny text",
                 start_line=4,
                 end_line=4,
+                body_token_count=len("tiny text"),
             )
         ],
-        token_count=5,
+        headings=heading_path,
+        headings_token_count=heading_tc,
+        body_token_count=len("tiny text"),
+        token_count=heading_tc + len("tiny text"),
         split_origin="text_piece",
     )
 

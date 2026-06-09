@@ -42,7 +42,7 @@ Repository = "https://gitee.com/celery-flandre/lumberjack"
 Issues = "https://gitee.com/celery-flandre/lumberjack/issues"
 
 [project.scripts]
-lumber = "lumberjack.main:main"
+lumber = "lumberjack.cli:main"
 lumberjack-serve = "lumberjack.web.__main__:main"
 
 [dependency-groups]

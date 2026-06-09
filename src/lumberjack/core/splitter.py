@@ -4,8 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-from ..base.interfaces import SplitterProtocol, TokenizerProtocol
-from ..models import (
+from .models import (
     Chunk,
     DocumentAST,
     HeadingPath,
@@ -13,8 +12,9 @@ from ..models import (
     SectionNode,
     SplitOptions,
 )
-from ..utils import join_markdown, render_heading_path
+from .protocols import SplitterProtocol, TokenizerProtocol
 from .tokenizers import SimpleCharTokenizer
+from .utils import join_markdown, render_heading_path
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

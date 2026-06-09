@@ -4,9 +4,9 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from lumberjack.api import lumber
+from lumberjack import lumber
+from lumberjack.core.models import BlockHandling, SplitOptions
 from lumberjack.core.parser import MarkdownItParser
-from lumberjack.models import BlockHandling, SplitOptions
 
 router = APIRouter()
 

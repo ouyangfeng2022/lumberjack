@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .api import lumber
+from .core.models import BlockHandling
 from .core.parser import MarkdownItParser
-from .models import BlockHandling
 
 if TYPE_CHECKING:
-    from .models import Chunk
+    from .core.models import Chunk
 
 
 def _parse_block_handling(pairs: list[str]) -> dict[str, BlockHandling]:

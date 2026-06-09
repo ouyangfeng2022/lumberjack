@@ -92,11 +92,11 @@ Main components:
   - Chunk result visualization with token counts and heading breadcrumbs
   - Dev proxy: `/lumber` -> `localhost:8000`; build output -> `src/lumberjack/web/static/`
 
-Protocol interfaces live in `src/lumberjack/base/interfaces.py`. Data models use `@dataclass(slots=True)`.
+Protocol interfaces live in `src/lumberjack/core/protocols.py`. Data models use `@dataclass(slots=True)`.
 
 ## Data Model
 
-Defined in `src/lumberjack/models.py`:
+Defined in `src/lumberjack/core/models.py`:
 
 - `MarkdownInline`: normalized inline node with `kind`, `text`, `children`, and `attrs`
 - `MarkdownBlock`: block node with rendered text, line range, inline children, nested blocks, and attrs
@@ -135,7 +135,7 @@ Implemented in `lumberjack_webui/`.
 
 ## CLI Behavior
 
-Implemented in `src/lumberjack/main.py`.
+Implemented in `src/lumberjack/cli.py`.
 
 - Input is a Markdown file path
 - Output formats: `json` or `markdown`
@@ -247,16 +247,16 @@ After Python code changes:
 
 ## Code Organization
 
-- `src/lumberjack/base/` - protocol interfaces
+- `src/lumberjack/core/protocols.py` - protocol interfaces
+- `src/lumberjack/core/models.py` - internal data models
 - `src/lumberjack/core/parser.py` - parser factory and default parser alias
 - `src/lumberjack/core/plugins/` - custom markdown-it plugins (brackets_math)
 - `src/lumberjack/core/splitter.py` - section/block/text chunking
 - `src/lumberjack/core/tokenizers.py` - tokenizer implementations
+- `src/lumberjack/core/utils.py` - Markdown rendering helpers
 - `src/lumberjack/core/visitor.py` - lightweight visitor hooks
 - `src/lumberjack/api.py` - public Python API
-- `src/lumberjack/models.py` - internal data models
-- `src/lumberjack/utils.py` - Markdown rendering helpers
-- `src/lumberjack/main.py` - CLI orchestration only
+- `src/lumberjack/cli.py` - CLI orchestration only
 - `src/lumberjack/web/` - FastAPI web layer (app, routes, static serving)
 - `lumberjack_webui/` - React + TypeScript frontend
 
