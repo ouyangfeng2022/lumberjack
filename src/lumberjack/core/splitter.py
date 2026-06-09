@@ -14,7 +14,7 @@ from .models import (
 )
 from .protocols import SplitterProtocol, TokenizerProtocol
 from .tokenizers import SimpleCharTokenizer
-from .utils import join_markdown, render_heading_path
+from .utils import join_markdown
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -27,16 +27,16 @@ SEPARATOR_DELTA_WINDOW_CHARS = 8
 SplitOrigin = Literal["section", "fragment", "text_piece"]
 
 
-def heading_path_token_count(tokenizer: TokenizerProtocol, path: HeadingPath) -> int:
-    if not path:
-        return 0
-    tokens = 0
-    for level, title in path:
-        if title:
-            tokens = tokens + tokenizer.count(
-                "#" * level + " " + title + SEPARATOR, cache=True
-            )
-    return tokens
+def render_heading_path(path: HeadingPath) -> str:
+    """Render a full heading breadcrumb path as nested Markdown headings."""
+
+    def _render_heading(level: int, title: str) -> str:
+        """Render a heading as a Markdown ATX heading string."""
+        if level <= 0:
+            return title.strip()
+        return f"{'#' * level} {title.strip()}"
+
+    return join_markdown([_render_heading(level, title) for level, title in path])
 
 
 def common_heading_path(paths: Iterable[HeadingPath]) -> HeadingPath:
@@ -439,6 +439,17 @@ class _BaseMarkdownSplitter(SplitterProtocol):
         drafts = self._post_process_drafts(drafts)
         return self._finalize_chunks(drafts, document)
 
+    def _heading_path_token_count(self, path: HeadingPath) -> int:
+        if not path:
+            return 0
+        tokens = 0
+        for level, title in path:
+            if title:
+                tokens = tokens + self.tokenizer.count(
+                    "#" * level + " " + title + SEPARATOR, cache=True
+                )
+        return tokens
+
     def _split_section(self, root: _MeasuredSection) -> list[_ChunkDraft]:
         raise NotImplementedError
 
@@ -562,7 +573,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
         standalone = self.options.standalone_kinds
 
         prefix_tokens = (
-            heading_path_token_count(self.tokenizer, headings) if node.level > 0 else 0
+            self._heading_path_token_count(headings) if node.level > 0 else 0
         )
         if prefix_tokens >= max_tokens or not blocks:
             entry = self._entry_from_blocks(
@@ -870,7 +881,7 @@ class _BaseMarkdownSplitter(SplitterProtocol):
         right_headings = right_draft.headings
 
         common_headings = common_heading_path([left_headings, right_headings])
-        headings_token_count = heading_path_token_count(self.tokenizer, common_headings)
+        headings_token_count = self._heading_path_token_count(common_headings)
 
         left_body_token_count = left_draft.token_count - headings_token_count
         right_body_token_count = right_draft.token_count - headings_token_count
@@ -951,10 +962,10 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
             return []
         entries = self._entries_from_section(section)
         common_headings = common_heading_path(entry.headings for entry in entries)
-        headings_token_count = heading_path_token_count(self.tokenizer, common_headings)
+        headings_token_count = self._heading_path_token_count(common_headings)
 
         chunk_token_count = (
-            heading_path_token_count(self.tokenizer, section.node.path[:-1])
+            self._heading_path_token_count(section.node.path[:-1])
             + section.counts.subtree
         )
 
@@ -988,7 +999,7 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
         current_draft: _ChunkDraft | None = None
         standalone_kinds = self.options.standalone_kinds
 
-        common_heading_token_count = heading_path_token_count(self.tokenizer, node.path)
+        common_heading_token_count = self._heading_path_token_count(node.path)
         budget_token_count = self.options.ideal_max_tokens - common_heading_token_count
 
         def flush_current() -> None:
@@ -1064,8 +1075,8 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
                     child_common_headings = common_heading_path(
                         entry.headings for entry in entries
                     )
-                    child_common_headings_token_count = heading_path_token_count(
-                        self.tokenizer, child_common_headings
+                    child_common_headings_token_count = self._heading_path_token_count(
+                        child_common_headings
                     )
                     child_chunk_token_count = (
                         common_heading_token_count + child.counts.subtree
@@ -1174,9 +1185,7 @@ class SectionMarkdownSplitter(_BaseMarkdownSplitter):
                     node.blocks,
                     body_token_count=section.counts.body,
                 )
-                headings_token_count = heading_path_token_count(
-                    self.tokenizer, node.path
-                )
+                headings_token_count = self._heading_path_token_count(node.path)
                 chunks.append(
                     _ChunkDraft(
                         entries=[entry],
