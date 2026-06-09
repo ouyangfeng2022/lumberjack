@@ -214,71 +214,52 @@ Server CLI options:
 
 ### POST `/lumber/api/split/text`
 
-Accepts `application/json` with Markdown text and split options:
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `text` | string | — | Markdown text input |
-| `max_tokens` | int | `1200` | Maximum chunk token budget |
-| `ideal_max_tokens_ratio` | float | `0.8` | Preferred split budget ratio |
-| `merge_below_tokens` | int | `50` | Soft merge threshold for small chunks |
-| `overlap_tokens` | int | `0` | Token overlap for text fallback splits |
-| `merge_small_chunks` | bool | `true` | Merge adjacent small chunks |
-| `skip_empty_sections` | bool | `true` | Discard heading-only chunks |
-| `recursive_split` | bool | `false` | Enable block/text fallback for section splitter |
-| `block_configs` | object/null | `null` | Per-block-kind config (see below) |
-| `disable_lheading` | bool | `false` | Disable Setext heading parsing |
-| `tokenizer` | string | `"simple"` | Tokenizer: `simple` or `tiktoken` |
-| `splitter` | string | `"recursive"` | Splitter: `recursive` or `section` |
-
-### POST `/lumber/api/split/file`
-
-Accepts `multipart/form-data` with a Markdown file and the same split options:
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `file` | upload | — | Markdown file upload |
-| `max_tokens` | int | `1200` | Maximum chunk token budget |
-| `ideal_max_tokens_ratio` | float | `0.8` | Preferred split budget ratio |
-| `merge_below_tokens` | int | `50` | Soft merge threshold for small chunks |
-| `overlap_tokens` | int | `0` | Token overlap for text fallback splits |
-| `merge_small_chunks` | bool | `true` | Merge adjacent small chunks |
-| `skip_empty_sections` | bool | `true` | Discard heading-only chunks |
-| `recursive_split` | bool | `false` | Enable block/text fallback for section splitter |
-| `block_configs` | string | `""` | JSON object for per-block-kind config (see below) |
-| `disable_lheading` | bool | `false` | Disable Setext heading parsing |
-| `tokenizer` | string | `"simple"` | Tokenizer: `simple` or `tiktoken` |
-| `splitter` | string | `"recursive"` | Splitter: `recursive` or `section` |
-
-For text requests, `block_configs` is a JSON object. For file requests, `block_configs` is a JSON-encoded form string. Each value has optional keys: `isolated` (boolean), `split` (boolean), `max_tokens` (integer or null).
-
-```json
-{
-  "table": {"isolated": true, "split": false, "max_tokens": 500},
-  "code_fence": {"split": false}
-}
-```
-
-Example requests:
+JSON body with `text` (required) and split options. All options are optional.
 
 ```bash
-# Split text
 curl -X POST http://localhost:8000/lumber/api/split/text \
   -H "Content-Type: application/json" \
   -d '{"text":"# Hello\n\nWorld","max_tokens":500}'
-
-# Upload a file
-curl -X POST http://localhost:8000/lumber/api/split/file \
-  -F "file=@guide.md" \
-  -F "splitter=section"
-
-# With block configs
-curl -X POST http://localhost:8000/lumber/api/split/text \
-  -H "Content-Type: application/json" \
-  -d '{"text":"# Data\n\n| A | B |\n|---|---|\n| 1 | 2 |","block_configs":{"table":{"isolated":true,"split":false}},"max_tokens":200}'
 ```
 
-Python client example:
+### POST `/lumber/api/split/file`
+
+`multipart/form-data` with `file` (required) and split options as form fields.
+
+```bash
+curl -X POST http://localhost:8000/lumber/api/split/file \
+  -F "file=@guide.md" \
+  -F "max_tokens=500" \
+  -F "splitter=section"
+```
+
+### Split Options
+
+Both endpoints accept the same options:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `max_tokens` | int | `1200` | Maximum chunk token budget |
+| `ideal_max_tokens_ratio` | float | `0.8` | Preferred split budget ratio |
+| `merge_below_tokens` | int | `50` | Soft merge threshold for small chunks |
+| `overlap_tokens` | int | `0` | Token overlap for text fallback splits |
+| `merge_small_chunks` | bool | `true` | Merge adjacent small chunks |
+| `skip_empty_sections` | bool | `true` | Discard heading-only chunks |
+| `recursive_split` | bool | `false` | Enable block/text fallback for section splitter |
+| `block_configs` | object | `null` | Per-block-kind config |
+| `disable_lheading` | bool | `false` | Disable Setext heading parsing |
+| `tokenizer` | string | `"simple"` | `simple` or `tiktoken` |
+| `splitter` | string | `"recursive"` | `recursive` or `section` |
+
+> For file uploads, `block_configs` is a JSON-encoded form string instead of a nested object.
+
+`block_configs` maps block kind names to config objects. Each config has optional keys: `isolated` (bool), `split` (bool), `max_tokens` (int or null). Valid block kinds: `paragraph`, `blockquote`, `list`, `list_item`, `table`, `code_block`, `code_fence`, `html_block`, `front_matter`, `math_block`, `math_block_eqno`.
+
+```json
+{"table": {"isolated": true, "split": false, "max_tokens": 500}}
+```
+
+### Python Client
 
 ```python
 import json
@@ -286,64 +267,37 @@ from pathlib import Path
 
 import httpx
 
-TEXT_API_URL = "http://localhost:8000/lumber/api/split/text"
-FILE_API_URL = "http://localhost:8000/lumber/api/split/file"
-
-
-def split_text(md: str, **kwargs) -> dict:
-    """Split markdown text via the Web API."""
-    payload: dict = {"text": md}
-    for key in (
-        "max_tokens", "ideal_max_tokens_ratio", "merge_below_tokens",
-        "overlap_tokens", "merge_small_chunks", "skip_empty_sections",
-        "recursive_split", "disable_lheading", "tokenizer", "splitter",
-    ):
-        if key in kwargs:
-            payload[key] = kwargs[key]
-    if "block_configs" in kwargs:
-        payload["block_configs"] = kwargs["block_configs"]
-    resp = httpx.post(TEXT_API_URL, json=payload)
-    resp.raise_for_status()
-    return resp.json()
-
-
-def split_file(path: str | Path, **kwargs) -> dict:
-    """Upload a markdown file via the Web API."""
-    p = Path(path)
-    data: dict = {}
-    for key in (
-        "max_tokens", "ideal_max_tokens_ratio", "merge_below_tokens",
-        "overlap_tokens", "merge_small_chunks", "skip_empty_sections",
-        "recursive_split", "disable_lheading", "tokenizer", "splitter",
-    ):
-        if key in kwargs:
-            data[key] = kwargs[key]
-    if "block_configs" in kwargs:
-        data["block_configs"] = json.dumps(kwargs["block_configs"])
-    with p.open("rb") as f:
-        resp = httpx.post(FILE_API_URL, data=data, files={"file": (p.name, f, "text/markdown")})
-    resp.raise_for_status()
-    return resp.json()
-
-
-# Usage
-result = split_text(
-    "# Hello\n\nWorld",
-    max_tokens=500,
-    block_configs={"table": {"isolated": True, "split": False}},
+# Text split
+resp = httpx.post(
+    "http://localhost:8000/lumber/api/split/text",
+    json={
+        "text": "# Hello\n\nWorld",
+        "max_tokens": 500,
+        "block_configs": {"table": {"isolated": True, "split": False}},
+    },
 )
-print(f"Chunks: {result['chunk_count']}")
+result = resp.raise_for_status().json()
 
-result = split_file("guide.md", splitter="section", max_tokens=800)
-print(f"Document: {result['document']}, Chunks: {result['chunk_count']}")
+# File split
+with Path("guide.md").open("rb") as f:
+    resp = httpx.post(
+        "http://localhost:8000/lumber/api/split/file",
+        data={
+            "max_tokens": "500",
+            "splitter": "section",
+            "block_configs": json.dumps({"table": {"isolated": True}}),
+        },
+        files={"file": ("guide.md", f, "text/markdown")},
+    )
+result = resp.raise_for_status().json()
 ```
 
-Response JSON:
+### Response
 
 ```json
 {
   "document": "guide.md",
-  "chunk_count": 2,
+  "chunk_count": 1,
   "chunks": [
     {
       "chunk_id": "chunk-001",

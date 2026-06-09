@@ -203,71 +203,52 @@ lumberjack-serve --host 0.0.0.0 --port 8000
 
 ### POST `/lumber/api/split/text`
 
-接受 `application/json`，包含 Markdown 文本和切分选项：
-
-| 字段 | 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `text` | string | — | Markdown 文本输入 |
-| `max_tokens` | int | `1200` | 最大分块 token 预算 |
-| `ideal_max_tokens_ratio` | float | `0.8` | 优先切分预算比例 |
-| `merge_below_tokens` | int | `50` | 小分块合并软阈值 |
-| `overlap_tokens` | int | `0` | 文本回退切分时的 token 重叠量 |
-| `merge_small_chunks` | bool | `true` | 合并相邻小分块 |
-| `skip_empty_sections` | bool | `true` | 丢弃仅有标题无正文的分块 |
-| `recursive_split` | bool | `false` | 启用 section 切分器的块/文本回退 |
-| `block_configs` | object/null | `null` | 按块类型配置（见下方说明） |
-| `disable_lheading` | bool | `false` | 禁用 Setext 标题解析 |
-| `tokenizer` | string | `"simple"` | 分词器：`simple` 或 `tiktoken` |
-| `splitter` | string | `"recursive"` | 切分器：`recursive` 或 `section` |
-
-### POST `/lumber/api/split/file`
-
-接受 `multipart/form-data`，包含 Markdown 文件和相同的切分选项：
-
-| 字段 | 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `file` | 上传文件 | — | Markdown 文件上传 |
-| `max_tokens` | int | `1200` | 最大分块 token 预算 |
-| `ideal_max_tokens_ratio` | float | `0.8` | 优先切分预算比例 |
-| `merge_below_tokens` | int | `50` | 小分块合并软阈值 |
-| `overlap_tokens` | int | `0` | 文本回退切分时的 token 重叠量 |
-| `merge_small_chunks` | bool | `true` | 合并相邻小分块 |
-| `skip_empty_sections` | bool | `true` | 丢弃仅有标题无正文的分块 |
-| `recursive_split` | bool | `false` | 启用 section 切分器的块/文本回退 |
-| `block_configs` | string | `""` | 按块类型配置的 JSON 对象（见下方说明） |
-| `disable_lheading` | bool | `false` | 禁用 Setext 标题解析 |
-| `tokenizer` | string | `"simple"` | 分词器：`simple` 或 `tiktoken` |
-| `splitter` | string | `"recursive"` | 切分器：`recursive` 或 `section` |
-
-文本请求中，`block_configs` 是 JSON 对象；文件请求中，`block_configs` 是 JSON 编码的表单字符串。每个值支持的可选字段：`isolated`（布尔值）、`split`（布尔值）、`max_tokens`（整数或 null）。
-
-```json
-{
-  "table": {"isolated": true, "split": false, "max_tokens": 500},
-  "code_fence": {"split": false}
-}
-```
-
-示例请求：
+JSON 请求体，`text` 为必填，其余切分选项均可选。
 
 ```bash
-# 切分文本
 curl -X POST http://localhost:8000/lumber/api/split/text \
   -H "Content-Type: application/json" \
   -d '{"text":"# Hello\n\nWorld","max_tokens":500}'
-
-# 上传文件
-curl -X POST http://localhost:8000/lumber/api/split/file \
-  -F "file=@guide.md" \
-  -F "splitter=section"
-
-# 带块类型配置
-curl -X POST http://localhost:8000/lumber/api/split/text \
-  -H "Content-Type: application/json" \
-  -d '{"text":"# Data\n\n| A | B |\n|---|---|\n| 1 | 2 |","block_configs":{"table":{"isolated":true,"split":false}},"max_tokens":200}'
 ```
 
-Python 客户端示例：
+### POST `/lumber/api/split/file`
+
+`multipart/form-data`，`file` 为必填，切分选项作为表单字段。
+
+```bash
+curl -X POST http://localhost:8000/lumber/api/split/file \
+  -F "file=@guide.md" \
+  -F "max_tokens=500" \
+  -F "splitter=section"
+```
+
+### 切分选项
+
+两个接口的选项相同：
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `max_tokens` | int | `1200` | 最大分块 token 预算 |
+| `ideal_max_tokens_ratio` | float | `0.8` | 优先切分预算比例 |
+| `merge_below_tokens` | int | `50` | 小分块合并软阈值 |
+| `overlap_tokens` | int | `0` | 文本回退切分时的 token 重叠量 |
+| `merge_small_chunks` | bool | `true` | 合并相邻小分块 |
+| `skip_empty_sections` | bool | `true` | 丢弃仅有标题无正文的分块 |
+| `recursive_split` | bool | `false` | 启用 section 切分器的块/文本回退 |
+| `block_configs` | object | `null` | 按块类型配置 |
+| `disable_lheading` | bool | `false` | 禁用 Setext 标题解析 |
+| `tokenizer` | string | `"simple"` | `simple` 或 `tiktoken` |
+| `splitter` | string | `"recursive"` | `recursive` 或 `section` |
+
+> 文件上传时，`block_configs` 为 JSON 编码的表单字符串，而非嵌套对象。
+
+`block_configs` 将块类型名映射到配置对象，每个配置支持可选字段：`isolated`（布尔值）、`split`（布尔值）、`max_tokens`（整数或 null）。可用块类型：`paragraph`、`blockquote`、`list`、`list_item`、`table`、`code_block`、`code_fence`、`html_block`、`front_matter`、`math_block`、`math_block_eqno`。
+
+```json
+{"table": {"isolated": true, "split": false, "max_tokens": 500}}
+```
+
+### Python 客户端
 
 ```python
 import json
@@ -275,64 +256,37 @@ from pathlib import Path
 
 import httpx
 
-TEXT_API_URL = "http://localhost:8000/lumber/api/split/text"
-FILE_API_URL = "http://localhost:8000/lumber/api/split/file"
-
-
-def split_text(md: str, **kwargs) -> dict:
-    """通过 Web API 切分 Markdown 文本。"""
-    payload: dict = {"text": md}
-    for key in (
-        "max_tokens", "ideal_max_tokens_ratio", "merge_below_tokens",
-        "overlap_tokens", "merge_small_chunks", "skip_empty_sections",
-        "recursive_split", "disable_lheading", "tokenizer", "splitter",
-    ):
-        if key in kwargs:
-            payload[key] = kwargs[key]
-    if "block_configs" in kwargs:
-        payload["block_configs"] = kwargs["block_configs"]
-    resp = httpx.post(TEXT_API_URL, json=payload)
-    resp.raise_for_status()
-    return resp.json()
-
-
-def split_file(path: str | Path, **kwargs) -> dict:
-    """通过 Web API 上传 Markdown 文件。"""
-    p = Path(path)
-    data: dict = {}
-    for key in (
-        "max_tokens", "ideal_max_tokens_ratio", "merge_below_tokens",
-        "overlap_tokens", "merge_small_chunks", "skip_empty_sections",
-        "recursive_split", "disable_lheading", "tokenizer", "splitter",
-    ):
-        if key in kwargs:
-            data[key] = kwargs[key]
-    if "block_configs" in kwargs:
-        data["block_configs"] = json.dumps(kwargs["block_configs"])
-    with p.open("rb") as f:
-        resp = httpx.post(FILE_API_URL, data=data, files={"file": (p.name, f, "text/markdown")})
-    resp.raise_for_status()
-    return resp.json()
-
-
-# 使用示例
-result = split_text(
-    "# Hello\n\nWorld",
-    max_tokens=500,
-    block_configs={"table": {"isolated": True, "split": False}},
+# 文本切分
+resp = httpx.post(
+    "http://localhost:8000/lumber/api/split/text",
+    json={
+        "text": "# Hello\n\nWorld",
+        "max_tokens": 500,
+        "block_configs": {"table": {"isolated": True, "split": False}},
+    },
 )
-print(f"Chunks: {result['chunk_count']}")
+result = resp.raise_for_status().json()
 
-result = split_file("guide.md", splitter="section", max_tokens=800)
-print(f"Document: {result['document']}, Chunks: {result['chunk_count']}")
+# 文件切分
+with Path("guide.md").open("rb") as f:
+    resp = httpx.post(
+        "http://localhost:8000/lumber/api/split/file",
+        data={
+            "max_tokens": "500",
+            "splitter": "section",
+            "block_configs": json.dumps({"table": {"isolated": True}}),
+        },
+        files={"file": ("guide.md", f, "text/markdown")},
+    )
+result = resp.raise_for_status().json()
 ```
 
-响应 JSON：
+### 响应
 
 ```json
 {
   "document": "guide.md",
-  "chunk_count": 2,
+  "chunk_count": 1,
   "chunks": [
     {
       "chunk_id": "chunk-001",

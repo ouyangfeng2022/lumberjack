@@ -47,9 +47,6 @@ lumberjack-serve = "lumberjack.web.__main__:main"
 
 [dependency-groups]
 dev = ["ruff>=0.15.6"]
-scripts = [
-    "datasets>=4.8.5",
-]
 test = ["pytest>=8.0.0", "httpx>=0.28.0"]
 
 [build-system]
