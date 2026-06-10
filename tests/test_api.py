@@ -10,7 +10,7 @@ from mdit_py_plugins.tasklists import tasklists_plugin
 
 import lumberjack
 from lumberjack import lumber
-from lumberjack.core.parser import MarkdownItParser, create_parser
+from lumberjack.core.markdown.parser import MarkdownItParser, create_parser
 
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md"
 FIXTURE = FIXTURE_PATH.read_text(encoding="utf-8")

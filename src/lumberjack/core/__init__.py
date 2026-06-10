@@ -1,7 +1,9 @@
-from .parser import MarkdownItParser, MarkdownParser, create_parser
-from .splitter import (
+from .markdown import (
+    MarkdownItParser,
+    MarkdownParser,
     RecursiveMarkdownSplitter,
     SectionMarkdownSplitter,
+    create_parser,
     create_splitter,
 )
 from .text_splitter import TextSplitter

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .models import DocumentAST, MarkdownBlock, SectionNode
+    from ..models import DocumentAST, MarkdownBlock, SectionNode
 
 
 class MarkdownAstVisitor:

@@ -6,7 +6,11 @@ from markdown_it.token import Token
 from mdit_py_plugins.footnote import footnote_plugin
 from mdit_py_plugins.tasklists import tasklists_plugin
 
-from lumberjack.core.parser import MarkdownItParser, MarkdownParser, create_parser
+from lumberjack.core.markdown.parser import (
+    MarkdownItParser,
+    MarkdownParser,
+    create_parser,
+)
 
 FIXTURE = (
     Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md"

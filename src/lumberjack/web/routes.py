@@ -129,9 +129,17 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
     )
 
 
+def _detect_format_from_filename(filename: str) -> str:
+    """Detect input format from file extension."""
+    if filename and filename.lower().endswith(".docx"):
+        return "docx"
+    return "markdown"
+
+
 @router.post("/split/file", response_model=SplitResponse)
 async def split_file(
     file: UploadFile = File(...),  # noqa: B008
+    input_format: str = Form("auto"),
     max_tokens: int = Form(1200),
     ideal_max_tokens_ratio: float = Form(0.8),
     merge_below_tokens: int = Form(50),
@@ -144,13 +152,30 @@ async def split_file(
     tokenizer: str = Form("simple"),
     splitter: str = Form("recursive"),
 ) -> SplitResponse:
-    """Split an uploaded Markdown file into chunks."""
-    content = (await file.read()).decode("utf-8")
+    """Split an uploaded file (Markdown or DOCX) into chunks.
+
+    The input format is auto-detected from the file extension when
+    ``input_format`` is ``"auto"``.  Set it to ``"docx"`` or ``"markdown"``
+    to override.
+    """
+    raw = await file.read()
+    fmt = (
+        input_format
+        if input_format != "auto"
+        else _detect_format_from_filename(file.filename or "")
+    )
+
+    if fmt == "docx":
+        content = raw  # pass bytes directly to lumber()
+    else:
+        content = raw.decode("utf-8")
+
     block_options = _parse_form_block_configs(block_configs)
 
     try:
         chunks = lumber(
             content,
+            format=fmt,
             document_title=file.filename,
             max_tokens=max_tokens,
             ideal_max_tokens_ratio=ideal_max_tokens_ratio,

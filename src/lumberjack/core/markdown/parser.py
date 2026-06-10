@@ -8,8 +8,8 @@ from markdown_it import MarkdownIt
 from mdit_py_plugins.dollarmath import dollarmath_plugin
 from mdit_py_plugins.front_matter import front_matter_plugin
 
+from ..utils import join_markdown
 from .plugins import brackets_math_plugin
-from .utils import join_markdown
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -17,10 +17,10 @@ if TYPE_CHECKING:
 
     from markdown_it.token import Token
 
-    from .models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
-    from .protocols import MarkdownParserProtocol
+    from ..models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
+    from ..protocols import MarkdownParserProtocol
 
-from .models import (
+from ..models import (
     BlockKindRegistry,
     DocumentAST,
     MarkdownBlock,

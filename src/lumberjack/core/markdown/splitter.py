@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-from .models import (
+from ..models import (
     Chunk,
     DocumentAST,
     HeadingPath,
@@ -11,10 +11,10 @@ from .models import (
     SectionNode,
     SplitOptions,
 )
-from .protocols import SplitterProtocol, TokenizerProtocol
-from .text_splitter import TextSplitter
-from .tokenizers import SimpleCharTokenizer
-from .utils import join_markdown
+from ..protocols import SplitterProtocol, TokenizerProtocol
+from ..text_splitter import TextSplitter
+from ..tokenizers import SimpleCharTokenizer
+from ..utils import join_markdown
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

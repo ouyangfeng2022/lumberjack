@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from . import lumber
 from .core.block_config import parse_block_config_entry
-from .core.parser import MarkdownItParser
+from .core.markdown.parser import MarkdownItParser
 
 if TYPE_CHECKING:
     from .core.models import BlockConfig, Chunk
@@ -29,12 +29,18 @@ def _parse_block_configs(entries: list[str]) -> dict[str, BlockConfig]:
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser with all split options."""
-    parser = argparse.ArgumentParser(description="Markdown splitter")
-    parser.add_argument("input", help="Path to a markdown file")
+    parser = argparse.ArgumentParser(description="Markdown / DOCX document splitter")
+    parser.add_argument("input", help="Path to a markdown (.md) or DOCX (.docx) file")
+    parser.add_argument(
+        "--input-format",
+        choices=("auto", "markdown", "docx"),
+        default="auto",
+        help="Input format (default: auto-detect from file extension)",
+    )
     parser.add_argument("-o", "--output", help="Optional output file path")
     parser.add_argument(
         "-f",
-        "--format",
+        "--output-format",
         choices=("json", "markdown"),
         default="json",
         help="Output format",
@@ -109,16 +115,16 @@ def render_markdown(chunks: list[Chunk]) -> str:
 
 
 def main() -> None:
-    """CLI entry point: parse arguments, split a Markdown file, and output results."""
+    """CLI entry point: parse arguments, split a file, and output results."""
     parser = build_parser()
     args = parser.parse_args()
     input_path = Path(args.input)
-    text = input_path.read_text(encoding="utf-8")
 
     block_options = _parse_block_configs(args.block_config)
 
     chunks = lumber(
-        text,
+        input_path,
+        format=args.input_format,
         max_tokens=args.max_tokens,
         ideal_max_tokens_ratio=args.ideal_max_tokens_ratio,
         merge_below_tokens=args.merge_below_tokens,
@@ -132,7 +138,7 @@ def main() -> None:
         document_metadata={"path": str(input_path.resolve())},
     )
 
-    if args.format == "markdown":
+    if args.output_format == "markdown":
         payload = render_markdown(chunks)
     else:
         payload = json.dumps(
