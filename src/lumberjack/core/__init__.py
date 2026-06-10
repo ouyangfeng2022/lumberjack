@@ -1,9 +1,7 @@
-from .markdown import (
-    MarkdownItParser,
-    MarkdownParser,
-    RecursiveMarkdownSplitter,
-    SectionMarkdownSplitter,
-    create_parser,
+from .markdown import MarkdownItParser, MarkdownParser, create_parser
+from .splitter import (
+    RecursiveSplitter,
+    SectionSplitter,
     create_splitter,
 )
 from .text_splitter import TextSplitter
@@ -12,8 +10,8 @@ from .tokenizers import SimpleCharTokenizer, TiktokenTokenizer, create_tokenizer
 __all__ = [
     "MarkdownItParser",
     "MarkdownParser",
-    "RecursiveMarkdownSplitter",
-    "SectionMarkdownSplitter",
+    "RecursiveSplitter",
+    "SectionSplitter",
     "SimpleCharTokenizer",
     "TextSplitter",
     "TiktokenTokenizer",

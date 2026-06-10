@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-from ..models import (
+from .models import (
     Chunk,
     DocumentAST,
     HeadingPath,
@@ -11,10 +11,10 @@ from ..models import (
     SectionNode,
     SplitOptions,
 )
-from ..protocols import SplitterProtocol, TokenizerProtocol
-from ..text_splitter import TextSplitter
-from ..tokenizers import SimpleCharTokenizer
-from ..utils import join_markdown
+from .protocols import SplitterProtocol, TokenizerProtocol
+from .text_splitter import TextSplitter
+from .tokenizers import SimpleCharTokenizer
+from .utils import join_markdown
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -135,8 +135,8 @@ class _MeasuredSection:
     children: tuple[_MeasuredSection, ...] = ()
 
 
-class _BaseMarkdownSplitter(SplitterProtocol):
-    """Shared state and helpers for markdown-based splitter strategies."""
+class _BaseSplitter(SplitterProtocol):
+    """Shared state and helpers for splitter strategies."""
 
     def __init__(
         self,
@@ -662,8 +662,8 @@ class _BaseMarkdownSplitter(SplitterProtocol):
         return join_markdown(parts)
 
 
-class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
-    """Recursively split a Markdown document into token-bounded chunks.
+class RecursiveSplitter(_BaseSplitter):
+    """Recursively split a document into token-bounded chunks.
 
     Unlike SectionSplitter which keeps each heading section intact, this splitter
     recursively breaks down oversized sections and merges small adjacent chunks
@@ -872,7 +872,7 @@ class RecursiveMarkdownSplitter(_BaseMarkdownSplitter):
         return merged
 
 
-class SectionMarkdownSplitter(_BaseMarkdownSplitter):
+class SectionSplitter(_BaseSplitter):
     """Split a document into non-overlapping chunks by heading section.
 
     Each heading-defined section becomes its own chunk. When ``recursive_split``
@@ -919,10 +919,10 @@ class SectionMarkdownSplitter(_BaseMarkdownSplitter):
         return chunks
 
 
-SPLITTER_REGISTRY: dict[str, type[_BaseMarkdownSplitter]] = {
-    "default": RecursiveMarkdownSplitter,
-    "section": SectionMarkdownSplitter,
-    "recursive": RecursiveMarkdownSplitter,
+SPLITTER_REGISTRY: dict[str, type[_BaseSplitter]] = {
+    "default": RecursiveSplitter,
+    "section": SectionSplitter,
+    "recursive": RecursiveSplitter,
 }
 
 
