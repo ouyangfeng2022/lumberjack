@@ -24,7 +24,6 @@ PROTECTED_SPAN_RE = re.compile(r"<https?://[^\s>]+>|https?://[^\s)>\]]+")
 TABLE_DELIMITER_CELL_RE = re.compile(r":?-+(:?-+)*:?")
 SEPARATOR = "\n\n"
 SEPARATOR_DELTA_WINDOW_CHARS = 8
-SplitOrigin = Literal["section", "fragment", "text_piece"]
 
 
 def render_heading_path(path: HeadingPath) -> str:
@@ -98,7 +97,7 @@ class _ChunkDraft:
     headings_token_count: int
     body_token_count: int
     token_count: int
-    split_origin: SplitOrigin = "section"
+    split_origin: Literal["section", "fragment", "text_piece"] = "section"
     chunk_type: str = "paragraph"
 
 
