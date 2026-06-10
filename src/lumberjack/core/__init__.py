@@ -4,6 +4,7 @@ from .splitter import (
     SectionMarkdownSplitter,
     create_splitter,
 )
+from .text_splitter import TextSplitter
 from .tokenizers import SimpleCharTokenizer, TiktokenTokenizer, create_tokenizer
 
 __all__ = [
@@ -12,6 +13,7 @@ __all__ = [
     "RecursiveMarkdownSplitter",
     "SectionMarkdownSplitter",
     "SimpleCharTokenizer",
+    "TextSplitter",
     "TiktokenTokenizer",
     "create_parser",
     "create_splitter",

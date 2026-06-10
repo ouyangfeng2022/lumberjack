@@ -10,8 +10,7 @@
       "Bash(python3*)",
       "Bash(grep *)",
       "Bash(npm run *)",
-      "Bash(npx vite *)",
-      "Bash(curl -s http://localhost:5173)"
+      "Bash(npx vite *)"
     ]
   }
 }

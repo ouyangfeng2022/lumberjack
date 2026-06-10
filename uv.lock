@@ -273,7 +273,6 @@ provides-extras = ["all", "tokenizers", "web"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "ruff", specifier = ">=0.15.6" }]
-scripts = []
 test = [
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "pytest", specifier = ">=8.0.0" },
