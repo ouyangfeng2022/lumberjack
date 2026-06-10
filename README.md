@@ -193,24 +193,29 @@ Advanced parser, splitter, tokenizer, and model types remain available from thei
 Install with web support:
 
 ```bash
-pip install "lumberjack[web]"
+uv sync --all-options
 ```
 
 Start the server:
 
 ```bash
-# Development (auto-reload)
-lumberjack-serve --reload
-
-# Production
-lumberjack-serve --host 0.0.0.0 --port 8000
+uv run lumberjack-serve
 ```
 
 Server CLI options:
 
 - `--host`: bind address, default `127.0.0.1`
-- `--port`: port number, default `8000`
+- `--port`: port number, default `9612`
 - `--reload`: enable auto-reload for development
+
+### Docker
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Then open <http://localhost:9612/>.
 
 ### POST `/lumber/api/split/text`
 

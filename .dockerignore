@@ -1,0 +1,46 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+build/
+dist/
+wheels/
+*.egg-info/
+.venv/
+.env
+.env.*
+!.env.example
+
+# Frontend build artefacts (rebuilt inside Docker)
+lumberjack_webui/node_modules/
+lumberjack_webui/dist/
+src/lumberjack/web/static/
+
+# Test and dev artifacts
+tests/
+.ruff_cache/
+.pytest_cache/
+script/
+output/
+data/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker
+docker/
+.dockerignore
+
+# Docs — keep README.md, hatchling requires it for the package metadata
+LICENSE
+CHANGELOG.md

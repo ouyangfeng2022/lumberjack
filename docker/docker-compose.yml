@@ -1,0 +1,28 @@
+services:
+  lumberjack:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION:-0.0.0}
+    image: ${IMAGE_NAME:-lumberjack}:${TAG:-latest}
+    container_name: ${COMPOSE_PROJECT_NAME:-lumberjack}
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-9612}:9612"
+    environment:
+      TIKTOKEN_CACHE_DIR: /app/.cache/tiktoken
+    volumes:
+      - type: bind
+        source: ../src
+        target: /app/src
+      - type: bind
+        source: ../README.md
+        target: /app/README.md
+    command: ["--host", "0.0.0.0", "--port", "9612"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9612/')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

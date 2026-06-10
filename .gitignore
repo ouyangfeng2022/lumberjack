@@ -9,6 +9,11 @@ wheels/
 # Virtual environments
 .venv
 
+# Environment files
+.env
+.env.*
+!.env.example
+
 # Frontend
 lumberjack_webui/node_modules/
 lumberjack_webui/dist/
@@ -31,3 +36,7 @@ output/
 # OS
 .DS_Store
 Thumbs.db
+
+# tar
+*.tar
+*.tar.gz

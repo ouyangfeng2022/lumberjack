@@ -182,24 +182,29 @@ plugin_chunks = lumber(
 安装 Web 支持：
 
 ```bash
-pip install "lumberjack[web]"
+uv sync --all-options
 ```
 
 启动服务器：
 
 ```bash
-# 开发模式（自动重载）
-lumberjack-serve --reload
-
-# 生产模式
-lumberjack-serve --host 0.0.0.0 --port 8000
+uv run lumberjack-serve
 ```
 
 服务器 CLI 选项：
 
 - `--host`：绑定地址，默认 `127.0.0.1`
-- `--port`：端口号，默认 `8000`
+- `--port`：端口号，默认 `9612`
 - `--reload`：启用开发自动重载
+
+### Docker
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+随后访问 <http://localhost:9612/>。
 
 ### POST `/lumber/api/split/text`
 
