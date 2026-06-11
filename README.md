@@ -38,21 +38,33 @@ DOCX binary  → DocxParser ─────────────────�
 
 ## Install
 
+### As a library
+
 ```bash
-uv pip install lumberjack
+pip install lumberjack
 ```
 
 Optional extras:
 
 ```bash
-uv pip install "lumberjack[tokenizers]"   # tiktoken-based model token counting
-uv pip install "lumberjack[docx]"         # DOCX document support
-uv pip install "lumberjack[web]"          # FastAPI web server + UI
-uv pip install "lumberjack[all]"          # everything
+pip install "lumberjack[tokenizers]"   # tiktoken-based model token counting
+pip install "lumberjack[docx]"         # DOCX document support
+pip install "lumberjack[web]"          # FastAPI web server + UI
+pip install "lumberjack[all]"          # everything
 ```
 
 > [!NOTE]
-> Requires Python 3.13+. This project uses [uv](https://docs.astral.sh/uv/) for dependency management.
+> Requires Python 3.13+.
+
+### From source (for development)
+
+```bash
+git clone https://github.com/tianleG/lumberjack.git
+cd lumberjack
+uv sync --all-group --all-extra
+```
+
+See [Development](#development) for the full development workflow.
 
 ## Quick Start
 
@@ -81,7 +93,7 @@ lumber document.md --max-tokens 1200
 ### Web UI
 
 ```bash
-uv pip install "lumberjack[web]"
+pip install "lumberjack[web]"
 lumberjack-serve
 ```
 
@@ -343,8 +355,12 @@ src/lumberjack/
 
 ## Development
 
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management.
+
 ```bash
-# Install with dev, test, tokenizer, and DOCX dependencies
+# Clone and install all dependencies
+git clone https://github.com/tianleG/lumberjack.git
+cd lumberjack
 uv sync --group dev --group test --extra tokenizers --extra docx
 
 # Run tests

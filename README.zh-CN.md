@@ -5,11 +5,11 @@
 <h1 align="center">lumberjack</h1>
 
 <p align="center">
-  <strong>面向 RAG 预处理的结构感知 Markdown 分割器</strong>
+  <strong>面向 RAG 预处理的结构感知 Markdown 与 DOCX 分割器</strong>
 </p>
 
 <p align="center">
-  按文档结构而非固定文本窗口切分 Markdown。
+  按文档结构而非固定文本窗口切分 Markdown 和 DOCX。
   保留标题层级、块完整性和行内语义。
 </p>
 
@@ -21,37 +21,50 @@
 
 ## 为什么选择 lumberjack？
 
-朴素文本分割器在任意字符边界处打断 Markdown — 切断代码块、从表格中间拆行、丢失标题上下文。**lumberjack** 把文档当作一棵树，而非一段字符串：
+朴素文本分割器会在任意字符边界处截断 Markdown —— 可能切断代码块、从表格中间拆分、丢失标题上下文。**lumberjack** 会将文档视为一棵树，而不是一串字符串：
 
-- **结构优先切分** — 按标题章节和块边界拆分
-- **预算感知合并** — 同级相邻章节在预算允许时自动合并
-- **块完整性** — 代码块、表格和数学公式默认保持完整
-- **标题上下文保留** — 每个分块携带完整的标题面包屑路径
-- **多种接口** — Python API、CLI 和 Web UI 开箱即用
+- **结构优先切分** —— 按标题章节和块边界拆分
+- **预算感知合并** —— 相邻的同级章节在预算允许时会自动合并
+- **块完整性** —— 代码块、表格和数学公式默认保持完整
+- **标题上下文保留** —— 每个分块都会带上完整的标题面包屑
+- **多种接口** —— 开箱即用的 Python API、CLI 和 Web UI
 
-核心管线：
+核心流程：
 
 ```text
-Markdown 文本 → 解析器 token → DocumentAST → 切分器 → Chunk[]
+Markdown 文本 → MarkdownItParser → DocumentAST → splitter → Chunk[]
+DOCX 二进制 → DocxParser ─────────────────────┘
 ```
 
 ## 安装
 
+### 作为库使用
+
 ```bash
-uv pip install lumberjack
+pip install lumberjack
 ```
 
 可选扩展：
 
 ```bash
-uv pip install "lumberjack[tokenizers]"   # 基于 tiktoken 的模型 token 计数
-uv pip install "lumberjack[docx]"         # DOCX 文档支持
-uv pip install "lumberjack[web]"          # FastAPI Web 服务器 + UI
-uv pip install "lumberjack[all]"          # 全部
+pip install "lumberjack[tokenizers]"   # 基于 tiktoken 的模型 token 计数
+pip install "lumberjack[docx]"         # DOCX 文档支持
+pip install "lumberjack[web]"          # FastAPI Web 服务器 + UI
+pip install "lumberjack[all]"          # 包含全部功能
 ```
 
 > [!NOTE]
-> 需要 Python 3.13+。本项目使用 [uv](https://docs.astral.sh/uv/) 管理依赖。
+> 需要 Python 3.13+。
+
+### 从源码构建（用于开发）
+
+```bash
+git clone https://github.com/tianleG/lumberjack.git
+cd lumberjack
+uv sync --all-group --all-extra
+```
+
+完整的开发工作流请参见[开发](#开发)章节。
 
 ## 快速开始
 
@@ -74,23 +87,23 @@ for chunk in chunks:
 ### CLI
 
 ```bash
-lumber document.md --max-tokens 1200 --format json
+lumber document.md --max-tokens 1200
 ```
 
 ### Web UI
 
 ```bash
-uv pip install "lumberjack[web]"
+pip install "lumberjack[web]"
 lumberjack-serve
 ```
 
-打开 <http://localhost:9612> — 粘贴文本或上传 `.md` 文件，配置选项，可视化查看分块结果。
+打开 <http://localhost:9612> —— 粘贴文本或上传 `.md` 文件，配置参数，并可视化查看分块结果。
 
 ## 使用说明
 
 ### Python API
 
-公共 API 是一个函数 — [`lumber()`](src/lumberjack/__init__.py)：
+公共 API 只有一个函数 —— [`lumber()`](src/lumberjack/__init__.py)：
 
 ```python
 from lumberjack import lumber
@@ -108,28 +121,27 @@ chunks = lumber(
     skip_empty_sections=True,
     recursive_split=False,
     tokenizer="simple",        # "simple" | "tiktoken"
-    parser="default",          # "default" | "markdown-it"
     splitter="recursive",      # "recursive" | "section"
 )
 ```
 
-每个返回的 `Chunk` 包含：
+每个返回的 `Chunk` 都包含：
 
-| 字段                       | 说明                                                                  |
-| -------------------------- | --------------------------------------------------------------------- |
-| `chunk_id`                 | 唯一标识符                                                            |
-| `chunk_type`               | 来源块类型（`"heading"`、`"paragraph"`、`"code_fence"`、...）         |
-| `body`                     | 包含标题面包屑的渲染文本                                              |
-| `token_count`              | 从最终正文计算的 token 数                                             |
-| `estimated_token_count`    | 切分时使用的预算估算值                                                |
-| `headings`                 | `(level, title)` 元组 — 标题面包屑路径                                |
-| `section_level`            | 该分块中最深的标题层级                                                |
-| `document_title`           | 从 front matter 或首个 H1 解析的文档标题                              |
-| `start_line` / `end_line`  | 源文件中的 1 起始行范围                                               |
+| 字段 | 说明 |
+| --- | --- |
+| `chunk_id` | 唯一标识符 |
+| `chunk_type` | 来源块类型（`"heading"`、`"paragraph"`、`"code_fence"`、...） |
+| `body` | 带有标题面包屑的渲染文本 |
+| `token_count` | 根据最终正文计算的 token 数 |
+| `estimated_token_count` | 切分时使用的预算估算值 |
+| `headings` | `(level, title)` 元组 —— 标题面包屑 |
+| `section_level` | 当前分块中最深的标题层级 |
+| `document_title` | 从 front matter 或首个 H1 解析得到的文档标题 |
+| `start_line` / `end_line` | 源文件中的 1 起始行范围 |
 
 #### 按块类型配置
 
-控制各块类型的切分和合并行为：
+控制各类块的切分和合并行为：
 
 ```python
 from lumberjack import lumber
@@ -140,7 +152,7 @@ chunks = lumber(
     block_options={
         # 表格：独立分块、禁止拆分、500 token 预算
         "table": BlockConfig(isolated=True, split=False, max_tokens=500),
-        # 代码块：超长时保持完整
+        # 代码块：即使超长也保持完整
         "code_fence": BlockConfig(split=False),
         # 段落：自定义预算
         "paragraph": BlockConfig(max_tokens=800),
@@ -150,20 +162,20 @@ chunks = lumber(
 
 `BlockConfig` 字段：
 
-- **`isolated`** (`bool`) — 作为独立分块输出，不与相邻内容合并
-- **`split`** (`bool`) — 允许拆分超长块
-- **`max_tokens`** (`int | None`) — 该块类型的预算覆盖值；`None` 使用全局 `max_tokens`
+- **`isolated`** (`bool`) —— 作为独立分块输出，不会与相邻内容合并
+- **`split`** (`bool`) —— 允许拆分超长块
+- **`max_tokens`** (`int | None`) —— 该块类型的预算覆盖值；`None` 时使用全局 `max_tokens`
 
-可用块类型：`paragraph`、`blockquote`、`list`、`list_item`、`table`、`code_block`、`code_fence`、`html_block`、`front_matter`、`math_block`、`math_block_eqno`。
+有效的块类型包括：`paragraph`、`blockquote`、`list`、`list_item`、`table`、`code_block`、`code_fence`、`html_block`、`front_matter`、`math_block`、`math_block_eqno`。
 
 > [!TIP]
-> `block_options` 也接受普通字典：`{"table": {"isolated": True, "split": False}}`。
+> `block_options` 也支持普通字典：`{"table": {"isolated": True, "split": False}}`。
 
-#### 自定义解析器插件
+#### 自定义解析器与插件
 
 ```python
 from mdit_py_plugins.tasklists import tasklists_plugin
-from lumberjack.core.parser import MarkdownItParser
+from lumberjack.core.markdown.parser import MarkdownItParser
 from lumberjack import lumber
 
 chunks = lumber(
@@ -178,49 +190,34 @@ chunks = lumber(
 lumber <input> [options]
 ```
 
-| 选项                       | 默认值       | 说明                                            |
-| -------------------------- | ------------ | ----------------------------------------------- |
-| `input`                    | —            | Markdown 文件路径                               |
-| `-o`, `--output`           | 标准输出     | 将输出写入文件                                  |
-| `-f`, `--format`           | `json`       | 输出格式：`json` 或 `markdown`                  |
-| `--max-tokens`             | `1200`       | 最大分块 token 预算                             |
-| `--ideal-max-tokens-ratio` | `0.8`        | 优先切分预算比例                                |
-| `--merge-below-tokens`     | `50`         | 小分块合并软阈值                                |
-| `--overlap-tokens`         | `0`          | 文本回退切分的 token 重叠量                     |
-| `--tokenizer`              | `simple`     | `simple` 或 `tiktoken`                          |
-| `--splitter`               | `recursive`  | `recursive` 或 `section`                        |
-| `--recursive-split`        | 关闭         | 启用 section 切分器的块/文本回退                |
-| `--block-config`           | —            | 按块类型配置（可重复指定）                      |
-| `--disable-lheading`       | 关闭         | 禁用 Setext 标题解析                            |
+| 选项 | 默认值 | 说明 |
+| --- | --- | --- |
+| `input` | — | Markdown (.md) 或 DOCX (.docx) 文件路径 |
+| `--input-format` | `auto` | `auto`、`markdown` 或 `docx` |
+| `-o`, `--output` | stdout | 将输出写入文件 |
+| `--max-tokens` | `1200` | 最大分块 token 预算 |
+| `--ideal-max-tokens-ratio` | `0.8` | 优先切分预算比例 |
+| `--merge-below-tokens` | `50` | 小分块合并软阈值 |
+| `--overlap-tokens` | `0` | 文本回退切分的 token 重叠量 |
+| `--tokenizer` | `simple` | `simple` 或 `tiktoken` |
+| `--splitter` | `recursive` | `recursive` 或 `section` |
+| `--recursive-split` | off | 为 section 切分器启用块/文本回退 |
+| `--block-config` | — | 按块类型配置（可重复指定） |
 
-`--block-config` 语法：`KIND[:isolated][:nosplit][:TOKENS]`
+`--block-config` 的语法为：`KIND[:isolated][:nosplit][:TOKENS]`
 
 ```bash
 # 表格独立、禁止拆分、500 token 预算
 lumber doc.md --block-config table:isolated:nosplit:500
 
-# 代码块超长时保持完整
+# 代码块保持完整
 lumber doc.md --block-config code_fence:nosplit
 
 # 多个块类型配置
 lumber doc.md --block-config table:isolated --block-config code_fence:nosplit
 ```
 
-**JSON 输出** 包含 `document`、`chunk_count` 和带完整元数据的 `chunks` 数组。
-
-**Markdown 输出** 使用 HTML 注释分隔各分块：
-
-```markdown
-<!-- chunk 1 tokens=42 -->
-## Getting Started
-
-Install with pip...
-
-<!-- chunk 2 tokens=87 -->
-## Usage
-
-...
-```
+**JSON 输出** 包含 `document`、`chunk_count` 和完整元数据的 `chunks` 数组。
 
 ### Web API
 
@@ -249,21 +246,20 @@ curl -X POST http://localhost:9612/lumber/api/split/file \
 
 #### Web API 选项
 
-两个接口接受相同的选项：
+两个接口都接受相同的选项：
 
-| 字段                       | 类型    | 默认值        | 说明                                   |
-| -------------------------- | ------- | ------------- | -------------------------------------- |
-| `max_tokens`               | int     | `1200`        | 最大分块 token 预算                    |
-| `ideal_max_tokens_ratio`   | float   | `0.8`         | 优先切分预算比例                       |
-| `merge_below_tokens`       | int     | `50`          | 小分块合并软阈值                       |
-| `overlap_tokens`           | int     | `0`           | 文本回退切分的 token 重叠量            |
-| `merge_small_chunks`       | bool    | `true`        | 合并相邻小分块                         |
-| `skip_empty_sections`      | bool    | `true`        | 丢弃仅有标题无正文的分块               |
-| `recursive_split`          | bool    | `false`       | 启用 section 切分器的块/文本回退       |
-| `block_configs`            | object  | `null`        | 按块类型配置                           |
-| `disable_lheading`         | bool    | `false`       | 禁用 Setext 标题解析                   |
-| `tokenizer`                | string  | `"simple"`    | `simple` 或 `tiktoken`                 |
-| `splitter`                 | string  | `"recursive"` | `recursive` 或 `section`               |
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `max_tokens` | int | `1200` | 最大分块 token 预算 |
+| `ideal_max_tokens_ratio` | float | `0.8` | 优先切分预算比例 |
+| `merge_below_tokens` | int | `50` | 小分块合并软阈值 |
+| `overlap_tokens` | int | `0` | 文本回退切分的 token 重叠量 |
+| `merge_small_chunks` | bool | `true` | 合并相邻小分块 |
+| `skip_empty_sections` | bool | `true` | 丢弃仅有标题无正文的分块 |
+| `recursive_split` | bool | `false` | 为 section 切分器启用块/文本回退 |
+| `block_configs` | object | `null` | 按块类型配置 |
+| `tokenizer` | string | `"simple"` | `simple` 或 `tiktoken` |
+| `splitter` | string | `"recursive"` | `recursive` 或 `section` |
 
 #### 响应
 
@@ -300,20 +296,20 @@ docker compose up --build
 
 ## 切分策略
 
-| 策略         | 注册名               | 行为                                                                         |
-| ------------ | -------------------- | ---------------------------------------------------------------------------- |
-| **Recursive** | `recursive`（默认）  | 结构优先、预算感知。同级相邻章节在预算允许时合并进同一个分块。               |
-| **Section**  | `section`            | 按标题章节直接正文输出一个分块。子章节独立输出为单独分块。                   |
+| 策略 | 注册名 | 行为 |
+| --- | --- | --- |
+| **Recursive** | `recursive`（默认） | 结构优先、预算感知；相邻同级章节会在预算允许时合并进同一个分块。 |
+| **Section** | `section` | 一个标题章节对应一个分块，子章节则作为单独分块。 |
 
 递归切分顺序：
 
-1. 如果整篇文档已在预算内，保持为一个分块
-2. 否则按标题章节切分
-3. 超大章节按块边界切分
-4. 回退到段落 → 行 → 句子 → 单词 → 硬切分
+1. 如果整篇文档已经在预算内，则保持为一个分块
+2. 先按标题章节切分
+3. 超大章节再按块边界切分
+4. 最后回退到段落 → 行 → 句子 → 单词 → 硬切分
 
 > [!IMPORTANT]
-> 代码块默认保持完整，即使超过 `max_tokens`。使用 `BlockConfig(split=True)` 可允许拆分指定块类型。
+> 代码块默认保持完整，即使超过 `max_tokens`；如需允许拆分特定块类型，请使用 `BlockConfig(split=True)`。
 
 ## 解析覆盖范围
 
@@ -338,15 +334,19 @@ src/lumberjack/
 ├── __init__.py              # 公共 API（lumber 函数）
 ├── cli.py                   # CLI 入口（lumber）
 ├── core/
-│   ├── parser.py            # Markdown 解析器（markdown-it-py 后端）
-│   ├── splitter.py          # 递归 & 章节切分器
-│   ├── tokenizers.py        # 简单字符 & tiktoken 分词器
 │   ├── models.py            # 数据模型（Chunk、BlockConfig、SplitOptions、...）
 │   ├── protocols.py         # 协议接口
+│   ├── tokenizers.py        # 简单字符 & tiktoken 分词器
+│   ├── splitter.py          # 递归 & 章节切分器
+│   ├── text_splitter.py     # 超长块的通用文本切分器
 │   ├── block_config.py      # 块配置解析辅助
-│   ├── plugins/             # 自定义 markdown-it 插件（方括号数学）
 │   ├── utils.py             # Markdown 渲染辅助函数
-│   └── visitor.py           # 访问器模式钩子
+│   ├── visitor.py           # AST 遍历访问器
+│   ├── markdown/
+│   │   ├── parser.py        # MarkdownItParser（markdown-it-py 后端）
+│   │   └── plugins/         # 自定义 markdown-it 插件（方括号数学）
+│   └── docx/
+│       └── parser.py        # DocxParser（python-docx 后端）
 └── web/
     ├── app.py               # FastAPI 应用
     ├── routes.py            # API 端点
@@ -355,8 +355,12 @@ src/lumberjack/
 
 ## 开发
 
+本项目使用 [uv](https://docs.astral.sh/uv/) 管理依赖。
+
 ```bash
-# 安装开发、测试、分词器和 DOCX 依赖
+# 克隆并安装全部依赖
+git clone https://github.com/tianleG/lumberjack.git
+cd lumberjack
 uv sync --group dev --group test --extra tokenizers --extra docx
 
 # 运行测试
