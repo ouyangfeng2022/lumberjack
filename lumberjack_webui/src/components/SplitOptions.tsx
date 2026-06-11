@@ -140,15 +140,6 @@ export default function SplitOptions({ options, onChange }: Props) {
                 onChange={(e) => update('merge_below_tokens', Number(e.target.value))}
               />
             </label>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>{t('opts_overlap_tokens')}</span>
-              <input
-                type="number"
-                className={styles.numberInput}
-                value={options.overlap_tokens}
-                onChange={(e) => update('overlap_tokens', Number(e.target.value))}
-              />
-            </label>
           </div>
 
           <div className={styles.checkRow}>

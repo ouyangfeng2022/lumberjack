@@ -145,7 +145,7 @@ class _BaseSplitter(SplitterProtocol):
     ):
         self.tokenizer = tokenizer or SimpleCharTokenizer()
         self.options = options or SplitOptions()
-        self._text_splitter = TextSplitter(self.tokenizer, self.options.overlap_tokens)
+        self._text_splitter = TextSplitter(self.tokenizer)
 
     def split(self, document: DocumentAST) -> list[Chunk]:
         self._validate_options()
@@ -196,15 +196,8 @@ class _BaseSplitter(SplitterProtocol):
             )
         if self.options.merge_below_tokens < 0:
             raise ValueError("merge_below_tokens must be non-negative")
-        if self.options.overlap_tokens < 0:
-            raise ValueError("overlap_tokens must be non-negative")
         if self.options.merge_below_tokens >= self.options.max_tokens:
             raise ValueError("merge_below_tokens must be smaller than max_tokens")
-        if self.options.overlap_tokens >= self.options.ideal_max_tokens:
-            raise ValueError(
-                f"overlap_tokens ({self.options.overlap_tokens}) must be smaller than "
-                f"ideal_max_tokens ({self.options.ideal_max_tokens})"
-            )
         for kind, cfg in self.options.block_options.items():
             if cfg.max_tokens is not None and cfg.max_tokens <= 0:
                 raise ValueError(

@@ -74,20 +74,6 @@ def test_lumber_uses_string_input_and_document_metadata() -> None:
     assert chunks[0].end_line == 1
 
 
-def test_lumber_accepts_overlap_options() -> None:
-    chunks = lumber(
-        FIXTURE,
-        document_title="sample.md",
-        max_tokens=120,
-        merge_below_tokens=0,
-        overlap_tokens=12,
-        merge_small_chunks=False,
-    )
-
-    assert chunks
-    assert all(chunk.document_title == "sample.md" for chunk in chunks)
-
-
 def test_lumber_accepts_ideal_max_tokens_ratio() -> None:
     chunks = lumber(
         "# A\n\nalpha1\n\nbravo2",

@@ -27,7 +27,6 @@ const en = {
   opts_show_advanced: 'Show advanced options',
   opts_hide_advanced: 'Hide advanced options',
   opts_merge_below_tokens: 'Merge below tokens',
-  opts_overlap_tokens: 'Overlap tokens',
   opts_merge_small: 'Merge small chunks',
   opts_skip_empty_sections: 'Skip empty sections',
   opts_disable_lheading: 'Disable Setext headings',

@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from .models import MarkdownBlock
     from .protocols import TokenizerProtocol
 
-SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?\u3002\uFF01\uFF1F])\s+")
+SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?\u3002\uff01\uff1f])\s+")
 PROTECTED_SPAN_RE = re.compile(r"<https?://[^\s>]+>|https?://[^\s)>\]]+")
 TABLE_DELIMITER_CELL_RE = re.compile(r":?-+(:?-+)*:?")
 
@@ -15,9 +15,8 @@ TABLE_DELIMITER_CELL_RE = re.compile(r":?-+(:?-+)*:?")
 class TextSplitter:
     """Splits oversized text blocks into token-bounded pieces."""
 
-    def __init__(self, tokenizer: TokenizerProtocol, overlap_tokens: int = 0):
+    def __init__(self, tokenizer: TokenizerProtocol) -> None:
         self.tokenizer = tokenizer
-        self.overlap_tokens = overlap_tokens
 
     def split_oversized_block(
         self,
@@ -123,7 +122,6 @@ class TextSplitter:
             items,
             max_tokens,
             separator="\n",
-            overlap_tokens=0,
         )
         if all(self.tokenizer.count(part) <= max_tokens for part in packed):
             return packed
@@ -147,7 +145,6 @@ class TextSplitter:
         *,
         max_tokens: int,
     ) -> list[str]:
-        overlap_tokens = self.overlap_tokens
         if self.tokenizer.count(text) <= max_tokens:
             return [text]
 
@@ -164,7 +161,6 @@ class TextSplitter:
                     parts,
                     max_tokens,
                     separator=separator,
-                    overlap_tokens=overlap_tokens,
                 )
                 if all(self.tokenizer.count(part) <= max_tokens for part in packed):
                     return packed
@@ -177,7 +173,6 @@ class TextSplitter:
                 sentence_parts,
                 max_tokens,
                 separator=" ",
-                overlap_tokens=overlap_tokens,
             )
             if all(self.tokenizer.count(part) <= max_tokens for part in packed):
                 return packed
@@ -188,12 +183,11 @@ class TextSplitter:
                 word_parts,
                 max_tokens,
                 separator=" ",
-                overlap_tokens=overlap_tokens,
             )
             if all(self.tokenizer.count(part) <= max_tokens for part in packed):
                 return packed
 
-        return self.hard_split(text, max_tokens, overlap_tokens=overlap_tokens)
+        return self.hard_split(text, max_tokens)
 
     def pack_parts(
         self,
@@ -201,12 +195,10 @@ class TextSplitter:
         max_tokens: int,
         *,
         separator: str,
-        overlap_tokens: int,
     ) -> list[str]:
         packed: list[str] = []
         current_parts: list[str] = []
         current_joined = ""
-        current_tokens = 0
         for part in parts:
             candidate_text = (
                 current_joined + separator + part if current_joined else part
@@ -214,22 +206,11 @@ class TextSplitter:
             candidate_tokens = self.tokenizer.count(candidate_text)
             if current_parts and candidate_tokens > max_tokens:
                 packed.append(current_joined)
-                overlap_parts, _ = self.tail_parts_within_budget(
-                    current_joined,
-                    max_tokens=overlap_tokens,
-                    separator=separator,
-                )
-                current_parts = [*overlap_parts, part]
-                current_joined = separator.join(current_parts)
-                current_tokens = self.tokenizer.count(current_joined)
-                if current_tokens > max_tokens:
-                    current_parts = [part]
-                    current_joined = part
-                    current_tokens = self.tokenizer.count(part)
+                current_parts = [part]
+                current_joined = part
             else:
                 current_parts.append(part)
                 current_joined = separator.join(current_parts)
-                current_tokens = candidate_tokens
         if current_parts:
             packed.append(current_joined)
         return packed
@@ -238,8 +219,6 @@ class TextSplitter:
         self,
         text: str,
         max_tokens: int,
-        *,
-        overlap_tokens: int,
     ) -> list[str]:
         parts: list[str] = []
         current = ""
@@ -247,47 +226,9 @@ class TextSplitter:
             candidate = f"{current}{character}"
             if current and self.tokenizer.count(candidate) > max_tokens:
                 parts.append(current)
-                overlap = self.suffix_within_budget(current, overlap_tokens)
-                current = f"{overlap}{character}" if overlap else character
-                if self.tokenizer.count(current) > max_tokens:
-                    current = character
+                current = character
             else:
                 current = candidate
         if current:
             parts.append(current)
         return [part.strip() for part in parts if part.strip()]
-
-    def tail_parts_within_budget(
-        self,
-        current_joined: str,
-        *,
-        max_tokens: int,
-        separator: str,
-    ) -> tuple[list[str], int]:
-        if max_tokens <= 0 or not current_joined:
-            return ([], 0)
-        parts = current_joined.split(separator)
-        tail: list[str] = []
-        for part in reversed(parts):
-            candidate = separator.join([part, *tail]) if tail else part
-            if self.tokenizer.count(candidate) > max_tokens:
-                break
-            tail = [part, *tail]
-        tail_joined = separator.join(tail) if tail else ""
-        return (tail, self.tokenizer.count(tail_joined))
-
-    def suffix_within_budget(self, text: str, max_tokens: int) -> str:
-        if max_tokens <= 0 or not text:
-            return ""
-        if self.tokenizer.count(text) <= max_tokens:
-            return text
-
-        for start in range(1, len(text)):
-            suffix = text[start:]
-            if any(
-                m.start() < start < m.end() for m in PROTECTED_SPAN_RE.finditer(text)
-            ):
-                continue
-            if self.tokenizer.count(suffix) <= max_tokens:
-                return suffix
-        return ""

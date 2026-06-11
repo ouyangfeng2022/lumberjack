@@ -172,7 +172,6 @@ class SplitOptions:
         merge_below_tokens: Soft threshold for merging short tails produced by
             fragment or text fallback splitting. This is not a final minimum
             chunk size.
-        overlap_tokens: Number of tokens to duplicate between adjacent chunks.
         merge_small_chunks: Combine adjacent chunks that share the same heading path.
         skip_empty_sections: When True, discard chunks that contain only a heading
             with no body content. Chunks with zero rendered tokens are always discarded
@@ -193,7 +192,6 @@ class SplitOptions:
     max_tokens: int = 1200
     ideal_max_tokens_ratio: float = 0.8
     merge_below_tokens: int = 50
-    overlap_tokens: int = 0
     merge_small_chunks: bool = True
     skip_empty_sections: bool = True
     recursive_split: bool = False

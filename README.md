@@ -116,7 +116,6 @@ chunks = lumber(
     max_tokens=1200,
     ideal_max_tokens_ratio=0.8,
     merge_below_tokens=50,
-    overlap_tokens=0,
     merge_small_chunks=True,
     skip_empty_sections=True,
     recursive_split=False,
@@ -198,7 +197,6 @@ lumber <input> [options]
 | `--max-tokens`             | `1200`      | Maximum chunk token budget                       |
 | `--ideal-max-tokens-ratio` | `0.8`       | Preferred split budget ratio                     |
 | `--merge-below-tokens`     | `50`        | Soft threshold for small-chunk merging           |
-| `--overlap-tokens`         | `0`         | Token overlap for text fallback splits           |
 | `--tokenizer`              | `simple`    | `simple` or `tiktoken`                           |
 | `--splitter`               | `recursive` | `recursive` or `section`                         |
 | `--recursive-split`        | off         | Enable block/text fallback for section splitter  |
@@ -253,7 +251,6 @@ Both endpoints accept the same options:
 | `max_tokens`             | int     | `1200`       | Maximum chunk token budget                |
 | `ideal_max_tokens_ratio` | float   | `0.8`        | Preferred split budget ratio              |
 | `merge_below_tokens`     | int     | `50`         | Soft merge threshold                      |
-| `overlap_tokens`         | int     | `0`          | Token overlap for text fallback           |
 | `merge_small_chunks`     | bool    | `true`       | Merge adjacent small chunks               |
 | `skip_empty_sections`    | bool    | `true`       | Discard heading-only chunks               |
 | `recursive_split`        | bool    | `false`      | Block/text fallback for section splitter  |

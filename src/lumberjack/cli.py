@@ -66,12 +66,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Merge adjacent chunks below this token threshold when possible",
     )
     parser.add_argument(
-        "--overlap-tokens",
-        type=int,
-        default=0,
-        help="Token overlap for text fallback splits",
-    )
-    parser.add_argument(
         "--recursive-split",
         action="store_true",
         help="Split oversized direct section bodies when using --splitter section",
@@ -101,7 +95,6 @@ def main() -> None:
         max_tokens=args.max_tokens,
         ideal_max_tokens_ratio=args.ideal_max_tokens_ratio,
         merge_below_tokens=args.merge_below_tokens,
-        overlap_tokens=args.overlap_tokens,
         block_options=block_options,  # ty: ignore[invalid-argument-type]
         tokenizer=args.tokenizer,
         splitter=args.splitter,

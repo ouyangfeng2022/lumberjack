@@ -27,7 +27,6 @@ const zh = {
   opts_show_advanced: '显示高级选项',
   opts_hide_advanced: '隐藏高级选项',
   opts_merge_below_tokens: '低于此词元数时合并',
-  opts_overlap_tokens: '重叠词元数',
   opts_merge_small: '合并小块',
   opts_skip_empty_sections: '跳过空白章节',
   opts_disable_lheading: '禁用 Setext 标题',

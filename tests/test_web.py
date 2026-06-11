@@ -62,7 +62,6 @@ def test_split_with_options(client: TestClient) -> None:
             "max_tokens": 100,
             "ideal_max_tokens_ratio": 0.8,
             "merge_below_tokens": 10,
-            "overlap_tokens": 5,
             "merge_small_chunks": False,
             "block_configs": {"paragraph": {"isolated": False}},
             "tokenizer": "simple",

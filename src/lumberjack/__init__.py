@@ -64,7 +64,6 @@ def lumber(
     max_tokens: int = 1200,
     ideal_max_tokens_ratio: float = 0.8,
     merge_below_tokens: int = 50,
-    overlap_tokens: int = 0,
     merge_small_chunks: bool = True,
     skip_empty_sections: bool = True,
     recursive_split: bool = False,
@@ -89,8 +88,6 @@ def lumber(
         ideal_max_tokens_ratio: Ratio of ``max_tokens`` used as the
             preferred split budget before post-processing merges.
         merge_below_tokens: Soft threshold for merging short tails.
-        overlap_tokens: Token overlap between adjacent chunks from text
-            fallback splitting.
         merge_small_chunks: Combine adjacent chunks sharing the same
             heading path when enabled.
         skip_empty_sections: Discard chunks containing only a heading
@@ -148,7 +145,6 @@ def lumber(
         max_tokens=max_tokens,
         ideal_max_tokens_ratio=ideal_max_tokens_ratio,
         merge_below_tokens=merge_below_tokens,
-        overlap_tokens=overlap_tokens,
         merge_small_chunks=merge_small_chunks,
         skip_empty_sections=skip_empty_sections,
         recursive_split=recursive_split,

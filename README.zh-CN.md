@@ -116,7 +116,6 @@ chunks = lumber(
     max_tokens=1200,
     ideal_max_tokens_ratio=0.8,
     merge_below_tokens=50,
-    overlap_tokens=0,
     merge_small_chunks=True,
     skip_empty_sections=True,
     recursive_split=False,
@@ -198,7 +197,6 @@ lumber <input> [options]
 | `--max-tokens` | `1200` | 最大分块 token 预算 |
 | `--ideal-max-tokens-ratio` | `0.8` | 优先切分预算比例 |
 | `--merge-below-tokens` | `50` | 小分块合并软阈值 |
-| `--overlap-tokens` | `0` | 文本回退切分的 token 重叠量 |
 | `--tokenizer` | `simple` | `simple` 或 `tiktoken` |
 | `--splitter` | `recursive` | `recursive` 或 `section` |
 | `--recursive-split` | off | 为 section 切分器启用块/文本回退 |
@@ -253,7 +251,6 @@ curl -X POST http://localhost:9612/lumber/api/split/file \
 | `max_tokens` | int | `1200` | 最大分块 token 预算 |
 | `ideal_max_tokens_ratio` | float | `0.8` | 优先切分预算比例 |
 | `merge_below_tokens` | int | `50` | 小分块合并软阈值 |
-| `overlap_tokens` | int | `0` | 文本回退切分的 token 重叠量 |
 | `merge_small_chunks` | bool | `true` | 合并相邻小分块 |
 | `skip_empty_sections` | bool | `true` | 丢弃仅有标题无正文的分块 |
 | `recursive_split` | bool | `false` | 为 section 切分器启用块/文本回退 |

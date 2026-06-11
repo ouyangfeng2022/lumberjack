@@ -708,49 +708,6 @@ Plain body.
     )
 
 
-def test_splitter_adds_overlap_only_for_text_fallback_splits() -> None:
-    document = MarkdownParser().parse(
-        "alpha beta gamma delta epsilon zeta",
-        document_title="overlap.md",
-    )
-    splitter = RecursiveSplitter(
-        tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=16,
-            ideal_max_tokens_ratio=1,
-            merge_below_tokens=0,
-            overlap_tokens=5,
-            merge_small_chunks=False,
-        ),
-    )
-
-    chunks = splitter.split(document)
-
-    assert [chunk.body for chunk in chunks] == [
-        "alpha beta gamma",
-        "gamma delta",
-        "delta epsilon",
-        "zeta",
-    ]
-
-
-def test_splitter_rejects_overlap_budget_that_consumes_the_whole_chunk() -> None:
-    document = MarkdownParser().parse("alpha beta", document_title="invalid.md")
-    splitter = RecursiveSplitter(
-        tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=10, merge_below_tokens=0, overlap_tokens=10),
-    )
-
-    try:
-        splitter.split(document)
-    except ValueError as exc:
-        assert (
-            str(exc) == "overlap_tokens (10) must be smaller than ideal_max_tokens (8)"
-        )
-    else:
-        raise AssertionError("Expected overlap validation to fail")
-
-
 def test_splitter_rejects_invalid_ideal_max_tokens_ratio() -> None:
     document = MarkdownParser().parse("alpha beta", document_title="invalid.md")
     splitter = RecursiveSplitter(
@@ -764,28 +721,6 @@ def test_splitter_rejects_invalid_ideal_max_tokens_ratio() -> None:
         assert str(exc) == "ideal_max_tokens_ratio must be greater than 0 and at most 1"
     else:
         raise AssertionError("Expected ideal_max_tokens_ratio validation to fail")
-
-
-def test_splitter_rejects_overlap_budget_that_consumes_ideal_chunk() -> None:
-    document = MarkdownParser().parse("alpha beta", document_title="invalid.md")
-    splitter = RecursiveSplitter(
-        tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=20,
-            ideal_max_tokens_ratio=0.5,
-            merge_below_tokens=0,
-            overlap_tokens=10,
-        ),
-    )
-
-    try:
-        splitter.split(document)
-    except ValueError as exc:
-        assert (
-            str(exc) == "overlap_tokens (10) must be smaller than ideal_max_tokens (10)"
-        )
-    else:
-        raise AssertionError("Expected overlap validation to fail")
 
 
 def test_recursive_splitter_uses_ideal_budget_for_initial_splitting() -> None:
