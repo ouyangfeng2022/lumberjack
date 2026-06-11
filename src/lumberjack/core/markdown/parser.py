@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from markdown_it.token import Token
 
     from ..models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
-    from ..protocols import MarkdownParserProtocol
 
 from ..models import (
     BlockKindRegistry,
@@ -829,13 +828,3 @@ class MarkdownItParser:
 
 
 MarkdownParser = MarkdownItParser
-
-
-def create_parser(
-    name: str, *, disable_lheading: bool = False
-) -> MarkdownParserProtocol:
-    """Instantiate a parser by name (``"default"`` or ``"markdown-it"``)."""
-    normalized = name.strip().lower()
-    if normalized in {"default", "markdown-it"}:
-        return MarkdownItParser(disable_lheading=disable_lheading)
-    raise ValueError(f"Unsupported parser: {name}")

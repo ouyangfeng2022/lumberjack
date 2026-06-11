@@ -1,7 +1,6 @@
-from .parser import MarkdownItParser, MarkdownParser, create_parser
+from .parser import MarkdownItParser, MarkdownParser
 
 __all__ = [
     "MarkdownItParser",
     "MarkdownParser",
-    "create_parser",
 ]

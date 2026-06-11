@@ -94,22 +94,6 @@ def test_split_accepts_heading_splitter_with_recursive_split(
     ]
 
 
-def test_split_can_disable_setext_headings(client: TestClient) -> None:
-    response = client.post(
-        "/lumber/api/split/text",
-        json={
-            "text": "Title\n=====\n\nbody",
-            "max_tokens": 500,
-            "disable_lheading": True,
-        },
-    )
-
-    assert response.status_code == 200
-    chunk = response.json()["chunks"][0]
-    assert chunk["body"] == "Title\n=====\n\nbody"
-    assert chunk["headings"] == []
-
-
 def test_split_ignores_legacy_render_common_headings_form_field(
     client: TestClient,
 ) -> None:

@@ -38,19 +38,20 @@ Markdown 文本 → 解析器 token → DocumentAST → 切分器 → Chunk[]
 ## 安装
 
 ```bash
-pip install lumberjack
+uv pip install lumberjack
 ```
 
 可选扩展：
 
 ```bash
-pip install "lumberjack[tokenizers]"   # 基于 tiktoken 的模型 token 计数
-pip install "lumberjack[web]"          # FastAPI Web 服务器 + UI
-pip install "lumberjack[all]"          # 全部
+uv pip install "lumberjack[tokenizers]"   # 基于 tiktoken 的模型 token 计数
+uv pip install "lumberjack[docx]"         # DOCX 文档支持
+uv pip install "lumberjack[web]"          # FastAPI Web 服务器 + UI
+uv pip install "lumberjack[all]"          # 全部
 ```
 
 > [!NOTE]
-> 需要 Python 3.13+。
+> 需要 Python 3.13+。本项目使用 [uv](https://docs.astral.sh/uv/) 管理依赖。
 
 ## 快速开始
 
@@ -79,7 +80,7 @@ lumber document.md --max-tokens 1200 --format json
 ### Web UI
 
 ```bash
-pip install "lumberjack[web]"
+uv pip install "lumberjack[web]"
 lumberjack-serve
 ```
 
@@ -355,16 +356,22 @@ src/lumberjack/
 ## 开发
 
 ```bash
-# 安装开发、测试和分词器依赖
-uv sync --group dev --group test --extra tokenizers
+# 安装开发、测试、分词器和 DOCX 依赖
+uv sync --group dev --group test --extra tokenizers --extra docx
 
 # 运行测试
 uv run pytest
 
-# 代码检查和格式化
+# 代码检查和格式化（ruff）
 uv run ruff check --fix
 uv run ruff format
+
+# 类型检查（ty）
+uv run ty check
 ```
+
+> [!TIP]
+> 本项目使用 [ruff](https://docs.astral.sh/ruff/) 进行代码检查与格式化，使用 [ty](https://docs.astral.sh/ty/) 进行类型检查。
 
 ## 许可证
 

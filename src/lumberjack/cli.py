@@ -45,12 +45,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Tokenizer implementation",
     )
     parser.add_argument(
-        "--parser",
-        choices=("default", "markdown-it"),
-        default="default",
-        help="Markdown parser implementation",
-    )
-    parser.add_argument(
         "--splitter",
         choices=("recursive", "section"),
         default="recursive",
@@ -90,11 +84,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Per-block-kind config (e.g., table:500:nosplit:isolated); "
         "order-insensitive. Flags: isolated, nosplit; integer sets max_tokens",
     )
-    parser.add_argument(
-        "--disable-lheading",
-        action="store_true",
-        help="Disable markdown-it setext heading parsing via parser.disable('lheading')",
-    )
     return parser
 
 
@@ -114,9 +103,7 @@ def main() -> None:
         merge_below_tokens=args.merge_below_tokens,
         overlap_tokens=args.overlap_tokens,
         block_options=block_options,  # ty: ignore[invalid-argument-type]
-        disable_lheading=args.disable_lheading,
         tokenizer=args.tokenizer,
-        parser=args.parser,
         splitter=args.splitter,
         recursive_split=args.recursive_split,
         document_metadata={"path": str(input_path.resolve())},

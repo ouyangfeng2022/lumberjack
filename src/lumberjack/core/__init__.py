@@ -1,7 +1,6 @@
 from .markdown import (
     MarkdownItParser,
     MarkdownParser,
-    create_parser,
 )
 from .splitter import (
     RecursiveSplitter,
@@ -21,7 +20,6 @@ __all__ = [
     "SimpleCharTokenizer",
     "TextSplitter",
     "TiktokenTokenizer",
-    "create_parser",
     "create_splitter",
     "create_tokenizer",
 ]

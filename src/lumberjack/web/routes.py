@@ -23,7 +23,6 @@ class TextSplitRequest(BaseModel):
     skip_empty_sections: bool = True
     recursive_split: bool = False
     block_configs: dict[str, Any] | None = None
-    disable_lheading: bool = False
     tokenizer: str = "simple"
     splitter: str = "recursive"
 
@@ -115,7 +114,6 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
             skip_empty_sections=payload.skip_empty_sections,
             recursive_split=payload.recursive_split,
             block_options=block_options,  # ty: ignore[invalid-argument-type]
-            disable_lheading=payload.disable_lheading,
             tokenizer=payload.tokenizer,
             splitter=payload.splitter,
         )
@@ -148,7 +146,6 @@ async def split_file(
     skip_empty_sections: bool = Form(True),
     recursive_split: bool = Form(False),
     block_configs: str = Form(""),
-    disable_lheading: bool = Form(False),
     tokenizer: str = Form("simple"),
     splitter: str = Form("recursive"),
 ) -> SplitResponse:
@@ -185,7 +182,6 @@ async def split_file(
             skip_empty_sections=skip_empty_sections,
             recursive_split=recursive_split,
             block_options=block_options,  # ty: ignore[invalid-argument-type]
-            disable_lheading=disable_lheading,
             tokenizer=tokenizer,
             splitter=splitter,
         )

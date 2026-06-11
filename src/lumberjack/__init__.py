@@ -3,13 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .core import create_parser, create_splitter, create_tokenizer
+from .core import create_splitter, create_tokenizer
+from .core.markdown.parser import MarkdownItParser
 from .core.models import BlockConfig, Chunk, SplitOptions
 from .core.visitor import MarkdownAstVisitor
 
 if TYPE_CHECKING:
     from .core.protocols import (
-        MarkdownParserProtocol,
         SplitterProtocol,
         TokenizerProtocol,
     )
@@ -69,9 +69,8 @@ def lumber(
     skip_empty_sections: bool = True,
     recursive_split: bool = False,
     block_options: dict[str, BlockConfig | dict] | None = None,
-    disable_lheading: bool = False,
     tokenizer: str | TokenizerProtocol = "simple",
-    parser: str | MarkdownParserProtocol = "default",
+    parser: MarkdownItParser | None = None,
     splitter: str | SplitterProtocol = "recursive",
     document_metadata: dict[str, object] | None = None,
 ) -> list[Chunk]:
@@ -99,9 +98,8 @@ def lumber(
         recursive_split: Enable block/text fallback for oversized
             section bodies (effective with ``--splitter section``).
         block_options: Per-block-kind :class:`BlockConfig` overrides.
-        disable_lheading: Disable Setext heading parsing (Markdown only).
         tokenizer: Tokenizer name or instance.
-        parser: Parser name or instance (Markdown only; ignored for DOCX).
+        parser: Parser instance (Markdown only; ignored for DOCX).
         splitter: Splitter name or instance.
         document_metadata: Extra metadata merged into the document.
 
@@ -128,11 +126,7 @@ def lumber(
         )
     else:
         raw = _read_input_for_markdown(text)
-        parser_impl = (
-            create_parser(parser, disable_lheading=disable_lheading)
-            if isinstance(parser, str)
-            else parser
-        )
+        parser_impl = parser or MarkdownItParser()
         document = parser_impl.parse(
             raw,
             document_title=document_title,

@@ -9,7 +9,6 @@ from mdit_py_plugins.tasklists import tasklists_plugin
 from lumberjack.core.markdown.parser import (
     MarkdownItParser,
     MarkdownParser,
-    create_parser,
 )
 
 FIXTURE = (
@@ -93,11 +92,6 @@ def test_parser_ignores_headings_inside_code_fence() -> None:
     assert len(code_blocks) == 1
     assert "# This heading-looking line" in code_blocks[0].text
     assert len(details.children) == 1
-
-
-def test_create_parser_routes_default_and_fallback_names() -> None:
-    assert isinstance(create_parser("default"), MarkdownItParser)
-    assert isinstance(create_parser("markdown-it"), MarkdownItParser)
 
 
 def test_parser_captures_commonmark_blocks_and_inlines() -> None:

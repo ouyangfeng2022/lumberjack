@@ -25,7 +25,8 @@ class MarkdownAstVisitor:
 
     Usage::
 
-        from lumberjack.core import create_parser, MarkdownAstVisitor
+        from lumberjack.core import MarkdownAstVisitor
+        from lumberjack.core.markdown.parser import MarkdownItParser
 
         class HeadingCollector(MarkdownAstVisitor):
             def __init__(self):
@@ -35,7 +36,7 @@ class MarkdownAstVisitor:
                 if section.level > 0:
                     self.headings.append((section.level, section.title))
 
-        parser = create_parser("default")
+        parser = MarkdownItParser()
         document = parser.parse("# Title\\n\\nParagraph")
         collector = HeadingCollector()
         collector.walk_document(document)

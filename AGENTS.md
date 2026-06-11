@@ -87,7 +87,7 @@ Main components:
 - **Parser**: `src/lumberjack/core/markdown/parser.py`
   - `MarkdownParser` aliases `MarkdownItParser`
   - Uses `MarkdownIt("gfm-like")` with built-in plugins
-  - Supports `disable_lheading` to disable Setext heading parsing
+  - `MarkdownItParser(disable_lheading=True)` to disable Setext heading parsing
   - Parses YAML front matter, preserves heading hierarchy, inlines, reference definitions, line ranges
 - **Splitter**: `src/lumberjack/core/markdown/splitter.py`
   - `_BaseMarkdownSplitter` provides shared state and helpers
@@ -140,9 +140,7 @@ Implemented in `src/lumberjack/cli.py`.
 - `--input-format`: `auto` (detect from extension), `markdown`, or `docx`
 - Output format: JSON only
 - Tokenizers: `simple`, `tiktoken`
-- Parser choices: `default`, `markdown-it` (Markdown only; ignored for DOCX)
 - Splitter choices: `recursive`, `section` (CLI default: `recursive`)
-- `--disable-lheading` disables Setext heading parsing
 - `--recursive-split` enables block/text fallback for oversized section bodies
 - `--block-config KIND[:isolated][:nosplit][:TOKENS]` per-block-kind config; repeatable
 - JSON output serializes dataclasses with `dataclasses.asdict`

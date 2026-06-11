@@ -10,7 +10,7 @@ from mdit_py_plugins.tasklists import tasklists_plugin
 
 import lumberjack
 from lumberjack import lumber
-from lumberjack.core.markdown.parser import MarkdownItParser, create_parser
+from lumberjack.core.markdown.parser import MarkdownItParser
 
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md"
 FIXTURE = FIXTURE_PATH.read_text(encoding="utf-8")
@@ -49,7 +49,7 @@ def test_lumber_api_no_longer_exposes_isolate_front_matter_option() -> None:
 
 
 def test_parser_uses_document_title() -> None:
-    document = create_parser("default").parse(
+    document = MarkdownItParser().parse(
         FIXTURE,
         document_title="guide.md",
         document_metadata={"path": "/tmp/guide.md"},
@@ -168,7 +168,7 @@ def test_lumber_can_disable_setext_headings() -> None:
         "Title\n=====\n\nbody",
         document_title="setext.md",
         max_tokens=500,
-        disable_lheading=True,
+        parser=MarkdownItParser(disable_lheading=True),
     )
 
     assert len(chunks) == 1
@@ -213,7 +213,7 @@ def test_chunk_to_dict_uses_common_heading_path_for_merged_sections() -> None:
 
 
 def test_parse_markdown_and_split_preserve_line_ranges_with_single_parser() -> None:
-    document = create_parser("default").parse(FIXTURE, document_title="sample.md")
+    document = MarkdownItParser().parse(FIXTURE, document_title="sample.md")
 
     root = document.root
     assert root.title == "sample.md"
