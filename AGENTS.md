@@ -138,7 +138,7 @@ Implemented in `src/lumberjack/cli.py`.
 
 - Input is a Markdown (`.md`) or DOCX (`.docx`) file path
 - `--input-format`: `auto` (detect from extension), `markdown`, or `docx`
-- Output formats: `json` or `markdown` (`-f`/`--output-format`)
+- Output format: JSON only
 - Tokenizers: `simple`, `tiktoken`
 - Parser choices: `default`, `markdown-it` (Markdown only; ignored for DOCX)
 - Splitter choices: `recursive`, `section` (CLI default: `recursive`)

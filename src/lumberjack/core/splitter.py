@@ -661,6 +661,41 @@ class _BaseSplitter(SplitterProtocol):
 
         return join_markdown(parts)
 
+    def _merge_small_chunks(
+        self,
+        chunks: list[_ChunkDraft],
+        *,
+        parent_headings: HeadingPath | None = None,
+    ) -> list[_ChunkDraft]:
+        """Merge adjacent same-parent chunks below *merge_below_tokens*, bottom-up."""
+        if not self.options.merge_small_chunks:
+            return chunks
+        if not chunks:
+            return chunks
+
+        merged: list[_ChunkDraft] = list(chunks)
+        i = len(merged) - 1
+        while i > 0:
+            current = merged[i]
+            previous = merged[i - 1]
+            can_merge = (
+                (parent_headings is None or previous.headings == parent_headings)
+                and previous.headings == current.headings
+                and current.entries
+            )
+            if (
+                can_merge
+                and current.token_count < self.options.merge_below_tokens
+                and previous.chunk_type == "paragraph"
+                and current.chunk_type == "paragraph"
+            ):
+                merged_draft = self._merge_drafts(previous, current)
+                if merged_draft.token_count <= self.options.max_tokens:
+                    merged[i - 1] = merged_draft
+                    del merged[i]
+            i -= 1
+        return merged
+
 
 class RecursiveSplitter(_BaseSplitter):
     """Recursively split a document into token-bounded chunks.
@@ -836,47 +871,14 @@ class RecursiveSplitter(_BaseSplitter):
 
         return entries
 
-    def _merge_small_chunks(
-        self,
-        chunks: list[_ChunkDraft],
-        *,
-        parent_headings: HeadingPath | None = None,
-    ) -> list[_ChunkDraft]:
-        """Merge adjacent same-parent chunks below *merge_below_tokens*, bottom-up."""
-        if not self.options.merge_small_chunks:
-            return chunks
-        if not chunks:
-            return chunks
-
-        merged: list[_ChunkDraft] = list(chunks)
-        i = len(merged) - 1
-        while i > 0:
-            current = merged[i]
-            previous = merged[i - 1]
-            can_merge = (
-                (parent_headings is None or previous.headings == parent_headings)
-                and previous.headings == current.headings
-                and current.entries
-            )
-            if (
-                can_merge
-                and current.token_count < self.options.merge_below_tokens
-                and previous.chunk_type == "paragraph"
-                and current.chunk_type == "paragraph"
-            ):
-                merged_draft = self._merge_drafts(previous, current)
-                if merged_draft.token_count <= self.options.max_tokens:
-                    merged[i - 1] = merged_draft
-                    del merged[i]
-            i -= 1
-        return merged
-
 
 class SectionSplitter(_BaseSplitter):
     """Split a document into non-overlapping chunks by heading section.
 
-    Each heading-defined section becomes its own chunk. When ``recursive_split``
-    is enabled, oversized section bodies are further split by token budget.
+    Each heading-defined section becomes its own chunk.  Oversized
+    section bodies are further split by token budget respecting
+    ``block_options`` (standalone isolation, splittable kinds, per-block
+    budgets).
     """
 
     def _split_section(
@@ -892,10 +894,13 @@ class SectionSplitter(_BaseSplitter):
                 b.kind in self.options.standalone_kinds for b in node.blocks
             )
             if (
-                self.options.recursive_split
-                and section.counts.subtree > self.options.ideal_max_tokens
-            ) or body_has_standalone:
-                chunks.extend(self._split_section_body(section))
+                body_has_standalone
+                or section.counts.body > self.options.ideal_max_tokens
+            ):
+                body_chunks = self._split_section_body(section)
+                chunks.extend(
+                    self._merge_small_chunks(body_chunks, parent_headings=node.path)
+                )
             else:
                 entry = self._entry_from_blocks(
                     node.path,

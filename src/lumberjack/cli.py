@@ -11,7 +11,7 @@ from .core.block_config import parse_block_config_entry
 from .core.markdown.parser import MarkdownItParser
 
 if TYPE_CHECKING:
-    from .core.models import BlockConfig, Chunk
+    from .core.models import BlockConfig
 
 
 def _parse_block_configs(entries: list[str]) -> dict[str, BlockConfig]:
@@ -38,13 +38,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Input format (default: auto-detect from file extension)",
     )
     parser.add_argument("-o", "--output", help="Optional output file path")
-    parser.add_argument(
-        "-f",
-        "--output-format",
-        choices=("json", "markdown"),
-        default="json",
-        help="Output format",
-    )
     parser.add_argument(
         "--tokenizer",
         choices=("simple", "tiktoken"),
@@ -105,15 +98,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def render_markdown(chunks: list[Chunk]) -> str:
-    """Render chunks as Markdown with HTML comment metadata delimiters."""
-    rendered: list[str] = []
-    for index, chunk in enumerate(chunks, start=1):
-        rendered.append(f"<!-- chunk {index} tokens={chunk.token_count} -->")
-        rendered.append(chunk.body)
-    return "\n\n".join(rendered).strip()
-
-
 def main() -> None:
     """CLI entry point: parse arguments, split a file, and output results."""
     parser = build_parser()
@@ -138,18 +122,15 @@ def main() -> None:
         document_metadata={"path": str(input_path.resolve())},
     )
 
-    if args.output_format == "markdown":
-        payload = render_markdown(chunks)
-    else:
-        payload = json.dumps(
-            {
-                "document": chunks[0].document_title if chunks else "Anonymous",
-                "chunk_count": len(chunks),
-                "chunks": [asdict(chunk) for chunk in chunks],
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
+    payload = json.dumps(
+        {
+            "document": chunks[0].document_title if chunks else "Anonymous",
+            "chunk_count": len(chunks),
+            "chunks": [asdict(chunk) for chunk in chunks],
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
 
     if args.output:
         Path(args.output).write_text(payload, encoding="utf-8")

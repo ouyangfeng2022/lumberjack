@@ -5,11 +5,11 @@
 <h1 align="center">lumberjack</h1>
 
 <p align="center">
-  <strong>Structure-aware Markdown splitter for RAG preprocessing</strong>
+  <strong>Structure-aware Markdown &amp; DOCX splitter for RAG preprocessing</strong>
 </p>
 
 <p align="center">
-  Split Markdown by document structure, not fixed text windows.
+  Split Markdown and DOCX by document structure, not fixed text windows.
   Preserves heading hierarchy, block integrity, and inline semantics.
 </p>
 
@@ -32,7 +32,8 @@ Naive text splitters break Markdown at arbitrary character boundaries — slicin
 Core pipeline:
 
 ```text
-Markdown text → parser tokens → DocumentAST → splitter → Chunk[]
+Markdown text → MarkdownItParser → DocumentAST → splitter → Chunk[]
+DOCX binary  → DocxParser ─────────────────────┘
 ```
 
 ## Install
@@ -45,6 +46,7 @@ Optional extras:
 
 ```bash
 pip install "lumberjack[tokenizers]"   # tiktoken-based model token counting
+pip install "lumberjack[docx]"         # DOCX document support
 pip install "lumberjack[web]"          # FastAPI web server + UI
 pip install "lumberjack[all]"          # everything
 ```
@@ -73,7 +75,7 @@ for chunk in chunks:
 ### CLI
 
 ```bash
-lumber document.md --max-tokens 1200 --format json
+lumber document.md --max-tokens 1200
 ```
 
 ### Web UI
@@ -162,7 +164,7 @@ Valid block kinds: `paragraph`, `blockquote`, `list`, `list_item`, `table`, `cod
 
 ```python
 from mdit_py_plugins.tasklists import tasklists_plugin
-from lumberjack.core.parser import MarkdownItParser
+from lumberjack.core.markdown.parser import MarkdownItParser
 from lumberjack import lumber
 
 chunks = lumber(
@@ -179,14 +181,15 @@ lumber <input> [options]
 
 | Option                     | Default     | Description                                      |
 | -------------------------- | ----------- | ------------------------------------------------ |
-| `input`                    | —           | Path to a Markdown file                          |
+| `input`                    | —           | Path to a Markdown (.md) or DOCX (.docx) file    |
+| `--input-format`           | `auto`      | `auto`, `markdown`, or `docx`                    |
 | `-o`, `--output`           | stdout      | Write output to file                             |
-| `-f`, `--format`           | `json`      | Output format: `json` or `markdown`              |
 | `--max-tokens`             | `1200`      | Maximum chunk token budget                       |
 | `--ideal-max-tokens-ratio` | `0.8`       | Preferred split budget ratio                     |
 | `--merge-below-tokens`     | `50`        | Soft threshold for small-chunk merging           |
 | `--overlap-tokens`         | `0`         | Token overlap for text fallback splits           |
 | `--tokenizer`              | `simple`    | `simple` or `tiktoken`                           |
+| `--parser`                 | `default`   | `default` or `markdown-it` (Markdown only)       |
 | `--splitter`               | `recursive` | `recursive` or `section`                         |
 | `--recursive-split`        | off         | Enable block/text fallback for section splitter  |
 | `--block-config`           | —           | Per-block-kind config (repeatable)               |
@@ -206,20 +209,6 @@ lumber doc.md --block-config table:isolated --block-config code_fence:nosplit
 ```
 
 **JSON output** includes `document`, `chunk_count`, and a `chunks` array with full metadata.
-
-**Markdown output** renders each chunk separated by HTML comments:
-
-```markdown
-<!-- chunk 1 tokens=42 -->
-## Getting Started
-
-Install with pip...
-
-<!-- chunk 2 tokens=87 -->
-## Usage
-
-...
-```
 
 ### Web API
 
@@ -337,15 +326,19 @@ src/lumberjack/
 ├── __init__.py              # Public API (lumber function)
 ├── cli.py                   # CLI entry point (lumber)
 ├── core/
-│   ├── parser.py            # Markdown parser (markdown-it-py backend)
-│   ├── splitter.py          # Recursive & section splitters
-│   ├── tokenizers.py        # Simple character & tiktoken tokenizers
 │   ├── models.py            # Data models (Chunk, BlockConfig, SplitOptions, ...)
 │   ├── protocols.py         # Protocol interfaces
+│   ├── tokenizers.py        # Simple character & tiktoken tokenizers
+│   ├── splitter.py          # Recursive & section splitters
+│   ├── text_splitter.py     # Generic text splitter for oversized blocks
 │   ├── block_config.py      # Block config parsing helpers
-│   ├── plugins/             # Custom markdown-it plugins (bracket math)
 │   ├── utils.py             # Markdown rendering helpers
-│   └── visitor.py           # Visitor pattern hooks
+│   ├── visitor.py           # MarkdownAstVisitor for AST traversal
+│   ├── markdown/
+│   │   ├── parser.py        # MarkdownItParser (markdown-it-py backend)
+│   │   └── plugins/         # Custom markdown-it plugins (bracket math)
+│   └── docx/
+│       └── parser.py        # DocxParser (python-docx backend)
 └── web/
     ├── app.py               # FastAPI application
     ├── routes.py            # API endpoints
@@ -355,8 +348,8 @@ src/lumberjack/
 ## Development
 
 ```bash
-# Install with dev, test, and tokenizer dependencies
-uv sync --group dev --group test --extra tokenizers
+# Install with dev, test, tokenizer, and DOCX dependencies
+uv sync --group dev --group test --extra tokenizers --extra docx
 
 # Run tests
 uv run pytest

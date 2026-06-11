@@ -188,28 +188,7 @@ def test_heading_splitter_keeps_sections_separate_without_repeating_children() -
     assert "Two body." not in chunks[0].body
 
 
-def test_heading_splitter_keeps_oversized_section_intact_by_default() -> None:
-    document = MarkdownParser().parse(
-        HEADING_OVERSIZED_FIXTURE, document_title="heading.md"
-    )
-    splitter = SectionSplitter(
-        tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            max_tokens=25,
-            merge_below_tokens=0,
-            block_options={"paragraph": BlockConfig()},
-        ),
-    )
-
-    chunks = splitter.split(document)
-
-    assert len(chunks) == 1
-    assert chunks[0].headings == ((1, "Long"),)
-    assert chunks[0].estimated_token_count > splitter.options.max_tokens
-    assert "Alpha bravo charlie" in chunks[0].body
-
-
-def test_heading_splitter_recursively_splits_oversized_section_body() -> None:
+def test_heading_splitter_splits_oversized_section_body() -> None:
     document = MarkdownParser().parse(
         HEADING_OVERSIZED_FIXTURE, document_title="heading.md"
     )
@@ -218,7 +197,6 @@ def test_heading_splitter_recursively_splits_oversized_section_body() -> None:
         options=SplitOptions(
             max_tokens=35,
             merge_below_tokens=0,
-            recursive_split=True,
             block_options={"paragraph": BlockConfig()},
         ),
     )
@@ -230,6 +208,31 @@ def test_heading_splitter_recursively_splits_oversized_section_body() -> None:
     assert all(chunk.body.startswith("# Long\n\n") for chunk in chunks)
     assert "Alpha bravo" in chunks[0].body
     assert "juliet." in chunks[-1].body
+
+
+def test_heading_splitter_splits_oversized_body_with_nosplit_blocks_kept_intact() -> (
+    None
+):
+    """SectionSplitter respects nosplit block options for oversized bodies."""
+    document = MarkdownParser().parse(
+        HEADING_OVERSIZED_FIXTURE, document_title="heading.md"
+    )
+    splitter = SectionSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=35,
+            merge_below_tokens=0,
+            block_options={"paragraph": BlockConfig(split=False)},
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    # Paragraph is nosplit so the oversized body stays as one chunk
+    assert len(chunks) == 1
+    assert chunks[0].headings == ((1, "Long"),)
+    assert chunks[0].estimated_token_count > splitter.options.max_tokens
+    assert "Alpha bravo charlie" in chunks[0].body
 
 
 def test_heading_splitter_respects_empty_section_options() -> None:
@@ -1810,3 +1813,184 @@ def test_lumber_api_accepts_block_max_tokens() -> None:
     )
     assert len(chunks) > 1
     assert all(c.token_count <= 30 for c in chunks)
+
+
+# ---------------------------------------------------------------------------
+# SectionSplitter block_options consistency with RecursiveSplitter
+# ---------------------------------------------------------------------------
+
+
+def test_section_splitter_keeps_oversized_lists_intact_when_nosplit() -> None:
+    """SectionSplitter respects nosplit for lists, same as RecursiveSplitter."""
+    document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
+    splitter = SectionSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=20,
+            merge_below_tokens=0,
+            block_options={"list": BlockConfig(split=False)},
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].body == LIST_FIXTURE.strip()
+    assert chunks[0].token_count > 20
+
+
+def test_section_splitter_can_split_oversized_lists_by_default() -> None:
+    """SectionSplitter splits lists when not in nosplit, same as RecursiveSplitter."""
+    document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
+    splitter = SectionSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=20,
+            ideal_max_tokens_ratio=1,
+            merge_below_tokens=0,
+            merge_small_chunks=False,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) > 1
+    assert all(chunk.estimated_token_count <= 20 for chunk in chunks)
+
+
+def test_section_splitter_splits_oversized_tables_when_isolated() -> None:
+    """SectionSplitter isolates and splits oversized tables, same as RecursiveSplitter."""
+    md = """# Data
+
+| Name | Value |
+| ---- | ----- |
+| Alpha | 100 |
+| Beta | 200 |
+| Gamma | 300 |
+| Delta | 400 |
+"""
+    document = MarkdownParser().parse(md, document_title="table.md")
+    splitter = SectionSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=58,
+            ideal_max_tokens_ratio=1,
+            merge_below_tokens=0,
+            merge_small_chunks=False,
+            block_options={"table": BlockConfig(isolated=True)},
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    table_chunks = [c for c in chunks if c.chunk_type == "table"]
+    assert len(table_chunks) > 1
+    assert all("| Name | Value |" in c.body for c in table_chunks)
+    assert all("| ---- | ----- |" in c.body for c in table_chunks)
+
+
+def test_section_splitter_keeps_oversized_tables_intact_when_nosplit() -> None:
+    """SectionSplitter keeps oversized tables intact when nosplit, same as RecursiveSplitter."""
+    md = """# Data
+
+| Name | Value |
+| ---- | ----- |
+| Alpha | 100 |
+| Beta | 200 |
+| Gamma | 300 |
+| Delta | 400 |
+"""
+    document = MarkdownParser().parse(md, document_title="table.md")
+    splitter = SectionSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=58,
+            ideal_max_tokens_ratio=1,
+            merge_below_tokens=0,
+            merge_small_chunks=False,
+            block_options={"table": BlockConfig(split=False)},
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].token_count > 58
+
+
+def test_section_splitter_uses_per_block_max_tokens() -> None:
+    """SectionSplitter respects per-block max_tokens, same as RecursiveSplitter."""
+    long_para = " ".join(f"word{i}" for i in range(100))
+    document = MarkdownParser().parse(long_para, document_title="override.md")
+    splitter = SectionSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=500,
+            ideal_max_tokens_ratio=1,
+            merge_below_tokens=0,
+            merge_small_chunks=False,
+            block_options={"paragraph": BlockConfig(max_tokens=30)},
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) > 1
+    assert all(c.token_count <= 30 for c in chunks)
+
+
+def test_section_splitter_merges_small_fragments() -> None:
+    """SectionSplitter merges small fragments from body splitting, same as RecursiveSplitter."""
+    document = MarkdownParser().parse(
+        "# A\n\nalpha1\n\nbravo2",
+        document_title="merge.md",
+    )
+    splitter = SectionSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=30,
+            ideal_max_tokens_ratio=0.5,
+            merge_below_tokens=29,
+            merge_small_chunks=True,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert [chunk.body for chunk in chunks] == ["# A\n\nalpha1\n\nbravo2"]
+    assert 15 < chunks[0].token_count <= 30
+
+
+def test_section_splitter_uses_body_not_subtree_for_oversize_check() -> None:
+    """SectionSplitter checks body tokens (not subtree) for the oversize decision."""
+    md = (
+        """# Parent
+
+Small body.
+
+## Child
+
+"""
+        + "Alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike."
+    )
+    document = MarkdownParser().parse(md, document_title="body-vs-subtree.md")
+    splitter = SectionSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=50,
+            merge_below_tokens=0,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    # Parent body ("Small body.") fits budget → single chunk despite large subtree
+    parent_chunks = [c for c in chunks if c.headings == ((1, "Parent"),)]
+    assert len(parent_chunks) == 1
+    assert "Small body." in parent_chunks[0].body
+    # Child body is oversized → split into multiple chunks
+    child_chunks = [c for c in chunks if c.headings == ((1, "Parent"), (2, "Child"))]
+    assert len(child_chunks) > 1
+    child_bodies = " ".join(c.body for c in child_chunks)
+    assert "Alpha" in child_bodies
+    assert "mike." in child_bodies
