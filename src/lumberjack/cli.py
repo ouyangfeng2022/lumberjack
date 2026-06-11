@@ -129,7 +129,7 @@ def main() -> None:
         ideal_max_tokens_ratio=args.ideal_max_tokens_ratio,
         merge_below_tokens=args.merge_below_tokens,
         overlap_tokens=args.overlap_tokens,
-        block_options=block_options,
+        block_options=block_options,  # ty: ignore[invalid-argument-type]
         disable_lheading=args.disable_lheading,
         tokenizer=args.tokenizer,
         parser=args.parser,

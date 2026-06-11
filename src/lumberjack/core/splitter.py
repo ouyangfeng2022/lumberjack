@@ -94,7 +94,7 @@ class _ChunkDraft:
     headings_token_count: int
     body_token_count: int
     token_count: int
-    split_origin: Literal["section", "fragment", "text_piece"] = "section"
+    split_origin: Literal["section", "fragment", "text_piece", "merge"] = "section"
     chunk_type: str = "paragraph"
 
 
@@ -165,7 +165,7 @@ class _BaseSplitter(SplitterProtocol):
                 )
         return tokens
 
-    def _split_section(self, root: _MeasuredSection) -> list[_ChunkDraft]:
+    def _split_section(self, section: _MeasuredSection) -> list[_ChunkDraft]:
         raise NotImplementedError
 
     def _post_process_drafts(self, drafts: list[_ChunkDraft]) -> list[_ChunkDraft]:
@@ -564,7 +564,7 @@ class _BaseSplitter(SplitterProtocol):
         headings: HeadingPath,
         blocks: list[MarkdownBlock],
         *,
-        body_token_count: int | None = None,
+        body_token_count: int,
     ) -> _Entry:
         body = join_markdown([block.text for block in blocks])
         start_lines = [b.start_line for b in blocks if b.start_line is not None]
@@ -624,7 +624,7 @@ class _BaseSplitter(SplitterProtocol):
             headings_token_count=headings_token_count,
             body_token_count=body_token_count,
             token_count=headings_token_count + body_token_count,
-            split_origin=f"merge({left_draft.split_origin}+{right_draft.split_origin})",
+            split_origin="merge",
             chunk_type=left_draft.chunk_type,
         )
 

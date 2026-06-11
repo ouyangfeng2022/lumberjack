@@ -81,7 +81,9 @@ def make_block_func(
             token = state.push(name, "math", 0)
             token.block = True
             token.content = match.group(1)
-            token.info = match.group(match.lastindex)
+            if match.lastindex is not None:
+                token.info = match.group(match.lastindex)
+            token.info = match.group(0)
             token.markup = tag
             token.map = [begLine, next_line]
 

@@ -281,7 +281,7 @@ def test_markdown_it_parser_handles_all_block_and_inline_tokens_in_comprehensive
 
 def test_markdown_it_parser_preserves_unknown_block_tokens_as_raw_markdown() -> None:
     parser = MarkdownItParser()
-    parser._parser.parse = lambda _text, _env: [
+    parser._parser.parse = lambda _text, _env: [  # ty: ignore[invalid-assignment]
         Token("mystery_block", "", 0, map=[0, 1], content="@@ mystery @@")
     ]
 
