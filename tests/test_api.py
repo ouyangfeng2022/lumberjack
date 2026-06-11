@@ -33,7 +33,7 @@ M1 body.
 
 
 def test_package_exports_lumber_as_only_top_level_api() -> None:
-    assert lumberjack.__all__ == ["lumber"]
+    assert lumberjack.__all__ == ["MarkdownAstVisitor", "lumber"]
     assert lumberjack.lumber is lumber
     assert not hasattr(lumberjack, "split_markdown_file")
     assert not hasattr(lumberjack, "split_markdown_text")

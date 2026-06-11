@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from .core import create_parser, create_splitter, create_tokenizer
 from .core.models import BlockConfig, Chunk, SplitOptions
+from .core.visitor import MarkdownAstVisitor
 
 if TYPE_CHECKING:
     from .core.protocols import (
@@ -169,4 +170,4 @@ def lumber(
     return splitter_impl.split(document)
 
 
-__all__ = ["lumber"]
+__all__ = ["MarkdownAstVisitor", "lumber"]
