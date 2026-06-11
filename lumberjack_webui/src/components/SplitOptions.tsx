@@ -187,9 +187,8 @@ export default function SplitOptions({ options, onChange }: Props) {
               value={options.splitter}
               onChange={(e) => update('splitter', e.target.value)}
             >
-              <option value="default">{t('opts_splitter_default')}</option>
-              <option value="section">{t('opts_splitter_section')}</option>
               <option value="recursive">{t('opts_splitter_recursive')}</option>
+              <option value="section">{t('opts_splitter_section')}</option>
             </select>
           </div>
 
