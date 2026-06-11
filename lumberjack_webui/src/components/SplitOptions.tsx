@@ -222,6 +222,21 @@ export default function SplitOptions({ options, onChange }: Props) {
           <div className={styles.field}>
             <span className={styles.fieldLabel}>{t('opts_block_handling')}</span>
             <div className={styles.blockHandlingGrid}>
+              <div className={styles.blockHandlingHeader}>
+                <span className={styles.blockKindLabel} />
+                <span
+                  className={styles.blockHeaderLabel}
+                  title={t('opts_isolated_desc')}
+                >
+                  {t('opts_isolated')}
+                </span>
+                <span
+                  className={styles.blockHeaderLabel}
+                  title={t('opts_nosplit_desc')}
+                >
+                  {t('opts_nosplit')}
+                </span>
+              </div>
               {BLOCK_KINDS.map((kind) => {
                 const state = blockStates[kind] ?? DEFAULT_BLOCK_STATE;
                 return (
@@ -230,14 +245,12 @@ export default function SplitOptions({ options, onChange }: Props) {
                     <input
                       className={styles.blockNosplit}
                       type="checkbox"
-                      title={t('opts_isolated')}
                       checked={state.isolated}
                       onChange={(e) => setBlockIsolated(kind, e.target.checked)}
                     />
                     <input
                       className={styles.blockNosplit}
                       type="checkbox"
-                      title={t('opts_nosplit')}
                       checked={!state.split}
                       onChange={() => toggleSplit(kind)}
                     />
