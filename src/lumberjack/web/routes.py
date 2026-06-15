@@ -24,6 +24,7 @@ class TextSplitRequest(BaseModel):
     block_configs: dict[str, Any] | None = None
     tokenizer: str = "simple"
     splitter: str = "recursive"
+    max_heading_level: int | None = None
 
 
 class ChunkResponse(BaseModel):
@@ -114,6 +115,7 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
             block_options=block_options,  # ty: ignore[invalid-argument-type]
             tokenizer=payload.tokenizer,
             splitter=payload.splitter,
+            max_heading_level=payload.max_heading_level,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -145,6 +147,7 @@ async def split_file(
     block_configs: str = Form(""),
     tokenizer: str = Form("simple"),
     splitter: str = Form("recursive"),
+    max_heading_level: int | None = Form(None),
 ) -> SplitResponse:
     """Split an uploaded file (Markdown or DOCX) into chunks.
 
@@ -180,6 +183,7 @@ async def split_file(
             block_options=block_options,  # ty: ignore[invalid-argument-type]
             tokenizer=tokenizer,
             splitter=splitter,
+            max_heading_level=max_heading_level,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e

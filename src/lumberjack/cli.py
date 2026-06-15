@@ -71,6 +71,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Split oversized direct section bodies when using --splitter section",
     )
     parser.add_argument(
+        "--max-heading-level",
+        type=int,
+        default=None,
+        help="Maximum heading level to parse as sections (Markdown only). "
+        "Headings deeper than this are treated as regular paragraphs.",
+    )
+    parser.add_argument(
         "--block-config",
         action="append",
         default=[],
@@ -99,6 +106,7 @@ def main() -> None:
         tokenizer=args.tokenizer,
         splitter=args.splitter,
         recursive_split=args.recursive_split,
+        max_heading_level=args.max_heading_level,
         document_metadata={"path": str(input_path.resolve())},
     )
 

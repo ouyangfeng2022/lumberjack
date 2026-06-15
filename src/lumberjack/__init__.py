@@ -72,6 +72,7 @@ def lumber(
     parser: MarkdownItParser | None = None,
     splitter: str | SplitterProtocol = "recursive",
     document_metadata: dict[str, object] | None = None,
+    max_heading_level: int | None = None,
 ) -> list[Chunk]:
     """Split a markdown or DOCX document into chunks recursively.
 
@@ -99,6 +100,9 @@ def lumber(
         parser: Parser instance (Markdown only; ignored for DOCX).
         splitter: Splitter name or instance.
         document_metadata: Extra metadata merged into the document.
+        max_heading_level: Maximum heading level to parse as sections.
+            Headings deeper than this level are treated as regular paragraphs.
+            Only applies to Markdown format. If None, all headings are parsed.
 
     Returns:
         A list of :class:`Chunk` objects ready for downstream use.
@@ -128,6 +132,7 @@ def lumber(
             raw,
             document_title=document_title,
             document_metadata=document_metadata,
+            max_heading_level=max_heading_level,
         )
 
     # --- Split options (shared) ---
