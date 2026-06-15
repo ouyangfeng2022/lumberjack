@@ -46,6 +46,7 @@ const zh = {
   opts_block_blockquote: '引用块',
   opts_block_list: '列表',
   opts_block_table: '表格',
+  opts_block_html_table: 'HTML 表格',
   opts_block_code_block: '代码块',
   opts_block_code_fence: '代码围栏',
   opts_block_html_block: 'HTML 块',

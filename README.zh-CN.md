@@ -165,7 +165,10 @@ chunks = lumber(
 - **`split`** (`bool`) —— 允许拆分超长块
 - **`max_tokens`** (`int | None`) —— 该块类型的预算覆盖值；`None` 时使用全局 `max_tokens`
 
-有效的块类型包括：`paragraph`、`blockquote`、`list`、`list_item`、`table`、`code_block`、`code_fence`、`html_block`、`front_matter`、`math_block`、`math_block_eqno`。
+有效的块类型包括：`paragraph`、`blockquote`、`list`、`list_item`、`table`、`html_table`、`code_block`、`code_fence`、`html_block`、`front_matter`、`math_block`、`math_block_eqno`。
+
+> [!NOTE]
+> **HTML 表格**：HTML 表格（`<table>`）被识别为 `html_table` 块类型，与 Markdown 表格独立处理。它们在切分时保留原始 HTML 格式和属性（如 `border`、`style`、`colspan`、`rowspan`）。使用 `"html_table": BlockConfig(isolated=True)` 可独立于 Markdown 表格进行配置。
 
 > [!TIP]
 > `block_options` 也支持普通字典：`{"table": {"isolated": True, "split": False}}`。

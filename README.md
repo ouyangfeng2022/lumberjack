@@ -165,7 +165,10 @@ chunks = lumber(
 - **`split`** (`bool`) — allow splitting oversized blocks
 - **`max_tokens`** (`int | None`) — per-kind budget override; `None` uses global `max_tokens`
 
-Valid block kinds: `paragraph`, `blockquote`, `list`, `list_item`, `table`, `code_block`, `code_fence`, `html_block`, `front_matter`, `math_block`, `math_block_eqno`.
+Valid block kinds: `paragraph`, `blockquote`, `list`, `list_item`, `table`, `html_table`, `code_block`, `code_fence`, `html_block`, `front_matter`, `math_block`, `math_block_eqno`.
+
+> [!NOTE]
+> **HTML Tables**: HTML tables (`<table>`) are recognized as `html_table` blocks, independent from markdown tables. They preserve their original HTML format and attributes during splitting. Configure with `"html_table": BlockConfig(isolated=True)` to handle separately from markdown tables.
 
 > [!TIP]
 > `block_options` also accepts plain dicts: `{"table": {"isolated": True, "split": False}}`.

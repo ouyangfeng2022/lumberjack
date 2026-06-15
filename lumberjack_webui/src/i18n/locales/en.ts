@@ -46,6 +46,7 @@ const en = {
   opts_block_blockquote: 'Blockquote',
   opts_block_list: 'List',
   opts_block_table: 'Table',
+  opts_block_html_table: 'HTML Table',
   opts_block_code_block: 'Code block',
   opts_block_code_fence: 'Code fence',
   opts_block_html_block: 'HTML block',

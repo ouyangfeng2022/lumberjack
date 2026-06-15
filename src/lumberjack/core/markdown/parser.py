@@ -353,6 +353,12 @@ class MarkdownItParser:
                 kinds.add(mapped)
             else:
                 kinds.update(mapped)
+
+        # Add html_table as a dynamically detected block kind
+        # HTML tables are detected within html_block content during parsing
+        if "html_block" in kinds:
+            kinds.add("html_table")
+
         return frozenset(kinds)
 
     @property
@@ -417,7 +423,11 @@ class MarkdownItParser:
             document_metadata = {}
 
         # Use instance max_heading_level if not overridden
-        effective_max_level = max_heading_level if max_heading_level is not None else self._max_heading_level
+        effective_max_level = (
+            max_heading_level
+            if max_heading_level is not None
+            else self._max_heading_level
+        )
 
         env: dict[str, Any] = {}
         tokens = self._parser.parse(text, env)
@@ -656,10 +666,31 @@ class MarkdownItParser:
             )
 
         if token.type == "html_block":
+            # Check if the HTML block contains a table
+            from ..html_parser import HTMLTableParser
+
+            html_content = slice_source(source_lines, token.map)
+            html_parser = HTMLTableParser()
+
+            if html_parser.contains_table(html_content):
+                # Treat HTML tables as html_table blocks for independent handling
+                return (
+                    MarkdownBlock(
+                        kind="html_table",
+                        text=html_content,
+                        start_line=start_line(token),
+                        end_line=end_line(token),
+                        attrs={
+                            "literal": token.content.rstrip("\n"),
+                        },
+                    ),
+                    index + 1,
+                )
+
             return (
                 MarkdownBlock(
                     kind="html_block",
-                    text=slice_source(source_lines, token.map),
+                    text=html_content,
                     start_line=start_line(token),
                     end_line=end_line(token),
                     attrs={"literal": token.content.rstrip("\n")},
