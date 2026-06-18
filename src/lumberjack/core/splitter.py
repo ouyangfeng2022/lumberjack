@@ -194,9 +194,13 @@ class _BaseSplitter(SplitterProtocol):
             raise ValueError(
                 "ideal_max_tokens_ratio must be greater than 0 and at most 1"
             )
-        if self.options.merge_below_tokens < 0:
-            raise ValueError("merge_below_tokens must be non-negative")
-        if self.options.merge_below_tokens >= self.options.max_tokens:
+        if (
+            self.options.merge_below_tokens is None
+            or self.options.merge_below_tokens < 0
+        ):
+            # None or negative means merging is disabled; nothing else to validate.
+            pass
+        elif self.options.merge_below_tokens >= self.options.max_tokens:
             raise ValueError("merge_below_tokens must be smaller than max_tokens")
         for kind, cfg in self.options.block_options.items():
             if cfg.max_tokens is not None and cfg.max_tokens <= 0:
@@ -661,7 +665,8 @@ class _BaseSplitter(SplitterProtocol):
         parent_headings: HeadingPath | None = None,
     ) -> list[_ChunkDraft]:
         """Merge adjacent same-parent chunks below *merge_below_tokens*, bottom-up."""
-        if not self.options.merge_small_chunks:
+        merge_below = self.options.merge_below_tokens
+        if merge_below is None or merge_below < 0:
             return chunks
         if not chunks:
             return chunks
@@ -678,7 +683,7 @@ class _BaseSplitter(SplitterProtocol):
             )
             if (
                 can_merge
-                and current.token_count < self.options.merge_below_tokens
+                and current.token_count < merge_below
                 and previous.chunk_type == "paragraph"
                 and current.chunk_type == "paragraph"
             ):

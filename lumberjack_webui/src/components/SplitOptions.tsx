@@ -138,22 +138,16 @@ export default function SplitOptions({ options, onChange }: Props) {
               <input
                 type="number"
                 className={styles.numberInput}
-                value={options.merge_below_tokens}
-                onChange={(e) => update('merge_below_tokens', Number(e.target.value))}
+                value={options.merge_below_tokens ?? ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  update('merge_below_tokens', raw === '' ? null : Number(raw));
+                }}
               />
             </label>
           </div>
 
           <div className={styles.checkRow}>
-            <label className={styles.checkField}>
-              <input
-                type="checkbox"
-                checked={options.merge_small_chunks}
-                onChange={(e) => update('merge_small_chunks', e.target.checked)}
-              />
-              <span>{t('opts_merge_small')}</span>
-            </label>
-
             <label className={styles.checkField}>
               <input
                 type="checkbox"

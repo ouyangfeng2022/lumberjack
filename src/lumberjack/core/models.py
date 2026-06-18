@@ -171,8 +171,8 @@ class SplitOptions:
             used during chunking.
         merge_below_tokens: Soft threshold for merging short tails produced by
             fragment or text fallback splitting. This is not a final minimum
-            chunk size.
-        merge_small_chunks: Combine adjacent chunks that share the same heading path.
+            chunk size. A negative value or ``None`` disables merging entirely;
+            otherwise the value must be non-negative and smaller than ``max_tokens``.
         skip_empty_sections: When True, discard chunks that contain only a heading
             with no body content. Chunks with zero rendered tokens are always discarded
             regardless of this setting.
@@ -191,8 +191,7 @@ class SplitOptions:
 
     max_tokens: int = 1200
     ideal_max_tokens_ratio: float = 0.8
-    merge_below_tokens: int = 50
-    merge_small_chunks: bool = True
+    merge_below_tokens: int | None = 50
     skip_empty_sections: bool = True
     recursive_split: bool = False
     block_options: dict[str, BlockConfig] = field(default_factory=dict)

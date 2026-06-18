@@ -63,8 +63,7 @@ def lumber(
     document_title: str | None = None,
     max_tokens: int = 1200,
     ideal_max_tokens_ratio: float = 0.8,
-    merge_below_tokens: int = 50,
-    merge_small_chunks: bool = True,
+    merge_below_tokens: int | None = 50,
     skip_empty_sections: bool = True,
     recursive_split: bool = False,
     block_options: dict[str, BlockConfig | dict] | None = None,
@@ -88,9 +87,9 @@ def lumber(
         max_tokens: Target maximum token count per chunk.
         ideal_max_tokens_ratio: Ratio of ``max_tokens`` used as the
             preferred split budget before post-processing merges.
-        merge_below_tokens: Soft threshold for merging short tails.
-        merge_small_chunks: Combine adjacent chunks sharing the same
-            heading path when enabled.
+        merge_below_tokens: Soft threshold for merging short tails. A negative
+            value or ``None`` disables merging entirely; otherwise it must be
+            smaller than ``max_tokens``.
         skip_empty_sections: Discard chunks containing only a heading
             with no body content when enabled.
         recursive_split: Enable block/text fallback for oversized
@@ -150,7 +149,6 @@ def lumber(
         max_tokens=max_tokens,
         ideal_max_tokens_ratio=ideal_max_tokens_ratio,
         merge_below_tokens=merge_below_tokens,
-        merge_small_chunks=merge_small_chunks,
         skip_empty_sections=skip_empty_sections,
         recursive_split=recursive_split,
         block_options=resolved,

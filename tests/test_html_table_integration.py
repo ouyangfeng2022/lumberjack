@@ -87,7 +87,7 @@ def test_large_html_table_splitting():
 """
 
     # Set small token budget to force splitting
-    chunks = lumber(markdown, max_tokens=200, merge_small_chunks=False)
+    chunks = lumber(markdown, max_tokens=200, merge_below_tokens=-1)
 
     # Should be split into multiple chunks
     assert len(chunks) > 1
