@@ -63,7 +63,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--merge-below-tokens",
         type=int,
         default=50,
-        help="Merge adjacent chunks below this token threshold when possible",
+        help="Merge adjacent chunks below this token threshold when possible "
+        "(use -1 to disable merging)",
     )
     parser.add_argument(
         "--recursive-split",

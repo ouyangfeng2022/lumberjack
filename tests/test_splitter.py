@@ -733,8 +733,7 @@ def test_recursive_splitter_uses_ideal_budget_for_initial_splitting() -> None:
         options=SplitOptions(
             max_tokens=30,
             ideal_max_tokens_ratio=0.5,
-            merge_below_tokens=0,
-            merge_small_chunks=False,
+            merge_below_tokens=-1,
         ),
     )
 
@@ -758,7 +757,6 @@ def test_merge_small_chunks_can_exceed_ideal_budget_up_to_max_tokens() -> None:
             max_tokens=30,
             ideal_max_tokens_ratio=0.5,
             merge_below_tokens=29,
-            merge_small_chunks=True,
         ),
     )
 
@@ -779,7 +777,6 @@ def test_merge_small_chunks_combines_sibling_sections_with_same_parent() -> None
             max_tokens=40,
             ideal_max_tokens_ratio=0.8,
             merge_below_tokens=39,
-            merge_small_chunks=True,
         ),
     )
 
@@ -811,6 +808,29 @@ def test_merge_below_tokens_does_not_merge_past_rendered_budget() -> None:
     assert [chunk.token_count for chunk in chunks] == [60, 13]
     assert chunks[1].body == "# A\n\nx x x\n\ny"
     assert all(chunk.estimated_token_count <= 60 for chunk in chunks)
+
+
+def test_merge_below_tokens_none_disables_merging() -> None:
+    document = MarkdownParser().parse(
+        "# A\n\nalpha1\n\nbravo2",
+        document_title="merge-none.md",
+    )
+    splitter = RecursiveSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=30,
+            ideal_max_tokens_ratio=0.5,
+            merge_below_tokens=None,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    # With merging disabled, the two short tails stay as separate chunks.
+    assert [chunk.body for chunk in chunks] == [
+        "# A\n\nalpha1",
+        "# A\n\nbravo2",
+    ]
 
 
 def test_merge_below_tokens_absorbs_same_parent_paragraph_tails() -> None:
@@ -915,8 +935,7 @@ def test_splitter_can_split_oversized_lists_by_default() -> None:
         options=SplitOptions(
             max_tokens=20,
             ideal_max_tokens_ratio=1,
-            merge_below_tokens=0,
-            merge_small_chunks=False,
+            merge_below_tokens=-1,
         ),
     )
 
@@ -949,8 +968,7 @@ def test_splitter_splits_oversized_tables_by_rows_with_repeated_header() -> None
         options=SplitOptions(
             max_tokens=58,
             ideal_max_tokens_ratio=1,
-            merge_below_tokens=0,
-            merge_small_chunks=False,
+            merge_below_tokens=-1,
             block_options={"table": BlockConfig(isolated=True)},
         ),
     )
@@ -983,8 +1001,7 @@ def test_splitter_keeps_oversized_tables_intact_when_in_nosplit_kinds() -> None:
         options=SplitOptions(
             max_tokens=58,
             ideal_max_tokens_ratio=1,
-            merge_below_tokens=0,
-            merge_small_chunks=False,
+            merge_below_tokens=-1,
             block_options={"table": BlockConfig(split=False)},
         ),
     )
@@ -1009,8 +1026,7 @@ def test_splitter_uses_block_max_tokens_for_table_row_packing() -> None:
         options=SplitOptions(
             max_tokens=79,
             ideal_max_tokens_ratio=1,
-            merge_below_tokens=0,
-            merge_small_chunks=False,
+            merge_below_tokens=-1,
             block_options={"table": BlockConfig(max_tokens=60)},
         ),
     )
@@ -1038,8 +1054,7 @@ def test_splitter_preserves_oversized_single_table_rows() -> None:
         options=SplitOptions(
             max_tokens=58,
             ideal_max_tokens_ratio=1,
-            merge_below_tokens=0,
-            merge_small_chunks=False,
+            merge_below_tokens=-1,
             block_options={"table": BlockConfig(isolated=True)},
         ),
     )
@@ -1060,8 +1075,7 @@ def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
         options=SplitOptions(
             max_tokens=28,
             ideal_max_tokens_ratio=1,
-            merge_below_tokens=0,
-            merge_small_chunks=False,
+            merge_below_tokens=-1,
             block_options={"code_fence": BlockConfig()},
         ),
     )
@@ -1082,8 +1096,7 @@ def test_splitter_never_splits_oversized_urls() -> None:
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
             max_tokens=30,
-            merge_below_tokens=0,
-            merge_small_chunks=False,
+            merge_below_tokens=-1,
         ),
     )
 
@@ -1226,8 +1239,7 @@ def test_thematic_break_is_ignored_at_chunk_boundary() -> None:
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
             max_tokens=40,
-            merge_below_tokens=0,
-            merge_small_chunks=False,
+            merge_below_tokens=-1,
         ),
     )
 
@@ -1474,7 +1486,6 @@ def test_standalone_chunk_not_merged_by_merge_small_chunks() -> None:
         options=SplitOptions(
             max_tokens=1000,
             merge_below_tokens=100,
-            merge_small_chunks=True,
             block_options={"code_fence": BlockConfig(isolated=True)},
         ),
     )
@@ -1497,8 +1508,7 @@ def test_oversized_standalone_code_fence_with_split_oversized() -> None:
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
             max_tokens=50,
-            merge_below_tokens=0,
-            merge_small_chunks=False,
+            merge_below_tokens=-1,
             block_options={"code_fence": BlockConfig(isolated=True)},
         ),
     )
@@ -1642,8 +1652,7 @@ def test_per_block_max_tokens_overrides_budget_for_paragraph() -> None:
         options=SplitOptions(
             max_tokens=500,
             ideal_max_tokens_ratio=1,
-            merge_below_tokens=0,
-            merge_small_chunks=False,
+            merge_below_tokens=-1,
             block_options={"paragraph": BlockConfig(max_tokens=30)},
         ),
     )
@@ -1666,8 +1675,7 @@ def test_per_block_max_tokens_falls_back_to_unified_max_tokens() -> None:
         options=SplitOptions(
             max_tokens=500,
             ideal_max_tokens_ratio=1,
-            merge_below_tokens=0,
-            merge_small_chunks=False,
+            merge_below_tokens=-1,
             block_options={
                 "paragraph": BlockConfig(),
                 "blockquote": BlockConfig(max_tokens=30),
@@ -1690,8 +1698,7 @@ def test_per_block_max_tokens_for_code_fence() -> None:
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
             max_tokens=500,
-            merge_below_tokens=0,
-            merge_small_chunks=False,
+            merge_below_tokens=-1,
             block_options={"code_fence": BlockConfig(isolated=True, max_tokens=25)},
         ),
     )
@@ -1742,8 +1749,7 @@ def test_lumber_api_accepts_block_max_tokens() -> None:
         long_para,
         max_tokens=500,
         ideal_max_tokens_ratio=1,
-        merge_below_tokens=0,
-        merge_small_chunks=False,
+        merge_below_tokens=-1,
         block_options={"paragraph": {"max_tokens": 30}},
     )
     assert len(chunks) > 1
@@ -1782,8 +1788,7 @@ def test_section_splitter_can_split_oversized_lists_by_default() -> None:
         options=SplitOptions(
             max_tokens=20,
             ideal_max_tokens_ratio=1,
-            merge_below_tokens=0,
-            merge_small_chunks=False,
+            merge_below_tokens=-1,
         ),
     )
 
@@ -1810,8 +1815,7 @@ def test_section_splitter_splits_oversized_tables_when_isolated() -> None:
         options=SplitOptions(
             max_tokens=58,
             ideal_max_tokens_ratio=1,
-            merge_below_tokens=0,
-            merge_small_chunks=False,
+            merge_below_tokens=-1,
             block_options={"table": BlockConfig(isolated=True)},
         ),
     )
@@ -1841,8 +1845,7 @@ def test_section_splitter_keeps_oversized_tables_intact_when_nosplit() -> None:
         options=SplitOptions(
             max_tokens=58,
             ideal_max_tokens_ratio=1,
-            merge_below_tokens=0,
-            merge_small_chunks=False,
+            merge_below_tokens=-1,
             block_options={"table": BlockConfig(split=False)},
         ),
     )
@@ -1862,8 +1865,7 @@ def test_section_splitter_uses_per_block_max_tokens() -> None:
         options=SplitOptions(
             max_tokens=500,
             ideal_max_tokens_ratio=1,
-            merge_below_tokens=0,
-            merge_small_chunks=False,
+            merge_below_tokens=-1,
             block_options={"paragraph": BlockConfig(max_tokens=30)},
         ),
     )
@@ -1886,7 +1888,6 @@ def test_section_splitter_merges_small_fragments() -> None:
             max_tokens=30,
             ideal_max_tokens_ratio=0.5,
             merge_below_tokens=29,
-            merge_small_chunks=True,
         ),
     )
 

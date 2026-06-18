@@ -17,8 +17,7 @@ class TextSplitRequest(BaseModel):
     text: str
     max_tokens: int = 1200
     ideal_max_tokens_ratio: float = 0.8
-    merge_below_tokens: int = 50
-    merge_small_chunks: bool = True
+    merge_below_tokens: int | None = 50
     skip_empty_sections: bool = True
     recursive_split: bool = False
     block_configs: dict[str, Any] | None = None
@@ -109,7 +108,6 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
             max_tokens=payload.max_tokens,
             ideal_max_tokens_ratio=payload.ideal_max_tokens_ratio,
             merge_below_tokens=payload.merge_below_tokens,
-            merge_small_chunks=payload.merge_small_chunks,
             skip_empty_sections=payload.skip_empty_sections,
             recursive_split=payload.recursive_split,
             block_options=block_options,  # ty: ignore[invalid-argument-type]
@@ -140,8 +138,7 @@ async def split_file(
     input_format: str = Form("auto"),
     max_tokens: int = Form(1200),
     ideal_max_tokens_ratio: float = Form(0.8),
-    merge_below_tokens: int = Form(50),
-    merge_small_chunks: bool = Form(True),
+    merge_below_tokens: int | None = Form(50),
     skip_empty_sections: bool = Form(True),
     recursive_split: bool = Form(False),
     block_configs: str = Form(""),
@@ -177,7 +174,6 @@ async def split_file(
             max_tokens=max_tokens,
             ideal_max_tokens_ratio=ideal_max_tokens_ratio,
             merge_below_tokens=merge_below_tokens,
-            merge_small_chunks=merge_small_chunks,
             skip_empty_sections=skip_empty_sections,
             recursive_split=recursive_split,
             block_options=block_options,  # ty: ignore[invalid-argument-type]

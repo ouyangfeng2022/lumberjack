@@ -80,8 +80,7 @@ def test_lumber_accepts_ideal_max_tokens_ratio() -> None:
         document_title="ideal.md",
         max_tokens=30,
         ideal_max_tokens_ratio=0.5,
-        merge_below_tokens=0,
-        merge_small_chunks=False,
+        merge_below_tokens=-1,
     )
 
     assert [chunk.body for chunk in chunks] == [
