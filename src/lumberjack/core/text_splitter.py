@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from .models import MarkdownBlock
     from .protocols import TokenizerProtocol
 
-from .html_parser import HTMLTableParser, HTMLTableRow
+from .html.table_parser import HTMLTableParser, HTMLTableRow
 
 SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?\u3002\uff01\uff1f])\s+")
 PROTECTED_SPAN_RE = re.compile(r"<https?://[^\s>]+>|https?://[^\s)>\]]+")

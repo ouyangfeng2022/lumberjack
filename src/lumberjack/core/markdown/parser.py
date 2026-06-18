@@ -667,7 +667,7 @@ class MarkdownItParser:
 
         if token.type == "html_block":
             # Check if the HTML block contains a table
-            from ..html_parser import HTMLTableParser
+            from ..html.table_parser import HTMLTableParser
 
             html_content = slice_source(source_lines, token.map)
             html_parser = HTMLTableParser()
