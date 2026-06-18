@@ -3,12 +3,61 @@
 from __future__ import annotations
 
 from lumberjack.core.html_parser import (
+    HTMLParser,
     HTMLTableParser,
 )
 from lumberjack.core.markdown.parser import MarkdownParser
 from lumberjack.core.splitter import create_splitter
 from lumberjack.core.text_splitter import TextSplitter
 from lumberjack.core.tokenizers import SimpleCharTokenizer
+
+
+def test_html_parser_builds_document_ast_with_sections_and_blocks():
+    """HTMLParser should produce the same DocumentAST shape as Markdown/DOCX parsers."""
+    parser = HTMLParser()
+    html = """<!doctype html>
+<html>
+  <head>
+    <title>Ignored head title</title>
+    <meta name="author" content="Ada">
+  </head>
+  <body>
+    <h1>Guide</h1>
+    <p>Intro <strong>bold</strong> text.</p>
+    <h2>Data</h2>
+    <ul><li>First</li><li>Second</li></ul>
+    <table><tr><th>Name</th></tr><tr><td>Alice</td></tr></table>
+  </body>
+</html>"""
+
+    document = parser.parse(html, document_title="guide.html")
+
+    assert document.title == "guide.html"
+    assert document.source == html
+    assert document.metadata["author"] == "Ada"
+    guide = document.root.children[0]
+    assert guide.title == "Guide"
+    assert guide.path == ((1, "Guide"),)
+    assert guide.blocks[0].kind == "paragraph"
+    assert guide.blocks[0].text == "Intro bold text."
+    data = guide.children[0]
+    assert data.title == "Data"
+    assert data.blocks[0].kind == "list"
+    assert data.blocks[0].text == "- First\n- Second"
+    assert data.blocks[1].kind == "html_table"
+    assert "<table>" in data.blocks[1].text
+
+
+def test_html_parser_respects_max_heading_level():
+    """Headings deeper than max_heading_level should become regular paragraph blocks."""
+    parser = HTMLParser()
+    document = parser.parse("<h1>Top</h1><h3>Deep</h3><p>Body</p>", max_heading_level=2)
+
+    top = document.root.children[0]
+    assert top.title == "Top"
+    assert top.children == []
+    assert [block.kind for block in top.blocks] == ["paragraph", "paragraph"]
+    assert top.blocks[0].text == "Deep"
 
 
 def test_html_table_parser_detects_simple_table():
