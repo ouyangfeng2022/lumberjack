@@ -349,3 +349,22 @@ def test_visitor_metadata_reachable_in_visit_document() -> None:
 
     assert reader.metadata.get("title") == "From Front Matter"
     assert reader.metadata.get("author") == "ada"
+
+
+def test_visitor_reference_definitions_reachable_in_visit_document() -> None:
+    """visit_document can read document.reference_definitions."""
+    md = "# Links\n\nSee [example][ref] and [ref][ref].\n\n[ref]: https://example.com\n"
+    document = MarkdownParser().parse(md, document_title="refs.md")
+
+    class RefReader(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.refs: dict[str, dict[str, str]] = {}
+
+        def visit_document(self, document: DocumentAST) -> None:
+            self.refs = document.reference_definitions
+
+    reader = RefReader()
+    reader.walk_document(document)
+
+    assert "ref" in reader.refs
+    assert reader.refs["ref"]["destination"] == "https://example.com"
