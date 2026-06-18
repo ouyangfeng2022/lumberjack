@@ -80,6 +80,7 @@ Main components:
   - `SimpleCharTokenizer` (default), `TiktokenTokenizer` (optional)
 - **TextSplitter**: `src/lumberjack/core/text_splitter.py`
   - Handles oversized block splitting via paragraph/line/sentence/word/hard boundaries
+  - Uses `HTMLTableParser` (from `core/html/table_parser.py`) to split oversized `html_table` blocks
 - **Utilities**: `src/lumberjack/core/utils.py`, `src/lumberjack/core/block_config.py`
 
 ### Markdown (`src/lumberjack/core/markdown/`)
@@ -105,6 +106,17 @@ Main components:
   - Maps Heading styles -> `SectionNode`, paragraphs -> `paragraph`, tables -> `table`, lists -> `list`, etc.
   - Iterates body elements in document order to preserve paragraph/table sequence
   - Extracts core properties as document metadata
+
+### HTML (`src/lumberjack/core/html/`)
+
+- **Parser**: `src/lumberjack/core/html/parser.py`
+  - `HTMLParser` — parses HTML into `DocumentAST`, mirroring `MarkdownItParser` and `DocxParser`
+  - Built on stdlib `html.parser.HTMLParser` (aliased internally as `_StdlibHTMLParser` to avoid name shadowing)
+  - `_HTMLDocumentBuilder` is the event-driven internal builder
+  - Maps headings -> `SectionNode`, paragraphs -> `paragraph`, tables -> `html_table`, lists -> `list`, etc.
+- **Table utility**: `src/lumberjack/core/html/table_parser.py`
+  - `HTMLTableParser` + `HTMLTable`/`HTMLTableRow`/`HTMLTableCell` dataclasses
+  - Consumed by `markdown/parser.py` (to detect tables inside `html_block`) and `text_splitter.py` (to split oversized `html_table` blocks); not used by `HTMLParser` itself
 
 ### Public API
 
@@ -206,6 +218,10 @@ src/lumberjack/
         docx/
             __init__.py
             parser.py               # DocxParser
+        html/
+            __init__.py
+            parser.py               # HTMLParser + _HTMLDocumentBuilder
+            table_parser.py         # HTMLTableParser + HTMLTable*
 lumberjack_webui/                   # React + TypeScript frontend
 tests/
     test_api.py
