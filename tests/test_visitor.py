@@ -417,3 +417,9 @@ def test_visitor_depart_document_fires_after_blocks() -> None:
     assert checker.count_at_depart == checker.block_count
     assert checker.title_at_depart == "order.md"
 
+
+def test_visitor_default_document_hooks_are_noops() -> None:
+    """Bare visitor with default document hooks walks without raising."""
+    document = MarkdownParser().parse("# Title\n\nBody.\n", document_title="noop.md")
+    # No subclass overrides — should not raise
+    MarkdownAstVisitor().walk_document(document)
