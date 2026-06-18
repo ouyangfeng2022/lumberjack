@@ -6,7 +6,12 @@ from lumberjack.core.markdown.parser import MarkdownParser
 from lumberjack.core.visitor import MarkdownAstVisitor
 
 if TYPE_CHECKING:
-    from lumberjack.core.models import MarkdownBlock, MarkdownInline, SectionNode
+    from lumberjack.core.models import (
+        DocumentAST,
+        MarkdownBlock,
+        MarkdownInline,
+        SectionNode,
+    )
 
 # -- Fixtures -----------------------------------------------------------------
 
@@ -294,3 +299,34 @@ def test_visitor_importable_from_top_level() -> None:
     from lumberjack import MarkdownAstVisitor as TopLevelVisitor
 
     assert TopLevelVisitor is MarkdownAstVisitor
+
+
+def test_visitor_document_hooks_bracket_section_tree() -> None:
+    """visit_document fires first; depart_document fires last."""
+    document = MarkdownParser().parse(FLAT_FIXTURE, document_title="flat.md")
+
+    class DocumentEventRecorder(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.events: list[tuple[str, str]] = []
+
+        def visit_document(self, document: DocumentAST) -> None:
+            self.events.append(("enter_document", document.title))
+
+        def depart_document(self, document: DocumentAST) -> None:
+            self.events.append(("depart_document", document.title))
+
+        def visit_section(self, section: SectionNode) -> None:
+            self.events.append(("enter_section", section.title))
+
+    recorder = DocumentEventRecorder()
+    recorder.walk_document(document)
+
+    assert recorder.events[0] == ("enter_document", "flat.md")
+    assert recorder.events[-1] == ("depart_document", "flat.md")
+    # Section events sit between the document hooks, never outside them.
+    middle = recorder.events[1:-1]
+    assert middle
+    assert all(kind == "enter_section" for kind, _ in middle)
+    titles = {title for _, title in recorder.events}
+    assert "flat.md" in titles
+    assert "Title" in titles
