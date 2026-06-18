@@ -170,9 +170,6 @@ chunks = lumber(
 > [!NOTE]
 > **HTML 表格**：HTML 表格（`<table>`）被识别为 `html_table` 块类型，与 Markdown 表格独立处理。它们在切分时保留原始 HTML 格式和属性（如 `border`、`style`、`colspan`、`rowspan`）。使用 `"html_table": BlockConfig(isolated=True)` 可独立于 Markdown 表格进行配置。
 
-> [!TIP]
-> `block_options` 也支持普通字典：`{"table": {"isolated": True, "split": False}}`。
-
 #### 自定义解析器与插件
 
 ```python

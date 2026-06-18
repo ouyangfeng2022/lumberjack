@@ -170,9 +170,6 @@ Valid block kinds: `paragraph`, `blockquote`, `list`, `list_item`, `table`, `htm
 > [!NOTE]
 > **HTML Tables**: HTML tables (`<table>`) are recognized as `html_table` blocks, independent from markdown tables. They preserve their original HTML format and attributes during splitting. Configure with `"html_table": BlockConfig(isolated=True)` to handle separately from markdown tables.
 
-> [!TIP]
-> `block_options` also accepts plain dicts: `{"table": {"isolated": True, "split": False}}`.
-
 #### Custom Parser with Plugins
 
 ```python
@@ -249,17 +246,17 @@ curl -X POST http://localhost:9612/lumber/api/split/file \
 
 Both endpoints accept the same options:
 
-| Field                     | Type    | Default      | Description                               |
-| ------------------------ | ------- | ------------ | ----------------------------------------- |
-| `max_tokens`             | int     | `1200`       | Maximum chunk token budget                |
-| `ideal_max_tokens_ratio` | float   | `0.8`        | Preferred split budget ratio              |
-| `merge_below_tokens`     | int     | `50`         | Soft merge threshold                      |
-| `merge_small_chunks`     | bool    | `true`       | Merge adjacent small chunks               |
-| `skip_empty_sections`    | bool    | `true`       | Discard heading-only chunks               |
-| `recursive_split`        | bool    | `false`      | Block/text fallback for section splitter  |
-| `block_configs`          | object  | `null`       | Per-block-kind config                     |
-| `tokenizer`              | string  | `"simple"`   | `simple` or `tiktoken`                    |
-| `splitter`               | string  | `"recursive"` | `recursive` or `section`                 |
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `max_tokens` | int | `1200` | Maximum chunk token budget |
+| `ideal_max_tokens_ratio` | float | `0.8` | Preferred split budget ratio |
+| `merge_below_tokens` | int | `50` | Soft merge threshold |
+| `merge_small_chunks` | bool | `true` | Merge adjacent small chunks |
+| `skip_empty_sections` | bool | `true` | Discard heading-only chunks |
+| `recursive_split` | bool | `false` | Block/text fallback for section splitter |
+| `block_configs` | object | `null` | Per-block-kind config |
+| `tokenizer` | string | `"simple"` | `simple` or `tiktoken` |
+| `splitter` | string | `"recursive"` | `recursive` or `section` |
 
 #### Response
 
@@ -296,10 +293,10 @@ Open <http://localhost:9612>.
 
 ## Splitting Strategies
 
-| Strategy     | Registry Name        | Behavior                                                                       |
-| ------------ | -------------------- | ------------------------------------------------------------------------------ |
+| Strategy | Registry Name | Behavior |
+| --- | --- | --- |
 | **Recursive** | `recursive` (default) | Structure-first, budget-aware. Merges adjacent sibling sections when they fit. |
-| **Section**  | `section`            | One chunk per heading section's direct body. Child sections are separate chunks. |
+| **Section** | `section` | One chunk per heading section's direct body. Child sections are separate chunks. |
 
 Recursive splitting order:
 
