@@ -368,3 +368,21 @@ def test_visitor_reference_definitions_reachable_in_visit_document() -> None:
 
     assert "ref" in reader.refs
     assert reader.refs["ref"]["destination"] == "https://example.com"
+
+
+def test_visitor_document_title_reachable_in_visit_document() -> None:
+    """visit_document can read document.title."""
+    document = MarkdownParser().parse("# Body\n\nText.\n", document_title="title.md")
+
+    class TitleReader(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.title: str | None = None
+
+        def visit_document(self, document: DocumentAST) -> None:
+            self.title = document.title
+
+    reader = TitleReader()
+    reader.walk_document(document)
+
+    assert reader.title == "title.md"
+
