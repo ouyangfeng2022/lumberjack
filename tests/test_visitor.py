@@ -423,3 +423,148 @@ def test_visitor_default_document_hooks_are_noops() -> None:
     document = MarkdownParser().parse("# Title\n\nBody.\n", document_title="noop.md")
     # No subclass overrides — should not raise
     MarkdownAstVisitor().walk_document(document)
+
+
+def test_visit_section_returning_false_prunes_children() -> None:
+    """visit_section returning False skips its blocks and child sections."""
+    document = MarkdownParser().parse(NESTED_FIXTURE, document_title="nested.md")
+
+    class Pruner(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.events: list[tuple[str, str]] = []
+
+        def visit_section(self, section: SectionNode) -> bool | None:
+            self.events.append(("enter", section.title))
+            # Prune at "Section A" — skip its blocks and Sub A
+            if section.title == "Section A":
+                return False
+            return None
+
+        def depart_section(self, section: SectionNode) -> None:
+            self.events.append(("depart", section.title))
+
+    pruner = Pruner()
+    pruner.walk_document(document)
+
+    assert ("enter", "Section A") in pruner.events
+    assert ("depart", "Section A") in pruner.events  # depart still fires
+    # Sub A is a child of Section A — must NOT be visited
+    assert ("enter", "Sub A") not in pruner.events
+
+
+def test_visit_block_returning_false_prunes_children() -> None:
+    """visit_block returning False skips nested child blocks and inlines."""
+    document = MarkdownParser().parse(NESTED_FIXTURE, document_title="nested.md")
+
+    class BlockPruner(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.entered_kinds: list[str] = []
+            self.departed_kinds: list[str] = []
+
+        def visit_block(self, block: MarkdownBlock) -> bool | None:
+            self.entered_kinds.append(block.kind)
+            # Prune list blocks — their list_item children should be skipped
+            if block.kind == "list":
+                return False
+            return None
+
+        def depart_block(self, block: MarkdownBlock) -> None:
+            self.departed_kinds.append(block.kind)
+
+    pruner = BlockPruner()
+    pruner.walk_document(document)
+
+    assert "list" in pruner.entered_kinds
+    assert "list" in pruner.departed_kinds  # depart still fires
+    # list_item children of pruned lists must NOT be visited
+    list_item_count = pruner.entered_kinds.count("list_item")
+    assert list_item_count == 0
+
+
+def test_visit_inline_returning_false_prunes_children() -> None:
+    """visit_inline returning False skips nested inline children."""
+    md = "# T\n\nVisit [**example**](https://example.com).\n"
+    document = MarkdownParser().parse(md, document_title="inline.md")
+
+    class InlinePruner(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.entered_kinds: list[str] = []
+            self.departed_kinds: list[str] = []
+
+        def visit_inline(self, inline: MarkdownInline) -> bool | None:
+            self.entered_kinds.append(inline.kind)
+            # Prune link inlines — their inner children (strong, text) skipped
+            if inline.kind == "link":
+                return False
+            return None
+
+        def depart_inline(self, inline: MarkdownInline) -> None:
+            self.departed_kinds.append(inline.kind)
+
+    pruner = InlinePruner()
+    pruner.walk_document(document)
+
+    assert "link" in pruner.entered_kinds
+    assert "link" in pruner.departed_kinds  # depart still fires
+    # strong is a child of the pruned link — must NOT be visited
+    assert "strong" not in pruner.entered_kinds
+
+
+def test_visit_document_returning_false_prunes_section_tree() -> None:
+    """visit_document returning False skips the entire section tree."""
+    document = MarkdownParser().parse(NESTED_FIXTURE, document_title="nested.md")
+
+    class DocPruner(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.events: list[str] = []
+            self.doc_title: str | None = None
+
+        def visit_document(self, document: DocumentAST) -> bool | None:
+            self.events.append("enter_document")
+            self.doc_title = document.title
+            return False  # skip the whole section tree
+
+        def depart_document(self, document: DocumentAST) -> None:
+            self.events.append(f"depart_document:{document.title}")
+
+        def visit_section(self, section: SectionNode) -> bool | None:
+            self.events.append(f"enter_section:{section.title}")
+            return None
+
+    pruner = DocPruner()
+    pruner.walk_document(document)
+
+    assert pruner.events == ["enter_document", "depart_document:nested.md"]
+    assert pruner.doc_title == "nested.md"
+
+
+def test_visit_hooks_returning_none_still_descend() -> None:
+    """visit_* hooks that return nothing (None) still descend into children."""
+    document = MarkdownParser().parse(NESTED_FIXTURE, document_title="nested.md")
+
+    class NoneReturningVisitor(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.section_count: int = 0
+            self.seen_block_kinds: set[str] = set()
+            self.seen_inline_kinds: set[str] = set()
+
+        def visit_section(self, section: SectionNode) -> bool | None:
+            # Touching section.level keeps the argument honest.
+            if section.level >= 0:
+                self.section_count += 1
+            # Explicitly return None — must still descend
+            return None
+
+        def visit_block(self, block: MarkdownBlock) -> bool | None:
+            self.seen_block_kinds.add(block.kind)
+            return None
+
+        def visit_inline(self, inline: MarkdownInline) -> bool | None:
+            self.seen_inline_kinds.add(inline.kind)
+            return None
+
+    visitor = NoneReturningVisitor()
+    visitor.walk_document(document)
+
+    # NESTED_FIXTURE has root + Document + Section A + Sub A + Section B = 5 sections
+    assert visitor.section_count == 5
