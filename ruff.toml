@@ -18,6 +18,7 @@ ignore = [
     "E501",   # line too long (handled by formatter)
     "SIM108", # use ternary operator (sometimes less readable)
 ]
+unfixable = ["B"]
 
 [lint.isort]
 known-first-party = ["lumberjack"]
