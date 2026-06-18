@@ -54,64 +54,98 @@ class MarkdownAstVisitor:
         :meth:`depart_document` after it, so subclasses can read
         ``document.title``, ``document.metadata``, and
         ``document.reference_definitions`` without touching ``document.root``.
+
+        Returning ``False`` from :meth:`visit_document` skips the section tree;
+        :meth:`depart_document` still fires.
         """
-        self.visit_document(document)
-        self.walk_section(document.root)
+        descend = self.visit_document(document)
+        if descend is not False:
+            self.walk_section(document.root)
         self.depart_document(document)
 
     def walk_section(self, section: SectionNode) -> None:
-        """Recursively visit a section's blocks and child sections."""
-        self.visit_section(section)
-        for block in section.blocks:
-            self.walk_block(block)
-        for child in section.children:
-            self.walk_section(child)
+        """Recursively visit a section's blocks and child sections.
+
+        Returning ``False`` from :meth:`visit_section` skips this section's
+        blocks and child sections; :meth:`depart_section` still fires.
+        """
+        descend = self.visit_section(section)
+        if descend is not False:
+            for block in section.blocks:
+                self.walk_block(block)
+            for child in section.children:
+                self.walk_section(child)
         self.depart_section(section)
 
     def walk_block(self, block: MarkdownBlock) -> None:
-        """Visit a block, its nested child blocks, then its inlines."""
-        self.visit_block(block)
-        for child in block.children:
-            self.walk_block(child)
-        for inline in block.inlines:
-            self.walk_inline(inline)
+        """Visit a block, its nested child blocks, then its inlines.
+
+        Returning ``False`` from :meth:`visit_block` skips this block's
+        nested child blocks and inlines; :meth:`depart_block` still fires.
+        """
+        descend = self.visit_block(block)
+        if descend is not False:
+            for child in block.children:
+                self.walk_block(child)
+            for inline in block.inlines:
+                self.walk_inline(inline)
         self.depart_block(block)
 
     def walk_inline(self, inline: MarkdownInline) -> None:
-        """Visit an inline node and its nested children."""
-        self.visit_inline(inline)
-        for child in inline.children:
-            self.walk_inline(child)
+        """Visit an inline node and its nested children.
+
+        Returning ``False`` from :meth:`visit_inline` skips this inline's
+        nested children; :meth:`depart_inline` still fires.
+        """
+        descend = self.visit_inline(inline)
+        if descend is not False:
+            for child in inline.children:
+                self.walk_inline(child)
         self.depart_inline(inline)
 
     # ------------------------------------------------------------------
     # Hooks — override in subclasses
     # ------------------------------------------------------------------
 
-    def visit_section(self, section: SectionNode) -> None:
-        """Hook called when *entering* a section node."""
+    def visit_section(self, section: SectionNode) -> bool | None:
+        """Hook called when *entering* a section node.
+
+        Return ``False`` to skip this section's blocks and child sections.
+        :meth:`depart_section` still fires.
+        """
 
     def depart_section(self, section: SectionNode) -> None:
         """Hook called when *leaving* a section node."""
 
-    def visit_block(self, block: MarkdownBlock) -> None:
-        """Hook called when *entering* a block node."""
+    def visit_block(self, block: MarkdownBlock) -> bool | None:
+        """Hook called when *entering* a block node.
+
+        Return ``False`` to skip this block's nested child blocks and
+        inlines. :meth:`depart_block` still fires.
+        """
 
     def depart_block(self, block: MarkdownBlock) -> None:
         """Hook called when *leaving* a block node."""
 
-    def visit_inline(self, inline: MarkdownInline) -> None:
-        """Hook called when *entering* an inline node."""
+    def visit_inline(self, inline: MarkdownInline) -> bool | None:
+        """Hook called when *entering* an inline node.
+
+        Return ``False`` to skip this inline's nested children.
+        :meth:`depart_inline` still fires.
+        """
 
     def depart_inline(self, inline: MarkdownInline) -> None:
         """Hook called when *leaving* an inline node."""
 
-    def visit_document(self, document: DocumentAST) -> None:
+    def visit_document(self, document: DocumentAST) -> bool | None:
         """Hook called when *entering* a document.
 
         Read ``document.title``, ``document.metadata``, and
         ``document.reference_definitions`` here before the section tree
         is walked.
+
+        Return ``False`` to skip the entire section tree.
+        :meth:`depart_document` still fires.
         """
 
     def depart_document(self, document: DocumentAST) -> None:
