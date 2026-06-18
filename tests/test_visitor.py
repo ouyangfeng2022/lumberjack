@@ -678,3 +678,138 @@ def test_accept_combined_with_pruning() -> None:
     # Sub A is the last title in Section A's subtree (it has no child sections).
     sub_a_idx = visitor.titles.index("Sub A")
     assert visitor.titles[sub_a_idx:] == ["Sub A"]
+
+
+def test_visitor_code_fence_hook() -> None:
+    """visit_code_content receives literal and language from code_fence."""
+    md = "# T\n\n```python\nprint('hi')\n```\n"
+    document = MarkdownParser().parse(md, document_title="code.md")
+
+    class CodeCollector(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str]] = []
+
+        def visit_code_content(self, literal: str, language: str) -> None:
+            self.calls.append((language, literal))
+
+    collector = CodeCollector()
+    collector.walk_document(document)
+
+    assert collector.calls == [("python", "print('hi')")]
+
+
+def test_visitor_math_block_hook() -> None:
+    """visit_math_content receives literal from math_block."""
+    md = "# T\n\n\\[x^2\\]\n"
+    document = MarkdownParser().parse(md, document_title="math.md")
+
+    class MathCollector(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.literals: list[str] = []
+
+        def visit_math_content(self, literal: str) -> None:
+            self.literals.append(literal)
+
+    collector = MathCollector()
+    collector.walk_document(document)
+
+    assert collector.literals == ["x^2"]
+
+
+def test_visitor_markdown_table_cell_hook() -> None:
+    """visit_table_cell fires for each cell in a pipe-delimited table."""
+    md = "# T\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"
+    document = MarkdownParser().parse(md, document_title="table.md")
+
+    class CellCollector(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.cells: list[tuple[int, int, str, bool]] = []
+
+        def visit_table_cell(
+            self, row_idx: int, col_idx: int, text: str, is_header: bool
+        ) -> None:
+            self.cells.append((row_idx, col_idx, text, is_header))
+
+    collector = CellCollector()
+    collector.walk_document(document)
+
+    # Header: row 0, cols 0 and 1
+    # Data:   row 1, cols 0 and 1
+    assert collector.cells == [
+        (0, 0, "a", True),
+        (0, 1, "b", True),
+        (1, 0, "1", False),
+        (1, 1, "2", False),
+    ]
+
+
+def test_visitor_html_table_cell_hook() -> None:
+    """visit_table_cell fires for HTML table cells in an html_block."""
+    md = (
+        "# T\n\n"
+        "<table>\n"
+        "<thead><tr><th>X</th><th>Y</th></tr></thead>\n"
+        "<tbody><tr><td>10</td><td>20</td></tr></tbody>\n"
+        "</table>\n"
+    )
+    document = MarkdownParser().parse(md, document_title="html-table.md")
+
+    class CellCollector(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.cells: list[tuple[int, int, str, bool]] = []
+
+        def visit_table_cell(
+            self, row_idx: int, col_idx: int, text: str, is_header: bool
+        ) -> None:
+            self.cells.append((row_idx, col_idx, text, is_header))
+
+    collector = CellCollector()
+    collector.walk_document(document)
+
+    # Should find at least 4 cells: X, Y headers + 10, 20 data
+    assert len(collector.cells) >= 4
+    # Use "10" as the most reliable known text value
+    texts = {t for _, _, t, _ in collector.cells}
+    assert "10" in texts
+    # At least one cell should be a header
+    headers = [i for _, _, _, i in collector.cells]
+    assert True in headers
+
+
+def test_visitor_structured_content_combined() -> None:
+    """All three structured-content hook groups fire in document order."""
+    md = "# T\n\n```\ncode\n```\n\n\\[e=mc^2\\]\n\n| h |\n|---|\n| v |\n"
+    document = MarkdownParser().parse(md, document_title="combined.md")
+
+    class CombinedCollector(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.order: list[str] = []
+
+        def visit_code_content(self, literal: str, language: str) -> None:
+            self.order.append("code")
+            _ = literal + language
+
+        def visit_math_content(self, literal: str) -> None:
+            self.order.append("math")
+            _ = literal
+
+        def visit_table_cell(
+            self, row_idx: int, col_idx: int, text: str, is_header: bool
+        ) -> None:
+            _ = text + str(row_idx) + str(col_idx) + str(is_header)
+            if not self.order or self.order[-1] != "table":
+                self.order.append("table")
+
+    collector = CombinedCollector()
+    collector.walk_document(document)
+
+    # code fence, math, and table blocks appear in document order
+    assert collector.order == ["code", "math", "table"]
+
+
+def test_visitor_structured_hooks_are_noops_by_default() -> None:
+    """Bare visitor walks a document with structured content without raising."""
+    md = "# T\n\n```\ncode\n```\n\n\\[x\\]\n\n| a |\n|---|\n| 1 |\n"
+    document = MarkdownParser().parse(md, document_title="noop2.md")
+    # No subclass overrides — should not raise
+    MarkdownAstVisitor().walk_document(document)
