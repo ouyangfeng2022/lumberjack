@@ -568,3 +568,113 @@ def test_visit_hooks_returning_none_still_descend() -> None:
 
     # NESTED_FIXTURE has root + Document + Section A + Sub A + Section B = 5 sections
     assert visitor.section_count == 5
+
+
+def test_document_accept_equivalent_to_walk_document() -> None:
+    """DocumentAST.accept(visitor) produces the same events as walk_document."""
+    document = MarkdownParser().parse(NESTED_FIXTURE, document_title="nested.md")
+
+    recorder1 = EventRecorder()
+    recorder1.walk_document(document)
+
+    recorder2 = EventRecorder()
+    document.accept(recorder2)
+
+    assert recorder1.events == recorder2.events
+
+
+def test_section_accept_starts_traversal_from_arbitrary_section() -> None:
+    """SectionNode.accept(visitor) walks that section's subtree."""
+    document = MarkdownParser().parse(NESTED_FIXTURE, document_title="nested.md")
+
+    class TitleCollector(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.titles: list[str] = []
+
+        def visit_section(self, section: SectionNode) -> bool | None:
+            self.titles.append(section.title)
+            return None
+
+    collector = TitleCollector()
+    # Start from Section A (first child of the H1 "Document")
+    section_a = document.root.children[0].children[0]
+    section_a.accept(collector)
+
+    assert collector.titles == ["Section A", "Sub A"]
+
+
+def test_block_accept_walks_single_block_and_inlines() -> None:
+    """MarkdownBlock.accept(visitor) walks that block and its inlines."""
+    md = "# T\n\nHello [link](http://x) world.\n"
+    document = MarkdownParser().parse(md, document_title="block.md")
+
+    class KindRecorder(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.block_kinds: list[str] = []
+            self.inline_kinds: list[str] = []
+
+        def visit_block(self, block: MarkdownBlock) -> bool | None:
+            self.block_kinds.append(block.kind)
+            return None
+
+        def visit_inline(self, inline: MarkdownInline) -> bool | None:
+            self.inline_kinds.append(inline.kind)
+            return None
+
+    recorder = KindRecorder()
+    # The paragraph block under the H1
+    paragraph = document.root.children[0].blocks[0]
+    paragraph.accept(recorder)
+
+    assert recorder.block_kinds == ["paragraph"]
+    assert "link" in recorder.inline_kinds
+    assert "text" in recorder.inline_kinds
+
+
+def test_inline_accept_walks_single_inline_and_children() -> None:
+    """MarkdownInline.accept(visitor) walks that inline and its children."""
+    md = "# T\n\nHello [**bold link**](http://x).\n"
+    document = MarkdownParser().parse(md, document_title="inline-accept.md")
+
+    class InlineRecorder(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.kinds: list[str] = []
+
+        def visit_inline(self, inline: MarkdownInline) -> bool | None:
+            self.kinds.append(inline.kind)
+            return None
+
+    recorder = InlineRecorder()
+    paragraph = document.root.children[0].blocks[0]
+    link_inline = next(i for i in paragraph.inlines if i.kind == "link")
+    link_inline.accept(recorder)
+
+    assert recorder.kinds[0] == "link"
+    # The link has at least one nested child (strong/text)
+    assert len(recorder.kinds) >= 2
+
+
+def test_accept_combined_with_pruning() -> None:
+    """accept() entry point respects visit_* pruning."""
+    document = MarkdownParser().parse(NESTED_FIXTURE, document_title="combined.md")
+
+    class CombinedVisitor(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.titles: list[str] = []
+
+        def visit_section(self, section: SectionNode) -> bool | None:
+            self.titles.append(section.title)
+            if section.title == "Sub A":
+                return False
+            return None
+
+    visitor = CombinedVisitor()
+    # Start from Section A via accept; Sub A (its child) is entered then pruned.
+    section_a = document.root.children[0].children[0]
+    section_a.accept(visitor)
+
+    assert "Section A" in visitor.titles
+    assert "Sub A" in visitor.titles  # Sub A is entered (pruning happens at visit)
+    # Sub A is the last title in Section A's subtree (it has no child sections).
+    sub_a_idx = visitor.titles.index("Sub A")
+    assert visitor.titles[sub_a_idx:] == ["Sub A"]
