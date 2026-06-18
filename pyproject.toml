@@ -70,35 +70,3 @@ exclude = [
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-
-[tool.ruff]
-target-version = "py313"
-line-length = 88
-
-[tool.ruff.lint]
-select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "B",   # flake8-bugbear
-    "C4",  # flake8-comprehensions
-    "UP",  # pyupgrade
-    "ARG", # flake8-unused-arguments
-    "SIM", # flake8-simplify
-    "TCH", # flake8-type-checking
-    "RUF", # ruff-specific rules
-]
-ignore = [
-    "E501",   # line too long (handled by formatter)
-    "SIM108", # use ternary operator (sometimes less readable)
-]
-
-[tool.ruff.lint.isort]
-known-first-party = ["lumberjack"]
-
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-skip-magic-trailing-comma = false
-line-ending = "auto"
