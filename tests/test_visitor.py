@@ -386,3 +386,34 @@ def test_visitor_document_title_reachable_in_visit_document() -> None:
 
     assert reader.title == "title.md"
 
+
+def test_visitor_depart_document_fires_after_blocks() -> None:
+    """depart_document runs after every block has been walked."""
+    document = MarkdownParser().parse(
+        "# Title\n\nPara one.\n\nPara two.\n", document_title="order.md"
+    )
+
+    class OrderChecker(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.block_count: int = 0
+            self.count_at_depart: int | None = None
+            self.title_at_depart: str | None = None
+
+        def visit_block(self, block: MarkdownBlock) -> None:
+            # Touching `block.kind` keeps the override honest about its argument
+            # and mirrors how a real counter would bucket by kind.
+            if block.kind:
+                self.block_count += 1
+
+        def depart_document(self, document: DocumentAST) -> None:
+            self.count_at_depart = self.block_count
+            self.title_at_depart = document.title
+
+    checker = OrderChecker()
+    checker.walk_document(document)
+
+    assert checker.count_at_depart is not None
+    assert checker.count_at_depart >= 2  # two paragraphs walked before depart
+    assert checker.count_at_depart == checker.block_count
+    assert checker.title_at_depart == "order.md"
+
