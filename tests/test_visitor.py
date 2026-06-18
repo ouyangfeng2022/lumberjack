@@ -330,3 +330,22 @@ def test_visitor_document_hooks_bracket_section_tree() -> None:
     titles = {title for _, title in recorder.events}
     assert "flat.md" in titles
     assert "Title" in titles
+
+
+def test_visitor_metadata_reachable_in_visit_document() -> None:
+    """visit_document can read document.metadata (YAML front matter)."""
+    md = "---\ntitle: From Front Matter\nauthor: ada\n---\n\n# Heading\n\nBody.\n"
+    document = MarkdownParser().parse(md, document_title="meta.md")
+
+    class MetadataReader(MarkdownAstVisitor):
+        def __init__(self) -> None:
+            self.metadata: dict[str, object] = {}
+
+        def visit_document(self, document: DocumentAST) -> None:
+            self.metadata = dict(document.metadata)
+
+    reader = MetadataReader()
+    reader.walk_document(document)
+
+    assert reader.metadata.get("title") == "From Front Matter"
+    assert reader.metadata.get("author") == "ada"
