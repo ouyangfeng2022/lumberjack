@@ -15,6 +15,7 @@ router = APIRouter()
 
 class TextSplitRequest(BaseModel):
     text: str
+    input_format: str = "markdown"
     max_tokens: int = 1200
     ideal_max_tokens_ratio: float = 0.8
     merge_below_tokens: int | None = 50
@@ -99,12 +100,13 @@ def _parse_form_block_configs(raw: str) -> dict[str, BlockConfig] | None:
 
 @router.post("/split/text", response_model=SplitResponse)
 async def split_text(payload: TextSplitRequest) -> SplitResponse:
-    """Split Markdown text from a JSON request body into chunks."""
+    """Split Markdown or HTML text from a JSON request body into chunks."""
     block_options = _parse_block_configs(payload.block_configs)
 
     try:
         chunks = lumber(
             payload.text,
+            format=payload.input_format,
             max_tokens=payload.max_tokens,
             ideal_max_tokens_ratio=payload.ideal_max_tokens_ratio,
             merge_below_tokens=payload.merge_below_tokens,
@@ -127,8 +129,11 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
 
 def _detect_format_from_filename(filename: str) -> str:
     """Detect input format from file extension."""
-    if filename and filename.lower().endswith(".docx"):
+    lower_filename = filename.lower()
+    if lower_filename.endswith(".docx"):
         return "docx"
+    if lower_filename.endswith((".html", ".htm")):
+        return "html"
     return "markdown"
 
 
@@ -146,11 +151,11 @@ async def split_file(
     splitter: str = Form("recursive"),
     max_heading_level: int | None = Form(None),
 ) -> SplitResponse:
-    """Split an uploaded file (Markdown or DOCX) into chunks.
+    """Split an uploaded file (Markdown, HTML, or DOCX) into chunks.
 
     The input format is auto-detected from the file extension when
-    ``input_format`` is ``"auto"``.  Set it to ``"docx"`` or ``"markdown"``
-    to override.
+    ``input_format`` is ``"auto"``.  Set it to ``"docx"``, ``"html"``,
+    or ``"markdown"`` to override.
     """
     raw = await file.read()
     fmt = (

@@ -70,8 +70,7 @@ class HTMLTableParser:
     TABLE_CLOSE_RE = re.compile(r"</table\s*>", re.IGNORECASE)
     TR_OPEN_RE = re.compile(r"<tr\b[^>]*>", re.IGNORECASE)
     TR_CLOSE_RE = re.compile(r"</tr\s*>", re.IGNORECASE)
-    TH_RE = re.compile(r"<th\b[^>]*>(.*?)</th\s*>", re.IGNORECASE | re.DOTALL)
-    TD_RE = re.compile(r"<td\b[^>]*>(.*?)</td\s*>", re.IGNORECASE | re.DOTALL)
+    CELL_RE = re.compile(r"<(th|td)\b[^>]*>(.*?)</\1\s*>", re.IGNORECASE | re.DOTALL)
     CAPTION_RE = re.compile(
         r"<caption\b[^>]*>(.*?)</caption\s*>", re.IGNORECASE | re.DOTALL
     )
@@ -270,43 +269,20 @@ class HTMLTableParser:
         Returns:
             Parsed HTMLTableRow object.
         """
-        # Try to parse as header row first (th elements)
-        th_matches = list(self.TH_RE.finditer(tr_html))
-        is_header = len(th_matches) > 0
-
-        if is_header:
-            cells = []
-            for match in th_matches:
-                cell_html = match.group(0)
-                cell_content = match.group(1)
-                text = self._strip_tags(cell_content.strip())
-                cells.append(
-                    HTMLTableCell(
-                        text=text,
-                        raw_html=cell_html,
-                        is_header=True,
-                        row_span=self._extract_rowspan(cell_html),
-                        col_span=self._extract_colspan(cell_html),
-                    )
-                )
-            return HTMLTableRow(
-                cells=tuple(cells),
-                raw_html=tr_html,
-                is_header=True,
-            )
-
-        # Parse as data row (td elements)
-        td_matches = list(self.TD_RE.finditer(tr_html))
         cells = []
-        for match in td_matches:
+        is_header = False
+        for match in self.CELL_RE.finditer(tr_html):
+            tag_name = match.group(1).lower()
             cell_html = match.group(0)
-            cell_content = match.group(1)
+            cell_content = match.group(2)
+            cell_is_header = tag_name == "th"
+            is_header = is_header or cell_is_header
             text = self._strip_tags(cell_content.strip())
             cells.append(
                 HTMLTableCell(
                     text=text,
                     raw_html=cell_html,
-                    is_header=False,
+                    is_header=cell_is_header,
                     row_span=self._extract_rowspan(cell_html),
                     col_span=self._extract_colspan(cell_html),
                 )
@@ -315,7 +291,7 @@ class HTMLTableParser:
         return HTMLTableRow(
             cells=tuple(cells),
             raw_html=tr_html,
-            is_header=False,
+            is_header=is_header,
         )
 
     def _strip_tags(self, text: str) -> str:

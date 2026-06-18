@@ -5,11 +5,11 @@
 <h1 align="center">lumberjack</h1>
 
 <p align="center">
-  <strong>Structure-aware Markdown &amp; DOCX splitter for RAG preprocessing</strong>
+  <strong>Structure-aware Markdown, HTML &amp; DOCX splitter for RAG preprocessing</strong>
 </p>
 
 <p align="center">
-  Split Markdown and DOCX by document structure, not fixed text windows.
+  Split Markdown, HTML, and DOCX by document structure, not fixed text windows.
   Preserves heading hierarchy, block integrity, and inline semantics.
 </p>
 
@@ -33,7 +33,8 @@ Core pipeline:
 
 ```text
 Markdown text → MarkdownItParser → DocumentAST → splitter → Chunk[]
-DOCX binary  → DocxParser ─────────────────────┘
+HTML text     → HTMLParser ─────────────────────┤
+DOCX binary   → DocxParser ─────────────────────┘
 ```
 
 ## Install
@@ -97,13 +98,13 @@ pip install "lumberjack[web]"
 lumberjack-serve
 ```
 
-Open <http://localhost:9612> — paste text or upload a `.md` file, configure options, and inspect chunk results visually.
+Open <http://localhost:9612> — paste text or upload a file, configure options, and inspect chunk results visually.
 
 ## Usage
 
 ### Python API
 
-The public API is a single function — [`lumber()`](src/lumberjack/__init__.py):
+The public API is a single function — [`lumber()`](src/lumberjack/lumber.py):
 
 ```python
 from lumberjack import lumber
@@ -112,15 +113,25 @@ from lumberjack.core.models import BlockConfig
 # Full options
 chunks = lumber(
     markdown_text,
+    format="markdown",        # "auto" | "markdown" | "html" | "docx"
     document_title="guide.md",
     max_tokens=1200,
     ideal_max_tokens_ratio=0.8,
     merge_below_tokens=50,
-    merge_small_chunks=True,
     skip_empty_sections=True,
     recursive_split=False,
     tokenizer="simple",        # "simple" | "tiktoken"
     splitter="recursive",      # "recursive" | "section"
+)
+```
+
+HTML input uses the same splitter pipeline:
+
+```python
+chunks = lumber(
+    "<h1>Guide</h1><p>Intro</p>",
+    format="html",
+    max_tokens=1200,
 )
 ```
 
@@ -191,8 +202,8 @@ lumber <input> [options]
 
 | Option                     | Default     | Description                                      |
 | -------------------------- | ----------- | ------------------------------------------------ |
-| `input`                    | —           | Path to a Markdown (.md) or DOCX (.docx) file    |
-| `--input-format`           | `auto`      | `auto`, `markdown`, or `docx`                    |
+| `input`                    | —           | Path to a Markdown (.md), HTML (.html), or DOCX (.docx) file |
+| `--input-format`           | `auto`      | `auto`, `markdown`, `html`, or `docx`            |
 | `-o`, `--output`           | stdout      | Write output to file                             |
 | `--max-tokens`             | `1200`      | Maximum chunk token budget                       |
 | `--ideal-max-tokens-ratio` | `0.8`       | Preferred split budget ratio                     |
@@ -230,7 +241,7 @@ lumberjack-serve --host 127.0.0.1 --port 9612
 ```bash
 curl -X POST http://localhost:9612/lumber/api/split/text \
   -H "Content-Type: application/json" \
-  -d '{"text": "# Hello\n\nWorld", "max_tokens": 500}'
+  -d '{"text": "# Hello\n\nWorld", "input_format": "markdown", "max_tokens": 500}'
 ```
 
 #### `POST /lumber/api/split/file`
@@ -238,6 +249,7 @@ curl -X POST http://localhost:9612/lumber/api/split/text \
 ```bash
 curl -X POST http://localhost:9612/lumber/api/split/file \
   -F "file=@guide.md" \
+  -F "input_format=auto" \
   -F "max_tokens=500" \
   -F "splitter=section"
 ```
@@ -248,10 +260,10 @@ Both endpoints accept the same options:
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
+| `input_format` | string | `"markdown"` for text, `"auto"` for file upload | `auto`, `markdown`, `html`, or `docx` |
 | `max_tokens` | int | `1200` | Maximum chunk token budget |
 | `ideal_max_tokens_ratio` | float | `0.8` | Preferred split budget ratio |
 | `merge_below_tokens` | int | `50` | Soft merge threshold |
-| `merge_small_chunks` | bool | `true` | Merge adjacent small chunks |
 | `skip_empty_sections` | bool | `true` | Discard heading-only chunks |
 | `recursive_split` | bool | `false` | Block/text fallback for section splitter |
 | `block_configs` | object | `null` | Per-block-kind config |
@@ -312,7 +324,9 @@ Recursive splitting order:
 
 **Block-level structures:**
 
-ATX headings · Setext headings · Paragraphs · Block quotes · Ordered/unordered lists · Tables · Fenced code · Indented code · HTML blocks · Link reference definitions · YAML front matter · Math blocks (`$$...$$`) · Bracket math blocks (`\[...\]`) · Equation-numbered math · Plugin-generated blocks
+Markdown: ATX headings · Setext headings · Paragraphs · Block quotes · Ordered/unordered lists · Tables · Fenced code · Indented code · HTML blocks · Link reference definitions · YAML front matter · Math blocks (`$$...$$`) · Bracket math blocks (`\[...\]`) · Equation-numbered math · Plugin-generated blocks
+
+HTML: Headings · Paragraphs · Block quotes · Lists · Code blocks · Tables as `html_table` · Document title and meta tags
 
 **Inline structures** (in headings and paragraphs):
 
@@ -328,7 +342,8 @@ Text · Links · Images · Autolinks · Code spans · Emphasis · Strong emphasi
 
 ```text
 src/lumberjack/
-├── __init__.py              # Public API (lumber function)
+├── __init__.py              # Public API re-exports
+├── lumber.py                # Public lumber() implementation
 ├── cli.py                   # CLI entry point (lumber)
 ├── core/
 │   ├── models.py            # Data models (Chunk, BlockConfig, SplitOptions, ...)
@@ -342,6 +357,9 @@ src/lumberjack/
 │   ├── markdown/
 │   │   ├── parser.py        # MarkdownItParser (markdown-it-py backend)
 │   │   └── plugins/         # Custom markdown-it plugins (bracket math)
+│   ├── html/
+│   │   ├── parser.py        # HTMLParser (stdlib html.parser backend)
+│   │   └── table_parser.py  # HTML table extraction and row parsing
 │   └── docx/
 │       └── parser.py        # DocxParser (python-docx backend)
 └── web/

@@ -58,6 +58,17 @@ def test_html_parser_respects_max_heading_level():
     assert top.blocks[0].text == "Deep"
 
 
+def test_html_parser_preserves_preformatted_text() -> None:
+    parser = HTMLParser()
+
+    document = parser.parse("<h1>Code</h1><pre>def f():\n    return 1</pre>")
+
+    code_block = document.root.children[0].blocks[0]
+    assert code_block.kind == "code_block"
+    assert code_block.text == "```\ndef f():\n    return 1\n```"
+    assert code_block.attrs["literal"] == "def f():\n    return 1"
+
+
 def test_html_table_parser_detects_simple_table():
     """Test that the HTML table parser can detect a simple HTML table."""
     parser = HTMLTableParser()
@@ -151,6 +162,18 @@ def test_html_table_parser_handles_rowspan():
     table = tables[0]
     header_row = table.headers[0]
     assert header_row.cells[0].row_span == 2
+
+
+def test_html_table_parser_preserves_mixed_header_and_data_cells() -> None:
+    parser = HTMLTableParser()
+    html = "<table><tr><th>Name</th><td>Alice</td></tr></table>"
+
+    tables = parser.extract_tables(html)
+
+    row = tables[0].headers[0]
+    assert row.is_header
+    assert [cell.text for cell in row.cells] == ["Name", "Alice"]
+    assert [cell.is_header for cell in row.cells] == [True, False]
 
 
 def test_html_table_to_markdown_simple():

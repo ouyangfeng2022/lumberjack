@@ -45,6 +45,9 @@ class _TextCollector:
     def rendered_text(self) -> str:
         return _clean_text("".join(self.text_parts))
 
+    def literal_text(self) -> str:
+        return "".join(self.text_parts).strip("\n")
+
 
 @dataclass(slots=True)
 class _ListItem:
@@ -317,7 +320,7 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
             if kind == "blockquote":
                 text = "\n".join(f"> {line}" for line in text.splitlines())
             if kind == "code_block":
-                literal = text
+                literal = self._block.literal_text()
                 text = f"```\n{literal}\n```"
                 self._block.attrs["literal"] = literal
             self._section_stack[-1].add_block(

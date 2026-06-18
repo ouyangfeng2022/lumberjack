@@ -29,11 +29,15 @@ def _parse_block_configs(entries: list[str]) -> dict[str, BlockConfig]:
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser with all split options."""
-    parser = argparse.ArgumentParser(description="Markdown / DOCX document splitter")
-    parser.add_argument("input", help="Path to a markdown (.md) or DOCX (.docx) file")
+    parser = argparse.ArgumentParser(
+        description="Markdown / HTML / DOCX document splitter"
+    )
+    parser.add_argument(
+        "input", help="Path to a Markdown (.md), HTML (.html), or DOCX (.docx) file"
+    )
     parser.add_argument(
         "--input-format",
-        choices=("auto", "markdown", "docx"),
+        choices=("auto", "markdown", "html", "docx"),
         default="auto",
         help="Input format (default: auto-detect from file extension)",
     )
