@@ -48,8 +48,16 @@ class MarkdownAstVisitor:
     # ------------------------------------------------------------------
 
     def walk_document(self, document: DocumentAST) -> None:
-        """Walk the full document tree starting from the root section."""
+        """Walk the full document tree.
+
+        Fires :meth:`visit_document` before the section tree and
+        :meth:`depart_document` after it, so subclasses can read
+        ``document.title``, ``document.metadata``, and
+        ``document.reference_definitions`` without touching ``document.root``.
+        """
+        self.visit_document(document)
         self.walk_section(document.root)
+        self.depart_document(document)
 
     def walk_section(self, section: SectionNode) -> None:
         """Recursively visit a section's blocks and child sections."""
@@ -97,3 +105,17 @@ class MarkdownAstVisitor:
 
     def depart_inline(self, inline: MarkdownInline) -> None:
         """Hook called when *leaving* an inline node."""
+
+    def visit_document(self, document: DocumentAST) -> None:
+        """Hook called when *entering* a document.
+
+        Read ``document.title``, ``document.metadata``, and
+        ``document.reference_definitions`` here before the section tree
+        is walked.
+        """
+
+    def depart_document(self, document: DocumentAST) -> None:
+        """Hook called when the full document tree has been walked.
+
+        Use for finalization (emit collected data, log summaries).
+        """
