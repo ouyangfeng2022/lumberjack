@@ -6,6 +6,24 @@ if TYPE_CHECKING:
     from .models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
 
 
+def _parse_table_rows(block_text: str) -> list[list[str]]:
+    """Split pipe-delimited markdown table text into rows of cell strings.
+
+    Returns:
+        List of rows, each row a list of cell strings. The delimiter
+        row (``|---|---|``) is excluded from the result.
+    """
+    lines = block_text.strip().split("\n")
+    rows: list[list[str]] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        rows.append(cells)
+    return rows
+
+
 class MarkdownAstVisitor:
     """Visitor for traversing a parsed :class:`DocumentAST` tree.
 
@@ -89,6 +107,19 @@ class MarkdownAstVisitor:
                 self.walk_block(child)
             for inline in block.inlines:
                 self.walk_inline(inline)
+        # --- structured-content dispatch (fires even when pruned) ---
+        kind = block.kind
+        if kind == "table" or kind == "html_table":
+            self._walk_table_cells(block)
+        elif kind == "code_fence":
+            literal = block.attrs.get("literal", "")
+            language = block.attrs.get("language", "")
+            self.visit_code_content(literal, language)
+            self.depart_code_content(literal, language)
+        elif kind == "math_block":
+            literal = block.attrs.get("literal", "")
+            self.visit_math_content(literal)
+            self.depart_math_content(literal)
         self.depart_block(block)
 
     def walk_inline(self, inline: MarkdownInline) -> None:
@@ -102,6 +133,43 @@ class MarkdownAstVisitor:
             for child in inline.children:
                 self.walk_inline(child)
         self.depart_inline(inline)
+
+    # ------------------------------------------------------------------
+    # Structured-content helpers (called by walk_block)
+    # ------------------------------------------------------------------
+
+    def _walk_table_cells(self, block: MarkdownBlock) -> None:
+        """Walk table cells for markdown or HTML table blocks."""
+        if block.kind == "html_table":
+            self._walk_html_table_cells(block.text)
+            return
+        rows = _parse_table_rows(block.text)
+        if len(rows) < 3:
+            return  # no delimiter row — not a valid table
+        # Row 0 = header, Row 1 = delimiter (skip), Rows 2+ = data
+        for col_idx, cell_text in enumerate(rows[0]):
+            self.visit_table_cell(0, col_idx, cell_text, is_header=True)
+            self.depart_table_cell(0, col_idx, cell_text, is_header=True)
+        for row_idx, row in enumerate(rows[2:], start=1):
+            for col_idx, cell_text in enumerate(row):
+                self.visit_table_cell(row_idx, col_idx, cell_text, is_header=False)
+                self.depart_table_cell(row_idx, col_idx, cell_text, is_header=False)
+
+    def _walk_html_table_cells(self, html_content: str) -> None:
+        """Walk cells in an HTML table using HTMLTableParser."""
+        from .html.table_parser import HTMLTableParser
+
+        parser = HTMLTableParser()
+        tables = parser.extract_tables(html_content)
+        for table in tables:
+            for header_row in table.headers:
+                for col_idx, cell in enumerate(header_row.cells):
+                    self.visit_table_cell(0, col_idx, cell.text, is_header=True)
+                    self.depart_table_cell(0, col_idx, cell.text, is_header=True)
+            for row_idx, row in enumerate(table.rows, start=1):
+                for col_idx, cell in enumerate(row.cells):
+                    self.visit_table_cell(row_idx, col_idx, cell.text, is_header=False)
+                    self.depart_table_cell(row_idx, col_idx, cell.text, is_header=False)
 
     # ------------------------------------------------------------------
     # Hooks — override in subclasses
@@ -136,6 +204,44 @@ class MarkdownAstVisitor:
 
     def depart_inline(self, inline: MarkdownInline) -> None:
         """Hook called when *leaving* an inline node."""
+
+    def visit_table_cell(
+        self, row_idx: int, col_idx: int, text: str, is_header: bool
+    ) -> None:
+        """Hook called for each cell in a table or html_table block.
+
+        Args:
+            row_idx: 0-based row index (0 = header, 1+ = data rows).
+            col_idx: 0-based column index within the row.
+            text: Cell text content (markup stripped).
+            is_header: Whether this cell belongs to the header row.
+        """
+
+    def depart_table_cell(
+        self, row_idx: int, col_idx: int, text: str, is_header: bool
+    ) -> None:
+        """Hook called after a table cell has been visited."""
+
+    def visit_code_content(self, literal: str, language: str) -> None:
+        """Hook called for each code_fence block.
+
+        Args:
+            literal: Code text content (from ``attrs["literal"]``).
+            language: Language tag (from ``attrs["language"]``), or ``""``.
+        """
+
+    def depart_code_content(self, literal: str, language: str) -> None:
+        """Hook called after code content has been visited."""
+
+    def visit_math_content(self, literal: str) -> None:
+        """Hook called for each math_block block.
+
+        Args:
+            literal: Math expression text (from ``attrs["literal"]``).
+        """
+
+    def depart_math_content(self, literal: str) -> None:
+        """Hook called after math content has been visited."""
 
     def visit_document(self, document: DocumentAST) -> bool | None:
         """Hook called when *entering* a document.
