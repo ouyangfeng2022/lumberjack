@@ -11,6 +11,7 @@ from mdit_py_plugins.tasklists import tasklists_plugin
 import lumberjack
 from lumberjack import lumber
 from lumberjack.core.markdown.parser import MarkdownItParser
+from lumberjack.lumber import lumber as module_lumber
 
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md"
 FIXTURE = FIXTURE_PATH.read_text(encoding="utf-8")
@@ -35,6 +36,8 @@ M1 body.
 def test_package_exports_lumber_as_only_top_level_api() -> None:
     assert lumberjack.__all__ == ["MarkdownAstVisitor", "lumber"]
     assert lumberjack.lumber is lumber
+    assert module_lumber is lumber
+    assert not hasattr(lumberjack, "HTMLParser")
     assert not hasattr(lumberjack, "split_markdown_file")
     assert not hasattr(lumberjack, "split_markdown_text")
     assert not hasattr(lumberjack, "parse_markdown")
@@ -72,6 +75,28 @@ def test_lumber_uses_string_input_and_document_metadata() -> None:
     assert chunks[0].document_path == str(FIXTURE_PATH.resolve())
     assert chunks[0].start_line == 1
     assert chunks[0].end_line == 1
+
+
+def test_lumber_accepts_html_format() -> None:
+    chunks = lumber(
+        "<html><body><h1>Guide</h1><p>Intro <strong>bold</strong>.</p></body></html>",
+        format="html",
+        max_tokens=500,
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0].document_title == "Guide"
+    assert chunks[0].body == "# Guide\n\nIntro bold."
+
+
+def test_lumber_auto_detects_html_path(tmp_path: Path) -> None:
+    html_path = tmp_path / "guide.html"
+    html_path.write_text("<h1>Guide</h1><p>Body</p>", encoding="utf-8")
+
+    chunks = lumber(html_path, max_tokens=500)
+
+    assert chunks[0].document_title == "Guide"
+    assert chunks[0].body == "# Guide\n\nBody"
 
 
 def test_lumber_accepts_ideal_max_tokens_ratio() -> None:

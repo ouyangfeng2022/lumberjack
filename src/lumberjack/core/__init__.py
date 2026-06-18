@@ -1,3 +1,4 @@
+from .html import HTMLParser
 from .markdown import (
     MarkdownItParser,
     MarkdownParser,
@@ -12,6 +13,7 @@ from .tokenizers import SimpleCharTokenizer, TiktokenTokenizer, create_tokenizer
 from .visitor import MarkdownAstVisitor
 
 __all__ = [
+    "HTMLParser",
     "MarkdownAstVisitor",
     "MarkdownItParser",
     "MarkdownParser",

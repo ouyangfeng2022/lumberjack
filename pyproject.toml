@@ -1,7 +1,7 @@
 [project]
 name = "lumberjack"
 dynamic = ["version"]
-description = "Structure-aware Markdown document splitter for RAG preprocessing"
+description = "Structure-aware Markdown, HTML, and DOCX document splitter for RAG preprocessing"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
@@ -10,6 +10,8 @@ authors = [
 ]
 keywords = [
     "markdown",
+    "html",
+    "docx",
     "splitter",
     "chunking",
     "rag",

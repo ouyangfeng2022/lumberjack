@@ -34,6 +34,22 @@ def test_split_with_text(client: TestClient) -> None:
     assert "headings" in chunk
 
 
+def test_split_text_accepts_html_format(client: TestClient) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={
+            "text": "<html><body><h1>Guide</h1><p>Intro</p></body></html>",
+            "input_format": "html",
+            "max_tokens": 500,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["document"] == "Guide"
+    assert body["chunks"][0]["body"] == "# Guide\n\nIntro"
+
+
 def test_split_with_file(client: TestClient) -> None:
     md_file = io.BytesIO(SIMPLE_MD.encode("utf-8"))
     response = client.post(
@@ -45,6 +61,20 @@ def test_split_with_file(client: TestClient) -> None:
     body = response.json()
     assert body["document"] == "guide.md"
     assert body["chunk_count"] >= 1
+
+
+def test_split_with_html_file_auto_detects_format(client: TestClient) -> None:
+    html_file = io.BytesIO(b"<html><body><h1>Guide</h1><p>Intro</p></body></html>")
+    response = client.post(
+        "/lumber/api/split/file",
+        files={"file": ("guide.html", html_file, "text/html")},
+        data={"max_tokens": "500"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["document"] == "guide.html"
+    assert body["chunks"][0]["body"] == "# Guide\n\nIntro"
 
 
 def test_split_no_input(client: TestClient) -> None:

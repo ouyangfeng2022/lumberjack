@@ -5,11 +5,11 @@
 <h1 align="center">lumberjack</h1>
 
 <p align="center">
-  <strong>面向 RAG 预处理的结构感知 Markdown 与 DOCX 分割器</strong>
+  <strong>面向 RAG 预处理的结构感知 Markdown、HTML 与 DOCX 分割器</strong>
 </p>
 
 <p align="center">
-  按文档结构而非固定文本窗口切分 Markdown 和 DOCX。
+  按文档结构而非固定文本窗口切分 Markdown、HTML 和 DOCX。
   保留标题层级、块完整性和行内语义。
 </p>
 
@@ -33,7 +33,8 @@
 
 ```text
 Markdown 文本 → MarkdownItParser → DocumentAST → splitter → Chunk[]
-DOCX 二进制 → DocxParser ─────────────────────┘
+HTML 文本     → HTMLParser ─────────────────────┤
+DOCX 二进制   → DocxParser ─────────────────────┘
 ```
 
 ## 安装
@@ -97,13 +98,13 @@ pip install "lumberjack[web]"
 lumberjack-serve
 ```
 
-打开 <http://localhost:9612> —— 粘贴文本或上传 `.md` 文件，配置参数，并可视化查看分块结果。
+打开 <http://localhost:9612> —— 粘贴文本或上传文件，配置参数，并可视化查看分块结果。
 
 ## 使用说明
 
 ### Python API
 
-公共 API 只有一个函数 —— [`lumber()`](src/lumberjack/__init__.py)：
+公共 API 只有一个函数 —— [`lumber()`](src/lumberjack/lumber.py)：
 
 ```python
 from lumberjack import lumber
@@ -112,15 +113,25 @@ from lumberjack.core.models import BlockConfig
 # 完整选项
 chunks = lumber(
     markdown_text,
+    format="markdown",        # "auto" | "markdown" | "html" | "docx"
     document_title="guide.md",
     max_tokens=1200,
     ideal_max_tokens_ratio=0.8,
     merge_below_tokens=50,
-    merge_small_chunks=True,
     skip_empty_sections=True,
     recursive_split=False,
     tokenizer="simple",        # "simple" | "tiktoken"
     splitter="recursive",      # "recursive" | "section"
+)
+```
+
+HTML 输入复用同一条切分管线：
+
+```python
+chunks = lumber(
+    "<h1>Guide</h1><p>Intro</p>",
+    format="html",
+    max_tokens=1200,
 )
 ```
 
@@ -191,8 +202,8 @@ lumber <input> [options]
 
 | 选项 | 默认值 | 说明 |
 | --- | --- | --- |
-| `input` | — | Markdown (.md) 或 DOCX (.docx) 文件路径 |
-| `--input-format` | `auto` | `auto`、`markdown` 或 `docx` |
+| `input` | — | Markdown (.md)、HTML (.html) 或 DOCX (.docx) 文件路径 |
+| `--input-format` | `auto` | `auto`、`markdown`、`html` 或 `docx` |
 | `-o`, `--output` | stdout | 将输出写入文件 |
 | `--max-tokens` | `1200` | 最大分块 token 预算 |
 | `--ideal-max-tokens-ratio` | `0.8` | 优先切分预算比例 |
@@ -230,7 +241,7 @@ lumberjack-serve --host 127.0.0.1 --port 9612
 ```bash
 curl -X POST http://localhost:9612/lumber/api/split/text \
   -H "Content-Type: application/json" \
-  -d '{"text": "# Hello\n\nWorld", "max_tokens": 500}'
+  -d '{"text": "# Hello\n\nWorld", "input_format": "markdown", "max_tokens": 500}'
 ```
 
 #### `POST /lumber/api/split/file`
@@ -238,6 +249,7 @@ curl -X POST http://localhost:9612/lumber/api/split/text \
 ```bash
 curl -X POST http://localhost:9612/lumber/api/split/file \
   -F "file=@guide.md" \
+  -F "input_format=auto" \
   -F "max_tokens=500" \
   -F "splitter=section"
 ```
@@ -248,10 +260,10 @@ curl -X POST http://localhost:9612/lumber/api/split/file \
 
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
+| `input_format` | string | 文本接口为 `"markdown"`，文件上传为 `"auto"` | `auto`、`markdown`、`html` 或 `docx` |
 | `max_tokens` | int | `1200` | 最大分块 token 预算 |
 | `ideal_max_tokens_ratio` | float | `0.8` | 优先切分预算比例 |
 | `merge_below_tokens` | int | `50` | 小分块合并软阈值 |
-| `merge_small_chunks` | bool | `true` | 合并相邻小分块 |
 | `skip_empty_sections` | bool | `true` | 丢弃仅有标题无正文的分块 |
 | `recursive_split` | bool | `false` | 为 section 切分器启用块/文本回退 |
 | `block_configs` | object | `null` | 按块类型配置 |
@@ -312,7 +324,9 @@ docker compose up --build
 
 **块级结构：**
 
-ATX 标题 · Setext 标题 · 段落 · 引用块 · 有序/无序列表 · 表格 · 围栏代码 · 缩进代码 · HTML 块 · 链接引用定义 · YAML front matter · 数学块（`$$...$$`）· 方括号数学块（`\[...\]`）· 带编号数学 · 插件生成的块
+Markdown：ATX 标题 · Setext 标题 · 段落 · 引用块 · 有序/无序列表 · 表格 · 围栏代码 · 缩进代码 · HTML 块 · 链接引用定义 · YAML front matter · 数学块（`$$...$$`）· 方括号数学块（`\[...\]`）· 带编号数学 · 插件生成的块
+
+HTML：标题 · 段落 · 引用块 · 列表 · 代码块 · 作为 `html_table` 的表格 · 文档标题和 meta 标签
 
 **行内结构**（在标题和段落中）：
 
@@ -328,7 +342,8 @@ ATX 标题 · Setext 标题 · 段落 · 引用块 · 有序/无序列表 · 表
 
 ```text
 src/lumberjack/
-├── __init__.py              # 公共 API（lumber 函数）
+├── __init__.py              # 公共 API 重新导出
+├── lumber.py                # 公共 lumber() 实现
 ├── cli.py                   # CLI 入口（lumber）
 ├── core/
 │   ├── models.py            # 数据模型（Chunk、BlockConfig、SplitOptions、...）
@@ -342,6 +357,9 @@ src/lumberjack/
 │   ├── markdown/
 │   │   ├── parser.py        # MarkdownItParser（markdown-it-py 后端）
 │   │   └── plugins/         # 自定义 markdown-it 插件（方括号数学）
+│   ├── html/
+│   │   ├── parser.py        # HTMLParser（stdlib html.parser 后端）
+│   │   └── table_parser.py  # HTML 表格抽取和行解析
 │   └── docx/
 │       └── parser.py        # DocxParser（python-docx 后端）
 └── web/
