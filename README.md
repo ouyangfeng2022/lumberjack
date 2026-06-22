@@ -5,12 +5,13 @@
 <h1 align="center">lumberjack</h1>
 
 <p align="center">
-  <strong>Structure-aware Markdown, HTML &amp; DOCX splitter for RAG preprocessing</strong>
+  <strong>Universal, structure-aware document splitting for RAG preprocessing</strong>
 </p>
 
 <p align="center">
-  Split Markdown, HTML, and DOCX by document structure, not fixed text windows.
-  Preserves heading hierarchy, block integrity, and inline semantics.
+  Split documents into ready-to-use chunks by structure, not fixed text windows.
+  Preserve hierarchy, block integrity, and useful metadata while keeping
+  tokenizer work as small as possible through reusable estimates.
 </p>
 
 <p align="center">
@@ -21,13 +22,18 @@
 
 ## Why lumberjack?
 
-Naive text splitters break Markdown at arbitrary character boundaries — slicing through code blocks, splitting tables mid-row, and losing heading context. **lumberjack** treats your document as a tree, not a string:
+Most splitters start from plain text windows. That is simple, but it ignores the
+meaning already present in real documents: headings, nested sections, tables,
+lists, code fences, math blocks, front matter, and source positions. **lumberjack**
+parses the input first, builds a shared `DocumentAST`, and then splits that tree
+into chunks that are immediately useful for indexing, retrieval, or inspection.
 
-- **Structure-first splitting** — breaks along heading sections and block boundaries
-- **Budget-aware merging** — adjacent sibling sections merge when they fit
-- **Block integrity** — code blocks, tables, and math stay intact by default
-- **Heading context preserved** — every chunk carries its full heading breadcrumb
-- **Multiple interfaces** — Python API, CLI, and Web UI out of the box
+- **Universal input, one output model** — currently supports Markdown, HTML, and DOCX; every parser produces the same `DocumentAST` and `Chunk[]` shape.
+- **Ready out of the box** — use the Python API, CLI, Web API, or Web UI without wiring your own parser/splitter stack.
+- **Structured splitting** — split along heading sections, nested section trees, and block boundaries before falling back to text-level splitting.
+- **Context-preserving chunks** — each chunk carries rendered heading breadcrumbs, source lines, block type, token counts, and document metadata.
+- **Block-aware safety** — code blocks, tables, math, front matter, and other special blocks can stay intact, split, or be isolated per kind.
+- **Tokenizer-efficient planning** — reusable token estimates, cached counts, and an `ideal_max_tokens_ratio` split budget reduce repeated tokenizer calls while final chunks still report measured token counts.
 
 Core pipeline:
 
@@ -36,6 +42,14 @@ Markdown text → MarkdownItParser → DocumentAST → splitter → Chunk[]
 HTML text     → HTMLParser ─────────────────────┤
 DOCX binary   → DocxParser ─────────────────────┘
 ```
+
+### Why not plain text splitting?
+
+Plain text splitters are fine for unstructured notes, but they tend to cut
+through semantic boundaries and then force downstream retrieval to guess the
+missing context. lumberjack keeps the document structure in the loop: it parses
+first, splits by the tree, merges where the budget allows, and only uses
+paragraph/line/sentence/word fallback when a block or section is too large.
 
 ## Install
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
+from .block_splitter import BlockSplitter
 from .models import (
     Chunk,
     DocumentAST,
@@ -12,7 +13,6 @@ from .models import (
     SplitOptions,
 )
 from .protocols import SplitterProtocol, TokenizerProtocol
-from .text_splitter import TextSplitter
 from .tokenizers import SimpleCharTokenizer
 from .utils import join_markdown
 
@@ -145,7 +145,7 @@ class _BaseSplitter(SplitterProtocol):
     ):
         self.tokenizer = tokenizer or SimpleCharTokenizer()
         self.options = options or SplitOptions()
-        self._text_splitter = TextSplitter(self.tokenizer)
+        self._text_splitter = BlockSplitter(self.tokenizer)
 
     def split(self, document: DocumentAST) -> list[Chunk]:
         self._validate_options()
@@ -388,7 +388,6 @@ class _BaseSplitter(SplitterProtocol):
                             chunk_type=block.kind,
                         )
                     )
-
                 continue
 
             block_tokens = self.tokenizer.count(block.text, cache=True)
