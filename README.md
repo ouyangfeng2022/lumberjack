@@ -199,7 +199,7 @@ Valid block kinds: `paragraph`, `blockquote`, `list`, `list_item`, `table`, `htm
 
 ```python
 from mdit_py_plugins.tasklists import tasklists_plugin
-from lumberjack.core.markdown.parser import MarkdownItParser
+from lumberjack.core.parsers.markdown.parser import MarkdownItParser
 from lumberjack import lumber
 
 chunks = lumber(
@@ -363,19 +363,19 @@ src/lumberjack/
 │   ├── models.py            # Data models (Chunk, BlockConfig, SplitOptions, ...)
 │   ├── protocols.py         # Protocol interfaces
 │   ├── tokenizers.py        # Simple character & tiktoken tokenizers
-│   ├── splitter.py          # Recursive & section splitters
-│   ├── text_splitter.py     # Generic text splitter for oversized blocks
-│   ├── block_config.py      # Block config parsing helpers
+│   ├── splitter.py          # Recursive & section splitters (operate on DocumentAST)
+│   ├── block.py             # BlockSplitter for oversized blocks + block-config parsing
 │   ├── utils.py             # Markdown rendering helpers
-│   ├── visitor.py           # MarkdownAstVisitor for AST traversal
-│   ├── markdown/
-│   │   ├── parser.py        # MarkdownItParser (markdown-it-py backend)
-│   │   └── plugins/         # Custom markdown-it plugins (bracket math)
-│   ├── html/
-│   │   ├── parser.py        # HTMLParser (stdlib html.parser backend)
-│   │   └── table_parser.py  # HTML table extraction and row parsing
-│   └── docx/
-│       └── parser.py        # DocxParser (python-docx backend)
+│   ├── visitor.py           # AstVisitor for AST traversal
+│   └── parsers/             # Format-specific parsers: raw input -> DocumentAST
+│       ├── markdown/
+│       │   ├── parser.py    # MarkdownItParser (markdown-it-py backend)
+│       │   └── plugins/     # Custom markdown-it plugins (bracket math)
+│       ├── html/
+│       │   ├── parser.py    # HTMLParser (stdlib html.parser backend)
+│       │   └── table_parser.py  # HTML table extraction and row parsing
+│       └── docx/
+│           └── parser.py    # DocxParser (python-docx backend)
 └── web/
     ├── app.py               # FastAPI application
     ├── routes.py            # API endpoints

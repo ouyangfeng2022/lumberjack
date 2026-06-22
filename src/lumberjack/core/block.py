@@ -11,8 +11,8 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from .html.table_parser import HTMLTableParser, HTMLTableRow
 from .models import BlockConfig, BlockKindRegistry
+from .parsers.html.table_parser import HTMLTableParser, HTMLTableRow
 
 if TYPE_CHECKING:
     from .models import MarkdownBlock

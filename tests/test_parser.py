@@ -6,7 +6,7 @@ from markdown_it.token import Token
 from mdit_py_plugins.footnote import footnote_plugin
 from mdit_py_plugins.tasklists import tasklists_plugin
 
-from lumberjack.core.markdown.parser import (
+from lumberjack.core.parsers.markdown.parser import (
     MarkdownItParser,
     MarkdownParser,
 )

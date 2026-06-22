@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from lumberjack.core.markdown.parser import MarkdownParser
-from lumberjack.core.visitor import MarkdownAstVisitor
+from lumberjack.core.parsers.markdown.parser import MarkdownParser
+from lumberjack.core.visitor import AstVisitor
 
 if TYPE_CHECKING:
     from lumberjack.core.models import (
@@ -50,7 +50,7 @@ End.
 # -- Helpers ------------------------------------------------------------------
 
 
-class EventRecorder(MarkdownAstVisitor):
+class EventRecorder(AstVisitor):
     """Records (event_type, kind_or_title, level_or_none) for every hook call."""
 
     def __init__(self) -> None:
@@ -173,7 +173,7 @@ def test_visitor_heading_collector_subclass() -> None:
     """Subclass that collects all heading levels and titles."""
     document = MarkdownParser().parse(NESTED_FIXTURE, document_title="nested.md")
 
-    class HeadingCollector(MarkdownAstVisitor):
+    class HeadingCollector(AstVisitor):
         def __init__(self) -> None:
             self.headings: list[tuple[int, str]] = []
 
@@ -197,7 +197,7 @@ def test_visitor_link_collector_subclass() -> None:
     md = "# Links\n\nVisit [example](https://example.com) and [docs](https://docs.example.com).\n"
     document = MarkdownParser().parse(md, document_title="links.md")
 
-    class LinkCollector(MarkdownAstVisitor):
+    class LinkCollector(AstVisitor):
         def __init__(self) -> None:
             self.links: list[str] = []
 
@@ -218,7 +218,7 @@ def test_visitor_block_counter_subclass() -> None:
     """Subclass that counts blocks by kind."""
     document = MarkdownParser().parse(NESTED_FIXTURE, document_title="nested.md")
 
-    class BlockCounter(MarkdownAstVisitor):
+    class BlockCounter(AstVisitor):
         def __init__(self) -> None:
             self.counts: dict[str, int] = {}
 
@@ -249,7 +249,7 @@ def test_visitor_walk_section_entry_point() -> None:
     """walk_section can start from an arbitrary section, not just the root."""
     document = MarkdownParser().parse(NESTED_FIXTURE, document_title="nested.md")
 
-    class SectionTitleCollector(MarkdownAstVisitor):
+    class SectionTitleCollector(AstVisitor):
         def __init__(self) -> None:
             self.titles: list[str] = []
 
@@ -295,17 +295,17 @@ def test_visitor_traversal_order_is_preorder() -> None:
 
 
 def test_visitor_importable_from_top_level() -> None:
-    """MarkdownAstVisitor is importable from the top-level package."""
-    from lumberjack import MarkdownAstVisitor as TopLevelVisitor
+    """AstVisitor is importable from the top-level package."""
+    from lumberjack import AstVisitor as TopLevelVisitor
 
-    assert TopLevelVisitor is MarkdownAstVisitor
+    assert TopLevelVisitor is AstVisitor
 
 
 def test_visitor_document_hooks_bracket_section_tree() -> None:
     """visit_document fires first; depart_document fires last."""
     document = MarkdownParser().parse(FLAT_FIXTURE, document_title="flat.md")
 
-    class DocumentEventRecorder(MarkdownAstVisitor):
+    class DocumentEventRecorder(AstVisitor):
         def __init__(self) -> None:
             self.events: list[tuple[str, str]] = []
 
@@ -337,7 +337,7 @@ def test_visitor_metadata_reachable_in_visit_document() -> None:
     md = "---\ntitle: From Front Matter\nauthor: ada\n---\n\n# Heading\n\nBody.\n"
     document = MarkdownParser().parse(md, document_title="meta.md")
 
-    class MetadataReader(MarkdownAstVisitor):
+    class MetadataReader(AstVisitor):
         def __init__(self) -> None:
             self.metadata: dict[str, object] = {}
 
@@ -356,7 +356,7 @@ def test_visitor_reference_definitions_reachable_in_visit_document() -> None:
     md = "# Links\n\nSee [example][ref] and [ref][ref].\n\n[ref]: https://example.com\n"
     document = MarkdownParser().parse(md, document_title="refs.md")
 
-    class RefReader(MarkdownAstVisitor):
+    class RefReader(AstVisitor):
         def __init__(self) -> None:
             self.refs: dict[str, dict[str, str]] = {}
 
@@ -374,7 +374,7 @@ def test_visitor_document_title_reachable_in_visit_document() -> None:
     """visit_document can read document.title."""
     document = MarkdownParser().parse("# Body\n\nText.\n", document_title="title.md")
 
-    class TitleReader(MarkdownAstVisitor):
+    class TitleReader(AstVisitor):
         def __init__(self) -> None:
             self.title: str | None = None
 
@@ -393,7 +393,7 @@ def test_visitor_depart_document_fires_after_blocks() -> None:
         "# Title\n\nPara one.\n\nPara two.\n", document_title="order.md"
     )
 
-    class OrderChecker(MarkdownAstVisitor):
+    class OrderChecker(AstVisitor):
         def __init__(self) -> None:
             self.block_count: int = 0
             self.count_at_depart: int | None = None
@@ -422,14 +422,14 @@ def test_visitor_default_document_hooks_are_noops() -> None:
     """Bare visitor with default document hooks walks without raising."""
     document = MarkdownParser().parse("# Title\n\nBody.\n", document_title="noop.md")
     # No subclass overrides — should not raise
-    MarkdownAstVisitor().walk_document(document)
+    AstVisitor().walk_document(document)
 
 
 def test_visit_section_returning_false_prunes_children() -> None:
     """visit_section returning False skips its blocks and child sections."""
     document = MarkdownParser().parse(NESTED_FIXTURE, document_title="nested.md")
 
-    class Pruner(MarkdownAstVisitor):
+    class Pruner(AstVisitor):
         def __init__(self) -> None:
             self.events: list[tuple[str, str]] = []
 
@@ -456,7 +456,7 @@ def test_visit_block_returning_false_prunes_children() -> None:
     """visit_block returning False skips nested child blocks and inlines."""
     document = MarkdownParser().parse(NESTED_FIXTURE, document_title="nested.md")
 
-    class BlockPruner(MarkdownAstVisitor):
+    class BlockPruner(AstVisitor):
         def __init__(self) -> None:
             self.entered_kinds: list[str] = []
             self.departed_kinds: list[str] = []
@@ -486,7 +486,7 @@ def test_visit_inline_returning_false_prunes_children() -> None:
     md = "# T\n\nVisit [**example**](https://example.com).\n"
     document = MarkdownParser().parse(md, document_title="inline.md")
 
-    class InlinePruner(MarkdownAstVisitor):
+    class InlinePruner(AstVisitor):
         def __init__(self) -> None:
             self.entered_kinds: list[str] = []
             self.departed_kinds: list[str] = []
@@ -514,7 +514,7 @@ def test_visit_document_returning_false_prunes_section_tree() -> None:
     """visit_document returning False skips the entire section tree."""
     document = MarkdownParser().parse(NESTED_FIXTURE, document_title="nested.md")
 
-    class DocPruner(MarkdownAstVisitor):
+    class DocPruner(AstVisitor):
         def __init__(self) -> None:
             self.events: list[str] = []
             self.doc_title: str | None = None
@@ -542,7 +542,7 @@ def test_visit_hooks_returning_none_still_descend() -> None:
     """visit_* hooks that return nothing (None) still descend into children."""
     document = MarkdownParser().parse(NESTED_FIXTURE, document_title="nested.md")
 
-    class NoneReturningVisitor(MarkdownAstVisitor):
+    class NoneReturningVisitor(AstVisitor):
         def __init__(self) -> None:
             self.section_count: int = 0
             self.seen_block_kinds: set[str] = set()
@@ -587,7 +587,7 @@ def test_section_accept_starts_traversal_from_arbitrary_section() -> None:
     """SectionNode.accept(visitor) walks that section's subtree."""
     document = MarkdownParser().parse(NESTED_FIXTURE, document_title="nested.md")
 
-    class TitleCollector(MarkdownAstVisitor):
+    class TitleCollector(AstVisitor):
         def __init__(self) -> None:
             self.titles: list[str] = []
 
@@ -608,7 +608,7 @@ def test_block_accept_walks_single_block_and_inlines() -> None:
     md = "# T\n\nHello [link](http://x) world.\n"
     document = MarkdownParser().parse(md, document_title="block.md")
 
-    class KindRecorder(MarkdownAstVisitor):
+    class KindRecorder(AstVisitor):
         def __init__(self) -> None:
             self.block_kinds: list[str] = []
             self.inline_kinds: list[str] = []
@@ -636,7 +636,7 @@ def test_inline_accept_walks_single_inline_and_children() -> None:
     md = "# T\n\nHello [**bold link**](http://x).\n"
     document = MarkdownParser().parse(md, document_title="inline-accept.md")
 
-    class InlineRecorder(MarkdownAstVisitor):
+    class InlineRecorder(AstVisitor):
         def __init__(self) -> None:
             self.kinds: list[str] = []
 
@@ -658,7 +658,7 @@ def test_accept_combined_with_pruning() -> None:
     """accept() entry point respects visit_* pruning."""
     document = MarkdownParser().parse(NESTED_FIXTURE, document_title="combined.md")
 
-    class CombinedVisitor(MarkdownAstVisitor):
+    class CombinedVisitor(AstVisitor):
         def __init__(self) -> None:
             self.titles: list[str] = []
 
@@ -685,7 +685,7 @@ def test_visitor_code_fence_hook() -> None:
     md = "# T\n\n```python\nprint('hi')\n```\n"
     document = MarkdownParser().parse(md, document_title="code.md")
 
-    class CodeCollector(MarkdownAstVisitor):
+    class CodeCollector(AstVisitor):
         def __init__(self) -> None:
             self.calls: list[tuple[str, str]] = []
 
@@ -703,7 +703,7 @@ def test_visitor_math_block_hook() -> None:
     md = "# T\n\n\\[x^2\\]\n"
     document = MarkdownParser().parse(md, document_title="math.md")
 
-    class MathCollector(MarkdownAstVisitor):
+    class MathCollector(AstVisitor):
         def __init__(self) -> None:
             self.literals: list[str] = []
 
@@ -721,7 +721,7 @@ def test_visitor_markdown_table_cell_hook() -> None:
     md = "# T\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"
     document = MarkdownParser().parse(md, document_title="table.md")
 
-    class CellCollector(MarkdownAstVisitor):
+    class CellCollector(AstVisitor):
         def __init__(self) -> None:
             self.cells: list[tuple[int, int, str, bool]] = []
 
@@ -754,7 +754,7 @@ def test_visitor_html_table_cell_hook() -> None:
     )
     document = MarkdownParser().parse(md, document_title="html-table.md")
 
-    class CellCollector(MarkdownAstVisitor):
+    class CellCollector(AstVisitor):
         def __init__(self) -> None:
             self.cells: list[tuple[int, int, str, bool]] = []
 
@@ -781,7 +781,7 @@ def test_visitor_structured_content_combined() -> None:
     md = "# T\n\n```\ncode\n```\n\n\\[e=mc^2\\]\n\n| h |\n|---|\n| v |\n"
     document = MarkdownParser().parse(md, document_title="combined.md")
 
-    class CombinedCollector(MarkdownAstVisitor):
+    class CombinedCollector(AstVisitor):
         def __init__(self) -> None:
             self.order: list[str] = []
 
@@ -812,4 +812,4 @@ def test_visitor_structured_hooks_are_noops_by_default() -> None:
     md = "# T\n\n```\ncode\n```\n\n\\[x\\]\n\n| a |\n|---|\n| 1 |\n"
     document = MarkdownParser().parse(md, document_title="noop2.md")
     # No subclass overrides — should not raise
-    MarkdownAstVisitor().walk_document(document)
+    AstVisitor().walk_document(document)

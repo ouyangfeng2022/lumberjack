@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .core import create_splitter, create_tokenizer
-from .core.markdown.parser import MarkdownItParser
 from .core.models import BlockConfig, Chunk, SplitOptions
+from .core.parsers.markdown.parser import MarkdownItParser
 
 if TYPE_CHECKING:
     from .core.protocols import (
@@ -125,7 +125,7 @@ def lumber(
 
     # --- Parser (format-dependent) ---
     if input_format == "docx":
-        from .core.docx import DocxParser
+        from .core.parsers.docx import DocxParser
 
         raw = _read_input_for_docx(text)
         parser_impl = DocxParser()
@@ -139,7 +139,7 @@ def lumber(
         if parser is not None:
             parser_impl = parser
         elif input_format == "html":
-            from .core.html import HTMLParser
+            from .core.parsers.html import HTMLParser
 
             parser_impl = HTMLParser()
         else:

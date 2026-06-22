@@ -24,7 +24,7 @@ def _parse_table_rows(block_text: str) -> list[list[str]]:
     return rows
 
 
-class MarkdownAstVisitor:
+class AstVisitor:
     """Visitor for traversing a parsed :class:`DocumentAST` tree.
 
     Provides enter/depart hooks for each node type (section, block, inline).
@@ -33,7 +33,7 @@ class MarkdownAstVisitor:
     block types, validating structure, etc.
 
     Works with any :class:`DocumentAST`, regardless of whether it was produced
-    by the Markdown parser or the DOCX parser.
+    by the Markdown, DOCX, or HTML parser.
 
     Traversal order is **pre-order** (enter → children → depart):
 
@@ -43,10 +43,10 @@ class MarkdownAstVisitor:
 
     Usage::
 
-        from lumberjack.core import MarkdownAstVisitor
-        from lumberjack.core.markdown.parser import MarkdownItParser
+        from lumberjack.core import AstVisitor
+        from lumberjack.core.parsers.markdown.parser import MarkdownItParser
 
-        class HeadingCollector(MarkdownAstVisitor):
+        class HeadingCollector(AstVisitor):
             def __init__(self):
                 self.headings: list[tuple[int, str]] = []
 
@@ -157,7 +157,7 @@ class MarkdownAstVisitor:
 
     def _walk_html_table_cells(self, html_content: str) -> None:
         """Walk cells in an HTML table using HTMLTableParser."""
-        from .html.table_parser import HTMLTableParser
+        from .parsers.html.table_parser import HTMLTableParser
 
         parser = HTMLTableParser()
         tables = parser.extract_tables(html_content)

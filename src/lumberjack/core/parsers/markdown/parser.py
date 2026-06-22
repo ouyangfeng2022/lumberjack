@@ -8,7 +8,7 @@ from markdown_it import MarkdownIt
 from mdit_py_plugins.dollarmath import dollarmath_plugin
 from mdit_py_plugins.front_matter import front_matter_plugin
 
-from ..utils import join_markdown
+from ...utils import join_markdown
 from .plugins import brackets_math_plugin
 
 if TYPE_CHECKING:
@@ -17,9 +17,9 @@ if TYPE_CHECKING:
 
     from markdown_it.token import Token
 
-    from ..models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
+    from ...models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
 
-from ..models import (
+from ...models import (
     BlockKindRegistry,
     DocumentAST,
     MarkdownBlock,

@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from lumberjack import lumber
-from lumberjack.core.docx import DocxParser
 from lumberjack.core.models import SplitOptions
+from lumberjack.core.parsers.docx import DocxParser
 from lumberjack.core.splitter import RecursiveSplitter
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 

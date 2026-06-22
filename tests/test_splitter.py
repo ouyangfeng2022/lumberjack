@@ -4,8 +4,8 @@ from dataclasses import fields
 from pathlib import Path
 
 from lumberjack import lumber
-from lumberjack.core.markdown.parser import MarkdownParser
 from lumberjack.core.models import BlockConfig, SplitOptions
+from lumberjack.core.parsers.markdown.parser import MarkdownParser
 from lumberjack.core.splitter import (
     RecursiveSplitter,
     SectionSplitter,

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser as _StdlibHTMLParser
 from typing import Any, ClassVar
 
-from ..models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
+from ...models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
 
 
 def _clean_text(text: str) -> str:
