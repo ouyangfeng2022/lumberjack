@@ -109,7 +109,8 @@ lumberjack-serve
 
 ### Python API
 
-公共 API 只有一个函数 —— [`lumber()`](src/lumberjack/lumber.py)：
+默认公共 API 只有一个函数 —— [`lumber()`](src/lumberjack/lumber.py)。它是开箱即用的
+默认管线，`tokenizer` 和 `splitter` 只接受内置实现的字符串选择器：
 
 ```python
 from lumberjack import lumber
@@ -186,18 +187,34 @@ chunks = lumber(
 > [!NOTE]
 > **HTML 表格**：HTML 表格（`<table>`）被识别为 `html_table` 块类型，与 Markdown 表格独立处理。它们在切分时保留原始 HTML 格式和属性（如 `border`、`style`、`colspan`、`rowspan`）。使用 `"html_table": BlockConfig(isolated=True)` 可独立于 Markdown 表格进行配置。
 
-#### 自定义解析器与插件
+#### 自定义 Parser / Tokenizer / Splitter
+
+`lumber()` 会刻意保持朴素、通用。如果需要自定义 parser、tokenizer 或 splitter，
+直接组合底层组件即可：先 parse 一次，再 split 一次。
 
 ```python
 from mdit_py_plugins.tasklists import tasklists_plugin
+from lumberjack.core.models import SplitOptions
+from lumberjack.core.options import resolve_block_options
 from lumberjack.core.parsers.markdown.parser import MarkdownItParser
-from lumberjack import lumber
+from lumberjack.core.splitters import RecursiveSplitter
+from lumberjack.core.tokenizers import TiktokenTokenizer
 
-chunks = lumber(
-    markdown_text,
-    parser=MarkdownItParser(plugins=(tasklists_plugin,)),
+parser = MarkdownItParser(plugins=(tasklists_plugin,))
+tokenizer = TiktokenTokenizer(model="gpt-4o-mini")
+
+document = parser.parse(markdown_text, document_title="guide.md")
+options = SplitOptions(
+    max_tokens=1200,
+    block_options=resolve_block_options(parser.block_kinds, None),
 )
+splitter = RecursiveSplitter(tokenizer=tokenizer, options=options)
+
+chunks = splitter.split(document)
 ```
+
+自定义组件应遵循 [`lumberjack.core.protocols`](src/lumberjack/core/protocols.py)
+中的协议。它们不通过 `lumber()` 传入，而是用于自行构建的 `parse -> split` 管线。
 
 ### CLI
 

@@ -7,7 +7,7 @@ from ..models import HeadingPath, SectionNode
 
 
 @dataclass(slots=True)
-class _Entry:
+class Entry:
     """Rendered content unit with heading context and line range, a flattened SectionNode.
 
     Args:
@@ -26,7 +26,7 @@ class _Entry:
 
 
 @dataclass(slots=True)
-class _ChunkDraft:
+class ChunkDraft:
     """Intermediate chunk holding grouped entries, token estimate, and split source.
 
     Args:
@@ -45,7 +45,7 @@ class _ChunkDraft:
 
     """
 
-    entries: list[_Entry]
+    entries: list[Entry]
     headings: HeadingPath
     headings_token_count: int
     body_token_count: int
@@ -55,7 +55,7 @@ class _ChunkDraft:
 
 
 @dataclass(slots=True, frozen=True)
-class _SectionTokenCounts:
+class SectionTokenCounts:
     """Token estimates for a section heading, own body, and full subtree.
 
     Args:
@@ -71,7 +71,7 @@ class _SectionTokenCounts:
 
 
 @dataclass(slots=True, frozen=True)
-class _MeasuredSection:
+class MeasuredSection:
     """A SectionNode plus splitter-specific token counts for its measured children.
 
     Args:
@@ -85,15 +85,15 @@ class _MeasuredSection:
     """
 
     node: SectionNode
-    counts: _SectionTokenCounts
+    counts: SectionTokenCounts
     tail_text: str
     can_emit_as_single_chunk: bool
-    children: tuple[_MeasuredSection, ...] = ()
+    children: tuple[MeasuredSection, ...] = ()
 
 
 __all__ = [
-    "_ChunkDraft",
-    "_Entry",
-    "_MeasuredSection",
-    "_SectionTokenCounts",
+    "ChunkDraft",
+    "Entry",
+    "MeasuredSection",
+    "SectionTokenCounts",
 ]

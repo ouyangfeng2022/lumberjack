@@ -12,7 +12,7 @@ from lumberjack.core.splitters import (
     SectionSplitter,
     create_splitter,
 )
-from lumberjack.core.splitters.drafts import _ChunkDraft, _Entry
+from lumberjack.core.splitters.drafts import ChunkDraft, Entry
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 
 FIXTURE = (
@@ -540,9 +540,9 @@ def test_entry_merge_uses_tail_window_only_between_entry_groups() -> None:
     )
     heading_path = ((1, "A"),)
     heading_tc = len("# A\n\n")
-    left = _ChunkDraft(
+    left = ChunkDraft(
         entries=[
-            _Entry(
+            Entry(
                 headings=heading_path,
                 body=long_body,
                 start_line=1,
@@ -555,9 +555,9 @@ def test_entry_merge_uses_tail_window_only_between_entry_groups() -> None:
         body_token_count=len(long_body),
         token_count=heading_tc + len(long_body),
     )
-    right = _ChunkDraft(
+    right = ChunkDraft(
         entries=[
-            _Entry(
+            Entry(
                 headings=heading_path,
                 body="b",
                 start_line=2,
@@ -843,9 +843,9 @@ def test_merge_below_tokens_absorbs_same_parent_paragraph_tails() -> None:
     )
     heading_path = ((1, "A"),)
     heading_tc = len("# A\n\n")
-    left = _ChunkDraft(
+    left = ChunkDraft(
         entries=[
-            _Entry(
+            Entry(
                 headings=heading_path,
                 body="section body",
                 start_line=1,
@@ -859,9 +859,9 @@ def test_merge_below_tokens_absorbs_same_parent_paragraph_tails() -> None:
         token_count=heading_tc + len("section body"),
         split_origin="section",
     )
-    section_tail = _ChunkDraft(
+    section_tail = ChunkDraft(
         entries=[
-            _Entry(
+            Entry(
                 headings=heading_path,
                 body="tiny section",
                 start_line=2,
@@ -875,9 +875,9 @@ def test_merge_below_tokens_absorbs_same_parent_paragraph_tails() -> None:
         token_count=heading_tc + len("tiny section"),
         split_origin="section",
     )
-    fragment_tail = _ChunkDraft(
+    fragment_tail = ChunkDraft(
         entries=[
-            _Entry(
+            Entry(
                 headings=heading_path,
                 body="tiny fragment",
                 start_line=3,
@@ -891,9 +891,9 @@ def test_merge_below_tokens_absorbs_same_parent_paragraph_tails() -> None:
         token_count=heading_tc + len("tiny fragment"),
         split_origin="fragment",
     )
-    text_piece_tail = _ChunkDraft(
+    text_piece_tail = ChunkDraft(
         entries=[
-            _Entry(
+            Entry(
                 headings=heading_path,
                 body="tiny text",
                 start_line=4,

@@ -48,7 +48,8 @@ uv run pytest tests/test_splitter.py
 uv run pytest tests/test_docx_parser.py
 uv run pytest tests/test_web.py
 
-# Lint and format
+# Type check, lint, and format
+uv run ty check .
 uv run ruff check --fix
 uv run ruff format
 
@@ -200,10 +201,11 @@ Current test areas:
 
 After Python code changes:
 
-1. Run `uv run ruff check --fix`
-2. Review whether `--unsafe-fixes` is actually needed before using it
-3. Run `uv run ruff format`
-4. Run the relevant `pytest` scope
+1. Run `uv run ty check .`
+2. Run `uv run ruff check --fix`
+3. Review whether `--unsafe-fixes` is actually needed before using it
+4. Run `uv run ruff format`
+5. Run the relevant `pytest` scope
 
 ## Code Organization
 

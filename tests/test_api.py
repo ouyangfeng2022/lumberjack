@@ -5,12 +5,18 @@ import shutil
 from dataclasses import asdict
 from inspect import signature
 from pathlib import Path
+from typing import Any
 
+import pytest
 from mdit_py_plugins.tasklists import tasklists_plugin
 
 import lumberjack
 from lumberjack import lumber
+from lumberjack.core.models import Chunk, SplitOptions
+from lumberjack.core.options import resolve_block_options
 from lumberjack.core.parsers.markdown.parser import MarkdownItParser
+from lumberjack.core.splitters import RecursiveSplitter
+from lumberjack.core.tokenizers import SimpleCharTokenizer
 from lumberjack.lumber import lumber as module_lumber
 
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md"
@@ -49,6 +55,10 @@ def test_lumber_api_no_longer_exposes_render_common_headings_option() -> None:
 
 def test_lumber_api_no_longer_exposes_isolate_front_matter_option() -> None:
     assert "isolate_front_matter" not in signature(lumber).parameters
+
+
+def test_lumber_api_no_longer_exposes_parser_override() -> None:
+    assert "parser" not in signature(lumber).parameters
 
 
 def test_parser_uses_document_title() -> None:
@@ -173,17 +183,18 @@ def test_lumber_rejects_unknown_splitter() -> None:
         raise AssertionError("Expected unsupported splitter to raise ValueError")
 
 
-def test_lumber_can_disable_setext_headings() -> None:
-    chunks = lumber(
-        "Title\n=====\n\nbody",
-        document_title="setext.md",
-        max_tokens=500,
-        parser=MarkdownItParser(disable_lheading=True),
-    )
+def test_lumber_rejects_tokenizer_instances() -> None:
+    tokenizer: Any = SimpleCharTokenizer()
 
-    assert len(chunks) == 1
-    assert chunks[0].body == "Title\n=====\n\nbody"
-    assert chunks[0].headings == ()
+    with pytest.raises(TypeError, match="tokenizer must be a string"):
+        lumber(FIXTURE, tokenizer=tokenizer)
+
+
+def test_lumber_rejects_splitter_instances() -> None:
+    splitter: Any = RecursiveSplitter(tokenizer=SimpleCharTokenizer())
+
+    with pytest.raises(TypeError, match="splitter must be a string"):
+        lumber(FIXTURE, splitter=splitter)
 
 
 def test_chunk_to_dict_serializes_heading_path() -> None:
@@ -266,16 +277,92 @@ def test_lumber_does_not_write_debug_document_dump() -> None:
         shutil.rmtree(tmp_path, ignore_errors=True)
 
 
-def test_lumber_accepts_markdown_it_parser_with_plugins() -> None:
+def test_manual_pipeline_can_disable_setext_headings() -> None:
+    parser = MarkdownItParser(disable_lheading=True)
+    document = parser.parse("Title\n=====\n\nbody", document_title="setext.md")
+    splitter = RecursiveSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=500,
+            block_options=resolve_block_options(parser.block_kinds, None),
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].body == "Title\n=====\n\nbody"
+    assert chunks[0].headings == ()
+
+
+def test_manual_pipeline_accepts_markdown_it_parser_with_plugins() -> None:
     parser = MarkdownItParser(plugins=(tasklists_plugin,))
     markdown = "- [x] done\n- [ ] todo"
-
-    chunks = lumber(
-        markdown,
-        document_title="tasks.md",
-        max_tokens=500,
-        parser=parser,
+    document = parser.parse(markdown, document_title="tasks.md")
+    splitter = RecursiveSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=500,
+            block_options=resolve_block_options(parser.block_kinds, None),
+        ),
     )
+
+    chunks = splitter.split(document)
 
     assert len(chunks) == 1
     assert chunks[0].body == markdown
+
+
+class ConstantTokenizer:
+    def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
+        return (1, 2, 3) if text else ()
+
+    def count(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
+        return len(self.encode(text))
+
+
+def test_manual_pipeline_accepts_custom_tokenizer_instance() -> None:
+    parser = MarkdownItParser()
+    document = parser.parse("# Title\n\nBody", document_title="custom.md")
+    splitter = RecursiveSplitter(
+        tokenizer=ConstantTokenizer(),
+        options=SplitOptions(
+            max_tokens=500,
+            block_options=resolve_block_options(parser.block_kinds, None),
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert chunks[0].token_count == 3
+
+
+class EchoSplitter:
+    def split(self, document) -> list[Chunk]:
+        return [
+            Chunk(
+                chunk_id="custom-0001",
+                chunk_type="custom",
+                body=document.title,
+                token_count=1,
+                estimated_token_count=1,
+                document_title=document.title,
+            )
+        ]
+
+
+def test_manual_pipeline_accepts_custom_splitter_instance() -> None:
+    document = MarkdownItParser().parse("# Custom\n\nBody", document_title="custom.md")
+
+    chunks = EchoSplitter().split(document)
+
+    assert chunks == [
+        Chunk(
+            chunk_id="custom-0001",
+            chunk_type="custom",
+            body="custom.md",
+            token_count=1,
+            estimated_token_count=1,
+            document_title="custom.md",
+        )
+    ]

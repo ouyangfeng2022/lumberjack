@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-InputFormat = str
 SUPPORTED_FORMATS = frozenset({"auto", "markdown", "html", "docx"})
 TEXT_FORMATS = frozenset({"markdown", "html"})
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .base import _BaseSplitter
-from .drafts import _ChunkDraft, _Entry, _MeasuredSection
+from .drafts import ChunkDraft, Entry, MeasuredSection
 from .headings import common_heading_path
 
 
@@ -15,8 +15,8 @@ class RecursiveSplitter(_BaseSplitter):
 
     def _split_section(
         self,
-        section: _MeasuredSection,
-    ) -> list[_ChunkDraft]:
+        section: MeasuredSection,
+    ) -> list[ChunkDraft]:
         """Recursively split a section into chunk drafts."""
         if not (section.node.blocks or section.children or section.node.level > 0):
             return []
@@ -34,7 +34,7 @@ class RecursiveSplitter(_BaseSplitter):
             and section.can_emit_as_single_chunk
         ):
             return [
-                _ChunkDraft(
+                ChunkDraft(
                     entries=entries,
                     headings=section.node.path,
                     headings_token_count=headings_token_count,
@@ -51,12 +51,12 @@ class RecursiveSplitter(_BaseSplitter):
 
     def _split_section_children(
         self,
-        section: _MeasuredSection,
-    ) -> list[_ChunkDraft]:
+        section: MeasuredSection,
+    ) -> list[ChunkDraft]:
         """Split a section's body blocks and child sections, packing adjacent entries that fit."""
         node = section.node
-        chunks: list[_ChunkDraft] = []
-        current_draft: _ChunkDraft | None = None
+        chunks: list[ChunkDraft] = []
+        current_draft: ChunkDraft | None = None
         standalone_kinds = self.options.standalone_kinds
 
         common_heading_token_count = self._heading_path_token_count(node.path)
@@ -69,7 +69,7 @@ class RecursiveSplitter(_BaseSplitter):
                 return
 
             chunks.append(current_draft)
-            current_draft = _ChunkDraft(
+            current_draft = ChunkDraft(
                 entries=[],
                 headings=node.path,
                 headings_token_count=common_heading_token_count,
@@ -77,7 +77,7 @@ class RecursiveSplitter(_BaseSplitter):
                 token_count=common_heading_token_count,
             )
 
-        def add_packable(new_draft: _ChunkDraft) -> None:
+        def add_packable(new_draft: ChunkDraft) -> None:
             """Add a draft whose tokens are already guaranteed not to exceed max_tokens.
 
             Args:
@@ -110,7 +110,7 @@ class RecursiveSplitter(_BaseSplitter):
                     node.blocks,
                     body_token_count=body_token_count,
                 )
-                draft = _ChunkDraft(
+                draft = ChunkDraft(
                     entries=[entry],
                     headings=node.path,
                     headings_token_count=common_heading_token_count,
@@ -145,7 +145,7 @@ class RecursiveSplitter(_BaseSplitter):
                         child_chunk_token_count - child_common_headings_token_count
                     )
 
-                    draft = _ChunkDraft(
+                    draft = ChunkDraft(
                         entries=entries,
                         headings=child.node.path,
                         headings_token_count=child_common_headings_token_count,
@@ -161,10 +161,10 @@ class RecursiveSplitter(_BaseSplitter):
         flush_current()
         return self._merge_small_chunks(chunks, parent_headings=node.path)
 
-    def _entries_from_section(self, section: _MeasuredSection) -> list[_Entry]:
+    def _entries_from_section(self, section: MeasuredSection) -> list[Entry]:
         """Render-ready entries for a section selected as a chunk."""
         node = section.node
-        entries: list[_Entry] = []
+        entries: list[Entry] = []
         if node.blocks or (not section.children and node.level > 0):
             entries.append(
                 self._entry_from_blocks(

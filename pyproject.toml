@@ -44,7 +44,10 @@ lumber = "lumberjack.cli:main"
 lumberjack-serve = "lumberjack.web.__main__:main"
 
 [dependency-groups]
-dev = ["ruff>=0.15.6"]
+dev = [
+    "ruff>=0.15.6",
+    "ty>=0.0.51",
+]
 test = ["pytest>=8.0.0", "httpx>=0.28.0"]
 
 [build-system]

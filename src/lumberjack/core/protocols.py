@@ -7,7 +7,7 @@ if TYPE_CHECKING:
 
 
 class TokenizerProtocol(Protocol):
-    """Abstraction for counting text units."""
+    """Abstraction for counting text units in manual parser/splitter pipelines."""
 
     def encode(self, text: str, *, cache=False) -> tuple[int, ...]: ...
 
@@ -21,11 +21,11 @@ class ParserProtocol(Protocol[ParserInput]):
     """Turn a raw document (Markdown / HTML text or DOCX bytes) into the shared DocumentAST.
 
     Each format-specific parser (MarkdownItParser, HTMLParser, DocxParser)
-    implements this protocol so the rest of the pipeline (``lumber()``,
-    splitters) can treat them uniformly. The ``data`` argument is ``str`` for
-    text formats and ``bytes`` for binary formats (DOCX); parsers raise
-    :class:`TypeError` at runtime when ``data`` does not match the expected
-    type.
+    implements this protocol so splitters can treat them uniformly. The
+    ``data`` argument is ``str`` for text formats and ``bytes`` for binary
+    formats (DOCX); parsers raise :class:`TypeError` at runtime when ``data``
+    does not match the expected type. Custom parsers are used by composing a
+    manual ``parse -> split`` pipeline instead of passing them to ``lumber()``.
     """
 
     block_kinds: frozenset[str]
@@ -41,6 +41,6 @@ class ParserProtocol(Protocol[ParserInput]):
 
 
 class SplitterProtocol(Protocol):
-    """Split a parsed document into chunks."""
+    """Split a parsed document into chunks in a manual pipeline."""
 
     def split(self, document: DocumentAST) -> list[Chunk]: ...
