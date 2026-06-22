@@ -8,7 +8,6 @@ from .splitter import (
     SectionSplitter,
     create_splitter,
 )
-from .text_splitter import TextSplitter
 from .tokenizers import SimpleCharTokenizer, TiktokenTokenizer, create_tokenizer
 from .visitor import MarkdownAstVisitor
 

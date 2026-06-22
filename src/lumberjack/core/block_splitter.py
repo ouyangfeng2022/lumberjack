@@ -14,7 +14,7 @@ PROTECTED_SPAN_RE = re.compile(r"<https?://[^\s>]+>|https?://[^\s)>\]]+")
 TABLE_DELIMITER_CELL_RE = re.compile(r":?-+(:?-+)*:?")
 
 
-class TextSplitter:
+class BlockSplitter:
     """Splits oversized text blocks into token-bounded pieces."""
 
     def __init__(self, tokenizer: TokenizerProtocol) -> None:
@@ -70,7 +70,7 @@ class TextSplitter:
         *,
         max_tokens: int,
     ) -> list[str]:
-        # Handle markdown table (HTML tables are handled by split_html_table_block)
+        # Handle markdown table
         lines = [line.rstrip() for line in block.text.splitlines() if line.strip()]
         if len(lines) < 3 or not self.is_table_delimiter_row(lines[1]):
             return self.split_text(block.text, max_tokens=max_tokens)

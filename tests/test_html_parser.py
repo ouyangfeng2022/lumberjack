@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from lumberjack.core.block_splitter import BlockSplitter
 from lumberjack.core.html import HTMLParser
 from lumberjack.core.html.table_parser import HTMLTableParser
 from lumberjack.core.markdown.parser import MarkdownParser
 from lumberjack.core.splitter import create_splitter
-from lumberjack.core.text_splitter import TextSplitter
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 
 
@@ -209,7 +209,7 @@ def test_html_table_to_markdown_with_caption():
 def test_text_splitter_handles_html_table_block():
     """Test that TextSplitter can split HTML blocks containing tables."""
     tokenizer = SimpleCharTokenizer()
-    splitter = TextSplitter(tokenizer)
+    splitter = BlockSplitter(tokenizer)
 
     from lumberjack.core.models import MarkdownBlock
 
