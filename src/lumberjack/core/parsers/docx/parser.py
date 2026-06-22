@@ -9,6 +9,7 @@ from ...models import (
     MarkdownInline,
     SectionNode,
 )
+from ...protocols import ParserProtocol
 
 if TYPE_CHECKING:
     from docx.document import Document as DocxDocument
@@ -150,7 +151,7 @@ def _render_table(table: Any) -> str:
     return "\n".join(lines)
 
 
-class DocxParser:
+class DocxParser(ParserProtocol[bytes]):
     """Parse DOCX documents into DocumentAST.
 
     Maps DOCX structural elements to the same DocumentAST model used by
@@ -188,6 +189,7 @@ class DocxParser:
         *,
         document_title: str | None = None,
         document_metadata: dict[str, object] | None = None,
+        max_heading_level: int | None = None,  # noqa: ARG002
     ) -> DocumentAST:
         """Parse DOCX binary data into a DocumentAST.
 
@@ -195,8 +197,16 @@ class DocxParser:
             data: Raw DOCX file content.
             document_title: Optional override for the document title.
             document_metadata: Optional metadata dict merged into the result.
+            max_heading_level: Currently ignored. Accepted for protocol parity
+                with the Markdown and HTML parsers; DOCX heading levels are
+                determined by paragraph styles and are not remapped at parse
+                time (may be supported in the future).
         """
         from docx import Document
+
+        if not isinstance(data, bytes | bytearray):
+            msg = f"DocxParser.parse expects bytes, got {type(data).__name__}"
+            raise TypeError(msg)
 
         if document_metadata is None:
             document_metadata = {}

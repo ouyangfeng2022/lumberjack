@@ -112,7 +112,7 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
             merge_below_tokens=payload.merge_below_tokens,
             skip_empty_sections=payload.skip_empty_sections,
             recursive_split=payload.recursive_split,
-            block_options=block_options,  # ty: ignore[invalid-argument-type]
+            block_options=block_options,
             tokenizer=payload.tokenizer,
             splitter=payload.splitter,
             max_heading_level=payload.max_heading_level,
@@ -181,7 +181,7 @@ async def split_file(
             merge_below_tokens=merge_below_tokens,
             skip_empty_sections=skip_empty_sections,
             recursive_split=recursive_split,
-            block_options=block_options,  # ty: ignore[invalid-argument-type]
+            block_options=block_options,
             tokenizer=tokenizer,
             splitter=splitter,
             max_heading_level=max_heading_level,

@@ -5,9 +5,7 @@ description = "Structure-aware Markdown, HTML, and DOCX document splitter for RA
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
-authors = [
-    { name = "tianleG" },
-]
+authors = [{ name = "tianleG" }]
 keywords = [
     "markdown",
     "html",
@@ -28,10 +26,7 @@ classifiers = [
     "Topic :: Text Processing :: Markup :: Markdown",
     "Typing :: Typed",
 ]
-dependencies = [
-    "markdown-it-py[linkify,plugins]>=4.0.0",
-    "pyyaml>=6.0",
-]
+dependencies = ["markdown-it-py[linkify,plugins]>=4.0.0", "pyyaml>=6.0"]
 
 [project.optional-dependencies]
 tokenizers = ["tiktoken>=0.9.0", "cachetools>=7.1.1"]
@@ -63,11 +58,7 @@ source = "vcs"
 packages = ["src/lumberjack"]
 
 [tool.hatch.build.targets.sdist]
-exclude = [
-    "lumberjack_webui/",
-    "script/",
-    "assets/",
-]
+exclude = ["lumberjack_webui/", "script/", "assets/"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

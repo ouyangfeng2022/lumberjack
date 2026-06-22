@@ -107,7 +107,7 @@ def main() -> None:
         max_tokens=args.max_tokens,
         ideal_max_tokens_ratio=args.ideal_max_tokens_ratio,
         merge_below_tokens=args.merge_below_tokens,
-        block_options=block_options,  # ty: ignore[invalid-argument-type]
+        block_options=block_options,
         tokenizer=args.tokenizer,
         splitter=args.splitter,
         recursive_split=args.recursive_split,

@@ -7,6 +7,7 @@ from html.parser import HTMLParser as _StdlibHTMLParser
 from typing import Any, ClassVar
 
 from ...models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
+from ...protocols import ParserProtocol
 
 
 def _clean_text(text: str) -> str:
@@ -417,7 +418,7 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         return len(self._source) if tag_end == -1 else tag_end + 1
 
 
-class HTMLParser:
+class HTMLParser(ParserProtocol[str]):
     """Parse HTML documents into the shared ``DocumentAST`` model.
 
     The parser mirrors the public parser shape used by Markdown and DOCX:
@@ -445,7 +446,7 @@ class HTMLParser:
 
     def parse(
         self,
-        text: str,
+        data: str,
         *,
         document_title: str | None = None,
         document_metadata: dict[str, object] | None = None,
@@ -459,9 +460,16 @@ class HTMLParser:
             document_metadata: Optional metadata dict merged into the result.
             max_heading_level: Maximum heading level to parse as sections.
                 Headings deeper than this level are treated as paragraph blocks.
+
+        Raises:
+            TypeError: If ``text`` is not a ``str``.
         """
+        if not isinstance(data, str):
+            msg = f"DocxParser.parse expects bytes, got {type(data).__name__}"
+            raise TypeError(msg)
+
         builder = _HTMLDocumentBuilder(
-            source=text,
+            source=data,
             document_title=document_title,
             document_metadata=document_metadata or {},
             max_heading_level=max_heading_level,

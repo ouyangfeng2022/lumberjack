@@ -26,6 +26,7 @@ from ...models import (
     MarkdownInline,
     SectionNode,
 )
+from ...protocols import ParserProtocol
 
 LINK_REFERENCE_DEFINITION_RE = re.compile(r"^[ ]{0,3}\[([^\]]+)\]:")
 
@@ -302,7 +303,7 @@ class InlineNormalizer:
         return node.text
 
 
-class MarkdownItParser:
+class MarkdownItParser(ParserProtocol[str]):
     """Parse Markdown with markdown-it-py and normalize tokens into lumberjack's document model."""
 
     # Token-type → MarkdownBlock.kind mapping for simple (non-container) blocks.
@@ -403,7 +404,7 @@ class MarkdownItParser:
 
     def parse(
         self,
-        text: str,
+        data: str,
         *,
         document_title: str | None = None,
         document_metadata: dict[str, object] | None = None,
@@ -418,7 +419,14 @@ class MarkdownItParser:
             max_heading_level: Maximum heading level to parse as sections. Headings deeper
                 than this level are treated as regular paragraphs. If None, all headings are
                 parsed as sections.
+
+        Raises:
+            TypeError: If ``text`` is not a ``str``.
         """
+        if not isinstance(data, str):
+            msg = f"DocxParser.parse expects bytes, got {type(data).__name__}"
+            raise TypeError(msg)
+
         if document_metadata is None:
             document_metadata = {}
 
@@ -430,8 +438,8 @@ class MarkdownItParser:
         )
 
         env: dict[str, Any] = {}
-        tokens = self._parser.parse(text, env)
-        source_lines = text.splitlines()
+        tokens = self._parser.parse(data, env)
+        source_lines = data.splitlines()
 
         root = SectionNode(level=0, title="")
         section_stack: list[SectionNode] = [root]
@@ -478,7 +486,7 @@ class MarkdownItParser:
 
         return DocumentAST(
             title=final_title,
-            source=text,
+            source=data,
             root=root,
             metadata=document_metadata,
             reference_definitions=self._extract_reference_definitions(
