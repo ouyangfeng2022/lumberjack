@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from .core import create_splitter, create_tokenizer
 from .core.models import BlockConfig, Chunk, SplitOptions
@@ -9,7 +10,7 @@ from .core.parsers.markdown.parser import MarkdownItParser
 
 if TYPE_CHECKING:
     from .core.protocols import (
-        MarkdownParserProtocol,
+        ParserProtocol,
         SplitterProtocol,
         TokenizerProtocol,
     )
@@ -74,9 +75,9 @@ def lumber(
     merge_below_tokens: int | None = 50,
     skip_empty_sections: bool = True,
     recursive_split: bool = False,
-    block_options: dict[str, BlockConfig | dict] | None = None,
+    block_options: Mapping[str, BlockConfig | dict] | None = None,
     tokenizer: str | TokenizerProtocol = "simple",
-    parser: MarkdownParserProtocol | None = None,
+    parser: ParserProtocol[str] | ParserProtocol[bytes] | None = None,
     splitter: str | SplitterProtocol = "recursive",
     document_metadata: dict[str, object] | None = None,
     max_heading_level: int | None = None,
@@ -105,7 +106,11 @@ def lumber(
             section bodies (effective with ``--splitter section``).
         block_options: Per-block-kind :class:`BlockConfig` overrides.
         tokenizer: Tokenizer name or instance.
-        parser: Custom text parser instance; ignored for DOCX input.
+        parser: Custom parser instance implementing :class:`ParserProtocol`.
+            Overrides the default parser for the detected input format
+            (Markdown, HTML, or DOCX). The parser must accept the input type
+            produced for that format: ``str`` for Markdown/HTML, ``bytes`` for
+            DOCX. A mismatch raises :class:`TypeError` from ``parse()``.
         splitter: Splitter name or instance.
         document_metadata: Extra metadata merged into the document.
         max_heading_level: Maximum heading level to parse as sections.
@@ -124,20 +129,28 @@ def lumber(
     )
 
     # --- Parser (format-dependent) ---
+    # A user-supplied ``parser`` overrides the default for ANY format,
+    # including DOCX. ``parse()`` is called with the unified signature.
     if input_format == "docx":
-        from .core.parsers.docx import DocxParser
-
         raw = _read_input_for_docx(text)
-        parser_impl = DocxParser()
+        if parser is not None:
+            # User-supplied parser: must accept bytes at runtime (DOCX input).
+            parser_impl = cast("ParserProtocol[bytes]", parser)
+        else:
+            from .core.parsers.docx import DocxParser
+
+            parser_impl = DocxParser()
         document = parser_impl.parse(
             raw,
             document_title=document_title,
             document_metadata=document_metadata,
+            max_heading_level=max_heading_level,
         )
     else:
         raw = _read_input_for_markdown(text)
         if parser is not None:
-            parser_impl = parser
+            # User-supplied parser: must accept str at runtime (Markdown/HTML input).
+            parser_impl = cast("ParserProtocol[str]", parser)
         elif input_format == "html":
             from .core.parsers.html import HTMLParser
 
