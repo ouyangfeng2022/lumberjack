@@ -30,7 +30,6 @@ export interface SplitOptions {
   skip_empty_sections: boolean;
   recursive_split: boolean;
   block_configs: Record<string, BlockConfigState> | null;
-  disable_lheading: boolean;
   tokenizer: string;
   splitter: string;
   document_title: string;

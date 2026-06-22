@@ -357,16 +357,22 @@ Text · Links · Images · Autolinks · Code spans · Emphasis · Strong emphasi
 ```text
 src/lumberjack/
 ├── __init__.py              # Public API re-exports
+├── formats.py               # Input format detection and source reading helpers
 ├── lumber.py                # Public lumber() implementation
 ├── cli.py                   # CLI entry point (lumber)
 ├── core/
 │   ├── models.py            # Data models (Chunk, BlockConfig, SplitOptions, ...)
 │   ├── protocols.py         # Protocol interfaces
 │   ├── tokenizers.py        # Simple character & tiktoken tokenizers
-│   ├── splitter.py          # Recursive & section splitters (operate on DocumentAST)
 │   ├── block.py             # BlockSplitter for oversized blocks + block-config parsing
+│   ├── options.py           # Split option and block config helpers
 │   ├── utils.py             # Markdown rendering helpers
 │   ├── visitor.py           # AstVisitor for AST traversal
+│   ├── splitters/           # Recursive & section splitters
+│   │   ├── base.py          # Shared splitter helpers
+│   │   ├── recursive.py     # RecursiveSplitter
+│   │   ├── section.py       # SectionSplitter
+│   │   └── registry.py      # Splitter registry/factory
 │   └── parsers/             # Format-specific parsers: raw input -> DocumentAST
 │       ├── markdown/
 │       │   ├── parser.py    # MarkdownItParser (markdown-it-py backend)

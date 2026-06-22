@@ -5,14 +5,14 @@ from pathlib import Path
 
 from lumberjack import lumber
 from lumberjack.core.models import BlockConfig, SplitOptions
+from lumberjack.core.options import resolve_block_options
 from lumberjack.core.parsers.markdown.parser import MarkdownParser
-from lumberjack.core.splitter import (
+from lumberjack.core.splitters import (
     RecursiveSplitter,
     SectionSplitter,
-    _ChunkDraft,
-    _Entry,
     create_splitter,
 )
+from lumberjack.core.splitters.drafts import _ChunkDraft, _Entry
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 
 FIXTURE = (
@@ -133,6 +133,12 @@ class RecordingTokenizer(SimpleCharTokenizer):
         return super().count(text)
 
 
+def markdown_block_options(
+    overrides: dict[str, BlockConfig] | None = None,
+) -> dict[str, BlockConfig]:
+    return resolve_block_options(MarkdownParser().block_kinds, overrides)
+
+
 def test_splitter_preserves_heading_context() -> None:
     """Test that splitter preserves heading hierarchy in chunks."""
     document = MarkdownParser().parse(FIXTURE, document_title="sample.md")
@@ -147,15 +153,11 @@ def test_splitter_preserves_heading_context() -> None:
     assert any("## Details" in chunk.body for chunk in chunks)
 
 
-def test_create_splitter_routes_semantic_default_and_heading() -> None:
+def test_create_splitter_routes_recursive_and_section() -> None:
     options = SplitOptions(max_tokens=100, merge_below_tokens=0)
 
     assert isinstance(
         create_splitter("recursive", SimpleCharTokenizer(), options),
-        RecursiveSplitter,
-    )
-    assert isinstance(
-        create_splitter("default", SimpleCharTokenizer(), options),
         RecursiveSplitter,
     )
     assert isinstance(
@@ -800,6 +802,7 @@ def test_merge_below_tokens_does_not_merge_past_rendered_budget() -> None:
             max_tokens=60,
             ideal_max_tokens_ratio=1,
             merge_below_tokens=10,
+            block_options=markdown_block_options(),
         ),
     )
 
@@ -936,6 +939,7 @@ def test_splitter_can_split_oversized_lists_by_default() -> None:
             max_tokens=20,
             ideal_max_tokens_ratio=1,
             merge_below_tokens=-1,
+            block_options=markdown_block_options(),
         ),
     )
 
@@ -1789,6 +1793,7 @@ def test_section_splitter_can_split_oversized_lists_by_default() -> None:
             max_tokens=20,
             ideal_max_tokens_ratio=1,
             merge_below_tokens=-1,
+            block_options=markdown_block_options(),
         ),
     )
 
@@ -1915,6 +1920,7 @@ Small body.
         options=SplitOptions(
             max_tokens=50,
             merge_below_tokens=0,
+            block_options=markdown_block_options(),
         ),
     )
 

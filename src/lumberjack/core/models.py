@@ -197,12 +197,10 @@ class SplitOptions:
             regardless of this setting.
         recursive_split: When True, split oversized direct section bodies in splitters
             that support strict heading-level output.
-        block_options: Per-block-kind configuration.  Keys are lowercase block
+        block_options: Per-block-kind configuration. Keys are lowercase block
             kind strings matching :attr:`MarkdownBlock.kind` values; values are
-            :class:`BlockConfig` instances.  When empty (the default), all known
-            block kinds are auto-populated with default :class:`BlockConfig`.
-            Callers (``lumber()``, CLI, web) should always supply a fully
-            populated dict with defaults merged before constructing
+            :class:`BlockConfig` instances. Callers that need parser-specific
+            defaults should resolve them before constructing
             :class:`SplitOptions`.
         splittable_kinds: Block kinds that allow splitting (cached).
         standalone_kinds: Block kinds marked as isolated (cached).
@@ -220,24 +218,7 @@ class SplitOptions:
     splittable_kinds: frozenset[str] = field(init=False, repr=False)
     standalone_kinds: frozenset[str] = field(init=False, repr=False)
 
-    @staticmethod
-    def _default_block_kinds() -> frozenset[str]:
-        """Lazy accessor for default block kinds from the default parser registry.
-
-        Uses a local import to avoid circular dependencies (models ↔ parser).
-        """
-        from .parsers.markdown.parser import MarkdownItParser
-
-        return MarkdownItParser.default_registry().kinds
-
     def __post_init__(self) -> None:
-        if not self.block_options:
-            kinds = self._default_block_kinds()
-            object.__setattr__(
-                self,
-                "block_options",
-                dict.fromkeys(sorted(kinds), BlockConfig()),
-            )
         object.__setattr__(
             self,
             "ideal_max_tokens",

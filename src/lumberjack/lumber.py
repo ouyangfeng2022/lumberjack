@@ -4,9 +4,12 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from .core import create_splitter, create_tokenizer
 from .core.models import BlockConfig, Chunk, SplitOptions
-from .core.parsers.markdown.parser import MarkdownItParser
+from .core.options import resolve_block_options
+from .core.parsers.factory import create_parser
+from .core.splitters import create_splitter
+from .core.tokenizers import create_tokenizer
+from .formats import detect_format, read_docx_input, read_text_input
 
 if TYPE_CHECKING:
     from .core.protocols import (
@@ -14,55 +17,6 @@ if TYPE_CHECKING:
         SplitterProtocol,
         TokenizerProtocol,
     )
-
-
-def _detect_format(text: str | bytes | Path, format: str) -> str:
-    """Resolve the input format from the ``format`` hint and input type.
-
-    Returns ``"docx"``, ``"html"``, or ``"markdown"``.
-    """
-    if format not in {"auto", "markdown", "docx", "html"}:
-        msg = f"Unsupported input format: {format}"
-        raise ValueError(msg)
-
-    if format != "auto":
-        return format
-
-    if isinstance(text, bytes):
-        # Raw bytes are treated as DOCX content
-        return "docx"
-
-    if isinstance(text, Path):
-        ext = text.suffix.lower()
-        if ext == ".docx":
-            return "docx"
-        if ext in {".html", ".htm"}:
-            return "html"
-        return "markdown"
-
-    # Plain string is treated as Markdown text
-    return "markdown"
-
-
-def _read_input_for_markdown(text: str | bytes | Path) -> str:
-    """Read markdown text from any input type."""
-    if isinstance(text, Path):
-        return text.read_text(encoding="utf-8")
-    if isinstance(text, bytes):
-        return text.decode("utf-8")
-    return text
-
-
-def _read_input_for_docx(text: str | bytes | Path) -> bytes:
-    """Read DOCX binary content from any input type."""
-    if isinstance(text, Path):
-        return text.read_bytes()
-    if isinstance(text, str):
-        raise TypeError(
-            "Expected bytes or a .docx file path for DOCX format, got a text string. "
-            "Pass a Path or bytes instead."
-        )
-    return text
 
 
 def lumber(
@@ -121,7 +75,7 @@ def lumber(
     Returns:
         A list of :class:`Chunk` objects ready for downstream use.
     """
-    input_format = _detect_format(text, format)
+    input_format = detect_format(text, format)
 
     # --- Tokenizer (shared) ---
     tokenizer_impl = (
@@ -131,15 +85,10 @@ def lumber(
     # --- Parser (format-dependent) ---
     # A user-supplied ``parser`` overrides the default for ANY format,
     # including DOCX. ``parse()`` is called with the unified signature.
+    parser_impl = create_parser(input_format, parser=parser)
     if input_format == "docx":
-        raw = _read_input_for_docx(text)
-        if parser is not None:
-            # User-supplied parser: must accept bytes at runtime (DOCX input).
-            parser_impl = cast("ParserProtocol[bytes]", parser)
-        else:
-            from .core.parsers.docx import DocxParser
-
-            parser_impl = DocxParser()
+        raw = read_docx_input(text)
+        parser_impl = cast(ParserProtocol[bytes], parser_impl)
         document = parser_impl.parse(
             raw,
             document_title=document_title,
@@ -147,16 +96,8 @@ def lumber(
             max_heading_level=max_heading_level,
         )
     else:
-        raw = _read_input_for_markdown(text)
-        if parser is not None:
-            # User-supplied parser: must accept str at runtime (Markdown/HTML input).
-            parser_impl = cast("ParserProtocol[str]", parser)
-        elif input_format == "html":
-            from .core.parsers.html import HTMLParser
-
-            parser_impl = HTMLParser()
-        else:
-            parser_impl = MarkdownItParser()
+        raw = read_text_input(text)
+        parser_impl = cast(ParserProtocol[str], parser_impl)
         document = parser_impl.parse(
             raw,
             document_title=document_title,
@@ -165,23 +106,14 @@ def lumber(
         )
 
     # --- Split options (shared) ---
-    resolved = dict.fromkeys(sorted(parser_impl.block_kinds), BlockConfig())
-    if block_options:
-        for key, value in block_options.items():
-            if isinstance(value, BlockConfig):
-                resolved[key] = value
-            elif isinstance(value, dict):
-                resolved[key] = BlockConfig(**value)
-            else:
-                msg = f"block_options[{key!r}] must be BlockConfig or dict, got {type(value).__name__}"
-                raise TypeError(msg)
+    resolved_block_options = resolve_block_options(parser_impl.block_kinds, block_options)
     options = SplitOptions(
         max_tokens=max_tokens,
         ideal_max_tokens_ratio=ideal_max_tokens_ratio,
         merge_below_tokens=merge_below_tokens,
         skip_empty_sections=skip_empty_sections,
         recursive_split=recursive_split,
-        block_options=resolved,
+        block_options=resolved_block_options,
     )
 
     # --- Splitter (shared) ---

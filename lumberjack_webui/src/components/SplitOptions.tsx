@@ -156,15 +156,6 @@ export default function SplitOptions({ options, onChange }: Props) {
               />
               <span>{t('opts_skip_empty_sections')}</span>
             </label>
-
-            <label className={styles.checkField}>
-              <input
-                type="checkbox"
-                checked={options.disable_lheading}
-                onChange={(e) => update('disable_lheading', e.target.checked)}
-              />
-              <span>{t('opts_disable_lheading')}</span>
-            </label>
           </div>
 
           <div className={styles.field}>

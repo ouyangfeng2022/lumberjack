@@ -43,7 +43,7 @@ class AstVisitor:
 
     Usage::
 
-        from lumberjack.core import AstVisitor
+        from lumberjack import AstVisitor
         from lumberjack.core.parsers.markdown.parser import MarkdownItParser
 
         class HeadingCollector(AstVisitor):

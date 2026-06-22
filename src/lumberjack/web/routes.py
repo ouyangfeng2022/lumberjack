@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import asdict
 from typing import Any
 
@@ -9,6 +8,8 @@ from pydantic import BaseModel
 
 from lumberjack import lumber
 from lumberjack.core.models import BlockConfig
+from lumberjack.core.options import parse_block_config_json, parse_block_config_mapping
+from lumberjack.formats import detect_format_from_filename
 
 router = APIRouter()
 
@@ -47,55 +48,22 @@ class SplitResponse(BaseModel):
     chunks: list[ChunkResponse]
 
 
-_BLOCK_CONFIG_FIELDS = frozenset({"isolated", "split", "max_tokens"})
-
-
 def _parse_block_configs(
     raw: dict[str, Any] | None,
 ) -> dict[str, BlockConfig] | None:
-    if raw is None:
-        return None
-
-    resolved: dict[str, BlockConfig] = {}
-    for kind, config in raw.items():
-        if not isinstance(config, dict):
-            raise HTTPException(
-                status_code=400,
-                detail=f"block_configs[{kind!r}] must be an object",
-            )
-
-        unknown = set(config) - _BLOCK_CONFIG_FIELDS
-        if unknown:
-            fields = ", ".join(sorted(_BLOCK_CONFIG_FIELDS))
-            unknown_fields = ", ".join(sorted(unknown))
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Unknown block config field(s) for {kind!r}: {unknown_fields}. "
-                    f"Valid fields: {fields}"
-                ),
-            )
-
-        try:
-            resolved[kind] = BlockConfig(**config)
-        except TypeError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
-
-    return resolved
+    try:
+        return parse_block_config_mapping(raw)
+    except (TypeError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 def _parse_form_block_configs(raw: str) -> dict[str, BlockConfig] | None:
     if not raw or not raw.strip():
         return None
     try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail="Invalid block_configs JSON") from e
-    if not isinstance(parsed, dict):
-        raise HTTPException(
-            status_code=400, detail="block_configs must be a JSON object"
-        )
-    return _parse_block_configs(parsed)
+        return parse_block_config_json(raw)
+    except (TypeError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/split/text", response_model=SplitResponse)
@@ -127,16 +95,6 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
     )
 
 
-def _detect_format_from_filename(filename: str) -> str:
-    """Detect input format from file extension."""
-    lower_filename = filename.lower()
-    if lower_filename.endswith(".docx"):
-        return "docx"
-    if lower_filename.endswith((".html", ".htm")):
-        return "html"
-    return "markdown"
-
-
 @router.post("/split/file", response_model=SplitResponse)
 async def split_file(
     file: UploadFile = File(...),  # noqa: B008
@@ -161,7 +119,7 @@ async def split_file(
     fmt = (
         input_format
         if input_format != "auto"
-        else _detect_format_from_filename(file.filename or "")
+        else detect_format_from_filename(file.filename or "")
     )
 
     if fmt == "docx":

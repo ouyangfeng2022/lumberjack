@@ -348,16 +348,22 @@ HTML：标题 · 段落 · 引用块 · 列表 · 代码块 · 作为 `html_tabl
 ```text
 src/lumberjack/
 ├── __init__.py              # 公共 API 重新导出
+├── formats.py               # 输入格式检测和源内容读取辅助函数
 ├── lumber.py                # 公共 lumber() 实现
 ├── cli.py                   # CLI 入口（lumber）
 ├── core/
 │   ├── models.py            # 数据模型（Chunk、BlockConfig、SplitOptions、...）
 │   ├── protocols.py         # 协议接口
 │   ├── tokenizers.py        # 简单字符 & tiktoken 分词器
-│   ├── splitter.py          # 递归 & 章节切分器（操作 DocumentAST）
 │   ├── block.py             # 超长块切分 + 块配置解析辅助
+│   ├── options.py           # 切分选项和块配置辅助函数
 │   ├── utils.py             # Markdown 渲染辅助函数
 │   ├── visitor.py           # AST 遍历访问器
+│   ├── splitters/           # 递归 & 章节切分器
+│   │   ├── base.py          # 共享切分器辅助逻辑
+│   │   ├── recursive.py     # RecursiveSplitter
+│   │   ├── section.py       # SectionSplitter
+│   │   └── registry.py      # 切分器注册表/工厂
 │   └── parsers/             # 格式解析器：原始输入 -> DocumentAST
 │       ├── markdown/
 │       │   ├── parser.py    # MarkdownItParser（markdown-it-py 后端）
