@@ -79,15 +79,19 @@ Main components:
   - `TokenizerProtocol`, `MarkdownParserProtocol`, `SplitterProtocol`
 - **Tokenizer**: `src/lumberjack/core/tokenizers.py`
   - `SimpleCharTokenizer` (default), `TiktokenTokenizer` (optional)
+- **Formats**: `src/lumberjack/formats.py`
+  - Central input format detection and text/DOCX source reading helpers
 - **Block**: `src/lumberjack/core/block.py`
   - `BlockSplitter` handles oversized block splitting via paragraph/line/sentence/word/hard boundaries
   - Uses `HTMLTableParser` (from `core/parsers/html/table_parser.py`) to split oversized `html_table` blocks
   - `parse_block_config_entry` parses `KIND[:isolated][:nosplit][:TOKENS]` CLI strings into `BlockConfig`
-- **Splitter**: `src/lumberjack/core/splitter.py` — operates on `DocumentAST`, format-agnostic
-  - `_BaseSplitter` provides shared state and helpers
-  - `RecursiveSplitter` (registry: "default", "recursive") — structure-first, budget-aware
-  - `SectionSplitter` (registry: "section") — one chunk per heading section
-  - `SPLITTER_REGISTRY` and `create_splitter()` factory
+- **Options**: `src/lumberjack/core/options.py`
+  - Shared block option resolution and CLI/JSON block config parsing helpers
+- **Splitters**: `src/lumberjack/core/splitters/` — operate on `DocumentAST`, format-agnostic
+  - `base.py` provides `_BaseSplitter` shared state and helpers
+  - `recursive.py` provides `RecursiveSplitter` (registry: "recursive") — structure-first, budget-aware
+  - `section.py` provides `SectionSplitter` (registry: "section") — one chunk per heading section
+  - `registry.py` provides `SPLITTER_REGISTRY` and `create_splitter()` factory
 - **Visitor**: `src/lumberjack/core/visitor.py`
   - `AstVisitor` — lightweight AST visitor with enter/depart hooks for section/block/inline and structured content (table cells, code, math); works with any `DocumentAST`
 - **Utilities**: `src/lumberjack/core/utils.py`
@@ -206,6 +210,7 @@ After Python code changes:
 ```
 src/lumberjack/
     __init__.py                     # Public API: lumber()
+    formats.py                      # Input format detection and source reading helpers
     cli.py                          # CLI orchestration
     web/                            # FastAPI layer
     core/
@@ -214,7 +219,8 @@ src/lumberjack/
         protocols.py                # Protocol interfaces
         tokenizers.py               # Tokenizer implementations
         block.py                    # BlockSplitter + parse_block_config_entry
-        splitter.py                 # RecursiveSplitter/SectionSplitter + create_splitter
+        options.py                  # Split option/block config parsing helpers
+        splitters/                  # RecursiveSplitter/SectionSplitter + create_splitter
         visitor.py                  # AstVisitor
         utils.py                    # Rendering helpers
         parsers/                    # Format-specific parsers: input -> DocumentAST

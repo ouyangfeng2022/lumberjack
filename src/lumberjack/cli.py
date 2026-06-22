@@ -4,27 +4,9 @@ import argparse
 import json
 from dataclasses import asdict
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from . import lumber
-from .core.block import parse_block_config_entry
-from .core.parsers.markdown.parser import MarkdownItParser
-
-if TYPE_CHECKING:
-    from .core.models import BlockConfig
-
-
-def _parse_block_configs(entries: list[str]) -> dict[str, BlockConfig]:
-    """Parse ``KIND[:isolated][:nosplit][:TOKENS]`` strings into a ``{kind: BlockConfig}`` dict.
-
-    Starts from the parser defaults, then applies user overrides.
-    """
-    registry = MarkdownItParser.default_registry()
-    result: dict[str, BlockConfig] = dict(registry.default_handling())
-    for entry in entries:
-        kind, cfg = parse_block_config_entry(entry, registry)
-        result[kind] = cfg
-    return result
+from .core.options import parse_cli_block_configs
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -99,7 +81,7 @@ def main() -> None:
     args = parser.parse_args()
     input_path = Path(args.input)
 
-    block_options = _parse_block_configs(args.block_config)
+    block_options = parse_cli_block_configs(args.block_config)
 
     chunks = lumber(
         input_path,

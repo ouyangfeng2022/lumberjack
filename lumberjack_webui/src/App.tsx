@@ -16,9 +16,8 @@ const DEFAULT_OPTIONS: Options = {
   skip_empty_sections: true,
   recursive_split: false,
   block_configs: null,
-  disable_lheading: false,
   tokenizer: 'simple',
-  splitter: 'default',
+  splitter: 'recursive',
   document_title: 'document.md',
 };
 

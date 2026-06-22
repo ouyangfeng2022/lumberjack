@@ -15,7 +15,6 @@ export async function splitMarkdown(
     }
     formData.append('skip_empty_sections', String(options.skip_empty_sections));
     formData.append('recursive_split', String(options.recursive_split));
-    formData.append('disable_lheading', String(options.disable_lheading));
     if (options.block_configs) {
       formData.append('block_configs', JSON.stringify(options.block_configs));
     }
@@ -46,7 +45,6 @@ export async function splitMarkdown(
       skip_empty_sections: options.skip_empty_sections,
       recursive_split: options.recursive_split,
       block_configs: options.block_configs,
-      disable_lheading: options.disable_lheading,
       tokenizer: options.tokenizer,
       splitter: options.splitter,
     }),
