@@ -78,10 +78,11 @@ Main components:
   - `TokenizerProtocol`, `MarkdownParserProtocol`, `SplitterProtocol`
 - **Tokenizer**: `src/lumberjack/core/tokenizers.py`
   - `SimpleCharTokenizer` (default), `TiktokenTokenizer` (optional)
-- **TextSplitter**: `src/lumberjack/core/text_splitter.py`
-  - Handles oversized block splitting via paragraph/line/sentence/word/hard boundaries
+- **Block**: `src/lumberjack/core/block.py`
+  - `BlockSplitter` handles oversized block splitting via paragraph/line/sentence/word/hard boundaries
   - Uses `HTMLTableParser` (from `core/html/table_parser.py`) to split oversized `html_table` blocks
-- **Utilities**: `src/lumberjack/core/utils.py`, `src/lumberjack/core/block_config.py`
+  - `parse_block_config_entry` parses `KIND[:isolated][:nosplit][:TOKENS]` CLI strings into `BlockConfig`
+- **Utilities**: `src/lumberjack/core/utils.py`
 
 ### Markdown (`src/lumberjack/core/markdown/`)
 
@@ -116,7 +117,7 @@ Main components:
   - Maps headings -> `SectionNode`, paragraphs -> `paragraph`, tables -> `html_table`, lists -> `list`, etc.
 - **Table utility**: `src/lumberjack/core/html/table_parser.py`
   - `HTMLTableParser` + `HTMLTable`/`HTMLTableRow`/`HTMLTableCell` dataclasses
-  - Consumed by `markdown/parser.py` (to detect tables inside `html_block`) and `text_splitter.py` (to split oversized `html_table` blocks); not used by `HTMLParser` itself
+  - Consumed by `markdown/parser.py` (to detect tables inside `html_block`) and `block.py` (to split oversized `html_table` blocks); not used by `HTMLParser` itself
 
 ### Public API
 
@@ -206,8 +207,7 @@ src/lumberjack/
         models.py                   # Shared data models
         protocols.py                # Protocol interfaces
         tokenizers.py               # Tokenizer implementations
-        text_splitter.py            # Generic TextSplitter
-        block_config.py             # Block-kind parsing helpers
+        block.py                    # BlockSplitter + parse_block_config_entry
         utils.py                    # Rendering helpers
         markdown/
             __init__.py

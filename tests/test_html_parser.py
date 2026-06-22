@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lumberjack.core.block_splitter import BlockSplitter
+from lumberjack.core.block import BlockSplitter
 from lumberjack.core.html import HTMLParser
 from lumberjack.core.html.table_parser import HTMLTableParser
 from lumberjack.core.markdown.parser import MarkdownParser

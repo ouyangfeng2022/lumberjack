@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-from .block_splitter import BlockSplitter
+from .block import BlockSplitter
 from .models import (
     Chunk,
     DocumentAST,

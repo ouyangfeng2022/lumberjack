@@ -19,7 +19,6 @@ __all__ = [
     "RecursiveSplitter",
     "SectionSplitter",
     "SimpleCharTokenizer",
-    "TextSplitter",
     "TiktokenTokenizer",
     "create_splitter",
     "create_tokenizer",
