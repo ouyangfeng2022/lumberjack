@@ -12,7 +12,7 @@ from ..models import (
 from ..protocols import SplitterProtocol, TokenizerProtocol
 from ..tokenizers import SimpleCharTokenizer
 from ..utils import join_markdown
-from .drafts import _ChunkDraft, _Entry, _MeasuredSection, _SectionTokenCounts
+from .drafts import ChunkDraft, Entry, MeasuredSection, SectionTokenCounts
 from .headings import common_heading_path, render_heading_path
 
 SEPARATOR = "\n\n"
@@ -49,10 +49,10 @@ class _BaseSplitter(SplitterProtocol):
                 )
         return tokens
 
-    def _split_section(self, section: _MeasuredSection) -> list[_ChunkDraft]:
+    def _split_section(self, section: MeasuredSection) -> list[ChunkDraft]:
         raise NotImplementedError
 
-    def _post_process_drafts(self, drafts: list[_ChunkDraft]) -> list[_ChunkDraft]:
+    def _post_process_drafts(self, drafts: list[ChunkDraft]) -> list[ChunkDraft]:
         return drafts
 
     def _block_budget(self, block_kind: str, default_budget: int) -> int:
@@ -92,7 +92,7 @@ class _BaseSplitter(SplitterProtocol):
                     f"block_options[{kind!r}].max_tokens must be positive, got {cfg.max_tokens}"
                 )
 
-    def _measure_section(self, section: SectionNode) -> _MeasuredSection:
+    def _measure_section(self, section: SectionNode) -> MeasuredSection:
         """Return a measured wrapper for *section* and all descendants."""
         children = tuple(self._measure_section(child) for child in section.children)
 
@@ -117,7 +117,7 @@ class _BaseSplitter(SplitterProtocol):
         # 3. Count subtree tokens
         subtree_token_count = title_token_count + body_token_count
         previous_tail = section.blocks[-1].text if section.blocks else ""
-        prev_child: _MeasuredSection | None = None
+        prev_child: MeasuredSection | None = None
         for child in children:
             # When the previous child is a leaf section with no body
             # blocks, its heading's trailing \n\n (from
@@ -146,9 +146,9 @@ class _BaseSplitter(SplitterProtocol):
         can_emit_as_single_chunk = not body_has_standalone and all(
             child.can_emit_as_single_chunk for child in children
         )
-        return _MeasuredSection(
+        return MeasuredSection(
             node=section,
-            counts=_SectionTokenCounts(
+            counts=SectionTokenCounts(
                 title=title_token_count,
                 body=body_token_count,
                 subtree=subtree_token_count,
@@ -160,8 +160,8 @@ class _BaseSplitter(SplitterProtocol):
 
     def _split_section_body(
         self,
-        section: _MeasuredSection,
-    ) -> list[_ChunkDraft]:
+        section: MeasuredSection,
+    ) -> list[ChunkDraft]:
         """Split a section's own blocks into fragments, then into chunk drafts."""
         node = section.node
         headings = node.path
@@ -178,7 +178,7 @@ class _BaseSplitter(SplitterProtocol):
                 headings, blocks, body_token_count=section.counts.body
             )
             return [
-                _ChunkDraft(
+                ChunkDraft(
                     entries=[entry],
                     headings=node.path,
                     headings_token_count=prefix_tokens,
@@ -188,7 +188,7 @@ class _BaseSplitter(SplitterProtocol):
                 )
             ]
 
-        chunks: list[_ChunkDraft] = []
+        chunks: list[ChunkDraft] = []
         current_parts: list[str] = []
         current_joined = ""
         current_body_tokens = 0
@@ -197,8 +197,8 @@ class _BaseSplitter(SplitterProtocol):
 
         budget = max(0, max_tokens - prefix_tokens) if prefix_tokens > 0 else max_tokens
 
-        def draft_current() -> _ChunkDraft:
-            entry = _Entry(
+        def draft_current() -> ChunkDraft:
+            entry = Entry(
                 headings=headings,
                 body=join_markdown(current_parts),
                 start_line=current_start_line,
@@ -206,7 +206,7 @@ class _BaseSplitter(SplitterProtocol):
                 body_token_count=current_body_tokens,
             )
             token_count = prefix_tokens + current_body_tokens
-            return _ChunkDraft(
+            return ChunkDraft(
                 entries=[entry],
                 headings=headings,
                 headings_token_count=prefix_tokens,
@@ -234,7 +234,7 @@ class _BaseSplitter(SplitterProtocol):
                 if block_pieces is not None:
                     for piece in block_pieces:
                         piece_tokens = self.tokenizer.count(piece)
-                        entry = _Entry(
+                        entry = Entry(
                             headings=headings,
                             body=piece,
                             start_line=block.start_line,
@@ -242,7 +242,7 @@ class _BaseSplitter(SplitterProtocol):
                             body_token_count=piece_tokens,
                         )
                         chunks.append(
-                            _ChunkDraft(
+                            ChunkDraft(
                                 entries=[entry],
                                 headings=headings,
                                 headings_token_count=prefix_tokens,
@@ -253,7 +253,7 @@ class _BaseSplitter(SplitterProtocol):
                             )
                         )
                 else:
-                    entry = _Entry(
+                    entry = Entry(
                         headings=headings,
                         body=block.text,
                         start_line=block.start_line,
@@ -262,7 +262,7 @@ class _BaseSplitter(SplitterProtocol):
                     )
 
                     chunks.append(
-                        _ChunkDraft(
+                        ChunkDraft(
                             entries=[entry],
                             headings=headings,
                             headings_token_count=prefix_tokens,
@@ -319,7 +319,7 @@ class _BaseSplitter(SplitterProtocol):
                 allowed_kinds=splittable_kinds,
             )
             if block_pieces is None:
-                entry = _Entry(
+                entry = Entry(
                     headings=headings,
                     body=block.text,
                     start_line=block.start_line,
@@ -327,7 +327,7 @@ class _BaseSplitter(SplitterProtocol):
                     body_token_count=block_tokens,
                 )
                 chunks.append(
-                    _ChunkDraft(
+                    ChunkDraft(
                         entries=[entry],
                         headings=headings,
                         headings_token_count=prefix_tokens,
@@ -346,7 +346,7 @@ class _BaseSplitter(SplitterProtocol):
 
             for piece in block_pieces:
                 piece_tokens = self.tokenizer.count(piece)
-                entry = _Entry(
+                entry = Entry(
                     headings=headings,
                     body=piece,
                     start_line=block.start_line,
@@ -354,7 +354,7 @@ class _BaseSplitter(SplitterProtocol):
                     body_token_count=piece_tokens,
                 )
                 chunks.append(
-                    _ChunkDraft(
+                    ChunkDraft(
                         entries=[entry],
                         headings=headings,
                         headings_token_count=prefix_tokens,
@@ -374,7 +374,7 @@ class _BaseSplitter(SplitterProtocol):
 
     def _finalize_chunks(
         self,
-        chunks: list[_ChunkDraft],
+        chunks: list[ChunkDraft],
         document: DocumentAST,
     ) -> list[Chunk]:
         """Convert chunk drafts into final ``Chunk`` objects with rendered body and metadata."""
@@ -445,12 +445,12 @@ class _BaseSplitter(SplitterProtocol):
         blocks: list[MarkdownBlock],
         *,
         body_token_count: int,
-    ) -> _Entry:
+    ) -> Entry:
         body = join_markdown([block.text for block in blocks])
         start_lines = [b.start_line for b in blocks if b.start_line is not None]
         end_lines = [b.end_line for b in blocks if b.end_line is not None]
 
-        return _Entry(
+        return Entry(
             headings=headings,
             body=body,
             start_line=min(start_lines) if start_lines else None,
@@ -458,7 +458,7 @@ class _BaseSplitter(SplitterProtocol):
             body_token_count=body_token_count,
         )
 
-    def _entry_group_tail(self, entries: list[_Entry]) -> str:
+    def _entry_group_tail(self, entries: list[Entry]) -> str:
         if not entries:
             return ""
         last = entries[-1]
@@ -471,9 +471,9 @@ class _BaseSplitter(SplitterProtocol):
 
     def _merge_drafts(
         self,
-        left_draft: _ChunkDraft,
-        right_draft: _ChunkDraft,
-    ) -> _ChunkDraft:
+        left_draft: ChunkDraft,
+        right_draft: ChunkDraft,
+    ) -> ChunkDraft:
         left_headings = left_draft.headings
         right_headings = right_draft.headings
 
@@ -498,7 +498,7 @@ class _BaseSplitter(SplitterProtocol):
                 left_tail = self._entry_group_tail(left_draft.entries)
                 body_token_count += self._separator_delta_after(left_tail)
 
-        return _ChunkDraft(
+        return ChunkDraft(
             entries=[*left_draft.entries, *right_draft.entries],
             headings=common_headings,
             headings_token_count=headings_token_count,
@@ -510,7 +510,7 @@ class _BaseSplitter(SplitterProtocol):
 
     def _render_body(
         self,
-        entries: list[_Entry],
+        entries: list[Entry],
         *,
         common_headings: HeadingPath,
     ) -> str:
@@ -543,10 +543,10 @@ class _BaseSplitter(SplitterProtocol):
 
     def _merge_small_chunks(
         self,
-        chunks: list[_ChunkDraft],
+        chunks: list[ChunkDraft],
         *,
         parent_headings: HeadingPath | None = None,
-    ) -> list[_ChunkDraft]:
+    ) -> list[ChunkDraft]:
         """Merge adjacent same-parent chunks below *merge_below_tokens*, bottom-up."""
         merge_below = self.options.merge_below_tokens
         if merge_below is None or merge_below < 0:
@@ -554,7 +554,7 @@ class _BaseSplitter(SplitterProtocol):
         if not chunks:
             return chunks
 
-        merged: list[_ChunkDraft] = list(chunks)
+        merged: list[ChunkDraft] = list(chunks)
         i = len(merged) - 1
         while i > 0:
             current = merged[i]

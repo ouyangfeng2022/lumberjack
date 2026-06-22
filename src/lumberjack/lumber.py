@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
 
 from .core.models import BlockConfig, Chunk, SplitOptions
 from .core.options import resolve_block_options
@@ -10,13 +9,6 @@ from .core.parsers.factory import create_parser
 from .core.splitters import create_splitter
 from .core.tokenizers import create_tokenizer
 from .formats import detect_format, read_docx_input, read_text_input
-
-if TYPE_CHECKING:
-    from .core.protocols import (
-        ParserProtocol,
-        SplitterProtocol,
-        TokenizerProtocol,
-    )
 
 
 def lumber(
@@ -30,9 +22,8 @@ def lumber(
     skip_empty_sections: bool = True,
     recursive_split: bool = False,
     block_options: Mapping[str, BlockConfig | dict] | None = None,
-    tokenizer: str | TokenizerProtocol = "simple",
-    parser: ParserProtocol[str] | ParserProtocol[bytes] | None = None,
-    splitter: str | SplitterProtocol = "recursive",
+    tokenizer: str = "simple",
+    splitter: str = "recursive",
     document_metadata: dict[str, object] | None = None,
     max_heading_level: int | None = None,
 ) -> list[Chunk]:
@@ -59,13 +50,8 @@ def lumber(
         recursive_split: Enable block/text fallback for oversized
             section bodies (effective with ``--splitter section``).
         block_options: Per-block-kind :class:`BlockConfig` overrides.
-        tokenizer: Tokenizer name or instance.
-        parser: Custom parser instance implementing :class:`ParserProtocol`.
-            Overrides the default parser for the detected input format
-            (Markdown, HTML, or DOCX). The parser must accept the input type
-            produced for that format: ``str`` for Markdown/HTML, ``bytes`` for
-            DOCX. A mismatch raises :class:`TypeError` from ``parse()``.
-        splitter: Splitter name or instance.
+        tokenizer: Built-in tokenizer name (``"simple"`` or ``"tiktoken"``).
+        splitter: Built-in splitter name (``"recursive"`` or ``"section"``).
         document_metadata: Extra metadata merged into the document.
         max_heading_level: Maximum heading level to parse as sections.
             Headings deeper than this level are treated as regular paragraphs.
@@ -75,20 +61,34 @@ def lumber(
     Returns:
         A list of :class:`Chunk` objects ready for downstream use.
     """
+    if not isinstance(tokenizer, str):
+        raise TypeError(
+            "tokenizer must be a string selecting a built-in tokenizer. "
+            "For custom tokenizers, parse manually and pass the tokenizer "
+            "instance to a splitter."
+        )
+    if not isinstance(splitter, str):
+        raise TypeError(
+            "splitter must be a string selecting a built-in splitter. "
+            "For custom splitters, parse manually and call splitter.split()."
+        )
+
     input_format = detect_format(text, format)
 
-    # --- Tokenizer (shared) ---
-    tokenizer_impl = (
-        create_tokenizer(tokenizer) if isinstance(tokenizer, str) else tokenizer
-    )
+    tokenizer_impl = create_tokenizer(tokenizer)
 
-    # --- Parser (format-dependent) ---
-    # A user-supplied ``parser`` overrides the default for ANY format,
-    # including DOCX. ``parse()`` is called with the unified signature.
-    parser_impl = create_parser(input_format, parser=parser)
     if input_format == "docx":
+        parser_impl = create_parser("docx")
         raw = read_docx_input(text)
-        parser_impl = cast(ParserProtocol[bytes], parser_impl)
+        document = parser_impl.parse(
+            raw,
+            document_title=document_title,
+            document_metadata=document_metadata,
+            max_heading_level=max_heading_level,
+        )
+    elif input_format == "html":
+        parser_impl = create_parser("html")
+        raw = read_text_input(text)
         document = parser_impl.parse(
             raw,
             document_title=document_title,
@@ -96,8 +96,8 @@ def lumber(
             max_heading_level=max_heading_level,
         )
     else:
+        parser_impl = create_parser("markdown")
         raw = read_text_input(text)
-        parser_impl = cast(ParserProtocol[str], parser_impl)
         document = parser_impl.parse(
             raw,
             document_title=document_title,
@@ -105,8 +105,9 @@ def lumber(
             max_heading_level=max_heading_level,
         )
 
-    # --- Split options (shared) ---
-    resolved_block_options = resolve_block_options(parser_impl.block_kinds, block_options)
+    resolved_block_options = resolve_block_options(
+        parser_impl.block_kinds, block_options
+    )
     options = SplitOptions(
         max_tokens=max_tokens,
         ideal_max_tokens_ratio=ideal_max_tokens_ratio,
@@ -116,12 +117,7 @@ def lumber(
         block_options=resolved_block_options,
     )
 
-    # --- Splitter (shared) ---
-    splitter_impl = (
-        create_splitter(splitter, tokenizer=tokenizer_impl, options=options)
-        if isinstance(splitter, str)
-        else splitter
-    )
+    splitter_impl = create_splitter(splitter, tokenizer=tokenizer_impl, options=options)
     return splitter_impl.split(document)
 
 

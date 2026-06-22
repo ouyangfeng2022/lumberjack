@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .base import _BaseSplitter
-from .drafts import _ChunkDraft, _MeasuredSection
+from .drafts import ChunkDraft, MeasuredSection
 
 
 class SectionSplitter(_BaseSplitter):
@@ -15,10 +15,10 @@ class SectionSplitter(_BaseSplitter):
 
     def _split_section(
         self,
-        section: _MeasuredSection,
-    ) -> list[_ChunkDraft]:
+        section: MeasuredSection,
+    ) -> list[ChunkDraft]:
         """Return one direct-body draft per section, then recurse into children."""
-        chunks: list[_ChunkDraft] = []
+        chunks: list[ChunkDraft] = []
         node = section.node
 
         if node.blocks or node.level > 0:
@@ -41,7 +41,7 @@ class SectionSplitter(_BaseSplitter):
                 )
                 headings_token_count = self._heading_path_token_count(node.path)
                 chunks.append(
-                    _ChunkDraft(
+                    ChunkDraft(
                         entries=[entry],
                         headings=node.path,
                         headings_token_count=headings_token_count,

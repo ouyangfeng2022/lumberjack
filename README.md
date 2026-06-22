@@ -118,7 +118,9 @@ Open <http://localhost:9612> — paste text or upload a file, configure options,
 
 ### Python API
 
-The public API is a single function — [`lumber()`](src/lumberjack/lumber.py):
+The default public API is a single function — [`lumber()`](src/lumberjack/lumber.py).
+It is the ready-to-use pipeline and only accepts string selectors for built-in
+tokenizers and splitters:
 
 ```python
 from lumberjack import lumber
@@ -195,18 +197,36 @@ Valid block kinds: `paragraph`, `blockquote`, `list`, `list_item`, `table`, `htm
 > [!NOTE]
 > **HTML Tables**: HTML tables (`<table>`) are recognized as `html_table` blocks, independent from markdown tables. They preserve their original HTML format and attributes during splitting. Configure with `"html_table": BlockConfig(isolated=True)` to handle separately from markdown tables.
 
-#### Custom Parser with Plugins
+#### Custom Parser, Tokenizer, or Splitter
+
+`lumber()` intentionally stays small and general-purpose. If you need a custom
+parser, tokenizer, or splitter, compose the lower-level pieces directly: parse
+once, then split once.
 
 ```python
 from mdit_py_plugins.tasklists import tasklists_plugin
+from lumberjack.core.models import SplitOptions
+from lumberjack.core.options import resolve_block_options
 from lumberjack.core.parsers.markdown.parser import MarkdownItParser
-from lumberjack import lumber
+from lumberjack.core.splitters import RecursiveSplitter
+from lumberjack.core.tokenizers import TiktokenTokenizer
 
-chunks = lumber(
-    markdown_text,
-    parser=MarkdownItParser(plugins=(tasklists_plugin,)),
+parser = MarkdownItParser(plugins=(tasklists_plugin,))
+tokenizer = TiktokenTokenizer(model="gpt-4o-mini")
+
+document = parser.parse(markdown_text, document_title="guide.md")
+options = SplitOptions(
+    max_tokens=1200,
+    block_options=resolve_block_options(parser.block_kinds, None),
 )
+splitter = RecursiveSplitter(tokenizer=tokenizer, options=options)
+
+chunks = splitter.split(document)
 ```
+
+Custom components should follow the protocols in
+[`lumberjack.core.protocols`](src/lumberjack/core/protocols.py). They are not
+passed through `lumber()`; use the `parse -> split` pipeline directly instead.
 
 ### CLI
 

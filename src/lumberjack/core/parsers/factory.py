@@ -1,21 +1,25 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Literal, overload
 
+from ..protocols import ParserProtocol
 from .markdown import MarkdownItParser
 
-if TYPE_CHECKING:
-    from ..protocols import ParserProtocol
+
+@overload
+def create_parser(format: Literal["markdown", "html"]) -> ParserProtocol[str]: ...
 
 
-def create_parser(
-    format: str,
-    parser: ParserProtocol[str] | ParserProtocol[bytes] | None = None,
-) -> ParserProtocol[str] | ParserProtocol[bytes]:
-    """Return a parser for the resolved input format, honoring explicit parser overrides."""
-    if parser is not None:
-        return parser
+@overload
+def create_parser(format: Literal["docx"]) -> ParserProtocol[bytes]: ...
 
+
+@overload
+def create_parser(format: str) -> ParserProtocol[str] | ParserProtocol[bytes]: ...
+
+
+def create_parser(format: str) -> ParserProtocol[str] | ParserProtocol[bytes]:
+    """Return the built-in parser for the resolved input format."""
     if format == "docx":
         from .docx import DocxParser
 
