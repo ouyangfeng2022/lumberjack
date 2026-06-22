@@ -3,7 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
-from ..models import (
+from ...models import (
     DocumentAST,
     MarkdownBlock,
     MarkdownInline,

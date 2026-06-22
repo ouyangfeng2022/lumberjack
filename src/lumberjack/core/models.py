@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .visitor import MarkdownAstVisitor
+    from .visitor import AstVisitor
 
 type HeadingKey = tuple[int, str]
 type HeadingPath = tuple[HeadingKey, ...]
@@ -27,7 +27,7 @@ class MarkdownInline:
     children: tuple[MarkdownInline, ...] = ()
     attrs: dict[str, Any] = field(default_factory=dict)
 
-    def accept(self, visitor: MarkdownAstVisitor) -> None:
+    def accept(self, visitor: AstVisitor) -> None:
         """Dispatch this inline to ``visitor.walk_inline``."""
         visitor.walk_inline(self)
 
@@ -58,7 +58,7 @@ class MarkdownBlock:
     inlines: tuple[MarkdownInline, ...] = ()
     attrs: dict[str, Any] = field(default_factory=dict)
 
-    def accept(self, visitor: MarkdownAstVisitor) -> None:
+    def accept(self, visitor: AstVisitor) -> None:
         """Dispatch this block to ``visitor.walk_block``."""
         visitor.walk_block(self)
 
@@ -98,7 +98,7 @@ class SectionNode:
     def add_child(self, child: SectionNode) -> None:
         self.children.append(child)
 
-    def accept(self, visitor: MarkdownAstVisitor) -> None:
+    def accept(self, visitor: AstVisitor) -> None:
         """Dispatch this section to ``visitor.walk_section``."""
         visitor.walk_section(self)
 
@@ -124,7 +124,7 @@ class DocumentAST:
     metadata: dict[str, Any] = field(default_factory=dict)
     reference_definitions: dict[str, dict[str, str]] = field(default_factory=dict)
 
-    def accept(self, visitor: MarkdownAstVisitor) -> None:
+    def accept(self, visitor: AstVisitor) -> None:
         """Dispatch this document to ``visitor.walk_document``."""
         visitor.walk_document(self)
 
@@ -226,7 +226,7 @@ class SplitOptions:
 
         Uses a local import to avoid circular dependencies (models ↔ parser).
         """
-        from .markdown.parser import MarkdownItParser
+        from .parsers.markdown.parser import MarkdownItParser
 
         return MarkdownItParser.default_registry().kinds
 

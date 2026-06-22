@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from . import lumber
 from .core.block import parse_block_config_entry
-from .core.markdown.parser import MarkdownItParser
+from .core.parsers.markdown.parser import MarkdownItParser
 
 if TYPE_CHECKING:
     from .core.models import BlockConfig

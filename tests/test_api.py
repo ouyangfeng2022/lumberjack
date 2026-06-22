@@ -10,7 +10,7 @@ from mdit_py_plugins.tasklists import tasklists_plugin
 
 import lumberjack
 from lumberjack import lumber
-from lumberjack.core.markdown.parser import MarkdownItParser
+from lumberjack.core.parsers.markdown.parser import MarkdownItParser
 from lumberjack.lumber import lumber as module_lumber
 
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md"
@@ -34,7 +34,7 @@ M1 body.
 
 
 def test_package_exports_lumber_as_only_top_level_api() -> None:
-    assert lumberjack.__all__ == ["MarkdownAstVisitor", "lumber"]
+    assert lumberjack.__all__ == ["AstVisitor", "lumber"]
     assert lumberjack.lumber is lumber
     assert module_lumber is lumber
     assert not hasattr(lumberjack, "HTMLParser")

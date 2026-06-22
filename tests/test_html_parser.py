@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from lumberjack.core.block import BlockSplitter
-from lumberjack.core.html import HTMLParser
-from lumberjack.core.html.table_parser import HTMLTableParser
-from lumberjack.core.markdown.parser import MarkdownParser
+from lumberjack.core.parsers.html import HTMLParser
+from lumberjack.core.parsers.html.table_parser import HTMLTableParser
+from lumberjack.core.parsers.markdown.parser import MarkdownParser
 from lumberjack.core.splitter import create_splitter
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 

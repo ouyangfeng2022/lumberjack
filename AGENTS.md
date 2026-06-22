@@ -62,10 +62,11 @@ Core pipeline:
 
 ```
 Markdown text ----> MarkdownItParser ----> DocumentAST ----> Splitter ----> Chunk[]
-DOCX binary  ----> DocxParser ----------------------------------------------> Chunk[]
+DOCX binary  ----> DocxParser ----------------------------------------------------> Chunk[]
+HTML text    ----> HTMLParser ----------------------------------------------------> Chunk[]
 ```
 
-Both formats produce the same `DocumentAST` (with `SectionNode` tree and `MarkdownBlock` children), so all splitters work with either format.
+All three formats produce the same `DocumentAST` (with `SectionNode` tree and `MarkdownBlock` children), so all splitters work with any format. The parsers live under `src/lumberjack/core/parsers/`; everything else in `core/` operates on the shared `DocumentAST`.
 
 Main components:
 
@@ -80,44 +81,49 @@ Main components:
   - `SimpleCharTokenizer` (default), `TiktokenTokenizer` (optional)
 - **Block**: `src/lumberjack/core/block.py`
   - `BlockSplitter` handles oversized block splitting via paragraph/line/sentence/word/hard boundaries
-  - Uses `HTMLTableParser` (from `core/html/table_parser.py`) to split oversized `html_table` blocks
+  - Uses `HTMLTableParser` (from `core/parsers/html/table_parser.py`) to split oversized `html_table` blocks
   - `parse_block_config_entry` parses `KIND[:isolated][:nosplit][:TOKENS]` CLI strings into `BlockConfig`
+- **Splitter**: `src/lumberjack/core/splitter.py` — operates on `DocumentAST`, format-agnostic
+  - `_BaseSplitter` provides shared state and helpers
+  - `RecursiveSplitter` (registry: "default", "recursive") — structure-first, budget-aware
+  - `SectionSplitter` (registry: "section") — one chunk per heading section
+  - `SPLITTER_REGISTRY` and `create_splitter()` factory
+- **Visitor**: `src/lumberjack/core/visitor.py`
+  - `AstVisitor` — lightweight AST visitor with enter/depart hooks for section/block/inline and structured content (table cells, code, math); works with any `DocumentAST`
 - **Utilities**: `src/lumberjack/core/utils.py`
 
-### Markdown (`src/lumberjack/core/markdown/`)
+### Parsers (`src/lumberjack/core/parsers/`)
 
-- **Parser**: `src/lumberjack/core/markdown/parser.py`
+Format-specific parsers — each turns one input format into the shared `DocumentAST`.
+
+#### Markdown (`src/lumberjack/core/parsers/markdown/`)
+
+- **Parser**: `src/lumberjack/core/parsers/markdown/parser.py`
   - `MarkdownParser` aliases `MarkdownItParser`
   - Uses `MarkdownIt("gfm-like")` with built-in plugins
   - `MarkdownItParser(disable_lheading=True)` to disable Setext heading parsing
   - Parses YAML front matter, preserves heading hierarchy, inlines, reference definitions, line ranges
-- **Splitter**: `src/lumberjack/core/markdown/splitter.py`
-  - `_BaseMarkdownSplitter` provides shared state and helpers
-  - `RecursiveMarkdownSplitter` (registry: "default", "recursive") — structure-first, budget-aware
-  - `SectionMarkdownSplitter` (registry: "section") — one chunk per heading section
-  - `SPLITTER_REGISTRY` and `create_splitter()` factory
-- **Plugins**: `src/lumberjack/core/markdown/plugins/`
+- **Plugins**: `src/lumberjack/core/parsers/markdown/plugins/`
   - `brackets_math_plugin`: `\[...\]` block math and `\(...\)` inline math syntax
-- **Visitor**: `src/lumberjack/core/markdown/visitor.py` — lightweight AST visitor hooks
 
-### DOCX (`src/lumberjack/core/docx/`)
+#### DOCX (`src/lumberjack/core/parsers/docx/`)
 
-- **Parser**: `src/lumberjack/core/docx/parser.py`
+- **Parser**: `src/lumberjack/core/parsers/docx/parser.py`
   - `DocxParser` — parses DOCX into `DocumentAST`
   - Maps Heading styles -> `SectionNode`, paragraphs -> `paragraph`, tables -> `table`, lists -> `list`, etc.
   - Iterates body elements in document order to preserve paragraph/table sequence
   - Extracts core properties as document metadata
 
-### HTML (`src/lumberjack/core/html/`)
+#### HTML (`src/lumberjack/core/parsers/html/`)
 
-- **Parser**: `src/lumberjack/core/html/parser.py`
+- **Parser**: `src/lumberjack/core/parsers/html/parser.py`
   - `HTMLParser` — parses HTML into `DocumentAST`, mirroring `MarkdownItParser` and `DocxParser`
   - Built on stdlib `html.parser.HTMLParser` (aliased internally as `_StdlibHTMLParser` to avoid name shadowing)
   - `_HTMLDocumentBuilder` is the event-driven internal builder
   - Maps headings -> `SectionNode`, paragraphs -> `paragraph`, tables -> `html_table`, lists -> `list`, etc.
-- **Table utility**: `src/lumberjack/core/html/table_parser.py`
+- **Table utility**: `src/lumberjack/core/parsers/html/table_parser.py`
   - `HTMLTableParser` + `HTMLTable`/`HTMLTableRow`/`HTMLTableCell` dataclasses
-  - Consumed by `markdown/parser.py` (to detect tables inside `html_block`) and `block.py` (to split oversized `html_table` blocks); not used by `HTMLParser` itself
+  - Consumed by `parsers/markdown/parser.py` (to detect tables inside `html_block`) and `block.py` (to split oversized `html_table` blocks); not used by `HTMLParser` itself
 
 ### Public API
 
@@ -161,12 +167,12 @@ Implemented in `src/lumberjack/cli.py`.
 ## Splitting Rules
 
 - Whole document is kept as one chunk when it already fits the budget
-- `RecursiveMarkdownSplitter` (default): merges adjacent sibling sections when they fit within `max_tokens`
-- `SectionMarkdownSplitter`: emits one chunk per heading section direct body; child sections become separate chunks
+- `RecursiveSplitter` (default): merges adjacent sibling sections when they fit within `max_tokens`
+- `SectionSplitter`: emits one chunk per heading section direct body; child sections become separate chunks
 - Text fallback order is paragraph break -> line break -> sentence -> word -> hard split
 - `Chunk.body` always includes rendered heading context; shared parent headings are deduplicated
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
-- `recursive_split=True` enables block/text fallback for oversized section bodies in `SectionMarkdownSplitter`
+- `recursive_split=True` enables block/text fallback for oversized section bodies in `SectionSplitter`
 - `block_options` maps block kinds to `BlockConfig` (per-kind `isolated`, `split`, `max_tokens`)
 
 ## Constraints
@@ -208,20 +214,22 @@ src/lumberjack/
         protocols.py                # Protocol interfaces
         tokenizers.py               # Tokenizer implementations
         block.py                    # BlockSplitter + parse_block_config_entry
+        splitter.py                 # RecursiveSplitter/SectionSplitter + create_splitter
+        visitor.py                  # AstVisitor
         utils.py                    # Rendering helpers
-        markdown/
+        parsers/                    # Format-specific parsers: input -> DocumentAST
             __init__.py
-            parser.py               # MarkdownItParser
-            splitter.py             # _BaseMarkdownSplitter + Recursive/Section
-            visitor.py              # MarkdownAstVisitor
-            plugins/                # markdown-it plugins
-        docx/
-            __init__.py
-            parser.py               # DocxParser
-        html/
-            __init__.py
-            parser.py               # HTMLParser + _HTMLDocumentBuilder
-            table_parser.py         # HTMLTableParser + HTMLTable*
+            markdown/
+                __init__.py
+                parser.py           # MarkdownItParser
+                plugins/            # markdown-it plugins
+            docx/
+                __init__.py
+                parser.py           # DocxParser
+            html/
+                __init__.py
+                parser.py           # HTMLParser + _HTMLDocumentBuilder
+                table_parser.py     # HTMLTableParser + HTMLTable*
 lumberjack_webui/                   # React + TypeScript frontend
 tests/
     test_api.py

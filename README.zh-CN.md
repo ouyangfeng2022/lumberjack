@@ -190,7 +190,7 @@ chunks = lumber(
 
 ```python
 from mdit_py_plugins.tasklists import tasklists_plugin
-from lumberjack.core.markdown.parser import MarkdownItParser
+from lumberjack.core.parsers.markdown.parser import MarkdownItParser
 from lumberjack import lumber
 
 chunks = lumber(
@@ -354,19 +354,19 @@ src/lumberjack/
 │   ├── models.py            # 数据模型（Chunk、BlockConfig、SplitOptions、...）
 │   ├── protocols.py         # 协议接口
 │   ├── tokenizers.py        # 简单字符 & tiktoken 分词器
-│   ├── splitter.py          # 递归 & 章节切分器
-│   ├── text_splitter.py     # 超长块的通用文本切分器
-│   ├── block_config.py      # 块配置解析辅助
+│   ├── splitter.py          # 递归 & 章节切分器（操作 DocumentAST）
+│   ├── block.py             # 超长块切分 + 块配置解析辅助
 │   ├── utils.py             # Markdown 渲染辅助函数
 │   ├── visitor.py           # AST 遍历访问器
-│   ├── markdown/
-│   │   ├── parser.py        # MarkdownItParser（markdown-it-py 后端）
-│   │   └── plugins/         # 自定义 markdown-it 插件（方括号数学）
-│   ├── html/
-│   │   ├── parser.py        # HTMLParser（stdlib html.parser 后端）
-│   │   └── table_parser.py  # HTML 表格抽取和行解析
-│   └── docx/
-│       └── parser.py        # DocxParser（python-docx 后端）
+│   └── parsers/             # 格式解析器：原始输入 -> DocumentAST
+│       ├── markdown/
+│       │   ├── parser.py    # MarkdownItParser（markdown-it-py 后端）
+│       │   └── plugins/     # 自定义 markdown-it 插件（方括号数学）
+│       ├── html/
+│       │   ├── parser.py    # HTMLParser（stdlib html.parser 后端）
+│       │   └── table_parser.py  # HTML 表格抽取和行解析
+│       └── docx/
+│           └── parser.py    # DocxParser（python-docx 后端）
 └── web/
     ├── app.py               # FastAPI 应用
     ├── routes.py            # API 端点

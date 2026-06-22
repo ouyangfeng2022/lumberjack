@@ -1,7 +1,7 @@
 """Tests for max_heading_level parameter."""
 
 from lumberjack import lumber
-from lumberjack.core.markdown.parser import MarkdownItParser
+from lumberjack.core.parsers.markdown.parser import MarkdownItParser
 
 
 def test_max_heading_level_limits_section_depth():

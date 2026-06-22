@@ -1,4 +1,4 @@
-from .core.visitor import MarkdownAstVisitor
+from .core.visitor import AstVisitor
 from .lumber import lumber
 
-__all__ = ["MarkdownAstVisitor", "lumber"]
+__all__ = ["AstVisitor", "lumber"]
