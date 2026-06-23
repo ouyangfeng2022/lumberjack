@@ -40,7 +40,7 @@ M1 body.
 
 
 def test_package_exports_lumber_as_only_top_level_api() -> None:
-    assert lumberjack.__all__ == ["AstVisitor", "lumber"]
+    assert lumberjack.__all__ == ["lumber"]
     assert lumberjack.lumber is lumber
     assert module_lumber is lumber
     assert not hasattr(lumberjack, "HTMLParser")
