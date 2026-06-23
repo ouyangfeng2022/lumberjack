@@ -72,6 +72,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Per-block-kind config (e.g., table:500:nosplit:isolated); "
         "order-insensitive. Flags: isolated, nosplit; integer sets max_tokens",
     )
+    parser.add_argument(
+        "--block-config-json",
+        default="",
+        metavar="JSON",
+        help="Structured per-block-kind config JSON. Overrides --block-config "
+        "for matching kinds.",
+    )
     return parser
 
 
@@ -81,7 +88,10 @@ def main() -> None:
     args = parser.parse_args()
     input_path = Path(args.input)
 
-    block_options = parse_cli_block_configs(args.block_config)
+    block_options = parse_cli_block_configs(
+        args.block_config,
+        json_config=args.block_config_json,
+    )
 
     chunks = lumber(
         input_path,

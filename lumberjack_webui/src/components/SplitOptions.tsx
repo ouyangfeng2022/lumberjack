@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { BlockConfigState, SplitOptions as Options } from '../types/chunk';
+import type { BlockHandlingState, SplitOptions as Options } from '../types/chunk';
 import styles from './SplitOptions.module.css';
 
 interface Props {
@@ -23,9 +23,16 @@ const BLOCK_KINDS = [
 interface BlockState {
   isolated: boolean;
   split: boolean;
+  repeat_header: boolean;
 }
 
-const DEFAULT_BLOCK_STATE: BlockState = { isolated: false, split: true };
+const DEFAULT_BLOCK_STATE: BlockState = {
+  isolated: false,
+  split: true,
+  repeat_header: true,
+};
+
+const TABLE_PARAM_KINDS = new Set<string>(['table', 'html_table']);
 
 function getBlockStates(block_configs: Options['block_configs']): Record<string, BlockState> {
   const result: Record<string, BlockState> = {};
@@ -34,9 +41,28 @@ function getBlockStates(block_configs: Options['block_configs']): Record<string,
     result[kind] = {
       isolated: cfg?.isolated ?? false,
       split: cfg?.split ?? true,
+      repeat_header: cfg?.repeat_header ?? true,
     };
   }
   return result;
+}
+
+function buildBlockConfigs(states: Record<string, BlockState>): Options['block_configs'] {
+  const cfg: Record<string, BlockHandlingState> = {};
+  for (const kind of BLOCK_KINDS) {
+    const state = states[kind] ?? DEFAULT_BLOCK_STATE;
+    const repeatHeaderChanged = TABLE_PARAM_KINDS.has(kind) && !state.repeat_header;
+    if (state.isolated || !state.split || repeatHeaderChanged) {
+      const entry: BlockHandlingState = {};
+      if (state.isolated) entry.isolated = true;
+      if (!state.split) entry.split = false;
+      if (repeatHeaderChanged) {
+        entry.repeat_header = false;
+      }
+      cfg[kind] = entry;
+    }
+  }
+  return Object.keys(cfg).length > 0 ? cfg : null;
 }
 
 export default function SplitOptions({ options, onChange }: Props) {
@@ -63,33 +89,19 @@ export default function SplitOptions({ options, onChange }: Props) {
 
   const setBlockIsolated = (kind: string, isolated: boolean) => {
     const updated = { ...blockStates, [kind]: { ...blockStates[kind], isolated } };
-    const cfg: Record<string, BlockConfigState> = {};
-    for (const k of BLOCK_KINDS) {
-      const s = updated[k] ?? DEFAULT_BLOCK_STATE;
-      if (s.isolated || !s.split) {
-        const entry: BlockConfigState = {};
-        if (s.isolated) entry.isolated = true;
-        if (!s.split) entry.split = false;
-        cfg[k] = entry;
-      }
-    }
-    update('block_configs', Object.keys(cfg).length > 0 ? cfg : null);
+    update('block_configs', buildBlockConfigs(updated));
   };
 
   const toggleSplit = (kind: string) => {
     const prev = blockStates[kind] ?? DEFAULT_BLOCK_STATE;
     const updated = { ...blockStates, [kind]: { ...prev, split: !prev.split } };
-    const cfg: Record<string, BlockConfigState> = {};
-    for (const k of BLOCK_KINDS) {
-      const s = updated[k] ?? DEFAULT_BLOCK_STATE;
-      if (s.isolated || !s.split) {
-        const entry: BlockConfigState = {};
-        if (s.isolated) entry.isolated = true;
-        if (!s.split) entry.split = false;
-        cfg[k] = entry;
-      }
-    }
-    update('block_configs', Object.keys(cfg).length > 0 ? cfg : null);
+    update('block_configs', buildBlockConfigs(updated));
+  };
+
+  const setRepeatHeader = (kind: string, repeat_header: boolean) => {
+    const prev = blockStates[kind] ?? DEFAULT_BLOCK_STATE;
+    const updated = { ...blockStates, [kind]: { ...prev, repeat_header } };
+    update('block_configs', buildBlockConfigs(updated));
   };
 
   return (
@@ -213,9 +225,16 @@ export default function SplitOptions({ options, onChange }: Props) {
                 >
                   {t('opts_nosplit')}
                 </span>
+                <span
+                  className={styles.blockHeaderLabel}
+                  title={t('opts_repeat_header_desc')}
+                >
+                  {t('opts_repeat_header')}
+                </span>
               </div>
               {BLOCK_KINDS.map((kind) => {
                 const state = blockStates[kind] ?? DEFAULT_BLOCK_STATE;
+                const supportsRepeatHeader = TABLE_PARAM_KINDS.has(kind);
                 return (
                   <div key={kind} className={styles.blockHandlingRow}>
                     <span className={styles.blockKindLabel}>{BLOCK_LABELS[kind]}</span>
@@ -231,6 +250,18 @@ export default function SplitOptions({ options, onChange }: Props) {
                       checked={!state.split}
                       onChange={() => toggleSplit(kind)}
                     />
+                    {supportsRepeatHeader ? (
+                      <input
+                        className={styles.blockNosplit}
+                        type="checkbox"
+                        checked={state.repeat_header}
+                        disabled={!state.split}
+                        title={t('opts_repeat_header_desc')}
+                        onChange={(e) => setRepeatHeader(kind, e.target.checked)}
+                      />
+                    ) : (
+                      <span className={styles.blockSpacer} />
+                    )}
                   </div>
                 );
               })}

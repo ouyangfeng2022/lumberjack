@@ -40,6 +40,8 @@ const en = {
   opts_isolated_desc: 'Prevent block from merging with adjacent content',
   opts_nosplit: 'No split',
   opts_nosplit_desc: 'Keep block intact even if it exceeds token budget',
+  opts_repeat_header: 'Repeat header',
+  opts_repeat_header_desc: 'Repeat table header rows in every split table chunk',
   opts_block_paragraph: 'Paragraph',
   opts_block_blockquote: 'Blockquote',
   opts_block_list: 'List',

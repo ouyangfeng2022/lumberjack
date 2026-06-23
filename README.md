@@ -124,7 +124,6 @@ tokenizers and splitters:
 
 ```python
 from lumberjack import lumber
-from lumberjack.core.models import BlockConfig
 
 # Full options
 chunks = lumber(
@@ -171,31 +170,36 @@ Control how individual block kinds are split and merged:
 
 ```python
 from lumberjack import lumber
-from lumberjack.core.models import BlockConfig
+from lumberjack.core.models import BaseParams, TableBlockParams
 
 chunks = lumber(
     markdown_text,
     block_options={
-        # Tables: standalone chunks, never split, 500-token budget
-        "table": BlockConfig(isolated=True, split=False, max_tokens=500),
+        # Tables: standalone chunks, 500-token budget, do not repeat headers after split
+        "table": TableBlockParams(
+            isolated=True,
+            max_tokens=500,
+            repeat_header=False,
+        ),
         # Code fences: keep intact even when oversized
-        "code_fence": BlockConfig(split=False),
+        "code_fence": BaseParams(split=False),
         # Paragraphs: custom budget
-        "paragraph": BlockConfig(max_tokens=800),
+        "paragraph": BaseParams(max_tokens=800),
     },
 )
 ```
 
-`BlockConfig` fields:
+`BaseParams` fields:
 
 - **`isolated`** (`bool`) — emit as standalone chunks, never merge with adjacent content
 - **`split`** (`bool`) — allow splitting oversized blocks
 - **`max_tokens`** (`int | None`) — per-kind budget override; `None` uses global `max_tokens`
+- Block-specific params inherit these common fields. `TableBlockParams` adds **`repeat_header`** (`bool`) for `table` and `html_table`; other kinds reject table-specific fields until they define their own params type.
 
 Valid block kinds: `paragraph`, `blockquote`, `list`, `list_item`, `table`, `html_table`, `code_block`, `code_fence`, `html_block`, `front_matter`, `math_block`, `math_block_eqno`.
 
 > [!NOTE]
-> **HTML Tables**: HTML tables (`<table>`) are recognized as `html_table` blocks, independent from markdown tables. They preserve their original HTML format and attributes during splitting. Configure with `"html_table": BlockConfig(isolated=True)` to handle separately from markdown tables.
+> **HTML Tables**: HTML tables (`<table>`) are recognized as `html_table` blocks, independent from markdown tables. They preserve their original HTML format and attributes during splitting. Configure with `"html_table": TableBlockParams(isolated=True)` to handle separately from markdown tables.
 
 #### Custom Parser, Tokenizer, or Splitter
 
@@ -246,6 +250,7 @@ lumber <input> [options]
 | `--splitter`               | `recursive` | `recursive` or `section`                         |
 | `--recursive-split`        | off         | Enable block/text fallback for section splitter  |
 | `--block-config`           | —           | Per-block-kind config (repeatable)               |
+| `--block-config-json`      | —           | Structured per-block-kind JSON config            |
 
 `--block-config` syntax: `KIND[:isolated][:nosplit][:TOKENS]`
 
@@ -258,6 +263,9 @@ lumber doc.md --block-config code_fence:nosplit
 
 # Multiple block configs
 lumber doc.md --block-config table:isolated --block-config code_fence:nosplit
+
+# Table-specific params: split tables without repeating header rows after the first piece
+lumber doc.md --block-config-json '{"table":{"repeat_header":false}}'
 ```
 
 **JSON output** includes `document`, `chunk_count`, and a `chunks` array with full metadata.
@@ -303,6 +311,21 @@ Both endpoints accept the same options:
 | `block_configs` | object | `null` | Per-block-kind config |
 | `tokenizer` | string | `"simple"` | `simple` or `tiktoken` |
 | `splitter` | string | `"recursive"` | `recursive` or `section` |
+
+Example `block_configs` payload:
+
+```json
+{
+  "table": {
+    "isolated": true,
+    "max_tokens": 500,
+    "repeat_header": false
+  },
+  "html_table": {
+    "repeat_header": false
+  }
+}
+```
 
 #### Response
 
@@ -352,7 +375,7 @@ Recursive splitting order:
 4. Fall back to paragraph → line → sentence → word → hard split
 
 > [!IMPORTANT]
-> Code blocks are preserved intact by default even when they exceed `max_tokens`. Use `BlockConfig(split=True)` to allow splitting specific block kinds.
+> Code blocks are preserved intact by default even when they exceed `max_tokens`. Use `BaseParams(split=True)` to allow splitting specific block kinds.
 
 ## Parsing Coverage
 
@@ -381,7 +404,7 @@ src/lumberjack/
 ├── lumber.py                # Public lumber() implementation
 ├── cli.py                   # CLI entry point (lumber)
 ├── core/
-│   ├── models.py            # Data models (Chunk, BlockConfig, SplitOptions, ...)
+│   ├── models.py            # Data models (Chunk, BaseParams, SplitOptions, ...)
 │   ├── protocols.py         # Protocol interfaces
 │   ├── tokenizers.py        # Simple character & tiktoken tokenizers
 │   ├── block.py             # BlockSplitter for oversized blocks + block-config parsing

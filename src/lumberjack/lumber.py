@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from .core.models import BlockConfig, Chunk, SplitOptions
+from .core.models import BaseParams, Chunk, SplitOptions
 from .core.options import resolve_block_options
 from .core.parsers.factory import create_parser
 from .core.splitters import create_splitter
@@ -21,7 +21,7 @@ def lumber(
     merge_below_tokens: int | None = 50,
     skip_empty_sections: bool = True,
     recursive_split: bool = False,
-    block_options: Mapping[str, BlockConfig | dict] | None = None,
+    block_options: Mapping[str, BaseParams | dict] | None = None,
     tokenizer: str = "simple",
     splitter: str = "recursive",
     document_metadata: dict[str, object] | None = None,
@@ -49,7 +49,7 @@ def lumber(
             with no body content when enabled.
         recursive_split: Enable block/text fallback for oversized
             section bodies (effective with ``--splitter section``).
-        block_options: Per-block-kind :class:`BlockConfig` overrides.
+        block_options: Per-block-kind :class:`BaseParams` overrides.
         tokenizer: Built-in tokenizer name (``"simple"`` or ``"tiktoken"``).
         splitter: Built-in splitter name (``"recursive"`` or ``"section"``).
         document_metadata: Extra metadata merged into the document.

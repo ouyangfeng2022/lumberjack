@@ -40,6 +40,8 @@ const zh = {
   opts_isolated_desc: '阻止该块与相邻内容合并',
   opts_nosplit: '禁止拆分',
   opts_nosplit_desc: '即使超出词元预算也保持该块完整',
+  opts_repeat_header: '重复表头',
+  opts_repeat_header_desc: '表格拆分后在每个表格块中重复表头行',
   opts_block_paragraph: '段落',
   opts_block_blockquote: '引用块',
   opts_block_list: '列表',

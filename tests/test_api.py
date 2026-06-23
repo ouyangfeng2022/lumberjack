@@ -12,8 +12,8 @@ from mdit_py_plugins.tasklists import tasklists_plugin
 
 import lumberjack
 from lumberjack import lumber
-from lumberjack.core.models import Chunk, SplitOptions
-from lumberjack.core.options import resolve_block_options
+from lumberjack.core.models import Chunk, SplitOptions, TableBlockParams
+from lumberjack.core.options import parse_cli_block_configs, resolve_block_options
 from lumberjack.core.parsers.markdown.parser import MarkdownItParser
 from lumberjack.core.splitters import RecursiveSplitter
 from lumberjack.core.tokenizers import SimpleCharTokenizer
@@ -97,6 +97,39 @@ def test_lumber_accepts_html_format() -> None:
     assert len(chunks) == 1
     assert chunks[0].document_title == "Guide"
     assert chunks[0].body == "# Guide\n\nIntro bold."
+
+
+def test_lumber_accepts_table_block_params_mapping() -> None:
+    chunks = lumber(
+        """| Name | Value |
+| ---- | ----- |
+| Alpha | 100 |
+| Beta | 200 |
+| Gamma | 300 |
+| Delta | 400 |
+""",
+        max_tokens=28,
+        ideal_max_tokens_ratio=1,
+        merge_below_tokens=-1,
+        block_options={"table": {"repeat_header": False}},
+    )
+
+    assert len(chunks) == 4
+    assert isinstance(chunks[0].body, str)
+    assert "| Name | Value |" in chunks[0].body
+    assert all("| Name | Value |" not in chunk.body for chunk in chunks[1:])
+
+
+def test_parse_cli_block_configs_json_overrides_short_config() -> None:
+    block_options = parse_cli_block_configs(
+        ["table:isolated:500"],
+        json_config='{"table": {"repeat_header": false}}',
+    )
+
+    table = block_options["table"]
+    assert table.isolated is False
+    assert table.max_tokens is None
+    assert table == TableBlockParams(repeat_header=False)
 
 
 def test_lumber_auto_detects_html_path(tmp_path: Path) -> None:

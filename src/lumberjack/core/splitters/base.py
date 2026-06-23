@@ -29,10 +29,10 @@ class _BaseSplitter(SplitterProtocol):
     ):
         self.tokenizer = tokenizer or SimpleCharTokenizer()
         self.options = options or SplitOptions()
-        self._text_splitter = BlockSplitter(self.tokenizer)
+        self._validate_options()
+        self._block_splitter = BlockSplitter(self.tokenizer, self.options)
 
     def split(self, document: DocumentAST) -> list[Chunk]:
-        self._validate_options()
         measured_root = self._measure_section(document.root)
         drafts = self._split_section(measured_root)
         drafts = self._post_process_drafts(drafts)
@@ -54,13 +54,6 @@ class _BaseSplitter(SplitterProtocol):
 
     def _post_process_drafts(self, drafts: list[ChunkDraft]) -> list[ChunkDraft]:
         return drafts
-
-    def _block_budget(self, block_kind: str, default_budget: int) -> int:
-        """Return the per-block max_tokens override, or *default_budget*."""
-        cfg = self.options.block_options.get(block_kind.lower())
-        if cfg and cfg.max_tokens and cfg.max_tokens > 0:
-            return cfg.max_tokens
-        return default_budget
 
     def _separator_delta_after(self, text: str) -> int:
         """Estimate the token delta caused by appending the Markdown separator."""
@@ -167,8 +160,7 @@ class _BaseSplitter(SplitterProtocol):
         headings = node.path
         blocks = node.blocks
         max_tokens = self.options.ideal_max_tokens
-        splittable_kinds = self.options.splittable_kinds
-        standalone = self.options.standalone_kinds
+        standalone_kinds = self.options.standalone_kinds
 
         prefix_tokens = (
             self._heading_path_token_count(headings) if node.level > 0 else 0
@@ -216,7 +208,7 @@ class _BaseSplitter(SplitterProtocol):
             )
 
         for block in blocks:
-            if standalone and block.kind in standalone:
+            if standalone_kinds and block.kind in standalone_kinds:
                 if current_parts:
                     chunks.append(draft_current())
                     current_parts = []
@@ -226,10 +218,10 @@ class _BaseSplitter(SplitterProtocol):
                     current_end_line = None
 
                 block_tokens = self.tokenizer.count(block.text, cache=True)
-                block_pieces = self._text_splitter.split_oversized_block(
+                # This chunk will only contain this block and headings.
+                block_pieces = self._block_splitter.split_oversized_block(
                     block,
-                    max_tokens=self._block_budget(block.kind, budget),
-                    allowed_kinds=splittable_kinds,
+                    default_budget=budget,
                 )
                 if block_pieces is not None:
                     for piece in block_pieces:
@@ -312,11 +304,11 @@ class _BaseSplitter(SplitterProtocol):
                 ):
                     current_end_line = block.end_line
                 continue
-
-            block_pieces = self._text_splitter.split_oversized_block(
+            # TODO: chunk.tokens should not exceed the max_tokens.
+            # Special chunks can be split using a smaller tokens.
+            block_pieces = self._block_splitter.split_oversized_block(
                 block,
-                max_tokens=self._block_budget(block.kind, budget),
-                allowed_kinds=splittable_kinds,
+                default_budget=budget,
             )
             if block_pieces is None:
                 entry = Entry(

@@ -114,7 +114,6 @@ lumberjack-serve
 
 ```python
 from lumberjack import lumber
-from lumberjack.core.models import BlockConfig
 
 # 完整选项
 chunks = lumber(
@@ -161,31 +160,36 @@ chunks = lumber(
 
 ```python
 from lumberjack import lumber
-from lumberjack.core.models import BlockConfig
+from lumberjack.core.models import BaseParams, TableBlockParams
 
 chunks = lumber(
     markdown_text,
     block_options={
-        # 表格：独立分块、禁止拆分、500 token 预算
-        "table": BlockConfig(isolated=True, split=False, max_tokens=500),
+        # 表格：独立分块、500 token 预算，拆分后不重复表头
+        "table": TableBlockParams(
+            isolated=True,
+            max_tokens=500,
+            repeat_header=False,
+        ),
         # 代码块：即使超长也保持完整
-        "code_fence": BlockConfig(split=False),
+        "code_fence": BaseParams(split=False),
         # 段落：自定义预算
-        "paragraph": BlockConfig(max_tokens=800),
+        "paragraph": BaseParams(max_tokens=800),
     },
 )
 ```
 
-`BlockConfig` 字段：
+`BaseParams` 字段：
 
 - **`isolated`** (`bool`) —— 作为独立分块输出，不会与相邻内容合并
 - **`split`** (`bool`) —— 允许拆分超长块
 - **`max_tokens`** (`int | None`) —— 该块类型的预算覆盖值；`None` 时使用全局 `max_tokens`
+- 各块类型的专属 params 都继承这些公共字段。`TableBlockParams` 为 `table` 和 `html_table` 增加 **`repeat_header`** (`bool`)；其他块类型在定义自己的 params 类型前会拒绝表格专属字段。
 
 有效的块类型包括：`paragraph`、`blockquote`、`list`、`list_item`、`table`、`html_table`、`code_block`、`code_fence`、`html_block`、`front_matter`、`math_block`、`math_block_eqno`。
 
 > [!NOTE]
-> **HTML 表格**：HTML 表格（`<table>`）被识别为 `html_table` 块类型，与 Markdown 表格独立处理。它们在切分时保留原始 HTML 格式和属性（如 `border`、`style`、`colspan`、`rowspan`）。使用 `"html_table": BlockConfig(isolated=True)` 可独立于 Markdown 表格进行配置。
+> **HTML 表格**：HTML 表格（`<table>`）被识别为 `html_table` 块类型，与 Markdown 表格独立处理。它们在切分时保留原始 HTML 格式和属性（如 `border`、`style`、`colspan`、`rowspan`）。使用 `"html_table": TableBlockParams(isolated=True)` 可独立于 Markdown 表格进行配置。
 
 #### 自定义 Parser / Tokenizer / Splitter
 
@@ -234,6 +238,7 @@ lumber <input> [options]
 | `--splitter` | `recursive` | `recursive` 或 `section` |
 | `--recursive-split` | off | 为 section 切分器启用块/文本回退 |
 | `--block-config` | — | 按块类型配置（可重复指定） |
+| `--block-config-json` | — | 结构化的按块类型 JSON 配置 |
 
 `--block-config` 的语法为：`KIND[:isolated][:nosplit][:TOKENS]`
 
@@ -246,6 +251,9 @@ lumber doc.md --block-config code_fence:nosplit
 
 # 多个块类型配置
 lumber doc.md --block-config table:isolated --block-config code_fence:nosplit
+
+# 表格专属参数：拆分表格时只在第一片保留表头
+lumber doc.md --block-config-json '{"table":{"repeat_header":false}}'
 ```
 
 **JSON 输出** 包含 `document`、`chunk_count` 和完整元数据的 `chunks` 数组。
@@ -291,6 +299,21 @@ curl -X POST http://localhost:9612/lumber/api/split/file \
 | `block_configs` | object | `null` | 按块类型配置 |
 | `tokenizer` | string | `"simple"` | `simple` 或 `tiktoken` |
 | `splitter` | string | `"recursive"` | `recursive` 或 `section` |
+
+`block_configs` 示例：
+
+```json
+{
+  "table": {
+    "isolated": true,
+    "max_tokens": 500,
+    "repeat_header": false
+  },
+  "html_table": {
+    "repeat_header": false
+  }
+}
+```
 
 #### 响应
 
@@ -340,7 +363,7 @@ docker compose up --build
 4. 最后回退到段落 → 行 → 句子 → 单词 → 硬切分
 
 > [!IMPORTANT]
-> 代码块默认保持完整，即使超过 `max_tokens`；如需允许拆分特定块类型，请使用 `BlockConfig(split=True)`。
+> 代码块默认保持完整，即使超过 `max_tokens`；如需允许拆分特定块类型，请使用 `BaseParams(split=True)`。
 
 ## 解析覆盖范围
 
@@ -369,7 +392,7 @@ src/lumberjack/
 ├── lumber.py                # 公共 lumber() 实现
 ├── cli.py                   # CLI 入口（lumber）
 ├── core/
-│   ├── models.py            # 数据模型（Chunk、BlockConfig、SplitOptions、...）
+│   ├── models.py            # 数据模型（Chunk、BaseParams、SplitOptions、...）
 │   ├── protocols.py         # 协议接口
 │   ├── tokenizers.py        # 简单字符 & tiktoken 分词器
 │   ├── block.py             # 超长块切分 + 块配置解析辅助

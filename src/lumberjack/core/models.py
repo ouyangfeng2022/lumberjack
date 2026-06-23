@@ -130,8 +130,8 @@ class DocumentAST:
 
 
 @dataclass(slots=True, frozen=True)
-class BlockConfig:
-    """Per-block-kind splitting and merge configuration.
+class BaseParams:
+    """Common parameters for all block kinds.
 
     Attributes:
         isolated: When ``True``, the block is always emitted as its own
@@ -140,13 +140,28 @@ class BlockConfig:
             When ``False``, oversized blocks are kept intact even if they
             exceed ``max_tokens``.
         max_tokens: Per-block-kind token budget override.  When ``None``
-            (the default), the unified ``max_tokens`` from
-            :class:`SplitOptions` is used.
+            (the default), the current splitter budget is used.
     """
 
     isolated: bool = False
     split: bool = True
     max_tokens: int | None = None
+
+
+@dataclass(slots=True, frozen=True)
+class TableBlockParams(BaseParams):
+    """Table-specific oversized block splitting options.
+
+    Attributes:
+        isolated: Common block isolation flag inherited from :class:`BaseParams`.
+        split: Common oversized-block splitting flag inherited from :class:`BaseParams`.
+        max_tokens: Common per-kind budget override inherited from :class:`BaseParams`.
+        repeat_header: When ``True``, each split table piece repeats the table
+            header.  When ``False``, only the first split piece includes the
+            header rows.
+    """
+
+    repeat_header: bool = True
 
 
 class BlockKindRegistry:
@@ -164,9 +179,14 @@ class BlockKindRegistry:
         """All registered block kind names."""
         return self._kinds
 
-    def default_handling(self) -> dict[str, BlockConfig]:
-        """Return all registered kinds mapped to default :class:`BlockConfig`."""
-        return dict.fromkeys(sorted(self._kinds), BlockConfig())
+    def default_handling(self) -> dict[str, BaseParams]:
+        """Return all registered kinds mapped to default block params."""
+        return {
+            kind: TableBlockParams()
+            if kind in {"table", "html_table"}
+            else BaseParams()
+            for kind in sorted(self._kinds)
+        }
 
     def validate_kind(self, kind: str) -> str:
         """Validate and return *kind*, raising :class:`ValueError` if unknown."""
@@ -199,10 +219,9 @@ class SplitOptions:
             that support strict heading-level output.
         block_options: Per-block-kind configuration. Keys are lowercase block
             kind strings matching :attr:`MarkdownBlock.kind` values; values are
-            :class:`BlockConfig` instances. Callers that need parser-specific
+            :class:`BaseParams` instances. Callers that need parser-specific
             defaults should resolve them before constructing
             :class:`SplitOptions`.
-        splittable_kinds: Block kinds that allow splitting (cached).
         standalone_kinds: Block kinds marked as isolated (cached).
     """
 
@@ -211,11 +230,10 @@ class SplitOptions:
     merge_below_tokens: int | None = 50
     skip_empty_sections: bool = True
     recursive_split: bool = False
-    block_options: dict[str, BlockConfig] = field(default_factory=dict)
+    block_options: dict[str, BaseParams] = field(default_factory=dict)
 
     # Cached derived fields — computed in __post_init__.
     ideal_max_tokens: int = field(init=False, repr=False)
-    splittable_kinds: frozenset[str] = field(init=False, repr=False)
     standalone_kinds: frozenset[str] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -223,11 +241,6 @@ class SplitOptions:
             self,
             "ideal_max_tokens",
             max(1, int(self.max_tokens * self.ideal_max_tokens_ratio)),
-        )
-        object.__setattr__(
-            self,
-            "splittable_kinds",
-            frozenset(kind for kind, cfg in self.block_options.items() if cfg.split),
         )
         object.__setattr__(
             self,

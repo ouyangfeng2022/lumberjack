@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from lumberjack import lumber
-from lumberjack.core.models import BlockConfig
+from lumberjack.core.models import BaseParams, TableBlockParams
 
 
 def test_html_table_with_table_isolation():
@@ -25,7 +25,7 @@ Some text after the table.
     chunks = lumber(
         markdown,
         max_tokens=500,
-        block_options={"html_table": BlockConfig(isolated=True)},
+        block_options={"html_table": BaseParams(isolated=True)},
     )
 
     # Should have at least 2 chunks: table chunk and text chunk
@@ -101,6 +101,34 @@ def test_large_html_table_splitting():
         assert "<td>" in chunk.body
         # Should NOT contain markdown table syntax
         assert "|---|" not in chunk.body
+
+
+def test_large_html_table_can_omit_repeated_header_rows():
+    """HTML table params can keep header rows only on the first split piece."""
+    rows = [
+        f"  <tr><td>Item {i}</td><td>Value {i}</td><td>Description {i}</td></tr>"
+        for i in range(20)
+    ]
+    markdown = f"""# Large HTML Table
+
+<table>
+  <tr><th>ID</th><th>Name</th><th>Description</th></tr>
+{chr(10).join(rows)}
+</table>
+"""
+
+    chunks = lumber(
+        markdown,
+        max_tokens=200,
+        merge_below_tokens=-1,
+        block_options={"html_table": TableBlockParams(repeat_header=False)},
+    )
+
+    table_chunks = [c for c in chunks if "<table" in c.body and "</table>" in c.body]
+    assert len(table_chunks) > 1
+    assert "<th>ID</th>" in table_chunks[0].body
+    assert all("<th>ID</th>" not in chunk.body for chunk in table_chunks[1:])
+    assert all("<td>Item" in chunk.body for chunk in table_chunks)
 
 
 def test_html_table_vs_markdown_table_distinction():
