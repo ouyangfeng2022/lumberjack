@@ -124,7 +124,6 @@ chunks = lumber(
     ideal_max_tokens_ratio=0.8,
     merge_below_tokens=50,
     skip_empty_sections=True,
-    recursive_split=False,
     tokenizer="simple",        # "simple" | "tiktoken"
     splitter="recursive",      # "recursive" | "section"
 )
@@ -295,7 +294,6 @@ curl -X POST http://localhost:9612/lumber/api/split/file \
 | `ideal_max_tokens_ratio` | float | `0.8` | 优先切分预算比例 |
 | `merge_below_tokens` | int | `50` | 小分块合并软阈值 |
 | `skip_empty_sections` | bool | `true` | 丢弃仅有标题无正文的分块 |
-| `recursive_split` | bool | `false` | 为 section 切分器启用块/文本回退 |
 | `block_configs` | object | `null` | 按块类型配置 |
 | `tokenizer` | string | `"simple"` | `simple` 或 `tiktoken` |
 | `splitter` | string | `"recursive"` | `recursive` 或 `section` |

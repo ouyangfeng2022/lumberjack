@@ -177,7 +177,6 @@ Implemented in `src/lumberjack/cli.py`.
 - Text fallback order is paragraph break -> line break -> sentence -> word -> hard split
 - `Chunk.body` always includes rendered heading context; shared parent headings are deduplicated
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
-- `recursive_split=True` enables block/text fallback for oversized section bodies in `SectionSplitter`
 - `block_options` maps block kinds to `BlockConfig` (per-kind `isolated`, `split`, `max_tokens`)
 
 ## Constraints

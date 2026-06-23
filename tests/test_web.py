@@ -101,27 +101,6 @@ def test_split_with_options(client: TestClient) -> None:
     assert body["chunk_count"] >= 1
 
 
-def test_split_accepts_heading_splitter_with_recursive_split(
-    client: TestClient,
-) -> None:
-    response = client.post(
-        "/lumber/api/split/text",
-        json={
-            "text": "# Parent\n\nParent intro.\n\n## Child\n\nChild body.",
-            "max_tokens": 500,
-            "splitter": "section",
-            "recursive_split": True,
-        },
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert [chunk["headings"] for chunk in body["chunks"]] == [
-        [[1, "Parent"]],
-        [[1, "Parent"], [2, "Child"]],
-    ]
-
-
 def test_split_ignores_legacy_render_common_headings_form_field(
     client: TestClient,
 ) -> None:

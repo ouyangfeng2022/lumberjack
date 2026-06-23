@@ -215,8 +215,6 @@ class SplitOptions:
         skip_empty_sections: When True, discard chunks that contain only a heading
             with no body content. Chunks with zero rendered tokens are always discarded
             regardless of this setting.
-        recursive_split: When True, split oversized direct section bodies in splitters
-            that support strict heading-level output.
         block_options: Per-block-kind configuration. Keys are lowercase block
             kind strings matching :attr:`MarkdownBlock.kind` values; values are
             :class:`BaseParams` instances. Callers that need parser-specific
@@ -229,7 +227,6 @@ class SplitOptions:
     ideal_max_tokens_ratio: float = 0.8
     merge_below_tokens: int | None = 50
     skip_empty_sections: bool = True
-    recursive_split: bool = False
     block_options: dict[str, BaseParams] = field(default_factory=dict)
 
     # Cached derived fields — computed in __post_init__.

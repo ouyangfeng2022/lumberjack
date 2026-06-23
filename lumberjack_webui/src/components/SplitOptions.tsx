@@ -194,20 +194,6 @@ export default function SplitOptions({ options, onChange }: Props) {
             </select>
           </div>
 
-          <div className={styles.checkRow}>
-            <label
-              className={`${styles.checkField} ${options.splitter !== 'section' ? styles.checkDisabled : ''}`}
-            >
-              <input
-                type="checkbox"
-                checked={options.recursive_split}
-                disabled={options.splitter !== 'section'}
-                onChange={(e) => update('recursive_split', e.target.checked)}
-              />
-              <span>{t('opts_recursive_split')}</span>
-            </label>
-          </div>
-
           <div className={styles.field}>
             <span className={styles.fieldLabel}>{t('opts_block_handling')}</span>
             <div className={styles.blockHandlingGrid}>

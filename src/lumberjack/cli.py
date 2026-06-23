@@ -53,11 +53,6 @@ def build_parser() -> argparse.ArgumentParser:
         "(use -1 to disable merging)",
     )
     parser.add_argument(
-        "--recursive-split",
-        action="store_true",
-        help="Split oversized direct section bodies when using --splitter section",
-    )
-    parser.add_argument(
         "--max-heading-level",
         type=int,
         default=None,
@@ -102,7 +97,6 @@ def main() -> None:
         block_options=block_options,
         tokenizer=args.tokenizer,
         splitter=args.splitter,
-        recursive_split=args.recursive_split,
         max_heading_level=args.max_heading_level,
         document_metadata={"path": str(input_path.resolve())},
     )
