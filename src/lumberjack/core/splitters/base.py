@@ -49,6 +49,17 @@ class _BaseSplitter(SplitterProtocol):
                 )
         return tokens
 
+    def _heading_budget_token_count(self, path: HeadingPath) -> int:
+        """Heading tokens counted toward the split budget.
+
+        The base implementation always returns the full heading token count —
+        headings consume budget whether or not they are rendered.  Subclasses
+        that can prove every entry in a chunk shares the chunk's common heading
+        path (no internal relative headings) may override this to return 0 when
+        ``render_headings=False``, making the budget match the rendered body.
+        """
+        return self._heading_path_token_count(path)
+
     def _split_section(self, section: MeasuredSection) -> list[ChunkDraft]:
         raise NotImplementedError
 
@@ -163,7 +174,7 @@ class _BaseSplitter(SplitterProtocol):
         standalone_kinds = self.options.standalone_kinds
 
         prefix_tokens = (
-            self._heading_path_token_count(headings) if node.level > 0 else 0
+            self._heading_budget_token_count(headings) if node.level > 0 else 0
         )
         if prefix_tokens >= max_tokens or not blocks:
             entry = self._entry_from_blocks(
@@ -470,7 +481,7 @@ class _BaseSplitter(SplitterProtocol):
         right_headings = right_draft.headings
 
         common_headings = common_heading_path([left_headings, right_headings])
-        headings_token_count = self._heading_path_token_count(common_headings)
+        headings_token_count = self._heading_budget_token_count(common_headings)
 
         left_body_token_count = left_draft.token_count - headings_token_count
         right_body_token_count = right_draft.token_count - headings_token_count
@@ -511,7 +522,7 @@ class _BaseSplitter(SplitterProtocol):
             return ""
 
         parts: list[str] = []
-        if common_headings:
+        if common_headings and self.options.render_headings:
             parts.append(render_heading_path(common_headings))
 
         previous_headings = common_headings

@@ -58,6 +58,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Split oversized direct section bodies when using --splitter section",
     )
     parser.add_argument(
+        "--no-render-headings",
+        action="store_true",
+        help="Omit the chunk's common heading breadcrumb from the rendered body. "
+        "With --splitter section this also enlarges the split budget; with "
+        "--splitter recursive the budget still includes the hidden headings "
+        "(known limitation).",
+    )
+    parser.add_argument(
         "--max-heading-level",
         type=int,
         default=None,
@@ -103,6 +111,7 @@ def main() -> None:
         tokenizer=args.tokenizer,
         splitter=args.splitter,
         recursive_split=args.recursive_split,
+        render_headings=not args.no_render_headings,
         max_heading_level=args.max_heading_level,
         document_metadata={"path": str(input_path.resolve())},
     )

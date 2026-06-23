@@ -21,6 +21,7 @@ def lumber(
     merge_below_tokens: int | None = 50,
     skip_empty_sections: bool = True,
     recursive_split: bool = False,
+    render_headings: bool = True,
     block_options: Mapping[str, BaseParams | dict] | None = None,
     tokenizer: str = "simple",
     splitter: str = "recursive",
@@ -49,6 +50,10 @@ def lumber(
             with no body content when enabled.
         recursive_split: Enable block/text fallback for oversized
             section bodies (effective with ``--splitter section``).
+        render_headings: When False, omit the chunk's common heading breadcrumb
+            from ``Chunk.body`` while preserving ``Chunk.headings`` metadata.
+            See :attr:`SplitOptions.render_headings` for splitter-specific
+            budget caveats.
         block_options: Per-block-kind :class:`BaseParams` overrides.
         tokenizer: Built-in tokenizer name (``"simple"`` or ``"tiktoken"``).
         splitter: Built-in splitter name (``"recursive"`` or ``"section"``).
@@ -114,6 +119,7 @@ def lumber(
         merge_below_tokens=merge_below_tokens,
         skip_empty_sections=skip_empty_sections,
         recursive_split=recursive_split,
+        render_headings=render_headings,
         block_options=resolved_block_options,
     )
 

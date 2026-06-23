@@ -217,6 +217,18 @@ class SplitOptions:
             regardless of this setting.
         recursive_split: When True, split oversized direct section bodies in splitters
             that support strict heading-level output.
+        render_headings: When False, omit the chunk's common heading breadcrumb from
+            the rendered ``Chunk.body`` while keeping ``Chunk.headings`` metadata
+            intact. Splitter support differs:
+
+            * :class:`~lumberjack.core.splitters.section.SectionSplitter` computes
+              the split budget on render-aware tokens, so ``render_headings=False``
+              produces larger bodies without changing ``max_tokens`` semantics.
+            * :class:`~lumberjack.core.splitters.recursive.RecursiveSplitter` still
+              budgets with headings included — ``Chunk.body`` is shorter than the
+              budget implies because the (now hidden) common headings still consume
+              tokens internally. This is a known limitation to be reconciled in a
+              later revision.
         block_options: Per-block-kind configuration. Keys are lowercase block
             kind strings matching :attr:`MarkdownBlock.kind` values; values are
             :class:`BaseParams` instances. Callers that need parser-specific
@@ -230,6 +242,7 @@ class SplitOptions:
     merge_below_tokens: int | None = 50
     skip_empty_sections: bool = True
     recursive_split: bool = False
+    render_headings: bool = True
     block_options: dict[str, BaseParams] = field(default_factory=dict)
 
     # Cached derived fields — computed in __post_init__.
