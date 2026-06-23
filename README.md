@@ -69,7 +69,7 @@ pip install "lumberjack[all]"          # everything
 ```
 
 > [!NOTE]
-> Requires Python 3.13+.
+> Requires Python 3.10+.
 
 ### From source (for development)
 
@@ -135,6 +135,7 @@ chunks = lumber(
     merge_below_tokens=50,
     skip_empty_sections=True,
     recursive_split=False,
+    render_headings=True,      # False: drop common heading breadcrumb from body
     tokenizer="simple",        # "simple" | "tiktoken"
     splitter="recursive",      # "recursive" | "section"
 )
@@ -249,6 +250,7 @@ lumber <input> [options]
 | `--tokenizer`              | `simple`    | `simple` or `tiktoken`                           |
 | `--splitter`               | `recursive` | `recursive` or `section`                         |
 | `--recursive-split`        | off         | Enable block/text fallback for section splitter  |
+| `--no-render-headings`     | off         | Omit common heading breadcrumb from `body` (see [render_headings](#rendering-headings-render_headings)) |
 | `--block-config`           | —           | Per-block-kind config (repeatable)               |
 | `--block-config-json`      | —           | Structured per-block-kind JSON config            |
 
@@ -308,6 +310,7 @@ Both endpoints accept the same options:
 | `merge_below_tokens` | int | `50` | Soft merge threshold |
 | `skip_empty_sections` | bool | `true` | Discard heading-only chunks |
 | `recursive_split` | bool | `false` | Block/text fallback for section splitter |
+| `render_headings` | bool | `true` | Omit common heading breadcrumb from `body` when `false` (see [render_headings](#rendering-headings-render_headings)) |
 | `block_configs` | object | `null` | Per-block-kind config |
 | `tokenizer` | string | `"simple"` | `simple` or `tiktoken` |
 | `splitter` | string | `"recursive"` | `recursive` or `section` |
@@ -376,6 +379,30 @@ Recursive splitting order:
 
 > [!IMPORTANT]
 > Code blocks are preserved intact by default even when they exceed `max_tokens`. Use `BaseParams(split=True)` to allow splitting specific block kinds.
+
+### Rendering Headings (`render_headings`)
+
+By default each chunk's rendered `body` starts with the common heading
+breadcrumb (e.g. `# Title\n\n## Section`). Set `render_headings=False` to
+omit that breadcrumb from `body` while keeping the `Chunk.headings` metadata
+intact. Splitter support differs:
+
+| Splitter | Body behavior | Budget behavior |
+| --- | --- | --- |
+| **Section** | Common heading breadcrumb omitted | **Render-aware**: the budget previously reserved for the breadcrumb is reclaimed for body content, so `max_tokens` faithfully bounds the rendered body and `token_count == estimated_token_count == measured body tokens`. |
+| **Recursive** (default) | Common heading breadcrumb omitted; *internal* relative headings (e.g. sibling `###` titles inside a merged chunk) are still rendered | **Budget includes the hidden headings (known limitation)**: the split plan still reserves tokens for the now-hidden breadcrumb, so `body` is shorter than `max_tokens` would otherwise allow. `token_count` reflects the rendered body; `estimated_token_count` reflects the budgeted plan. The split plan (chunk count, headings, boundaries) is identical to `render_headings=True`. |
+
+> [!WARNING]
+> **Recursive splitter caveat**: with `render_headings=False`, the rendered `body` is intentionally shorter than the budget implies. This stems from the structural coupling between a section's title and its role as either chunk-prefix (not rendered) or internal-relative-heading (still rendered), which is only determined after chunks are packed/merged. Reconciling the budget requires a deeper refactor and is tracked for a later revision. If you need a render-aware budget today, use `splitter="section"`.
+
+```python
+# Section splitter: render-aware budget (body fills max_tokens)
+lumber(doc, splitter="section", render_headings=False, max_tokens=1000)
+
+# Recursive splitter: body drops the breadcrumb but the budget still reserves
+# tokens for it (documented limitation).
+lumber(doc, splitter="recursive", render_headings=False, max_tokens=1000)
+```
 
 ## Parsing Coverage
 
