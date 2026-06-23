@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, TypeAlias
-
-if TYPE_CHECKING:
-    from .visitor import AstVisitor
+from typing import Any, TypeAlias
 
 HeadingKey: TypeAlias = tuple[int, str]  # noqa: UP040
 HeadingPath: TypeAlias = tuple[HeadingKey, ...]  # noqa: UP040
@@ -26,10 +23,6 @@ class MarkdownInline:
     text: str = ""
     children: tuple[MarkdownInline, ...] = ()
     attrs: dict[str, Any] = field(default_factory=dict)
-
-    def accept(self, visitor: AstVisitor) -> None:
-        """Dispatch this inline to ``visitor.walk_inline``."""
-        visitor.walk_inline(self)
 
 
 @dataclass(slots=True, frozen=True)
@@ -57,10 +50,6 @@ class MarkdownBlock:
     children: tuple[MarkdownBlock, ...] = ()
     inlines: tuple[MarkdownInline, ...] = ()
     attrs: dict[str, Any] = field(default_factory=dict)
-
-    def accept(self, visitor: AstVisitor) -> None:
-        """Dispatch this block to ``visitor.walk_block``."""
-        visitor.walk_block(self)
 
 
 @dataclass(slots=True)
@@ -98,10 +87,6 @@ class SectionNode:
     def add_child(self, child: SectionNode) -> None:
         self.children.append(child)
 
-    def accept(self, visitor: AstVisitor) -> None:
-        """Dispatch this section to ``visitor.walk_section``."""
-        visitor.walk_section(self)
-
 
 @dataclass(slots=True, frozen=True)
 class DocumentAST:
@@ -123,10 +108,6 @@ class DocumentAST:
     root: SectionNode
     metadata: dict[str, Any] = field(default_factory=dict)
     reference_definitions: dict[str, dict[str, str]] = field(default_factory=dict)
-
-    def accept(self, visitor: AstVisitor) -> None:
-        """Dispatch this document to ``visitor.walk_document``."""
-        visitor.walk_document(self)
 
 
 @dataclass(slots=True, frozen=True)
