@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 if TYPE_CHECKING:
     from .visitor import AstVisitor
 
-type HeadingKey = tuple[int, str]
-type HeadingPath = tuple[HeadingKey, ...]
+HeadingKey: TypeAlias = tuple[int, str]  # noqa: UP040
+HeadingPath: TypeAlias = tuple[HeadingKey, ...]  # noqa: UP040
 
 
 @dataclass(slots=True, frozen=True)
