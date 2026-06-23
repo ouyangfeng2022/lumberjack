@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from .base import _BaseSplitter
-from .drafts import ChunkDraft, Entry, MeasuredSection
-from .headings import common_heading_path
+from ..models import ChunkDraft, Entry, MeasuredSection, common_heading_path
+from .base import BaseSplitter
 
 
-class RecursiveSplitter(_BaseSplitter):
+class RecursiveSplitter(BaseSplitter):
     """Recursively split a document into token-bounded chunks.
 
     Unlike SectionSplitter which keeps each heading section intact, this splitter

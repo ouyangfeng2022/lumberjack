@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from .base import _BaseSplitter
-from .drafts import ChunkDraft, MeasuredSection
+from ..models import ChunkDraft, MeasuredSection
+from .base import BaseSplitter
 
 
-class SectionSplitter(_BaseSplitter):
+class SectionSplitter(BaseSplitter):
     """Split a document into non-overlapping chunks by heading section.
 
     Each heading-defined section becomes its own chunk.  Oversized

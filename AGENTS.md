@@ -89,7 +89,7 @@ Main components:
 - **Options**: `src/lumberjack/core/options.py`
   - Shared block option resolution and CLI/JSON block config parsing helpers
 - **Splitters**: `src/lumberjack/core/splitters/` — operate on `DocumentAST`, format-agnostic
-  - `base.py` provides `_BaseSplitter` shared state and helpers
+  - `base.py` provides `BaseSplitter` shared state and helpers
   - `recursive.py` provides `RecursiveSplitter` (registry: "recursive") — structure-first, budget-aware
   - `section.py` provides `SectionSplitter` (registry: "section") — one chunk per heading section
   - `registry.py` provides `SPLITTER_REGISTRY` and `create_splitter()` factory

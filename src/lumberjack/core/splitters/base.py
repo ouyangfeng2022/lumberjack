@@ -3,23 +3,27 @@ from __future__ import annotations
 from ..block import BlockSplitter
 from ..models import (
     Chunk,
+    ChunkDraft,
     DocumentAST,
+    Entry,
     HeadingPath,
     MarkdownBlock,
+    MeasuredSection,
     SectionNode,
+    SectionTokenCounts,
     SplitOptions,
+    common_heading_path,
+    render_heading_path,
 )
 from ..protocols import SplitterProtocol, TokenizerProtocol
 from ..tokenizers import SimpleCharTokenizer
 from ..utils import join_markdown
-from .drafts import ChunkDraft, Entry, MeasuredSection, SectionTokenCounts
-from .headings import common_heading_path, render_heading_path
 
 SEPARATOR = "\n\n"
 SEPARATOR_DELTA_WINDOW_CHARS = 8
 
 
-class _BaseSplitter(SplitterProtocol):
+class BaseSplitter(SplitterProtocol):
     """Shared state and helpers for splitter strategies."""
 
     def __init__(
@@ -92,6 +96,8 @@ class _BaseSplitter(SplitterProtocol):
         # 1. Count body tokens
         body_token_count = 0
         for idx, block in enumerate(section.blocks):
+            if not block.text:
+                continue
             if idx == len(section.blocks) - 1:
                 body_token_count += self.tokenizer.count(block.text, cache=True)
             else:
@@ -397,9 +403,7 @@ class _BaseSplitter(SplitterProtocol):
                     relative = last.headings[len(headings) :]
                     if relative:
                         ht = render_heading_path(relative)
-                        estimated -= self.tokenizer.count(
-                            ht + SEPARATOR, cache=True
-                        ) - self.tokenizer.count(ht, cache=True)
+                        estimated -= self._separator_delta_after(ht)
             finalized.append(
                 Chunk(
                     chunk_id=f"chunk-{index:04d}",
@@ -570,4 +574,4 @@ class _BaseSplitter(SplitterProtocol):
         return merged
 
 
-__all__ = ["_BaseSplitter"]
+__all__ = ["BaseSplitter"]
