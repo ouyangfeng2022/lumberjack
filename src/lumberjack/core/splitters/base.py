@@ -385,21 +385,7 @@ class _BaseSplitter(SplitterProtocol):
                 continue
             index += 1
             token_count = self.tokenizer.count(body)
-            # Adjust the estimate for the trailing phantom \n\n in the last
-            # entry.  When the last entry has empty body, its heading's
-            # trailing \n\n (from heading_path_token_count) was counted in
-            # the incremental estimate but is never rendered — there is no
-            # next entry for it to separate from.
-            estimated = chunk.token_count
-            if chunk.entries:
-                last = chunk.entries[-1]
-                if not last.body.strip():
-                    relative = last.headings[len(headings) :]
-                    if relative:
-                        ht = render_heading_path(relative)
-                        estimated -= self.tokenizer.count(
-                            ht + SEPARATOR, cache=True
-                        ) - self.tokenizer.count(ht, cache=True)
+            estimated = self._estimated_token_count(chunk, headings)
             finalized.append(
                 Chunk(
                     chunk_id=f"chunk-{index:04d}",
@@ -506,18 +492,30 @@ class _BaseSplitter(SplitterProtocol):
         *,
         common_headings: HeadingPath,
     ) -> str:
-        """Render entries into Markdown body content."""
+        """Render entries into Markdown body content.
+
+        When ``SplitOptions.render_headings`` is True, the chunk's common
+        heading breadcrumb is rendered once at the top.  When False, the
+        common prefix (already available as ``chunk.headings`` metadata) is
+        omitted from the body.  In both modes each entry's own relative
+        headings are rendered and de-duplicated against the previous entry
+        so the chunk's internal structure is preserved.
+        """
         if not entries:
             return ""
 
         parts: list[str] = []
-        if common_headings:
+        # The common prefix breadcrumb is only emitted when headings are
+        # rendered; when disabled, it is already available as
+        # ``chunk.headings`` metadata.
+        if self.options.render_headings and common_headings:
             parts.append(render_heading_path(common_headings))
 
         previous_headings = common_headings
+        prefix_len = len(common_headings)
         for entry in entries:
             shared_headings = common_heading_path((previous_headings, entry.headings))
-            if len(shared_headings) < len(common_headings):
+            if len(shared_headings) < prefix_len:
                 shared_headings = common_headings
             relative_headings = entry.headings[len(shared_headings) :]
 
@@ -532,6 +530,96 @@ class _BaseSplitter(SplitterProtocol):
             previous_headings = entry.headings
 
         return join_markdown(parts)
+
+    def _estimated_token_count(
+        self,
+        chunk: ChunkDraft,
+        headings: HeadingPath,
+    ) -> int:
+        """Return the token estimate aligned with the actually rendered body.
+
+        ``chunk.token_count`` is the draft estimate, which counts every
+        heading in every entry *with* a trailing ``\\n\\n`` separator.  The
+        rendered body differs from this estimate in two ways, and the
+        estimate is adjusted here so ``estimated_token_count`` always equals
+        the true ``tokenizer.count(body)``:
+
+        - The common prefix breadcrumb is only emitted when
+          ``render_headings`` is True.  When disabled, drop its tokens.
+        - The estimate attaches a trailing ``\\n\\n`` to *every* heading,
+          but a heading at the very end of the rendered body (i.e. the last
+          entry has empty body) is never followed by anything, so that
+          phantom separator must be removed.  The trailing heading may be
+          the common prefix itself (when the whole body is a breadcrumb) or
+          the last entry's relative heading.
+        """
+        estimated = chunk.token_count
+
+        # 1. Common prefix tokens (with its trailing separator) are only in the
+        #    body when headings are rendered.  Skip the lookup entirely when
+        #    the prefix is actually emitted.
+        if headings and not self.options.render_headings:
+            estimated -= self._heading_path_token_count(headings)
+
+        # 2. Phantom trailing separator after the last rendered unit when the
+        #    chunk ends on a heading rather than body text.
+        if chunk.entries:
+            last = chunk.entries[-1]
+            if not last.body.strip():
+                trailing_heading = self._rendered_trailing_heading(
+                    chunk.entries, headings
+                )
+                if trailing_heading:
+                    estimated -= self._trailing_separator_delta(trailing_heading)
+
+        return estimated
+
+    def _rendered_trailing_heading(
+        self,
+        entries: list[Entry],
+        common_headings: HeadingPath,
+    ) -> str:
+        """Return the heading string the renderer emits at the very tail.
+
+        Mirrors the logic in :meth:`_render_body` for the last entry: the
+        rendered tail is the last entry's relative heading path (relative to
+        the running shared-prefix tracked across entries).  When the last
+        entry has a non-empty body there is no trailing heading; the caller
+        only invokes this when the last entry's body is empty.
+
+        - When ``render_headings`` is True and every entry is empty, the
+          common prefix breadcrumb may itself be the trailing heading.
+        - When ``render_headings`` is False, the common prefix is never
+          emitted, so a body-only-common-prefix chunk renders nothing
+          (handled upstream by skip / empty filtering).
+        """
+        # Recompute the shared-prefix length the renderer would use for the
+        # last entry by replaying the dedup walk across all entries.
+        previous_headings = common_headings
+        prefix_len = len(common_headings)
+        for entry in entries:
+            shared = common_heading_path((previous_headings, entry.headings))
+            if len(shared) < prefix_len:
+                shared = common_headings
+            relative = entry.headings[len(shared) :]
+            previous_headings = entry.headings
+        # `relative` is now the last entry's relative heading path.
+        if relative:
+            return render_heading_path(relative)
+
+        # No relative heading on the last entry: the trailing unit is the
+        # common prefix breadcrumb, but only when it is actually rendered.
+        if self.options.render_headings and common_headings:
+            return render_heading_path(common_headings)
+        return ""
+
+    def _trailing_separator_delta(self, text: str) -> int:
+        """Tokens added by appending ``SEPARATOR`` to *text* (a phantom correction)."""
+        if not text:
+            return 0
+        return self.tokenizer.count(
+            text + SEPARATOR, cache=True
+        ) - self.tokenizer.count(text, cache=True)
 
     def _merge_small_chunks(
         self,

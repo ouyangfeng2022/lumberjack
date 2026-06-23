@@ -14,7 +14,7 @@ const DEFAULT_OPTIONS: Options = {
   ideal_max_tokens_ratio: 0.8,
   merge_below_tokens: 50,
   skip_empty_sections: true,
-  recursive_split: false,
+  render_headings: true,
   block_configs: null,
   tokenizer: 'simple',
   splitter: 'recursive',
