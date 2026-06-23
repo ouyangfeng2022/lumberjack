@@ -124,7 +124,7 @@ chunks = lumber(
     ideal_max_tokens_ratio=0.8,
     merge_below_tokens=50,
     skip_empty_sections=True,
-    render_headings=True,      # 设为 False 可从分块正文中移除该分块的公共标题前缀
+    recursive_split=False,
     tokenizer="simple",        # "simple" | "tiktoken"
     splitter="recursive",      # "recursive" | "section"
 )
@@ -236,7 +236,7 @@ lumber <input> [options]
 | `--merge-below-tokens` | `50` | 小分块合并软阈值 |
 | `--tokenizer` | `simple` | `simple` 或 `tiktoken` |
 | `--splitter` | `recursive` | `recursive` 或 `section` |
-| `--render-headings` | on | 在分块正文中渲染公共标题前缀（用 `--no-render-headings` 关闭；`chunk.headings` 始终保留） |
+| `--recursive-split` | off | 为 section 切分器启用块/文本回退 |
 | `--block-config` | — | 按块类型配置（可重复指定） |
 | `--block-config-json` | — | 结构化的按块类型 JSON 配置 |
 
@@ -295,7 +295,7 @@ curl -X POST http://localhost:9612/lumber/api/split/file \
 | `ideal_max_tokens_ratio` | float | `0.8` | 优先切分预算比例 |
 | `merge_below_tokens` | int | `50` | 小分块合并软阈值 |
 | `skip_empty_sections` | bool | `true` | 丢弃仅有标题无正文的分块 |
-| `render_headings` | bool | `true` | 在分块正文中渲染公共标题前缀 |
+| `recursive_split` | bool | `false` | 为 section 切分器启用块/文本回退 |
 | `block_configs` | object | `null` | 按块类型配置 |
 | `tokenizer` | string | `"simple"` | `simple` 或 `tiktoken` |
 | `splitter` | string | `"recursive"` | `recursive` 或 `section` |
