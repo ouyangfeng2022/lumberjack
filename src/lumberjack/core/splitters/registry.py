@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from ..models import SplitOptions
 from ..protocols import SplitterProtocol, TokenizerProtocol
-from .base import _BaseSplitter
+from .base import BaseSplitter
 from .recursive import RecursiveSplitter
 from .section import SectionSplitter
 
-SPLITTER_REGISTRY: dict[str, type[_BaseSplitter]] = {
+SPLITTER_REGISTRY: dict[str, type[BaseSplitter]] = {
     "recursive": RecursiveSplitter,
     "section": SectionSplitter,
 }

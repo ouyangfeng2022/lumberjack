@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, TypeAlias
+from typing import Any, Literal, TypeAlias
+
+from .utils import join_markdown
 
 HeadingKey: TypeAlias = tuple[int, str]  # noqa: UP040
 HeadingPath: TypeAlias = tuple[HeadingKey, ...]  # noqa: UP040
@@ -265,3 +268,115 @@ class Chunk:
     document_path: str | None = None
     start_line: int | None = None
     end_line: int | None = None
+
+
+def render_heading_path(path: HeadingPath) -> str:
+    """Render a full heading breadcrumb path as nested Markdown headings."""
+
+    def _render_heading(level: int, title: str) -> str:
+        """Render a heading as a Markdown ATX heading string."""
+        if level <= 0:
+            return title.strip()
+        return f"{'#' * level} {title.strip()}"
+
+    return join_markdown([_render_heading(level, title) for level, title in path])
+
+
+def common_heading_path(paths: Iterable[HeadingPath]) -> HeadingPath:
+    iterator = iter(paths)
+    first = tuple(next(iterator, ()))
+    common = first
+    for path in iterator:
+        limit = min(len(common), len(path))
+        index = 0
+        while index < limit and common[index] == path[index]:
+            index += 1
+        common = common[:index]
+        if not common:
+            break
+    return common
+
+
+@dataclass(slots=True)
+class Entry:
+    """Rendered content unit with heading context and line range, a flattened SectionNode.
+
+    Args:
+        headings: Full heading path for the entry, used for rendering and metadata.
+        body: Rendered Markdown body text for the entry, excluding headings.
+        start_line: Starting line number of the entry in the original document, if available.
+        end_line: Ending line number of the entry in the original document, if available.
+        body_token_count: Cached token count for the entry body, excluding headings.
+    """
+
+    headings: HeadingPath
+    body: str
+    start_line: int | None
+    end_line: int | None
+    body_token_count: int = 0
+
+
+@dataclass(slots=True)
+class ChunkDraft:
+    """Intermediate chunk holding grouped entries, token estimate, and split source.
+
+    Args:
+        entries: List of entries to be merged into the chunk, with heading context and body.
+        headings: The full heading path context for the chunk, used for rendering and metadata.
+
+            ``# H1 \n\n ## H2.1 \n\n Content1``, headings=[(1, "H1"), (2, "H2.1")].
+
+            ``# H1 \n\n ## H2.1 \n\n Content1 ## H2.2 \n\n Content2``, headings=[(1, "H1")].
+
+        headings_token_count: The token count for the chunk's full heading path.
+        body_token_count: The token count for the chunk body (sum of entry body_token_count plus separator deltas).
+        token_count: `headings_token_count` + `body_token_count`.
+        split_origin: The source of the split that produced this draft, for debugging/analysis.
+        chunk_type: The type of content in the chunk (e.g. "paragraph", "code_block"), used for metadata.
+
+    """
+
+    entries: list[Entry]
+    headings: HeadingPath
+    headings_token_count: int
+    body_token_count: int
+    token_count: int
+    split_origin: Literal["section", "fragment", "text_piece", "merge"] = "section"
+    chunk_type: str = "paragraph"
+
+
+@dataclass(slots=True, frozen=True)
+class SectionTokenCounts:
+    """Token estimates for a section heading, own body, and full subtree.
+
+    Args:
+        title: Tokens for the section's own heading title (0 if level 0).
+        body: Tokens for the section's own body blocks (0 if no blocks).
+        subtree: Tokens for the entire section subtree, including own heading and body,
+            and all descendant sections' headings and bodies.
+    """
+
+    title: int
+    body: int
+    subtree: int
+
+
+@dataclass(slots=True, frozen=True)
+class MeasuredSection:
+    """A SectionNode plus splitter-specific token counts for its measured children.
+
+    Args:
+        node: The original SectionNode.
+        counts: Cached token counts for the section's title, body, and full subtree.
+        tail_text: Rendered tail text for cheap separator-delta estimates when this
+            section is followed by more rendered Markdown.
+        can_emit_as_single_chunk: Whether the section subtree can be emitted as one
+            chunk without isolating standalone blocks.
+        children: Measured child sections with the same structure as the original.
+    """
+
+    node: SectionNode
+    counts: SectionTokenCounts
+    tail_text: str
+    can_emit_as_single_chunk: bool
+    children: tuple[MeasuredSection, ...] = ()

@@ -4,7 +4,13 @@ from dataclasses import fields
 from pathlib import Path
 
 from lumberjack import lumber
-from lumberjack.core.models import BaseParams, SplitOptions, TableBlockParams
+from lumberjack.core.models import (
+    BaseParams,
+    ChunkDraft,
+    Entry,
+    SplitOptions,
+    TableBlockParams,
+)
 from lumberjack.core.options import resolve_block_options
 from lumberjack.core.parsers.markdown.parser import MarkdownParser
 from lumberjack.core.splitters import (
@@ -12,7 +18,6 @@ from lumberjack.core.splitters import (
     SectionSplitter,
     create_splitter,
 )
-from lumberjack.core.splitters.drafts import ChunkDraft, Entry
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 
 FIXTURE = (
