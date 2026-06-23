@@ -31,7 +31,6 @@ const zh = {
   opts_splitter: '切分器',
   opts_splitter_recursive: '递归切分',
   opts_splitter_section: '章节切分',
-  opts_recursive_split: '递归拆分超大章节',
   opts_tokenizer: '分词器',
   opts_tokenizer_simple: '简单',
   opts_tokenizer_tiktoken: 'Tiktoken',

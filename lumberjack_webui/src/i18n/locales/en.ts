@@ -31,7 +31,6 @@ const en = {
   opts_splitter: 'Splitter',
   opts_splitter_recursive: 'Recursive',
   opts_splitter_section: 'Section',
-  opts_recursive_split: 'Recursively split oversized sections',
   opts_tokenizer: 'Tokenizer',
   opts_tokenizer_simple: 'Simple',
   opts_tokenizer_tiktoken: 'Tiktoken',

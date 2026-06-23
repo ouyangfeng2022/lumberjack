@@ -134,7 +134,6 @@ chunks = lumber(
     ideal_max_tokens_ratio=0.8,
     merge_below_tokens=50,
     skip_empty_sections=True,
-    recursive_split=False,
     tokenizer="simple",        # "simple" | "tiktoken"
     splitter="recursive",      # "recursive" | "section"
 )
@@ -307,7 +306,6 @@ Both endpoints accept the same options:
 | `ideal_max_tokens_ratio` | float | `0.8` | Preferred split budget ratio |
 | `merge_below_tokens` | int | `50` | Soft merge threshold |
 | `skip_empty_sections` | bool | `true` | Discard heading-only chunks |
-| `recursive_split` | bool | `false` | Block/text fallback for section splitter |
 | `block_configs` | object | `null` | Per-block-kind config |
 | `tokenizer` | string | `"simple"` | `simple` or `tiktoken` |
 | `splitter` | string | `"recursive"` | `recursive` or `section` |
