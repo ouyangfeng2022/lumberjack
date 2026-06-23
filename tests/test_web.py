@@ -168,7 +168,7 @@ def test_split_with_block_configs(client: TestClient) -> None:
     assert "Intro." not in table_chunks[0]["body"]
 
 
-def test_split_rejects_invalid_block_config_field(client: TestClient) -> None:
+def test_split_rejects_invalid_block_params_field(client: TestClient) -> None:
     response = client.post(
         "/lumber/api/split/text",
         json={
@@ -181,6 +181,60 @@ def test_split_rejects_invalid_block_config_field(client: TestClient) -> None:
 
     assert response.status_code == 400
     assert "isolated" in response.json()["detail"]
+
+
+def test_split_with_table_block_params(client: TestClient) -> None:
+    md = """| Name | Value |
+| ---- | ----- |
+| Alpha | 100 |
+| Beta | 200 |
+| Gamma | 300 |
+| Delta | 400 |
+"""
+    response = client.post(
+        "/lumber/api/split/text",
+        json={
+            "text": md,
+            "max_tokens": 28,
+            "ideal_max_tokens_ratio": 1,
+            "merge_below_tokens": -1,
+            "block_configs": {"table": {"repeat_header": False}},
+        },
+    )
+
+    assert response.status_code == 200
+    chunks = response.json()["chunks"]
+    assert len(chunks) == 4
+    assert "| Name | Value |" in chunks[0]["body"]
+    assert all("| Name | Value |" not in chunk["body"] for chunk in chunks[1:])
+
+
+def test_split_rejects_unknown_table_params_field(client: TestClient) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={
+            "text": "| A |\n|---|\n| 1 |",
+            "block_configs": {"table": {"repeat_headers": False}},
+        },
+    )
+
+    assert response.status_code == 400
+    assert "repeat_header" in response.json()["detail"]
+
+
+def test_split_rejects_table_specific_field_for_non_table_kind(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={
+            "text": "Paragraph.",
+            "block_configs": {"paragraph": {"repeat_header": False}},
+        },
+    )
+
+    assert response.status_code == 400
+    assert "repeat_header" in response.json()["detail"]
 
 
 def test_split_block_configs_default_applies_when_field_not_sent(

@@ -188,6 +188,17 @@
   cursor: pointer;
 }
 
+.blockNosplit:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.blockSpacer {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
 @media (max-width: 860px) {
   .row {
     grid-template-columns: 1fr;

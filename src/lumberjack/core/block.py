@@ -3,7 +3,7 @@
 - :class:`BlockSplitter` splits oversized text/code/table/list blocks into
   token-bounded pieces.
 - :func:`parse_block_config_entry` parses ``KIND[:isolated][:nosplit][:TOKENS]``
-  strings into ``(kind, BlockConfig)`` pairs for the CLI.
+  strings into ``(kind, BaseParams)`` pairs for the CLI.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from .models import BlockConfig, BlockKindRegistry
+from .models import BaseParams, BlockKindRegistry, SplitOptions, TableBlockParams
 from .parsers.html.table_parser import HTMLTableParser, HTMLTableRow
 
 if TYPE_CHECKING:
@@ -26,33 +26,58 @@ TABLE_DELIMITER_CELL_RE = re.compile(r":?-+(:?-+)*:?")
 class BlockSplitter:
     """Splits oversized text blocks into token-bounded pieces."""
 
-    def __init__(self, tokenizer: TokenizerProtocol) -> None:
+    def __init__(
+        self,
+        tokenizer: TokenizerProtocol,
+        options: SplitOptions | None = None,
+    ) -> None:
         self.tokenizer = tokenizer
+        self.options = options or SplitOptions()
         self._html_table_parser = HTMLTableParser()
 
     def split_oversized_block(
         self,
         block: MarkdownBlock,
         *,
-        max_tokens: int,
-        allowed_kinds: frozenset[str] | set[str],
+        default_budget: int,
     ) -> list[str] | None:
-        if block.kind.lower() not in allowed_kinds:
+        config = self._block_config(block.kind)
+        if config is None or not config.split:
             return None
 
+        budget = self._block_budget(block.kind, default_budget)
+
         if block.kind in {"code_block", "code_fence"}:
-            return self.split_code_block(block, max_tokens=max_tokens)
+            return self.split_code_block(block, max_tokens=budget)
 
         if block.kind == "list" and block.children:
-            return self.split_list_block(block, max_tokens=max_tokens)
+            return self.split_list_block(block, max_tokens=budget)
 
         if block.kind == "table":
-            return self.split_table_block(block, max_tokens=max_tokens)
+            return self.split_table_block(block, default_budget=default_budget)
 
         if block.kind == "html_table":
-            return self.split_html_table_block(block, max_tokens=max_tokens)
+            return self.split_html_table_block(
+                block,
+                default_budget=default_budget,
+            )
 
-        return self.split_text(block.text, max_tokens=max_tokens)
+        return self.split_text(block.text, max_tokens=budget)
+
+    def _block_config(self, kind: str) -> BaseParams | None:
+        return self.options.block_options.get(kind.lower())
+
+    def _block_budget(self, kind: str, default_budget: int | None = None) -> int:
+        config = self._block_config(kind)
+        if config and config.max_tokens:
+            return config.max_tokens
+        if default_budget is not None:
+            return default_budget
+        return self.options.max_tokens
+
+    def _repeat_header(self, kind: str) -> bool:
+        config = self._block_config(kind)
+        return not isinstance(config, TableBlockParams) or config.repeat_header
 
     def split_code_block(
         self,
@@ -77,10 +102,12 @@ class BlockSplitter:
         self,
         block: MarkdownBlock,
         *,
-        max_tokens: int,
+        default_budget: int | None = None,
     ) -> list[str]:
         # Handle markdown table
         lines = [line.rstrip() for line in block.text.splitlines() if line.strip()]
+        max_tokens = self._block_budget(block.kind, default_budget)
+        repeat_header = self._repeat_header(block.kind)
         if len(lines) < 3 or not self.is_table_delimiter_row(lines[1]):
             return self.split_text(block.text, max_tokens=max_tokens)
 
@@ -91,11 +118,14 @@ class BlockSplitter:
 
         for row in rows:
             candidate_rows = [*current_rows, row]
-            candidate = self.render_table_piece(header, candidate_rows)
+            candidate_header = header if repeat_header or not pieces else []
+            candidate = self.render_table_piece(candidate_header, candidate_rows)
             if current_rows and self.tokenizer.count(candidate) > max_tokens:
-                pieces.append(self.render_table_piece(header, current_rows))
+                piece_header = header if repeat_header or not pieces else []
+                pieces.append(self.render_table_piece(piece_header, current_rows))
                 current_rows = [row]
-                single_row = self.render_table_piece(header, current_rows)
+                single_header = header if repeat_header or not pieces else []
+                single_row = self.render_table_piece(single_header, current_rows)
                 if self.tokenizer.count(single_row) > max_tokens:
                     pieces.append(single_row)
                     current_rows = []
@@ -108,7 +138,8 @@ class BlockSplitter:
             current_rows = candidate_rows
 
         if current_rows:
-            pieces.append(self.render_table_piece(header, current_rows))
+            piece_header = header if repeat_header or not pieces else []
+            pieces.append(self.render_table_piece(piece_header, current_rows))
 
         return pieces or [block.text]
 
@@ -125,13 +156,15 @@ class BlockSplitter:
         self,
         block: MarkdownBlock,
         *,
-        max_tokens: int,
+        default_budget: int | None = None,
     ) -> list[str]:
         """Split an HTML table while preserving its original HTML format.
 
         This method extracts HTML tables and splits them by rows while keeping
         the HTML structure intact, without converting to markdown format.
         """
+        max_tokens = self._block_budget(block.kind, default_budget)
+        repeat_header = self._repeat_header(block.kind)
         tables = self._html_table_parser.extract_tables(block.text)
         if not tables:
             return [block.text]
@@ -169,14 +202,20 @@ class BlockSplitter:
             for row in data_rows:
                 test_rows = [*current_rows, row]
                 # Build test HTML to check token count
+                candidate_headers = (
+                    header_rows if repeat_header or pieces_count == 0 else []
+                )
                 test_html = self._build_html_table_piece(
-                    table_open_tag, caption_html, header_rows, test_rows
+                    table_open_tag, caption_html, candidate_headers, test_rows
                 )
 
                 if current_rows and self.tokenizer.count(test_html) > max_tokens:
                     # Emit current group
+                    piece_headers = (
+                        header_rows if repeat_header or pieces_count == 0 else []
+                    )
                     piece_html = self._build_html_table_piece(
-                        table_open_tag, caption_html, header_rows, current_rows
+                        table_open_tag, caption_html, piece_headers, current_rows
                     )
                     pieces.append(piece_html)
                     current_rows = [row]
@@ -191,8 +230,11 @@ class BlockSplitter:
 
             # Don't forget remaining rows
             if current_rows:
+                piece_headers = (
+                    header_rows if repeat_header or pieces_count == 0 else []
+                )
                 piece_html = self._build_html_table_piece(
-                    table_open_tag, caption_html, header_rows, current_rows
+                    table_open_tag, caption_html, piece_headers, current_rows
                 )
                 pieces.append(piece_html)
                 pieces_count += 1
@@ -274,7 +316,8 @@ class BlockSplitter:
         *,
         max_tokens: int,
     ) -> list[str]:
-        if self.tokenizer.count(text) <= max_tokens:
+        # TODO: optimize
+        if self.tokenizer.count(text, cache=True) <= max_tokens:
             return [text]
 
         if any(
@@ -365,8 +408,8 @@ class BlockSplitter:
 
 def parse_block_config_entry(
     entry: str, registry: BlockKindRegistry
-) -> tuple[str, BlockConfig]:
-    """Parse a ``KIND[:isolated][:nosplit][:TOKENS]`` string into ``(kind, BlockConfig)``.
+) -> tuple[str, BaseParams]:
+    """Parse a ``KIND[:isolated][:nosplit][:TOKENS]`` string into ``(kind, BaseParams)``.
 
     The colon-separated parts after the kind name are classified by content:
 
@@ -407,4 +450,5 @@ def parse_block_config_entry(
                 raise ValueError(f"Token count must be positive in: {entry!r}")
             max_tokens = tokens
 
-    return kind, BlockConfig(isolated=isolated, split=split, max_tokens=max_tokens)
+    params_cls = TableBlockParams if kind in {"table", "html_table"} else BaseParams
+    return kind, params_cls(isolated=isolated, split=split, max_tokens=max_tokens)

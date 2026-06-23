@@ -4,7 +4,7 @@ from dataclasses import fields
 from pathlib import Path
 
 from lumberjack import lumber
-from lumberjack.core.models import BlockConfig, SplitOptions
+from lumberjack.core.models import BaseParams, SplitOptions, TableBlockParams
 from lumberjack.core.options import resolve_block_options
 from lumberjack.core.parsers.markdown.parser import MarkdownParser
 from lumberjack.core.splitters import (
@@ -134,8 +134,8 @@ class RecordingTokenizer(SimpleCharTokenizer):
 
 
 def markdown_block_options(
-    overrides: dict[str, BlockConfig] | None = None,
-) -> dict[str, BlockConfig]:
+    overrides: dict[str, BaseParams] | None = None,
+) -> dict[str, BaseParams]:
     return resolve_block_options(MarkdownParser().block_kinds, overrides)
 
 
@@ -199,7 +199,7 @@ def test_heading_splitter_splits_oversized_section_body() -> None:
         options=SplitOptions(
             max_tokens=35,
             merge_below_tokens=0,
-            block_options={"paragraph": BlockConfig()},
+            block_options={"paragraph": BaseParams()},
         ),
     )
 
@@ -224,7 +224,7 @@ def test_heading_splitter_splits_oversized_body_with_nosplit_blocks_kept_intact(
         options=SplitOptions(
             max_tokens=35,
             merge_below_tokens=0,
-            block_options={"paragraph": BlockConfig(split=False)},
+            block_options={"paragraph": BaseParams(split=False)},
         ),
     )
 
@@ -679,7 +679,7 @@ Plain body.
         options=SplitOptions(
             max_tokens=500,
             merge_below_tokens=0,
-            block_options={"table": BlockConfig(isolated=True)},
+            block_options={"table": BaseParams(isolated=True)},
         ),
     )
 
@@ -711,14 +711,11 @@ Plain body.
 
 
 def test_splitter_rejects_invalid_ideal_max_tokens_ratio() -> None:
-    document = MarkdownParser().parse("alpha beta", document_title="invalid.md")
-    splitter = RecursiveSplitter(
-        tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(max_tokens=10, ideal_max_tokens_ratio=0),
-    )
-
     try:
-        splitter.split(document)
+        RecursiveSplitter(
+            tokenizer=SimpleCharTokenizer(),
+            options=SplitOptions(max_tokens=10, ideal_max_tokens_ratio=0),
+        )
     except ValueError as exc:
         assert str(exc) == "ideal_max_tokens_ratio must be greater than 0 and at most 1"
     else:
@@ -920,7 +917,7 @@ def test_splitter_keeps_oversized_lists_intact_when_in_nosplit_kinds() -> None:
         options=SplitOptions(
             max_tokens=20,
             merge_below_tokens=0,
-            block_options={"list": BlockConfig(split=False)},
+            block_options={"list": BaseParams(split=False)},
         ),
     )
 
@@ -970,10 +967,10 @@ def test_splitter_splits_oversized_tables_by_rows_with_repeated_header() -> None
     splitter = RecursiveSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
-            max_tokens=58,
+            max_tokens=28,
             ideal_max_tokens_ratio=1,
             merge_below_tokens=-1,
-            block_options={"table": BlockConfig(isolated=True)},
+            block_options={"table": BaseParams(isolated=True)},
         ),
     )
 
@@ -983,6 +980,47 @@ def test_splitter_splits_oversized_tables_by_rows_with_repeated_header() -> None
     assert all(chunk.chunk_type == "table" for chunk in chunks)
     assert all("| Name | Value |" in chunk.body for chunk in chunks)
     assert all("| ---- | ----- |" in chunk.body for chunk in chunks)
+    assert [chunk.body.splitlines()[-1] for chunk in chunks] == [
+        "| Alpha | 100 |",
+        "| Beta | 200 |",
+        "| Gamma | 300 |",
+        "| Delta | 400 |",
+    ]
+
+
+def test_splitter_can_omit_repeated_header_for_split_table_pieces() -> None:
+    md = """# Data
+
+| Name | Value |
+| ---- | ----- |
+| Alpha | 100 |
+| Beta | 200 |
+| Gamma | 300 |
+| Delta | 400 |
+"""
+    document = MarkdownParser().parse(md, document_title="table.md")
+    splitter = RecursiveSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=28,
+            ideal_max_tokens_ratio=1,
+            merge_below_tokens=-1,
+            block_options={
+                "table": TableBlockParams(
+                    isolated=True,
+                    repeat_header=False,
+                )
+            },
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 4
+    assert "| Name | Value |" in chunks[0].body
+    assert "| ---- | ----- |" in chunks[0].body
+    assert all("| Name | Value |" not in chunk.body for chunk in chunks[1:])
+    assert all("| ---- | ----- |" not in chunk.body for chunk in chunks[1:])
     assert [chunk.body.splitlines()[-1] for chunk in chunks] == [
         "| Alpha | 100 |",
         "| Beta | 200 |",
@@ -1006,7 +1044,7 @@ def test_splitter_keeps_oversized_tables_intact_when_in_nosplit_kinds() -> None:
             max_tokens=58,
             ideal_max_tokens_ratio=1,
             merge_below_tokens=-1,
-            block_options={"table": BlockConfig(split=False)},
+            block_options={"table": BaseParams(split=False)},
         ),
     )
 
@@ -1031,7 +1069,7 @@ def test_splitter_uses_block_max_tokens_for_table_row_packing() -> None:
             max_tokens=79,
             ideal_max_tokens_ratio=1,
             merge_below_tokens=-1,
-            block_options={"table": BlockConfig(max_tokens=60)},
+            block_options={"table": BaseParams(max_tokens=60)},
         ),
     )
 
@@ -1059,7 +1097,7 @@ def test_splitter_preserves_oversized_single_table_rows() -> None:
             max_tokens=58,
             ideal_max_tokens_ratio=1,
             merge_below_tokens=-1,
-            block_options={"table": BlockConfig(isolated=True)},
+            block_options={"table": BaseParams(isolated=True)},
         ),
     )
 
@@ -1080,7 +1118,7 @@ def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
             max_tokens=28,
             ideal_max_tokens_ratio=1,
             merge_below_tokens=-1,
-            block_options={"code_fence": BlockConfig()},
+            block_options={"code_fence": BaseParams()},
         ),
     )
 
@@ -1172,14 +1210,14 @@ def test_section_splitter_handles_front_matter_as_root_body_chunk() -> None:
     ]
 
 
-def test_front_matter_can_be_isolated_with_block_config() -> None:
+def test_front_matter_can_be_isolated_with_block_params() -> None:
     document = MarkdownParser().parse(FRONT_MATTER_FIXTURE, document_title="doc.md")
     splitter = RecursiveSplitter(
         tokenizer=SimpleCharTokenizer(),
         options=SplitOptions(
             max_tokens=500,
             merge_below_tokens=0,
-            block_options={"front_matter": BlockConfig(isolated=True)},
+            block_options={"front_matter": BaseParams(isolated=True)},
         ),
     )
 
@@ -1285,8 +1323,8 @@ def test_thematic_break_after_split_list_is_ignored() -> None:
         max_tokens=50,
         merge_below_tokens=0,
         block_options={
-            "list": BlockConfig(),
-            "paragraph": BlockConfig(),
+            "list": BaseParams(),
+            "paragraph": BaseParams(),
         },
     )
 
@@ -1440,7 +1478,7 @@ def test_standalone_table_is_isolated_even_when_budget_allows_merge() -> None:
         options=SplitOptions(
             max_tokens=1000,
             merge_below_tokens=0,
-            block_options={"table": BlockConfig(isolated=True)},
+            block_options={"table": BaseParams(isolated=True)},
         ),
     )
 
@@ -1490,7 +1528,7 @@ def test_standalone_chunk_not_merged_by_merge_small_chunks() -> None:
         options=SplitOptions(
             max_tokens=1000,
             merge_below_tokens=100,
-            block_options={"code_fence": BlockConfig(isolated=True)},
+            block_options={"code_fence": BaseParams(isolated=True)},
         ),
     )
 
@@ -1513,7 +1551,7 @@ def test_oversized_standalone_code_fence_with_split_oversized() -> None:
         options=SplitOptions(
             max_tokens=50,
             merge_below_tokens=-1,
-            block_options={"code_fence": BlockConfig(isolated=True)},
+            block_options={"code_fence": BaseParams(isolated=True)},
         ),
     )
 
@@ -1535,7 +1573,7 @@ def test_oversized_standalone_code_fence_without_split_stays_intact() -> None:
         options=SplitOptions(
             max_tokens=50,
             merge_below_tokens=0,
-            block_options={"code_fence": BlockConfig(isolated=True, split=False)},
+            block_options={"code_fence": BaseParams(isolated=True, split=False)},
         ),
     )
 
@@ -1568,7 +1606,7 @@ Child body.
         options=SplitOptions(
             max_tokens=1000,
             merge_below_tokens=0,
-            block_options={"table": BlockConfig(isolated=True)},
+            block_options={"table": BaseParams(isolated=True)},
         ),
     )
 
@@ -1591,7 +1629,7 @@ def test_standalone_block_preserves_heading_context() -> None:
         options=SplitOptions(
             max_tokens=1000,
             merge_below_tokens=0,
-            block_options={"code_fence": BlockConfig(isolated=True)},
+            block_options={"code_fence": BaseParams(isolated=True)},
         ),
     )
 
@@ -1623,7 +1661,7 @@ Parent intro.
         options=SplitOptions(
             max_tokens=500,
             merge_below_tokens=0,
-            block_options={"table": BlockConfig(isolated=True)},
+            block_options={"table": BaseParams(isolated=True)},
         ),
     )
 
@@ -1640,7 +1678,7 @@ Parent intro.
 
 
 def test_block_max_tokens_defaults_to_none() -> None:
-    """Default BlockConfig.max_tokens is None."""
+    """Default BaseParams.max_tokens is None."""
     options = SplitOptions()
     for cfg in options.block_options.values():
         assert cfg.max_tokens is None
@@ -1657,7 +1695,7 @@ def test_per_block_max_tokens_overrides_budget_for_paragraph() -> None:
             max_tokens=500,
             ideal_max_tokens_ratio=1,
             merge_below_tokens=-1,
-            block_options={"paragraph": BlockConfig(max_tokens=30)},
+            block_options={"paragraph": BaseParams(max_tokens=30)},
         ),
     )
 
@@ -1681,8 +1719,8 @@ def test_per_block_max_tokens_falls_back_to_unified_max_tokens() -> None:
             ideal_max_tokens_ratio=1,
             merge_below_tokens=-1,
             block_options={
-                "paragraph": BlockConfig(),
-                "blockquote": BlockConfig(max_tokens=30),
+                "paragraph": BaseParams(),
+                "blockquote": BaseParams(max_tokens=30),
             },
         ),
     )
@@ -1703,7 +1741,7 @@ def test_per_block_max_tokens_for_code_fence() -> None:
         options=SplitOptions(
             max_tokens=500,
             merge_below_tokens=-1,
-            block_options={"code_fence": BlockConfig(isolated=True, max_tokens=25)},
+            block_options={"code_fence": BaseParams(isolated=True, max_tokens=25)},
         ),
     )
 
@@ -1716,30 +1754,25 @@ def test_per_block_max_tokens_for_code_fence() -> None:
 
 
 def test_per_block_max_tokens_validation_rejects_non_positive() -> None:
-    """Validation raises ValueError for non-positive override values."""
-    document = MarkdownParser().parse("alpha beta", document_title="invalid.md")
-    splitter = RecursiveSplitter(
-        tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            block_options={"paragraph": BlockConfig(max_tokens=0)},
-        ),
-    )
-
     try:
-        splitter.split(document)
+        RecursiveSplitter(
+            tokenizer=SimpleCharTokenizer(),
+            options=SplitOptions(
+                block_options={"paragraph": BaseParams(max_tokens=0)},
+            ),
+        )
     except ValueError as exc:
         assert "must be positive" in str(exc)
     else:
         raise AssertionError("Expected non-positive override validation to fail")
 
-    splitter2 = RecursiveSplitter(
-        tokenizer=SimpleCharTokenizer(),
-        options=SplitOptions(
-            block_options={"paragraph": BlockConfig(max_tokens=-10)},
-        ),
-    )
     try:
-        splitter2.split(document)
+        RecursiveSplitter(
+            tokenizer=SimpleCharTokenizer(),
+            options=SplitOptions(
+                block_options={"paragraph": BaseParams(max_tokens=-10)},
+            ),
+        )
     except ValueError as exc:
         assert "must be positive" in str(exc)
     else:
@@ -1747,7 +1780,7 @@ def test_per_block_max_tokens_validation_rejects_non_positive() -> None:
 
 
 def test_lumber_api_accepts_block_max_tokens() -> None:
-    """lumber() accepts and respects per-block max_tokens via BlockConfig."""
+    """lumber() accepts and respects per-block max_tokens via BaseParams."""
     long_para = " ".join(f"word{i}" for i in range(100))
     chunks = lumber(
         long_para,
@@ -1773,7 +1806,7 @@ def test_section_splitter_keeps_oversized_lists_intact_when_nosplit() -> None:
         options=SplitOptions(
             max_tokens=20,
             merge_below_tokens=0,
-            block_options={"list": BlockConfig(split=False)},
+            block_options={"list": BaseParams(split=False)},
         ),
     )
 
@@ -1821,7 +1854,7 @@ def test_section_splitter_splits_oversized_tables_when_isolated() -> None:
             max_tokens=58,
             ideal_max_tokens_ratio=1,
             merge_below_tokens=-1,
-            block_options={"table": BlockConfig(isolated=True)},
+            block_options={"table": BaseParams(isolated=True)},
         ),
     )
 
@@ -1831,6 +1864,41 @@ def test_section_splitter_splits_oversized_tables_when_isolated() -> None:
     assert len(table_chunks) > 1
     assert all("| Name | Value |" in c.body for c in table_chunks)
     assert all("| ---- | ----- |" in c.body for c in table_chunks)
+
+
+def test_section_splitter_can_omit_repeated_header_for_split_tables() -> None:
+    """SectionSplitter uses the same table params as RecursiveSplitter."""
+    md = """# Data
+
+| Name | Value |
+| ---- | ----- |
+| Alpha | 100 |
+| Beta | 200 |
+| Gamma | 300 |
+| Delta | 400 |
+"""
+    document = MarkdownParser().parse(md, document_title="table.md")
+    splitter = SectionSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=58,
+            ideal_max_tokens_ratio=1,
+            merge_below_tokens=-1,
+            block_options={
+                "table": TableBlockParams(
+                    isolated=True,
+                    repeat_header=False,
+                )
+            },
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    table_chunks = [c for c in chunks if c.chunk_type == "table"]
+    assert len(table_chunks) > 1
+    assert "| Name | Value |" in table_chunks[0].body
+    assert all("| Name | Value |" not in c.body for c in table_chunks[1:])
 
 
 def test_section_splitter_keeps_oversized_tables_intact_when_nosplit() -> None:
@@ -1851,7 +1919,7 @@ def test_section_splitter_keeps_oversized_tables_intact_when_nosplit() -> None:
             max_tokens=58,
             ideal_max_tokens_ratio=1,
             merge_below_tokens=-1,
-            block_options={"table": BlockConfig(split=False)},
+            block_options={"table": BaseParams(split=False)},
         ),
     )
 
@@ -1871,7 +1939,7 @@ def test_section_splitter_uses_per_block_max_tokens() -> None:
             max_tokens=500,
             ideal_max_tokens_ratio=1,
             merge_below_tokens=-1,
-            block_options={"paragraph": BlockConfig(max_tokens=30)},
+            block_options={"paragraph": BaseParams(max_tokens=30)},
         ),
     )
 

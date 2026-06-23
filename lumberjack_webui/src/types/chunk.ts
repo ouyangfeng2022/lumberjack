@@ -17,10 +17,11 @@ export interface SplitResponse {
   chunks: ChunkData[];
 }
 
-export interface BlockConfigState {
+export interface BlockHandlingState {
   isolated?: boolean;
   split?: boolean;
   max_tokens?: number | null;
+  repeat_header?: boolean;
 }
 
 export interface SplitOptions {
@@ -29,7 +30,7 @@ export interface SplitOptions {
   merge_below_tokens: number | null;
   skip_empty_sections: boolean;
   recursive_split: boolean;
-  block_configs: Record<string, BlockConfigState> | null;
+  block_configs: Record<string, BlockHandlingState> | null;
   tokenizer: string;
   splitter: string;
   document_title: string;

@@ -5,66 +5,80 @@ from collections.abc import Mapping
 from typing import Any
 
 from .block import parse_block_config_entry
-from .models import BlockConfig, BlockKindRegistry
+from .models import BaseParams, BlockKindRegistry, TableBlockParams
 from .parsers.markdown.parser import MarkdownItParser
 
-BLOCK_CONFIG_FIELDS = frozenset({"isolated", "split", "max_tokens"})
+BASE_PARAM_FIELDS = frozenset({"isolated", "split", "max_tokens"})
+TABLE_PARAM_FIELDS = frozenset({"repeat_header"})
+TABLE_PARAM_KINDS = frozenset({"table", "html_table"})
 
 
 def resolve_block_options(
     block_kinds: frozenset[str],
-    overrides: Mapping[str, BlockConfig | Mapping[str, Any]] | None = None,
-) -> dict[str, BlockConfig]:
+    overrides: Mapping[str, BaseParams | Mapping[str, Any]] | None = None,
+) -> dict[str, BaseParams]:
     """Merge parser block kinds with caller-supplied block handling overrides."""
-    resolved = dict.fromkeys(sorted(block_kinds), BlockConfig())
+    registry = BlockKindRegistry(block_kinds)
+    resolved = registry.default_handling()
     if not overrides:
         return resolved
 
     for kind, value in overrides.items():
         normalized = kind.strip().lower()
-        if isinstance(value, BlockConfig):
+        if isinstance(value, BaseParams):
             resolved[normalized] = value
         elif isinstance(value, Mapping):
-            resolved[normalized] = block_config_from_mapping(normalized, value)
+            resolved[normalized] = block_params_from_mapping(normalized, value)
         else:
             msg = (
-                f"block_options[{kind!r}] must be BlockConfig or dict, "
+                f"block_options[{kind!r}] must be BaseParams or dict, "
                 f"got {type(value).__name__}"
             )
             raise TypeError(msg)
     return resolved
 
 
-def block_config_from_mapping(kind: str, config: Mapping[str, Any]) -> BlockConfig:
-    """Parse and validate one mapping-style block config."""
-    unknown = set(config) - BLOCK_CONFIG_FIELDS
+def block_params_from_mapping(kind: str, config: Mapping[str, Any]) -> BaseParams:
+    """Parse and validate one mapping-style block params object."""
+    fields = BASE_PARAM_FIELDS | (
+        TABLE_PARAM_FIELDS if kind.strip().lower() in TABLE_PARAM_KINDS else frozenset()
+    )
+    unknown = set(config) - fields
     if unknown:
-        fields = ", ".join(sorted(BLOCK_CONFIG_FIELDS))
+        valid_fields = ", ".join(sorted(fields))
         unknown_fields = ", ".join(sorted(unknown))
         raise ValueError(
-            f"Unknown block config field(s) for {kind!r}: {unknown_fields}. "
-            f"Valid fields: {fields}"
+            f"Unknown block params field(s) for {kind!r}: {unknown_fields}. "
+            f"Valid fields: {valid_fields}"
         )
-    return BlockConfig(**dict(config))
+
+    normalized = kind.strip().lower()
+    base = {key: config[key] for key in BASE_PARAM_FIELDS if key in config}
+    if normalized in TABLE_PARAM_KINDS:
+        repeat_header = config.get("repeat_header", True)
+        if not isinstance(repeat_header, bool):
+            raise TypeError(f"block_configs[{kind!r}].repeat_header must be a boolean")
+        return TableBlockParams(**base, repeat_header=repeat_header)
+    return BaseParams(**base)
 
 
 def parse_block_config_mapping(
     raw: Mapping[str, Any] | None,
-) -> dict[str, BlockConfig] | None:
-    """Parse API-style block config objects without applying parser defaults."""
+) -> dict[str, BaseParams] | None:
+    """Parse API-style block params objects without applying parser defaults."""
     if raw is None:
         return None
 
-    resolved: dict[str, BlockConfig] = {}
+    resolved: dict[str, BaseParams] = {}
     for kind, config in raw.items():
         if not isinstance(config, Mapping):
             raise TypeError(f"block_configs[{kind!r}] must be an object")
-        resolved[kind] = block_config_from_mapping(kind, config)
+        resolved[kind] = block_params_from_mapping(kind, config)
     return resolved
 
 
-def parse_block_config_json(raw: str) -> dict[str, BlockConfig] | None:
-    """Parse a JSON object containing API-style block configs."""
+def parse_block_config_json(raw: str) -> dict[str, BaseParams] | None:
+    """Parse a JSON object containing API-style block params."""
     if not raw or not raw.strip():
         return None
     try:
@@ -76,11 +90,19 @@ def parse_block_config_json(raw: str) -> dict[str, BlockConfig] | None:
     return parse_block_config_mapping(parsed)
 
 
-def parse_cli_block_configs(entries: list[str]) -> dict[str, BlockConfig]:
+def parse_cli_block_configs(
+    entries: list[str],
+    *,
+    json_config: str = "",
+) -> dict[str, BaseParams]:
     """Parse CLI ``--block-config`` entries against the default Markdown registry."""
     registry: BlockKindRegistry = MarkdownItParser.default_registry()
-    result: dict[str, BlockConfig] = dict(registry.default_handling())
+    result: dict[str, BaseParams] = dict(registry.default_handling())
     for entry in entries:
-        kind, cfg = parse_block_config_entry(entry, registry)
-        result[kind] = cfg
+        kind, params = parse_block_config_entry(entry, registry)
+        result[kind] = params
+    if json_config and json_config.strip():
+        json_overrides = parse_block_config_json(json_config)
+        if json_overrides:
+            result.update(json_overrides)
     return result

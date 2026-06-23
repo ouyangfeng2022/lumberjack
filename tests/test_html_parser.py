@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from lumberjack.core.block import BlockSplitter
+from lumberjack.core.models import SplitOptions, TableBlockParams
 from lumberjack.core.parsers.html import HTMLParser
 from lumberjack.core.parsers.html.table_parser import HTMLTableParser
 from lumberjack.core.parsers.markdown.parser import MarkdownParser
@@ -209,7 +210,10 @@ def test_html_table_to_markdown_with_caption():
 def test_text_splitter_handles_html_table_block():
     """Test that TextSplitter can split HTML blocks containing tables."""
     tokenizer = SimpleCharTokenizer()
-    splitter = BlockSplitter(tokenizer)
+    splitter = BlockSplitter(
+        tokenizer,
+        options=SplitOptions(block_options={"html_table": TableBlockParams()}),
+    )
 
     from lumberjack.core.models import MarkdownBlock
 
@@ -224,12 +228,41 @@ def test_text_splitter_handles_html_table_block():
     # Test that the block can be split
     pieces = splitter.split_oversized_block(
         html_table_block,
-        max_tokens=1000,
-        allowed_kinds={"html_table"},
+        default_budget=1000,
     )
 
     assert pieces is not None
     assert len(pieces) > 0
+
+
+def test_table_splitter_reads_table_params_from_options() -> None:
+    tokenizer = SimpleCharTokenizer()
+    splitter = BlockSplitter(
+        tokenizer,
+        options=SplitOptions(
+            block_options={
+                "table": TableBlockParams(max_tokens=28, repeat_header=False)
+            },
+        ),
+    )
+
+    from lumberjack.core.models import MarkdownBlock
+
+    block = MarkdownBlock(
+        kind="table",
+        text=(
+            "| Name | Value |\n"
+            "| ---- | ----- |\n"
+            "| Alpha | 100 |\n"
+            "| Beta | 200 |\n"
+            "| Gamma | 300 |"
+        ),
+    )
+    pieces = splitter.split_table_block(block)
+
+    assert len(pieces) == 3
+    assert "| Name | Value |" in pieces[0]
+    assert all("| Name | Value |" not in piece for piece in pieces[1:])
 
 
 def test_markdown_parser_with_html_table():

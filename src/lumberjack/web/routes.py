@@ -7,7 +7,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from lumberjack import lumber
-from lumberjack.core.models import BlockConfig
+from lumberjack.core.models import BaseParams
 from lumberjack.core.options import parse_block_config_json, parse_block_config_mapping
 from lumberjack.formats import detect_format_from_filename
 
@@ -50,14 +50,14 @@ class SplitResponse(BaseModel):
 
 def _parse_block_configs(
     raw: dict[str, Any] | None,
-) -> dict[str, BlockConfig] | None:
+) -> dict[str, BaseParams] | None:
     try:
         return parse_block_config_mapping(raw)
     except (TypeError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
-def _parse_form_block_configs(raw: str) -> dict[str, BlockConfig] | None:
+def _parse_form_block_configs(raw: str) -> dict[str, BaseParams] | None:
     if not raw or not raw.strip():
         return None
     try:
