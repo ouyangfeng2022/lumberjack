@@ -165,6 +165,7 @@ Implemented in `src/lumberjack/cli.py`.
 - Output format: JSON only
 - Tokenizers: `simple`, `tiktoken`
 - Splitter choices: `recursive`, `section` (CLI default: `recursive`)
+- `--recursive-split` enables block/text fallback for oversized section bodies
 - `--block-config KIND[:isolated][:nosplit][:TOKENS]` per-block-kind config; repeatable
 - JSON output serializes dataclasses with `dataclasses.asdict`
 
@@ -176,6 +177,7 @@ Implemented in `src/lumberjack/cli.py`.
 - Text fallback order is paragraph break -> line break -> sentence -> word -> hard split
 - `Chunk.body` always includes rendered heading context; shared parent headings are deduplicated
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
+- `recursive_split=True` enables block/text fallback for oversized section bodies in `SectionSplitter`
 - `block_options` maps block kinds to `BlockConfig` (per-kind `isolated`, `split`, `max_tokens`)
 
 ## Constraints

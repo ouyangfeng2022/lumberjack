@@ -215,12 +215,8 @@ class SplitOptions:
         skip_empty_sections: When True, discard chunks that contain only a heading
             with no body content. Chunks with zero rendered tokens are always discarded
             regardless of this setting.
-        render_headings: When True (default), the chunk's common heading
-            breadcrumb is rendered at the top of ``Chunk.body``. When False,
-            that common prefix is omitted from the body (it is still
-            available as ``Chunk.headings``); each entry's own relative
-            headings are always rendered so the chunk's internal structure
-            is preserved.
+        recursive_split: When True, split oversized direct section bodies in splitters
+            that support strict heading-level output.
         block_options: Per-block-kind configuration. Keys are lowercase block
             kind strings matching :attr:`MarkdownBlock.kind` values; values are
             :class:`BaseParams` instances. Callers that need parser-specific
@@ -233,7 +229,7 @@ class SplitOptions:
     ideal_max_tokens_ratio: float = 0.8
     merge_below_tokens: int | None = 50
     skip_empty_sections: bool = True
-    render_headings: bool = True
+    recursive_split: bool = False
     block_options: dict[str, BaseParams] = field(default_factory=dict)
 
     # Cached derived fields — computed in __post_init__.
@@ -261,9 +257,7 @@ class Chunk:
         chunk_id: Unique identifier for this chunk.
         chunk_type: Origin block type (e.g. ``"paragraph"``, ``"heading"``,
             ``"code_fence"``, ``"document"``).
-        body: Rendered chunk text. The chunk's common heading breadcrumb is
-            included when ``SplitOptions.render_headings`` is True; relative
-            headings are always included.
+        body: Rendered chunk text, optionally including heading breadcrumbs.
         token_count: Token count measured by the configured tokenizer.
         estimated_token_count: Estimated token count when exact counting is unavailable.
         headings: Tuple of ``(level, title)`` pairs representing the heading path.

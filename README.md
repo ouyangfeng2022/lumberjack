@@ -134,7 +134,7 @@ chunks = lumber(
     ideal_max_tokens_ratio=0.8,
     merge_below_tokens=50,
     skip_empty_sections=True,
-    render_headings=True,      # set False to omit the chunk common heading prefix from chunk bodies
+    recursive_split=False,
     tokenizer="simple",        # "simple" | "tiktoken"
     splitter="recursive",      # "recursive" | "section"
 )
@@ -248,7 +248,7 @@ lumber <input> [options]
 | `--merge-below-tokens`     | `50`        | Soft threshold for small-chunk merging           |
 | `--tokenizer`              | `simple`    | `simple` or `tiktoken`                           |
 | `--splitter`               | `recursive` | `recursive` or `section`                         |
-| `--render-headings`        | on          | Render the chunk common heading prefix in bodies (`--no-render-headings` to omit; `chunk.headings` always kept) |
+| `--recursive-split`        | off         | Enable block/text fallback for section splitter  |
 | `--block-config`           | —           | Per-block-kind config (repeatable)               |
 | `--block-config-json`      | —           | Structured per-block-kind JSON config            |
 
@@ -307,7 +307,7 @@ Both endpoints accept the same options:
 | `ideal_max_tokens_ratio` | float | `0.8` | Preferred split budget ratio |
 | `merge_below_tokens` | int | `50` | Soft merge threshold |
 | `skip_empty_sections` | bool | `true` | Discard heading-only chunks |
-| `render_headings` | bool | `true` | Render the chunk common heading prefix in chunk bodies |
+| `recursive_split` | bool | `false` | Block/text fallback for section splitter |
 | `block_configs` | object | `null` | Per-block-kind config |
 | `tokenizer` | string | `"simple"` | `simple` or `tiktoken` |
 | `splitter` | string | `"recursive"` | `recursive` or `section` |

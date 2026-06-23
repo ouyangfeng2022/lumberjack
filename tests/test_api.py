@@ -399,34 +399,3 @@ def test_manual_pipeline_accepts_custom_splitter_instance() -> None:
             document_title="custom.md",
         )
     ]
-
-
-def test_lumber_render_headings_false_drops_only_common_prefix() -> None:
-    chunks = lumber(
-        MERGED_SECTION_FIXTURE,
-        document_title="development.md",
-        max_tokens=1000,
-        render_headings=False,
-    )
-
-    chunk = chunks[0]
-    assert chunk.headings == ((1, "Development Guide"),)
-    # Common prefix dropped from body...
-    assert "# Development Guide" not in chunk.body
-    # ...internal headings preserved...
-    assert "## Current Scope" in chunk.body
-    assert "### M0" in chunk.body
-    # ...and bodies still rendered.
-    assert "Scope body." in chunk.body
-
-
-def test_lumber_render_headings_default_true_keeps_breadcrumbs() -> None:
-    chunks = lumber(
-        MERGED_SECTION_FIXTURE,
-        document_title="development.md",
-        max_tokens=1000,
-    )
-
-    chunk = chunks[0]
-    assert chunk.headings == ((1, "Development Guide"),)
-    assert "# Development Guide" in chunk.body
