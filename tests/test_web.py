@@ -110,7 +110,6 @@ def test_split_accepts_heading_splitter_with_recursive_split(
             "text": "# Parent\n\nParent intro.\n\n## Child\n\nChild body.",
             "max_tokens": 500,
             "splitter": "section",
-            "recursive_split": True,
         },
     )
 
@@ -254,3 +253,53 @@ def test_split_block_configs_default_applies_when_field_not_sent(
     # With default DEFAULT policy, table can merge with adjacent content
     # So all content should be in one chunk
     assert body["chunk_count"] == 1
+
+
+def test_split_text_render_headings_false(client: TestClient) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={
+            "text": "# Hello\n\nThis is a test paragraph.\n\n## Section\n\nAnother paragraph.",
+            "max_tokens": 500,
+            "render_headings": False,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    chunk = body["chunks"][0]
+    # Common prefix preserved as metadata
+    assert chunk["headings"] == [[1, "Hello"]]
+    # Common prefix `# Hello` dropped from the body...
+    assert "# Hello" not in chunk["body"]
+    # ...but the internal heading is preserved.
+    assert "## Section" in chunk["body"]
+    assert "This is a test paragraph." in chunk["body"]
+
+
+def test_split_file_render_headings_false(client: TestClient) -> None:
+    md_file = io.BytesIO(SIMPLE_MD.encode("utf-8"))
+    response = client.post(
+        "/lumber/api/split/file",
+        files={"file": ("guide.md", md_file, "text/markdown")},
+        data={"max_tokens": "500", "render_headings": "false"},
+    )
+
+    assert response.status_code == 200
+    chunk = response.json()["chunks"][0]
+    assert chunk["headings"] == [[1, "Hello"]]
+    assert "# Hello" not in chunk["body"]
+    assert "## Section" in chunk["body"]
+    assert "This is a test paragraph." in chunk["body"]
+
+
+def test_split_text_render_headings_default_true(client: TestClient) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={"text": SIMPLE_MD, "max_tokens": 500},
+    )
+
+    assert response.status_code == 200
+    chunk = response.json()["chunks"][0]
+    assert chunk["headings"] == [[1, "Hello"]]
+    assert "# Hello" in chunk["body"]

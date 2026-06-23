@@ -168,6 +168,14 @@ export default function SplitOptions({ options, onChange }: Props) {
               />
               <span>{t('opts_skip_empty_sections')}</span>
             </label>
+            <label className={styles.checkField}>
+              <input
+                type="checkbox"
+                checked={options.render_headings}
+                onChange={(e) => update('render_headings', e.target.checked)}
+              />
+              <span>{t('opts_render_headings')}</span>
+            </label>
           </div>
 
           <div className={styles.field}>
@@ -192,20 +200,6 @@ export default function SplitOptions({ options, onChange }: Props) {
               <option value="simple">{t('opts_tokenizer_simple')}</option>
               <option value="tiktoken">{t('opts_tokenizer_tiktoken')}</option>
             </select>
-          </div>
-
-          <div className={styles.checkRow}>
-            <label
-              className={`${styles.checkField} ${options.splitter !== 'section' ? styles.checkDisabled : ''}`}
-            >
-              <input
-                type="checkbox"
-                checked={options.recursive_split}
-                disabled={options.splitter !== 'section'}
-                onChange={(e) => update('recursive_split', e.target.checked)}
-              />
-              <span>{t('opts_recursive_split')}</span>
-            </label>
           </div>
 
           <div className={styles.field}>

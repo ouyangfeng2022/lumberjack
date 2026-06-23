@@ -52,10 +52,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Merge adjacent chunks below this token threshold when possible "
         "(use -1 to disable merging)",
     )
-    parser.add_argument(
-        "--recursive-split",
+    render_headings = parser.add_mutually_exclusive_group()
+    render_headings.add_argument(
+        "--render-headings",
+        dest="render_headings",
         action="store_true",
-        help="Split oversized direct section bodies when using --splitter section",
+        default=True,
+        help="Render heading breadcrumbs in chunk bodies (default).",
+    )
+    render_headings.add_argument(
+        "--no-render-headings",
+        dest="render_headings",
+        action="store_false",
+        help="Omit the chunk common heading prefix from chunk bodies; chunk.headings is still populated.",
     )
     parser.add_argument(
         "--max-heading-level",
@@ -102,7 +111,7 @@ def main() -> None:
         block_options=block_options,
         tokenizer=args.tokenizer,
         splitter=args.splitter,
-        recursive_split=args.recursive_split,
+        render_headings=args.render_headings,
         max_heading_level=args.max_heading_level,
         document_metadata={"path": str(input_path.resolve())},
     )

@@ -2004,3 +2004,200 @@ Small body.
     child_bodies = " ".join(c.body for c in child_chunks)
     assert "Alpha" in child_bodies
     assert "mike." in child_bodies
+
+
+def test_render_headings_default_includes_heading_breadcrumbs() -> None:
+    """Default render_headings=True renders the common prefix at the top."""
+    document = MarkdownParser().parse(MERGED_SECTION_FIXTURE, document_title="dev.md")
+    splitter = RecursiveSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=1000, merge_below_tokens=0),
+    )
+
+    chunks = splitter.split(document)
+
+    assert chunks[0].headings == ((1, "Development Guide"),)
+    assert "# Development Guide" in chunks[0].body
+    assert "## Current Scope" in chunks[0].body
+    assert "### M0" in chunks[0].body
+
+
+def test_render_headings_false_drops_only_common_prefix() -> None:
+    """render_headings=False omits the common prefix but keeps internal headings."""
+    document = MarkdownParser().parse(MERGED_SECTION_FIXTURE, document_title="dev.md")
+    splitter = RecursiveSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=1000,
+            merge_below_tokens=0,
+            render_headings=False,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    chunk = chunks[0]
+    # Common prefix is dropped from the body...
+    assert chunk.headings == ((1, "Development Guide"),)
+    assert "# Development Guide" not in chunk.body
+    # ...but the chunk's internal/relative headings are preserved.
+    assert "## Current Scope" in chunk.body
+    assert "## Milestones" in chunk.body
+    assert "### M0" in chunk.body
+    assert "### M1" in chunk.body
+    assert "## Suggested Workflow" in chunk.body
+    # Bodies are still rendered.
+    assert "Scope body." in chunk.body
+    assert "M0 body." in chunk.body
+
+
+def test_render_headings_false_estimate_aligns_with_rendered_body() -> None:
+    """estimated_token_count always equals the true body token count."""
+    document = MarkdownParser().parse(MERGED_SECTION_FIXTURE, document_title="dev.md")
+    splitter = RecursiveSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=1000,
+            merge_below_tokens=0,
+            render_headings=False,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    chunk = chunks[0]
+    assert chunk.estimated_token_count == chunk.token_count
+
+
+def test_render_headings_false_keeps_internal_structure_in_split_chunks() -> None:
+    """In a multi-chunk split, only the common prefix is dropped per chunk."""
+    document = MarkdownParser().parse(
+        RECURSIVE_SECTION_FIXTURE, document_title="split.md"
+    )
+    splitter = RecursiveSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=80,
+            merge_below_tokens=0,
+            render_headings=False,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 3
+
+    beta_one = next(c for c in chunks if c.headings[-1] == (2, "Beta One"))
+    # Common prefix breadcrumb `# Beta / ## Beta One` is dropped...
+    assert "# Beta" not in beta_one.body
+    assert "## Beta One" not in beta_one.body
+    # ...but metadata still carries the full path...
+    assert beta_one.headings == ((1, "Beta"), (2, "Beta One"))
+    # ...and the body content is intact.
+    assert "This subsection stays comfortably under the budget." in beta_one.body
+    # Estimate matches the rendered body exactly.
+    assert beta_one.estimated_token_count == beta_one.token_count
+
+
+def test_render_headings_false_chunking_unchanged() -> None:
+    """render_headings does not change how the document is chunked."""
+    document = MarkdownParser().parse(
+        RECURSIVE_SECTION_FIXTURE, document_title="split.md"
+    )
+
+    on = RecursiveSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(max_tokens=80, merge_below_tokens=0, render_headings=True),
+    ).split(document)
+    off = RecursiveSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=80, merge_below_tokens=0, render_headings=False
+        ),
+    ).split(document)
+
+    # Same number of chunks, same headings per chunk - only the body differs.
+    assert len(on) == len(off)
+    for a, b in zip(on, off, strict=True):
+        assert a.headings == b.headings
+        assert a.chunk_id == b.chunk_id
+
+
+def test_estimate_matches_actual_chunk_ending_on_relative_heading_rendered() -> None:
+    """Chunk ending in an empty-body entry whose relative heading is rendered.
+
+    Regression: the estimate must drop the phantom trailing ``\\n\\n`` after
+    the last rendered relative heading, in *both* render_headings modes.
+    """
+    md = (
+        "# H1\n\n"
+        "H1 body alpha bravo.\n\n"
+        "## H2\n"  # leaf, empty body -> last entry is heading-only
+    )
+    document = MarkdownParser().parse(md, document_title="phantom.md")
+
+    for render_headings in (True, False):
+        splitter = RecursiveSplitter(
+            tokenizer=SimpleCharTokenizer(),
+            options=SplitOptions(
+                max_tokens=500,
+                merge_below_tokens=0,
+                render_headings=render_headings,
+                skip_empty_sections=False,
+            ),
+        )
+        chunk = splitter.split(document)[0]
+        assert chunk.estimated_token_count == chunk.token_count, (
+            f"render_headings={render_headings}: est={chunk.estimated_token_count} "
+            f"tok={chunk.token_count} body={chunk.body!r}"
+        )
+
+
+def test_estimate_matches_actual_heading_only_chunk_rendered() -> None:
+    """A chunk that is purely a heading breadcrumb (no body content at all).
+
+    Regression: when the whole chunk is just the common prefix breadcrumb and
+    nothing else, the estimate must drop the trailing separator after the last
+    common-prefix heading.
+
+    With ``render_headings=True`` such a chunk is emitted (body = breadcrumb)
+    and must be accurate.  With ``render_headings=False`` the body collapses to
+    empty and the chunk is correctly dropped, so the assertion only needs to
+    hold for the rendered case.
+    """
+    md = "# H1\n\n## H2\n"  # H2 is an empty leaf -> heading-only chunk
+    document = MarkdownParser().parse(md, document_title="phantom.md")
+
+    def _is_heading_only(chunk):
+        lines = [ln for ln in chunk.body.split("\n") if ln.strip()]
+        return bool(lines) and all(ln.lstrip().startswith("#") for ln in lines)
+
+    splitter = SectionSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=500,
+            merge_below_tokens=0,
+            render_headings=True,
+            skip_empty_sections=False,
+        ),
+    )
+    chunks = splitter.split(document)
+    heading_only = [c for c in chunks if _is_heading_only(c)]
+    assert heading_only, f"no heading-only chunk; bodies={[c.body for c in chunks]!r}"
+    for c in chunks:
+        assert c.estimated_token_count == c.token_count, (
+            f"est={c.estimated_token_count} tok={c.token_count} body={c.body!r}"
+        )
+
+    # With render_headings=False, a body-less heading-only chunk is dropped.
+    splitter_off = SectionSplitter(
+        tokenizer=SimpleCharTokenizer(),
+        options=SplitOptions(
+            max_tokens=500,
+            merge_below_tokens=0,
+            render_headings=False,
+            skip_empty_sections=False,
+        ),
+    )
+    for c in splitter_off.split(document):
+        assert c.estimated_token_count == c.token_count
