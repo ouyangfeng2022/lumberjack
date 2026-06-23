@@ -11,6 +11,16 @@ class RecursiveSplitter(_BaseSplitter):
     Unlike SectionSplitter which keeps each heading section intact, this splitter
     recursively breaks down oversized sections and merges small adjacent chunks
     to stay within the configured max_tokens budget.
+
+    ``render_headings`` caveat: this splitter budgets with heading tokens
+    included regardless of ``SplitOptions.render_headings``.  When the flag is
+    False the common heading breadcrumb is omitted from ``Chunk.body`` but the
+    split budget still reserves tokens for it — the resulting body is therefore
+    shorter than ``max_tokens`` would otherwise allow.  This is a known
+    limitation caused by the structural coupling between a section's title and
+    its role as either chunk-prefix or internal-relative-heading (which is only
+    determined after pack/merge).  Reconciling the budget requires a deeper
+    refactor and is deferred to a later revision.
     """
 
     def _split_section(
