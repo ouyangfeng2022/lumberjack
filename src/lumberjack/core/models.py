@@ -219,16 +219,12 @@ class SplitOptions:
             that support strict heading-level output.
         render_headings: When False, omit the chunk's common heading breadcrumb from
             the rendered ``Chunk.body`` while keeping ``Chunk.headings`` metadata
-            intact. Splitter support differs:
-
-            * :class:`~lumberjack.core.splitters.section.SectionSplitter` computes
-              the split budget on render-aware tokens, so ``render_headings=False``
-              produces larger bodies without changing ``max_tokens`` semantics.
-            * :class:`~lumberjack.core.splitters.recursive.RecursiveSplitter` still
-              budgets with headings included — ``Chunk.body`` is shorter than the
-              budget implies because the (now hidden) common headings still consume
-              tokens internally. This is a known limitation to be reconciled in a
-              later revision.
+            intact. Both splitters are render-aware: the split budget grows to fill
+            ``max_tokens`` with body content (the heading tokens are reclaimed), so
+            ``token_count == estimated_token_count == measured body tokens``.
+            Internal relative headings (e.g. sibling titles inside a merged chunk in
+            the recursive splitter) always render regardless of this flag, because
+            they are chunk-internal structure rather than the common prefix.
         block_options: Per-block-kind configuration. Keys are lowercase block
             kind strings matching :attr:`MarkdownBlock.kind` values; values are
             :class:`BaseParams` instances. Callers that need parser-specific
