@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from lumberjack.core.models import SplitOptions
+from lumberjack.core.parsers.markdown.parser import MarkdownItParser
 from lumberjack.core.splitters import create_splitter
 from lumberjack.core.tokenizers import (
     ApproxCharTokenizer,
@@ -159,3 +161,81 @@ class TestCreateSplitterCountMode:
             "recursive", SimpleCharTokenizer(), count_mode="exact"
         )
         assert isinstance(splitter.token_counter, ExactTokenCount)
+
+
+def _split_with_mode(
+    source: str, token_counter: str, max_tokens: int = 1200
+):
+    document = MarkdownItParser().parse(source)
+    engine, mode = create_token_counter(token_counter)
+    options = SplitOptions(max_tokens=max_tokens)
+    splitter = create_splitter("recursive", engine, options=options, count_mode=mode)
+    return splitter.split(document), mode
+
+
+class TestThreeModeBoundaries:
+    SOURCE = (
+        "# Title\n\n"
+        "First paragraph with some text.\n\n"
+        "Second paragraph with more text.\n\n"
+        "## Subsection\n\n"
+        "Subsection body content here.\n"
+    )
+
+    def test_estimate_and_accurate_share_boundaries_on_tiktoken(self) -> None:
+        estimate_chunks, _ = _split_with_mode(self.SOURCE, "estimate")
+        accurate_chunks, _ = _split_with_mode(self.SOURCE, "accurate")
+        # Same engine (tiktoken); boundaries match except where the incremental
+        # approximation flips a borderline decision.  On this simple input the
+        # document fits one chunk in both modes.
+        assert len(estimate_chunks) == len(accurate_chunks)
+        assert [c.start_line for c in estimate_chunks] == [
+            c.start_line for c in accurate_chunks
+        ]
+        assert [c.end_line for c in estimate_chunks] == [
+            c.end_line for c in accurate_chunks
+        ]
+
+    def test_simple_token_count_is_chars_div_4(self) -> None:
+        chunks, _ = _split_with_mode(self.SOURCE, "simple")
+        for chunk in chunks:
+            assert chunk.token_count == len(chunk.body) // 4
+            # estimated_token_count equals token_count in simple mode
+            assert chunk.estimated_token_count == chunk.token_count
+
+    def test_accurate_token_count_matches_full_recount(self) -> None:
+        chunks, _ = _split_with_mode(self.SOURCE, "accurate")
+        engine, _ = create_token_counter("accurate")
+        for chunk in chunks:
+            # accurate mode: token_count is the full cached recount
+            assert chunk.token_count == engine.count(chunk.body, cache=True)
+
+
+class TestSimpleTruncationGuard:
+    def test_simple_truncates_per_chunk_not_per_block(self) -> None:
+        # A document with several short blocks; the rendered body is the unit
+        # of //4 truncation, not per-block.
+        source = "# H\n\nab\n\ncd\n\nef\n\ng\n"
+        chunks, _ = _split_with_mode(source, "simple", max_tokens=100)
+        assert chunks
+        for chunk in chunks:
+            assert chunk.token_count == len(chunk.body) // 4
+
+
+class TestAccurateZeroEstimation:
+    def test_accurate_uses_full_count_not_incremental_delta(self) -> None:
+        # Construct a case where block-boundary token merging could make the
+        # incremental delta differ from a full recount.  accurate mode must
+        # report the full recount.
+        source = (
+            "# Doc\n\n"
+            "The quick brown.\n\n"
+            "fox jumps.\n\n"
+            "over the lazy.\n\n"
+            "dog.\n"
+        )
+        chunks, _ = _split_with_mode(source, "accurate", max_tokens=1200)
+        engine, _ = create_token_counter("accurate")
+        for chunk in chunks:
+            assert chunk.token_count == engine.count(chunk.body, cache=True)
+            assert chunk.estimated_token_count == chunk.token_count
