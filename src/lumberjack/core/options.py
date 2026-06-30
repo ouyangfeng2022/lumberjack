@@ -96,7 +96,7 @@ def parse_cli_block_configs(
     json_config: str = "",
 ) -> dict[str, BaseParams]:
     """Parse CLI ``--block-config`` entries against the default Markdown registry."""
-    registry: BlockKindRegistry = MarkdownItParser.default_registry()
+    registry = BlockKindRegistry(MarkdownItParser.default_block_kinds)
     result: dict[str, BaseParams] = dict(registry.default_handling())
     for entry in entries:
         kind, params = parse_block_config_entry(entry, registry)
