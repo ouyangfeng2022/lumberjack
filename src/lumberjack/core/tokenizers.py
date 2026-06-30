@@ -69,6 +69,21 @@ class SimpleCharTokenizer(TokenizerProtocol):
         return len(text)
 
 
+class ApproxCharTokenizer(TokenizerProtocol):
+    """Approximate tokenizer that estimates tokens as ``len(text) // 4``.
+
+    A common industry rule of thumb (character count divided by four) used by
+    the ``token_counter="simple"`` counting mode.  The splitter only uses
+    :meth:`count`; :meth:`encode` is a protocol placeholder.
+    """
+
+    def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
+        return ()
+
+    def count(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
+        return len(text) // 4
+
+
 def create_tokenizer(name: str) -> TokenizerProtocol:
     """Instantiate a tokenizer by name (``"simple"`` or ``"tiktoken"``)."""
     normalized = name.strip().lower()
