@@ -59,26 +59,24 @@ class TestTiktokenDefaultCache:
         assert text not in tok._cache
 
 
-class TestStrategyCountBody:
-    def test_exact_count_body_is_non_additive(self) -> None:
+class TestStrategySeparatorDelta:
+    def test_exact_separator_delta_counts_full_text(self) -> None:
         tok = SimpleCharTokenizer()
         strategy = ExactTokenCount(tok)
-        # SimpleCharTokenizer counts chars, so "ab" + "\n\n" + "cd" = 6 chars
-        assert strategy.count_body(["ab", "cd"], "\n\n") == 6
+        # count("ab\n\n") - count("ab") = 4 - 2 = 2
+        assert strategy.separator_delta("ab", "\n\n") == 2
 
-    def test_incremental_count_body_matches_exact_for_single_separator(self) -> None:
+    def test_incremental_separator_delta_uses_8char_window(self) -> None:
         tok = SimpleCharTokenizer()
-        exact = ExactTokenCount(tok)
-        incr = IncrementalTokenCount(tok)
-        # With a char tokenizer the additive arithmetic equals the full count
-        assert incr.count_body(["ab", "cd"], "\n\n") == exact.count_body(
-            ["ab", "cd"], "\n\n"
-        )
+        strategy = IncrementalTokenCount(tok)
+        # With a char tokenizer the 8-char window covers the whole short text,
+        # so the incremental delta equals the exact delta here.
+        assert strategy.separator_delta("ab", "\n\n") == 2
 
-    def test_exact_count_body_single_part(self) -> None:
+    def test_both_strategies_return_zero_for_empty_text(self) -> None:
         tok = SimpleCharTokenizer()
-        strategy = ExactTokenCount(tok)
-        assert strategy.count_body(["abc"], "\n\n") == 3
+        assert ExactTokenCount(tok).separator_delta("", "\n\n") == 0
+        assert IncrementalTokenCount(tok).separator_delta("", "\n\n") == 0
 
 
 class _BogusEngine:

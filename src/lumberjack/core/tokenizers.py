@@ -17,8 +17,6 @@ class TokenCountStrategy(Protocol):
     arithmetic (used by the ``estimate`` mode).
     """
 
-    def count_body(self, parts: list[str], separator: str) -> int: ...
-
     def count_text(self, text: str) -> int: ...
 
     def separator_delta(self, text: str, separator: str) -> int: ...
@@ -111,16 +109,12 @@ class ExactTokenCount:
     def __init__(self, tokenizer: TokenizerProtocol) -> None:
         self.tokenizer = tokenizer
 
-    def count_body(self, parts: list[str], separator: str) -> int:
-        rendered = separator.join(parts)
-        return self.tokenizer.count(rendered, cache=True)
-
     def count_text(self, text: str) -> int:
         return self.tokenizer.count(text, cache=True)
 
     def separator_delta(self, text: str, separator: str) -> int:
         if not text:
-            return self.tokenizer.count(separator, cache=True)
+            return 0
         return self.tokenizer.count(
             f"{text}{separator}", cache=True
         ) - self.tokenizer.count(text, cache=True)
@@ -138,12 +132,6 @@ class IncrementalTokenCount:
 
     def __init__(self, tokenizer: TokenizerProtocol) -> None:
         self.tokenizer = tokenizer
-
-    def count_body(self, parts: list[str], separator: str) -> int:
-        if not parts:
-            return 0
-        rendered = separator.join(parts)
-        return self.tokenizer.count(rendered, cache=True)
 
     def count_text(self, text: str) -> int:
         return self.tokenizer.count(text, cache=True)
