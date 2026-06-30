@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lumberjack.core.tokenizers import ApproxCharTokenizer
+from lumberjack.core.tokenizers import ApproxCharTokenizer, TiktokenTokenizer
 
 
 class TestApproxCharTokenizer:
@@ -24,3 +24,24 @@ class TestApproxCharTokenizer:
     def test_encode_is_placeholder(self) -> None:
         # encode is not used by the splitter; placeholder returns empty tuple
         assert ApproxCharTokenizer().encode("anything") == ()
+
+
+class TestTiktokenDefaultCache:
+    def test_default_cache_false_does_not_populate_cache(self) -> None:
+        tok = TiktokenTokenizer(default_cache=False)
+        text = "hello world cache test"
+        tok.count(text)
+        # cache not populated on a non-cache call
+        assert text not in tok._cache
+
+    def test_default_cache_true_populates_cache(self) -> None:
+        tok = TiktokenTokenizer(default_cache=True)
+        text = "hello world cache test"
+        tok.count(text)
+        assert text in tok._cache
+
+    def test_explicit_cache_overrides_default(self) -> None:
+        tok = TiktokenTokenizer(default_cache=True)
+        text = "explicit cache false"
+        tok.count(text, cache=False)
+        assert text not in tok._cache

@@ -12,12 +12,13 @@ class TiktokenTokenizer(TokenizerProtocol):
         self,
         model: str = "gpt-4o-mini",
         max_cache_size: int = 1000,
+        default_cache: bool = False,
     ):
         import tiktoken
         from cachetools import LRUCache
 
         self.encoding = tiktoken.encoding_for_model(model)
-
+        self.default_cache = default_cache
         self._cache: LRUCache[str, tuple[int, ...]] = LRUCache(maxsize=max_cache_size)
 
         self._lock = RLock()
@@ -26,19 +27,20 @@ class TiktokenTokenizer(TokenizerProtocol):
         self,
         text: str,
         *,
-        cache: bool = False,
+        cache: bool | None = None,
     ) -> tuple[int, ...]:
         if not text:
             return ()
 
-        if cache:
+        use_cache = self.default_cache if cache is None else cache
+        if use_cache:
             with self._lock:
                 cached = self._cache.get(text)
                 if cached is not None:
                     return cached
         token_ids = tuple(self.encoding.encode(text))
 
-        if cache:
+        if use_cache:
             with self._lock:
                 self._cache[text] = token_ids
 
@@ -48,7 +50,7 @@ class TiktokenTokenizer(TokenizerProtocol):
         self,
         text: str,
         *,
-        cache: bool = False,
+        cache: bool | None = None,
     ) -> int:
         if not text:
             return 0
