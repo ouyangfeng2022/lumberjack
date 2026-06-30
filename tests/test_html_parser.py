@@ -47,6 +47,15 @@ def test_html_parser_builds_document_ast_with_sections_and_blocks():
     assert "<table>" in data.blocks[1].text
 
 
+def test_html_parser_block_kinds_match_default_block_kinds() -> None:
+    parser = HTMLParser()
+
+    assert parser.block_kinds == HTMLParser.default_block_kinds
+    assert "paragraph" in parser.block_kinds
+    assert "html_table" in parser.block_kinds
+    assert isinstance(parser.block_kinds, frozenset)
+
+
 def test_html_parser_respects_max_heading_level():
     """Headings deeper than max_heading_level should become regular paragraph blocks."""
     parser = HTMLParser()

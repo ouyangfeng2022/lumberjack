@@ -19,13 +19,7 @@ if TYPE_CHECKING:
 
     from ...models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
 
-from ...models import (
-    BlockKindRegistry,
-    DocumentAST,
-    MarkdownBlock,
-    MarkdownInline,
-    SectionNode,
-)
+from ...models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
 from ...protocols import ParserProtocol
 
 LINK_REFERENCE_DEFINITION_RE = re.compile(r"^[ ]{0,3}\[([^\]]+)\]:")
@@ -333,19 +327,27 @@ class MarkdownItParser(ParserProtocol[str]):
         "math_block_eqno": "math_block_eqno",
     }
 
-    # Block kinds that are always present regardless of active rules,
-    # produced by structural handling in _build_block.
-    _STRUCTURAL_KINDS: ClassVar[frozenset[str]] = frozenset(
+    default_block_kinds: ClassVar[frozenset[str]] = frozenset(
         {
-            "paragraph",  # heading_open fallback when allow_headings=False
-            "list_item",  # list_item_open inside list containers
+            "paragraph",
+            "code_fence",
+            "math_block",
+            "math_block_eqno",
+            "code_block",
+            "html_block",
+            "html_table",
+            "blockquote",
+            "list",
+            "list_item",
+            "table",
+            "front_matter",
         }
     )
 
     def _compute_block_kinds(self) -> frozenset[str]:
-        """Compute block kinds from the parser's active block rules."""
+        """Compute block kinds from parser defaults, active rules, and extensions."""
         active_rules = self._parser.get_active_rules().get("block", [])
-        kinds: set[str] = set(self._STRUCTURAL_KINDS)
+        kinds: set[str] = set(self.default_block_kinds)
         for rule in active_rules:
             mapped = self._RULE_TO_KINDS.get(rule)
             if mapped is None:
@@ -366,20 +368,6 @@ class MarkdownItParser(ParserProtocol[str]):
     def block_kinds(self) -> frozenset[str]:
         """Block kinds this parser instance can produce, based on active rules."""
         return self._block_kinds
-
-    _default_registry: BlockKindRegistry | None = None
-
-    @classmethod
-    def default_registry(cls) -> BlockKindRegistry:
-        """Lazy-loaded registry built from the default parser configuration.
-
-        This is the single source of truth for default block kinds — used by
-        CLI, web routes, and ``SplitOptions`` when no explicit ``block_kinds``
-        are provided.
-        """
-        if cls._default_registry is None:
-            cls._default_registry = BlockKindRegistry(cls().block_kinds)
-        return cls._default_registry
 
     def __init__(
         self,

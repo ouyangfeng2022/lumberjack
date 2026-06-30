@@ -525,11 +525,16 @@ def test_multiple_thematic_breaks_are_ignored_by_parser() -> None:
     assert blocks[2].text == "Para 3"
 
 
-def test_default_block_kinds_match_parser() -> None:
-    """default_registry().kinds must stay in sync with a fresh default parser."""
-    registry = MarkdownItParser.default_registry()
+def test_default_block_kinds_match_default_markdown_parser() -> None:
+    """Markdown default_block_kinds must match a fresh default parser."""
     parser = MarkdownItParser()
-    assert registry.kinds == parser.block_kinds
+
+    assert MarkdownItParser.default_block_kinds == parser.block_kinds
+    assert "paragraph" in MarkdownItParser.default_block_kinds
+    assert "code_fence" in MarkdownItParser.default_block_kinds
+    assert "table" in MarkdownItParser.default_block_kinds
+    assert "html_table" in MarkdownItParser.default_block_kinds
+    assert not hasattr(MarkdownItParser, "default_registry")
 
 
 def test_block_kinds_reflect_parser_configuration() -> None:
