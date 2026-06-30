@@ -1789,7 +1789,10 @@ def test_per_block_max_tokens_validation_rejects_non_positive() -> None:
 
 def test_lumber_api_accepts_block_max_tokens() -> None:
     """lumber() accepts and respects per-block max_tokens via BaseParams."""
-    long_para = " ".join(f"word{i}" for i in range(100))
+    # Large enough that, under the default ``chars // 4`` counting, the block
+    # exceeds ``max_tokens`` and triggers the block-split path where the
+    # per-kind ``paragraph`` budget applies.
+    long_para = " ".join(f"word{i}" for i in range(400))
     chunks = lumber(
         long_para,
         max_tokens=500,
@@ -2019,7 +2022,7 @@ def test_splitter_default_uses_exact_strategy() -> None:
     from lumberjack.core.tokenizers import ExactTokenCount
 
     splitter = create_splitter("recursive", SimpleCharTokenizer())
-    assert isinstance(splitter.token_counter, ExactTokenCount)
+    assert isinstance(splitter.token_counter, ExactTokenCount)  # ty: ignore[unresolved-attribute]
 
 
 def test_splitter_token_counter_routes_through_strategy() -> None:
