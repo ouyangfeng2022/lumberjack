@@ -199,6 +199,14 @@ class SplitOptions:
         skip_empty_sections: When True, discard chunks that contain only a heading
             with no body content. Chunks with zero rendered tokens are always discarded
             regardless of this setting.
+        render_headings: When False, omit the chunk's common heading breadcrumb from
+            the rendered ``Chunk.body`` while keeping ``Chunk.headings`` metadata
+            intact. Both splitters are render-aware: the split budget grows to fill
+            ``max_tokens`` with body content (the heading tokens are reclaimed), so
+            ``token_count == estimated_token_count == measured body tokens``.
+            Internal relative headings (e.g. sibling titles inside a merged chunk in
+            the recursive splitter) always render regardless of this flag, because
+            they are chunk-internal structure rather than the common prefix.
         block_options: Per-block-kind configuration. Keys are lowercase block
             kind strings matching :attr:`MarkdownBlock.kind` values; values are
             :class:`BaseParams` instances. Callers that need parser-specific
@@ -211,6 +219,7 @@ class SplitOptions:
     ideal_max_tokens_ratio: float = 0.8
     merge_below_tokens: int | None = 50
     skip_empty_sections: bool = True
+    render_headings: bool = True
     block_options: dict[str, BaseParams] = field(default_factory=dict)
 
     # Cached derived fields — computed in __post_init__.

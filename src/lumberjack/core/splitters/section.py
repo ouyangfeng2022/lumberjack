@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..models import ChunkDraft, MeasuredSection
+from ..models import ChunkDraft, HeadingPath, MeasuredSection
 from .base import BaseSplitter
 
 
@@ -11,7 +11,25 @@ class SectionSplitter(BaseSplitter):
     section bodies are further split by token budget respecting
     ``block_options`` (standalone isolation, splittable kinds, per-block
     budgets).
+
+    Budget semantics with ``render_headings=False``: because every entry in
+    a SectionSplitter chunk shares the chunk's common heading path (there are
+    no internal relative headings), the heading breadcrumb contributes zero
+    tokens to the rendered body.  This class therefore excludes heading
+    tokens from the split budget when headings are not rendered, so
+    ``max_tokens`` faithfully bounds the rendered ``Chunk.body``.
     """
+
+    def _heading_budget_token_count(self, path: HeadingPath) -> int:
+        """Exclude heading tokens from the budget when they are not rendered.
+
+        SectionSplitter chunks never contain internal relative headings, so
+        the common heading path is the only heading context and it is omitted
+        from ``Chunk.body`` when ``render_headings=False``.
+        """
+        if not self.options.render_headings:
+            return 0
+        return self._heading_path_token_count(path)
 
     def _split_section(
         self,
@@ -39,7 +57,7 @@ class SectionSplitter(BaseSplitter):
                     node.blocks,
                     body_token_count=section.counts.body,
                 )
-                headings_token_count = self._heading_path_token_count(node.path)
+                headings_token_count = self._heading_budget_token_count(node.path)
                 chunks.append(
                     ChunkDraft(
                         entries=[entry],
