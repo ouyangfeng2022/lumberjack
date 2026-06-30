@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from ...models import (
     DocumentAST,
@@ -166,7 +166,7 @@ class DocxParser(ParserProtocol[bytes]):
         - Quote style       → ``blockquote``
     """
 
-    _BLOCK_KINDS: frozenset[str] = frozenset(
+    default_block_kinds: ClassVar[frozenset[str]] = frozenset(
         {
             "paragraph",
             "table",
@@ -181,7 +181,7 @@ class DocxParser(ParserProtocol[bytes]):
     @property
     def block_kinds(self) -> frozenset[str]:
         """Block kinds this parser can produce."""
-        return self._BLOCK_KINDS
+        return self.default_block_kinds
 
     def parse(
         self,
