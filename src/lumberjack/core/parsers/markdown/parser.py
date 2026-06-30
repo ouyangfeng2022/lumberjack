@@ -387,6 +387,8 @@ class MarkdownItParser(ParserProtocol[str]):
 
     @staticmethod
     def _normalize_block_kind(kind: str) -> str:
+        if not isinstance(kind, str):
+            raise TypeError("block kind must be a string")
         normalized = kind.strip().lower()
         if not normalized:
             raise ValueError("block kind cannot be empty")
@@ -419,6 +421,8 @@ class MarkdownItParser(ParserProtocol[str]):
             )
             if not token_types:
                 raise ValueError("block spec token_types cannot be empty")
+            if spec.handler is not None and not callable(spec.handler):
+                raise TypeError("block spec handler must be callable")
 
             for token_type in token_types:
                 if token_type in self._BUILTIN_BLOCK_TOKEN_TYPES:
@@ -442,6 +446,8 @@ class MarkdownItParser(ParserProtocol[str]):
                 if spec.handler is not None:
                     handlers[token_type] = spec.handler
 
+        if isinstance(extra_block_kinds, str | bytes):
+            raise TypeError("extra_block_kinds must be an iterable of strings")
         normalized_extra_kinds = frozenset(
             self._normalize_block_kind(kind) for kind in extra_block_kinds
         )
