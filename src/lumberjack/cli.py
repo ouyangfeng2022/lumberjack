@@ -53,6 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
         "(use -1 to disable merging)",
     )
     parser.add_argument(
+        "--no-render-headings",
+        action="store_true",
+        help="Omit the chunk's common heading breadcrumb from the rendered body. "
+        "The split budget is based on the rendered body.",
+    )
+    parser.add_argument(
         "--max-heading-level",
         type=int,
         default=None,
@@ -97,6 +103,7 @@ def main() -> None:
         block_options=block_options,
         tokenizer=args.tokenizer,
         splitter=args.splitter,
+        render_headings=not args.no_render_headings,
         max_heading_level=args.max_heading_level,
         document_metadata={"path": str(input_path.resolve())},
     )

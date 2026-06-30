@@ -60,7 +60,7 @@ pip install "lumberjack[all]"          # 包含全部功能
 ```
 
 > [!NOTE]
-> 需要 Python 3.13+。
+> 需要 Python 3.10+。
 
 ### 从源码构建（用于开发）
 
@@ -124,6 +124,7 @@ chunks = lumber(
     ideal_max_tokens_ratio=0.8,
     merge_below_tokens=50,
     skip_empty_sections=True,
+    render_headings=True,      # False：从 body 中去掉公共标题面包屑
     tokenizer="simple",        # "simple" | "tiktoken"
     splitter="recursive",      # "recursive" | "section"
 )
@@ -235,7 +236,7 @@ lumber <input> [options]
 | `--merge-below-tokens` | `50` | 小分块合并软阈值 |
 | `--tokenizer` | `simple` | `simple` 或 `tiktoken` |
 | `--splitter` | `recursive` | `recursive` 或 `section` |
-| `--recursive-split` | off | 为 section 切分器启用块/文本回退 |
+| `--no-render-headings` | off | 从 `body` 中省略公共标题面包屑（参见[是否渲染标题](#是否渲染标题render_headings)） |
 | `--block-config` | — | 按块类型配置（可重复指定） |
 | `--block-config-json` | — | 结构化的按块类型 JSON 配置 |
 
@@ -294,6 +295,7 @@ curl -X POST http://localhost:9612/lumber/api/split/file \
 | `ideal_max_tokens_ratio` | float | `0.8` | 优先切分预算比例 |
 | `merge_below_tokens` | int | `50` | 小分块合并软阈值 |
 | `skip_empty_sections` | bool | `true` | 丢弃仅有标题无正文的分块 |
+| `render_headings` | bool | `true` | 为 `false` 时从 `body` 中省略公共标题面包屑（参见[是否渲染标题](#是否渲染标题render_headings)） |
 | `block_configs` | object | `null` | 按块类型配置 |
 | `tokenizer` | string | `"simple"` | `simple` 或 `tiktoken` |
 | `splitter` | string | `"recursive"` | `recursive` 或 `section` |
@@ -362,6 +364,24 @@ docker compose up --build
 
 > [!IMPORTANT]
 > 代码块默认保持完整，即使超过 `max_tokens`；如需允许拆分特定块类型，请使用 `BaseParams(split=True)`。
+
+### 是否渲染标题（`render_headings`）
+
+默认情况下，每个分块渲染出的 `body` 都会以公共标题面包屑开头（例如 `# Title\n\n## Section`）。设置 `render_headings=False` 可以从 `body` 中省略该面包屑，同时保留 `Chunk.headings` 元数据。两个切分器都按渲染结果预算：
+
+| 切分器 | body 行为 | 预算行为 |
+| --- | --- | --- |
+| **Section** | 省略公共标题面包屑 | **按渲染口径预算**：原先预留给面包屑的预算会归还给正文内容，因此 `max_tokens` 会严格约束实际渲染的 body，且 `token_count == estimated_token_count == 实测 body tokens`。 |
+| **Recursive**（默认） | 省略公共标题面包屑；但 chunk *内部*的相对标题（例如合并 chunk 中的兄弟 `###` 标题）仍会渲染 | **按渲染口径预算**：切分预算会增长以容纳更多正文内容，且 `estimated_token_count == token_count == 实测 body tokens`。由于正文能打包更多内容，切分计划（分块数量、边界）可能不同于 `render_headings=True`。 |
+
+> [!NOTE]
+> 两个切分器都会在 draft 层保留标题 token，让合并算术保持自洽——当两个 chunk 合并后公共前缀变短，被挤出的标题 token 会回到 body 中，作为仍会渲染的内部相对标题。只有切分预算判断和最终 `estimated_token_count` 按渲染口径处理，因此运行估算始终匹配实际渲染出的 `body`。
+
+```python
+# 两个切分器：按渲染口径预算（body 能填满 max_tokens）
+lumber(doc, splitter="section", render_headings=False, max_tokens=1000)
+lumber(doc, splitter="recursive", render_headings=False, max_tokens=1000)
+```
 
 ## 解析覆盖范围
 

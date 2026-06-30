@@ -69,7 +69,7 @@ pip install "lumberjack[all]"          # everything
 ```
 
 > [!NOTE]
-> Requires Python 3.13+.
+> Requires Python 3.10+.
 
 ### From source (for development)
 
@@ -134,6 +134,7 @@ chunks = lumber(
     ideal_max_tokens_ratio=0.8,
     merge_below_tokens=50,
     skip_empty_sections=True,
+    render_headings=True,      # False: drop common heading breadcrumb from body
     tokenizer="simple",        # "simple" | "tiktoken"
     splitter="recursive",      # "recursive" | "section"
 )
@@ -247,7 +248,7 @@ lumber <input> [options]
 | `--merge-below-tokens`     | `50`        | Soft threshold for small-chunk merging           |
 | `--tokenizer`              | `simple`    | `simple` or `tiktoken`                           |
 | `--splitter`               | `recursive` | `recursive` or `section`                         |
-| `--recursive-split`        | off         | Enable block/text fallback for section splitter  |
+| `--no-render-headings`     | off         | Omit common heading breadcrumb from `body` (see [render_headings](#rendering-headings-render_headings)) |
 | `--block-config`           | —           | Per-block-kind config (repeatable)               |
 | `--block-config-json`      | —           | Structured per-block-kind JSON config            |
 
@@ -306,6 +307,7 @@ Both endpoints accept the same options:
 | `ideal_max_tokens_ratio` | float | `0.8` | Preferred split budget ratio |
 | `merge_below_tokens` | int | `50` | Soft merge threshold |
 | `skip_empty_sections` | bool | `true` | Discard heading-only chunks |
+| `render_headings` | bool | `true` | Omit common heading breadcrumb from `body` when `false` (see [render_headings](#rendering-headings-render_headings)) |
 | `block_configs` | object | `null` | Per-block-kind config |
 | `tokenizer` | string | `"simple"` | `simple` or `tiktoken` |
 | `splitter` | string | `"recursive"` | `recursive` or `section` |
@@ -374,6 +376,32 @@ Recursive splitting order:
 
 > [!IMPORTANT]
 > Code blocks are preserved intact by default even when they exceed `max_tokens`. Use `BaseParams(split=True)` to allow splitting specific block kinds.
+
+### Rendering Headings (`render_headings`)
+
+By default each chunk's rendered `body` starts with the common heading
+breadcrumb (e.g. `# Title\n\n## Section`). Set `render_headings=False` to
+omit that breadcrumb from `body` while keeping the `Chunk.headings` metadata
+intact. Both splitters are render-aware:
+
+| Splitter | Body behavior | Budget behavior |
+| --- | --- | --- |
+| **Section** | Common heading breadcrumb omitted | **Render-aware**: the budget previously reserved for the breadcrumb is reclaimed for body content, so `max_tokens` faithfully bounds the rendered body and `token_count == estimated_token_count == measured body tokens`. |
+| **Recursive** (default) | Common heading breadcrumb omitted; *internal* relative headings (e.g. sibling `###` titles inside a merged chunk) are still rendered | **Render-aware**: the split budget grows to fill `max_tokens` with body content, and `estimated_token_count == token_count == measured body tokens`. The split plan (chunk count, boundaries) may differ from `render_headings=True` because bodies pack more content. |
+
+> [!NOTE]
+> Both splitters keep heading tokens in the draft-level accounting so that
+> merge arithmetic stays self-consistent — when merging two chunks shrinks
+> their common prefix, the displaced heading tokens fall back into the body as
+> internal relative headings that still render. Only the split-budget decision
+> and the final `estimated_token_count` are render-aware, so the running
+> estimate always matches the actually-rendered `body`.
+
+```python
+# Both splitters: render-aware budget (body fills max_tokens)
+lumber(doc, splitter="section", render_headings=False, max_tokens=1000)
+lumber(doc, splitter="recursive", render_headings=False, max_tokens=1000)
+```
 
 ## Parsing Coverage
 
