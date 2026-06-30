@@ -31,6 +31,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Tokenizer implementation",
     )
     parser.add_argument(
+        "--token-counter",
+        choices=("simple", "estimate", "accurate"),
+        default="simple",
+        help="Token counting mode: simple (chars//4), estimate (tiktoken with "
+        "additive incremental estimate), accurate (tiktoken, fully cached, "
+        "no estimation). The --tokenizer engine is ignored when "
+        "token-counter is simple.",
+    )
+    parser.add_argument(
         "--splitter",
         choices=("recursive", "section"),
         default="recursive",
@@ -102,6 +111,7 @@ def main() -> None:
         merge_below_tokens=args.merge_below_tokens,
         block_options=block_options,
         tokenizer=args.tokenizer,
+        token_counter=args.token_counter,
         splitter=args.splitter,
         render_headings=not args.no_render_headings,
         max_heading_level=args.max_heading_level,
