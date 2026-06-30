@@ -289,6 +289,7 @@ def test_markdown_it_parser_preserves_unknown_block_tokens_as_raw_markdown() -> 
     assert document.root.blocks[0].kind == "mystery_block"
     assert document.root.blocks[0].text == "@@ mystery @@"
     assert document.root.blocks[0].attrs["source_token_type"] == "mystery_block"
+    assert "mystery_block" not in parser.block_kinds
 
 
 def test_markdown_block_spec_maps_custom_token_to_declared_kind() -> None:
