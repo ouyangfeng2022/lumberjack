@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from lumberjack.core.splitters import create_splitter
 from lumberjack.core.tokenizers import (
     ApproxCharTokenizer,
     ExactTokenCount,
@@ -134,3 +135,27 @@ class TestCreateTokenCounter:
         engine, mode = create_token_counter("estimate", bogus)
         assert engine is bogus
         assert mode == "incremental"
+
+
+class TestCreateSplitterCountMode:
+    def test_default_count_mode_is_exact(self) -> None:
+        from lumberjack.core.tokenizers import ExactTokenCount
+
+        splitter = create_splitter("recursive", SimpleCharTokenizer())
+        assert isinstance(splitter.token_counter, ExactTokenCount)
+
+    def test_explicit_incremental_mode(self) -> None:
+        from lumberjack.core.tokenizers import IncrementalTokenCount
+
+        splitter = create_splitter(
+            "recursive", SimpleCharTokenizer(), count_mode="incremental"
+        )
+        assert isinstance(splitter.token_counter, IncrementalTokenCount)
+
+    def test_explicit_exact_mode(self) -> None:
+        from lumberjack.core.tokenizers import ExactTokenCount
+
+        splitter = create_splitter(
+            "recursive", SimpleCharTokenizer(), count_mode="exact"
+        )
+        assert isinstance(splitter.token_counter, ExactTokenCount)

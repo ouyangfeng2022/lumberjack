@@ -16,7 +16,12 @@ from ..models import (
     render_heading_path,
 )
 from ..protocols import SplitterProtocol, TokenizerProtocol
-from ..tokenizers import SimpleCharTokenizer
+from ..tokenizers import (
+    CountMode,
+    ExactTokenCount,
+    IncrementalTokenCount,
+    SimpleCharTokenizer,
+)
 from ..utils import join_markdown
 
 SEPARATOR = "\n\n"
@@ -30,11 +35,19 @@ class BaseSplitter(SplitterProtocol):
         self,
         tokenizer: TokenizerProtocol | None = None,
         options: SplitOptions | None = None,
+        count_mode: CountMode = "exact",
     ):
         self.tokenizer = tokenizer or SimpleCharTokenizer()
         self.options = options or SplitOptions()
+        self.count_mode = count_mode
+        self.token_counter = self._build_token_counter(count_mode)
         self._validate_options()
         self._block_splitter = BlockSplitter(self.tokenizer, self.options)
+
+    def _build_token_counter(self, count_mode: CountMode):
+        if count_mode == "incremental":
+            return IncrementalTokenCount(self.tokenizer)
+        return ExactTokenCount(self.tokenizer)
 
     def split(self, document: DocumentAST) -> list[Chunk]:
         measured_root = self._measure_section(document.root)
