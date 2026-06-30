@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import yaml
 from markdown_it import MarkdownIt
@@ -12,12 +14,7 @@ from ...utils import join_markdown
 from .plugins import brackets_math_plugin
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
-    from typing import ClassVar
-
     from markdown_it.token import Token
-
-    from ...models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
 
 from ...models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
 from ...protocols import ParserProtocol
@@ -52,6 +49,32 @@ def is_tight_list(tokens: list[Token], start: int, end: int) -> bool:
         token.type == "paragraph_open" and token.hidden
         for token in tokens[start : end + 1]
     )
+
+
+@dataclass(slots=True, frozen=True)
+class MarkdownBlockContext:
+    """Context passed to custom Markdown block handlers."""
+
+    parser: MarkdownItParser
+    tokens: list[Token]
+    index: int
+    source_lines: list[str]
+    token: Token
+
+
+MarkdownBlockHandler = Callable[
+    [MarkdownBlockContext],
+    tuple[MarkdownBlock | None, int],
+]
+
+
+@dataclass(slots=True, frozen=True)
+class MarkdownBlockSpec:
+    """Declare how MarkdownIt token types map to lumberjack block kinds."""
+
+    kind: str
+    token_types: tuple[str, ...]
+    handler: MarkdownBlockHandler | None = None
 
 
 class InlineNormalizer:
@@ -344,6 +367,59 @@ class MarkdownItParser(ParserProtocol[str]):
         }
     )
 
+    @staticmethod
+    def _normalize_block_kind(kind: str) -> str:
+        normalized = kind.strip().lower()
+        if not normalized:
+            raise ValueError("block kind cannot be empty")
+        return normalized
+
+    @staticmethod
+    def _normalize_token_type(token_type: str) -> str:
+        normalized = token_type.strip()
+        if not normalized:
+            raise ValueError("token type cannot be empty")
+        return normalized
+
+    def _normalize_block_extensions(
+        self,
+        block_specs: Iterable[MarkdownBlockSpec],
+        extra_block_kinds: Iterable[str],
+    ) -> tuple[dict[str, str], dict[str, MarkdownBlockHandler], frozenset[str]]:
+        token_type_to_kind: dict[str, str] = {}
+        handlers: dict[str, MarkdownBlockHandler] = {}
+
+        for spec in block_specs:
+            kind = self._normalize_block_kind(spec.kind)
+            token_types = tuple(
+                self._normalize_token_type(token_type)
+                for token_type in spec.token_types
+            )
+            if not token_types:
+                raise ValueError("block spec token_types cannot be empty")
+
+            for token_type in token_types:
+                existing_kind = token_type_to_kind.get(token_type)
+                if existing_kind is not None and existing_kind != kind:
+                    raise ValueError(
+                        f"conflicting block spec for token type {token_type!r}: "
+                        f"{existing_kind!r} != {kind!r}"
+                    )
+
+                if spec.handler is not None and token_type in handlers:
+                    raise ValueError(
+                        f"conflicting block spec handler for token type {token_type!r}"
+                    )
+
+                token_type_to_kind[token_type] = kind
+                if spec.handler is not None:
+                    handlers[token_type] = spec.handler
+
+        normalized_extra_kinds = frozenset(
+            self._normalize_block_kind(kind) for kind in extra_block_kinds
+        )
+        return token_type_to_kind, handlers, normalized_extra_kinds
+
     def _compute_block_kinds(self) -> frozenset[str]:
         """Compute block kinds from parser defaults, active rules, and extensions."""
         active_rules = self._parser.get_active_rules().get("block", [])
@@ -362,6 +438,8 @@ class MarkdownItParser(ParserProtocol[str]):
         if "html_block" in kinds:
             kinds.add("html_table")
 
+        kinds.update(self._extra_block_kinds)
+        kinds.update(self._token_type_to_kind.values())
         return frozenset(kinds)
 
     @property
@@ -374,10 +452,17 @@ class MarkdownItParser(ParserProtocol[str]):
         preset: str = "gfm-like",
         *,
         plugins: Iterable[Callable[..., None]] = (),
+        block_specs: Iterable[MarkdownBlockSpec] = (),
+        extra_block_kinds: Iterable[str] = (),
         options_update: dict[str, Any] | None = None,
         disable_lheading: bool = False,
         max_heading_level: int | None = None,
     ) -> None:
+        (
+            self._token_type_to_kind,
+            self._block_handlers,
+            self._extra_block_kinds,
+        ) = self._normalize_block_extensions(block_specs, extra_block_kinds)
         self._inline = InlineNormalizer()
         self._parser = MarkdownIt(preset, options_update=options_update)
         self._parser.use(dollarmath_plugin)
@@ -709,6 +794,16 @@ class MarkdownItParser(ParserProtocol[str]):
                 close_index + 1,
             )
 
+        mapped_kind = self._token_type_to_kind.get(token.type)
+        if mapped_kind is not None:
+            return self._build_fallback_block(
+                token,
+                tokens,
+                index,
+                source_lines,
+                kind=mapped_kind,
+            )
+
         return self._build_fallback_block(token, tokens, index, source_lines)
 
     def _parse_blocks(
@@ -753,6 +848,8 @@ class MarkdownItParser(ParserProtocol[str]):
         tokens: list[Token],
         index: int,
         source_lines: list[str],
+        *,
+        kind: str | None = None,
     ) -> tuple[MarkdownBlock | None, int]:
         """Handle unrecognized token types by capturing source text and children."""
         if token.type.endswith("_close") or token.type == "inline":
@@ -774,11 +871,11 @@ class MarkdownItParser(ParserProtocol[str]):
         if not text.strip():
             return (None, close_index + 1)
 
-        kind = token.type.removesuffix("_open")
+        block_kind = kind or token.type.removesuffix("_open")
 
         return (
             MarkdownBlock(
-                kind=kind,
+                kind=block_kind,
                 text=text,
                 start_line=start_line(token),
                 end_line=end_line(token),

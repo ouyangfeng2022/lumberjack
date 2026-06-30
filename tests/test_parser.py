@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from markdown_it.token import Token
 from mdit_py_plugins.footnote import footnote_plugin
 from mdit_py_plugins.tasklists import tasklists_plugin
 
 from lumberjack.core.parsers.markdown.parser import (
+    MarkdownBlockSpec,
     MarkdownItParser,
     MarkdownParser,
 )
@@ -285,6 +287,75 @@ def test_markdown_it_parser_preserves_unknown_block_tokens_as_raw_markdown() -> 
     assert document.root.blocks[0].kind == "mystery_block"
     assert document.root.blocks[0].text == "@@ mystery @@"
     assert document.root.blocks[0].attrs["source_token_type"] == "mystery_block"
+
+
+def test_markdown_block_spec_maps_custom_token_to_declared_kind() -> None:
+    parser = MarkdownItParser(
+        block_specs=(
+            MarkdownBlockSpec(
+                kind="Callout",
+                token_types=("callout_open",),
+            ),
+        )
+    )
+    parser._parser.parse = lambda _text, _env: [  # ty: ignore[invalid-assignment]
+        Token("callout_open", "div", 1, map=[0, 1]),
+        Token("callout_close", "div", -1),
+    ]
+
+    document = parser.parse("!!! note", document_title="callout.md")
+
+    assert "callout" in parser.block_kinds
+    assert document.root.blocks[0].kind == "callout"
+    assert document.root.blocks[0].text == "!!! note"
+    assert document.root.blocks[0].attrs["source_token_type"] == "callout_open"
+
+
+def test_markdown_parser_extra_block_kinds_are_declared_without_token_mapping() -> None:
+    parser = MarkdownItParser(extra_block_kinds=("Custom_Block", " aside "))
+
+    assert "custom_block" in parser.block_kinds
+    assert "aside" in parser.block_kinds
+
+
+def test_markdown_block_spec_rejects_empty_kind() -> None:
+    with pytest.raises(ValueError, match="block kind cannot be empty"):
+        MarkdownItParser(
+            block_specs=(
+                MarkdownBlockSpec(
+                    kind=" ",
+                    token_types=("callout_open",),
+                ),
+            )
+        )
+
+
+def test_markdown_block_spec_rejects_empty_token_type() -> None:
+    with pytest.raises(ValueError, match="token type cannot be empty"):
+        MarkdownItParser(
+            block_specs=(
+                MarkdownBlockSpec(
+                    kind="callout",
+                    token_types=(" ",),
+                ),
+            )
+        )
+
+
+def test_markdown_block_spec_rejects_conflicting_token_kind_mapping() -> None:
+    with pytest.raises(ValueError, match="conflicting block spec"):
+        MarkdownItParser(
+            block_specs=(
+                MarkdownBlockSpec(
+                    kind="callout",
+                    token_types=("custom_open",),
+                ),
+                MarkdownBlockSpec(
+                    kind="aside",
+                    token_types=("custom_open",),
+                ),
+            )
+        )
 
 
 def test_markdown_it_parser_supports_task_list_plugin() -> None:
