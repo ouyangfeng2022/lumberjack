@@ -22,6 +22,7 @@ class TextSplitRequest(BaseModel):
     merge_below_tokens: int | None = 50
     skip_empty_sections: bool = True
     recursive_split: bool = False
+    render_headings: bool = True
     block_configs: dict[str, Any] | None = None
     tokenizer: str = "simple"
     splitter: str = "recursive"
@@ -80,6 +81,7 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
             merge_below_tokens=payload.merge_below_tokens,
             skip_empty_sections=payload.skip_empty_sections,
             recursive_split=payload.recursive_split,
+            render_headings=payload.render_headings,
             block_options=block_options,
             tokenizer=payload.tokenizer,
             splitter=payload.splitter,
@@ -104,6 +106,7 @@ async def split_file(
     merge_below_tokens: int | None = Form(50),
     skip_empty_sections: bool = Form(True),
     recursive_split: bool = Form(False),
+    render_headings: bool = Form(True),
     block_configs: str = Form(""),
     tokenizer: str = Form("simple"),
     splitter: str = Form("recursive"),
@@ -139,6 +142,7 @@ async def split_file(
             merge_below_tokens=merge_below_tokens,
             skip_empty_sections=skip_empty_sections,
             recursive_split=recursive_split,
+            render_headings=render_headings,
             block_options=block_options,
             tokenizer=tokenizer,
             splitter=splitter,

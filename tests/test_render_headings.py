@@ -1,16 +1,17 @@
 """Tests for ``SplitOptions.render_headings``.
 
-Two splitter profiles are covered:
+Both splitters are render-aware. When ``render_headings`` is False the common
+heading breadcrumb is excluded from the split budget *and* omitted from the
+rendered body, so:
 
-* :class:`SectionSplitter` — render-aware budgeting. When ``render_headings``
-  is False the heading breadcrumb is excluded from the split budget, so the
-  rendered body can grow up to ``max_tokens`` and ``token_count`` matches the
-  actual body tokens exactly.
-* :class:`RecursiveSplitter` — body-only rendering with a documented budget
-  caveat. The common heading breadcrumb is omitted from ``Chunk.body`` but the
-  split budget still reserves tokens for it; the resulting body is therefore
-  shorter than ``max_tokens`` allows. Metadata (``Chunk.headings``) is
-  preserved either way.
+* the rendered body can grow up to ``max_tokens`` (heading tokens are
+  reclaimed for content), and
+* ``estimated_token_count == token_count == tokenizer.count(body)`` exactly —
+  the running estimate matches the actually-rendered body.
+
+``Chunk.headings`` metadata is preserved either way. Internal relative
+headings (siblings merged into one chunk) always render regardless of the
+flag, because they are chunk-internal structure, not the common prefix.
 """
 
 from __future__ import annotations
@@ -185,12 +186,12 @@ class TestSectionSplitterRenderAware:
 
 
 # ---------------------------------------------------------------------------
-# RecursiveSplitter — body-only rendering with budget caveat
+# RecursiveSplitter — render-aware budgeting
 # ---------------------------------------------------------------------------
 
 
-class TestRecursiveSplitterBudgetCaveat:
-    """RecursiveSplitter keeps headings in the budget but omits them from body."""
+class TestRecursiveSplitterRenderAware:
+    """RecursiveSplitter excludes the common breadcrumb from budget and body."""
 
     @staticmethod
     def _split(
@@ -230,28 +231,54 @@ class TestRecursiveSplitterBudgetCaveat:
         for chunk in chunks:
             assert chunk.headings[0] == (1, "Root")
 
-    def test_false_body_is_shorter_than_budget(
+    def test_false_estimated_equals_measured(
         self,
         nested_ast,  # type: ignore[no-untyped-def]
     ) -> None:
-        """The documented caveat: budget reserves heading tokens the body omits."""
+        """The running estimate matches the rendered body tokens exactly."""
+        tok = SimpleCharTokenizer()
         chunks = self._split(nested_ast, render_headings=False, max_tokens=60)
         for chunk in chunks:
-            # Body tokens strictly below the budget because heading tokens
-            # are reserved but not rendered.
-            assert chunk.token_count < 60
-            assert chunk.estimated_token_count <= 60
+            measured = tok.count(chunk.body)
+            assert chunk.token_count == measured
+            assert chunk.estimated_token_count == measured
 
-    def test_budget_decisions_match_true_mode(
+    def test_false_respects_max_tokens(
         self,
-        nested_ast,  # type: ignore[no-untyped-def]
+        splittable_ast,  # type: ignore[no-untyped-def]
     ) -> None:
-        """The split *plan* (count, headings) is identical between modes —
-        only the rendered body differs."""
-        true_chunks = self._split(nested_ast, render_headings=True)
-        false_chunks = self._split(nested_ast, render_headings=False)
-        assert len(true_chunks) == len(false_chunks)
-        assert [c.headings for c in true_chunks] == [c.headings for c in false_chunks]
+        """With body-only budgeting, bodies can grow up to max_tokens."""
+        chunks = self._split(splittable_ast, render_headings=False, max_tokens=108)
+        for chunk in chunks:
+            assert chunk.token_count <= 108
+
+    def test_false_enlarges_body_budget(
+        self,
+        splittable_ast,  # type: ignore[no-untyped-def]
+    ) -> None:
+        """Fewer, larger chunks when the heading budget is reclaimed."""
+        true_chunks = self._split(splittable_ast, render_headings=True, max_tokens=108)
+        false_chunks = self._split(
+            splittable_ast, render_headings=False, max_tokens=108
+        )
+        # Fewer chunks because each carries more body content.
+        assert len(false_chunks) < len(true_chunks)
+        # And each False chunk is larger on average.
+        avg_true = sum(c.token_count for c in true_chunks) / len(true_chunks)
+        avg_false = sum(c.token_count for c in false_chunks) / len(false_chunks)
+        assert avg_false > avg_true
+
+    def test_false_estimated_equals_measured_splittable(
+        self,
+        splittable_ast,  # type: ignore[no-untyped-def]
+    ) -> None:
+        """estimated == token_count == measured on the splittable fixture."""
+        tok = SimpleCharTokenizer()
+        chunks = self._split(splittable_ast, render_headings=False, max_tokens=108)
+        for chunk in chunks:
+            measured = tok.count(chunk.body)
+            assert chunk.token_count == measured
+            assert chunk.estimated_token_count == measured
 
     def test_internal_relative_headings_still_rendered(
         self,
@@ -263,6 +290,39 @@ class TestRecursiveSplitterBudgetCaveat:
         # relative headings and must still appear in the body.
         joined = "\n\n".join(c.body for c in chunks)
         assert "### A" in joined or "### B" in joined
+
+    def test_false_asymmetric_merge_estimated_equals_measured(self) -> None:
+        """Merged sibling sections: common dropped, relative kept, estimate exact."""
+        fixture = (
+            "# Development Guide\n\n"
+            "## Current Scope\n\nWe are building a splitter.\n\n"
+            "## Milestones\n\n### M0\n\nFirst milestone.\n\n"
+            "### M1\n\nSecond milestone.\n\n"
+            "## Suggested Workflow\n\nFollow these steps.\n"
+        )
+        ast = MarkdownParser().parse(fixture, document_title="t.md")
+        tok = SimpleCharTokenizer()
+        splitter = RecursiveSplitter(
+            tokenizer=tok,
+            options=SplitOptions(
+                max_tokens=400,
+                ideal_max_tokens_ratio=1,
+                merge_below_tokens=0,
+                render_headings=False,
+            ),
+        )
+        chunks = splitter.split(ast)
+        assert len(chunks) == 1
+        chunk = chunks[0]
+        # Common breadcrumb (# Development Guide) is not rendered.
+        assert "# Development Guide" not in chunk.body
+        # Internal relative headings are rendered.
+        assert "## Current Scope" in chunk.body
+        assert "### M0" in chunk.body
+        # Estimate matches the measured body exactly.
+        measured = tok.count(chunk.body)
+        assert chunk.token_count == measured
+        assert chunk.estimated_token_count == measured
 
 
 # ---------------------------------------------------------------------------

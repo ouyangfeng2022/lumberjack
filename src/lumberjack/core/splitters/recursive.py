@@ -12,15 +12,15 @@ class RecursiveSplitter(_BaseSplitter):
     recursively breaks down oversized sections and merges small adjacent chunks
     to stay within the configured max_tokens budget.
 
-    ``render_headings`` caveat: this splitter budgets with heading tokens
-    included regardless of ``SplitOptions.render_headings``.  When the flag is
-    False the common heading breadcrumb is omitted from ``Chunk.body`` but the
-    split budget still reserves tokens for it — the resulting body is therefore
-    shorter than ``max_tokens`` would otherwise allow.  This is a known
-    limitation caused by the structural coupling between a section's title and
-    its role as either chunk-prefix or internal-relative-heading (which is only
-    determined after pack/merge).  Reconciling the budget requires a deeper
-    refactor and is deferred to a later revision.
+    ``render_headings`` semantics: drafts carry full heading token counts
+    internally so that merge arithmetic stays self-consistent — when a merge
+    shrinks the common prefix, the displaced heading tokens fall back into the
+    body as internal relative headings that still render.  Only the two
+    outward-facing budget/estimate touch points (``_draft_budget_tokens`` for
+    split decisions and ``estimated_token_count`` at finalization) are
+    render-aware.  As a result ``render_headings=False`` omits the common
+    breadcrumb from ``Chunk.body`` and lets bodies grow to fill ``max_tokens``,
+    while ``estimated_token_count`` matches the actually-rendered body tokens.
     """
 
     def _split_section(
@@ -39,19 +39,24 @@ class RecursiveSplitter(_BaseSplitter):
             + section.counts.subtree
         )
 
+        # Build the single-chunk draft but tag it with the entries' actual
+        # common prefix (not necessarily section.node.path when the section
+        # has no body and asymmetric children).  Keeping draft.headings equal
+        # to the true common prefix makes finalize's recompute a no-op.
+        single_chunk_draft = ChunkDraft(
+            entries=entries,
+            headings=common_headings,
+            headings_token_count=headings_token_count,
+            body_token_count=chunk_token_count - headings_token_count,
+            token_count=chunk_token_count,
+        )
+
         if (
-            chunk_token_count <= self.options.ideal_max_tokens
+            self._draft_budget_tokens(single_chunk_draft)
+            <= self.options.ideal_max_tokens
             and section.can_emit_as_single_chunk
         ):
-            return [
-                ChunkDraft(
-                    entries=entries,
-                    headings=section.node.path,
-                    headings_token_count=headings_token_count,
-                    body_token_count=chunk_token_count - headings_token_count,
-                    token_count=chunk_token_count,
-                )
-            ]
+            return [single_chunk_draft]
 
         if section.children:
             return self._split_section_children(section)  # include section.body
@@ -69,8 +74,19 @@ class RecursiveSplitter(_BaseSplitter):
         current_draft: ChunkDraft | None = None
         standalone_kinds = self.options.standalone_kinds
 
+        # Full heading token count — kept on every draft so merge arithmetic
+        # stays self-consistent (displaced heading tokens fall back into the
+        # body when a merge shrinks the common prefix).
         common_heading_token_count = self._heading_path_token_count(node.path)
-        budget_token_count = self.options.ideal_max_tokens - common_heading_token_count
+        # Body/child budget for the packing decision.  When render_headings=
+        # False the common breadcrumb is not rendered, so the full
+        # ideal_max_tokens is available for body and child content.
+        if self.options.render_headings:
+            budget_token_count = (
+                self.options.ideal_max_tokens - common_heading_token_count
+            )
+        else:
+            budget_token_count = self.options.ideal_max_tokens
 
         def flush_current() -> None:
             nonlocal current_draft
@@ -99,9 +115,21 @@ class RecursiveSplitter(_BaseSplitter):
                 current_draft = new_draft
                 return
 
-            temp_merged_draft = self._merge_drafts(current_draft, new_draft)
+            # The merged common prefix is always node.path by construction:
+            # every packable candidate is either this section's own body draft
+            # (headings == node.path) or a direct child's draft (headings starts
+            # with node.path).  Passing it directly avoids recomputing the
+            # longest common prefix of the two heading paths.
+            temp_merged_draft = self._merge_drafts(
+                current_draft, new_draft, expected_common=node.path
+            )
 
-            if temp_merged_draft.token_count > self.options.ideal_max_tokens:
+            # Render-aware budget check: when render_headings=False the common
+            # breadcrumb (node.path) is not rendered, so only the body counts.
+            if (
+                self._draft_budget_tokens(temp_merged_draft)
+                > self.options.ideal_max_tokens
+            ):
                 flush_current()
                 current_draft = new_draft
                 return

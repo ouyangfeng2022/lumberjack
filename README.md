@@ -385,22 +385,24 @@ Recursive splitting order:
 By default each chunk's rendered `body` starts with the common heading
 breadcrumb (e.g. `# Title\n\n## Section`). Set `render_headings=False` to
 omit that breadcrumb from `body` while keeping the `Chunk.headings` metadata
-intact. Splitter support differs:
+intact. Both splitters are render-aware:
 
 | Splitter | Body behavior | Budget behavior |
 | --- | --- | --- |
 | **Section** | Common heading breadcrumb omitted | **Render-aware**: the budget previously reserved for the breadcrumb is reclaimed for body content, so `max_tokens` faithfully bounds the rendered body and `token_count == estimated_token_count == measured body tokens`. |
-| **Recursive** (default) | Common heading breadcrumb omitted; *internal* relative headings (e.g. sibling `###` titles inside a merged chunk) are still rendered | **Budget includes the hidden headings (known limitation)**: the split plan still reserves tokens for the now-hidden breadcrumb, so `body` is shorter than `max_tokens` would otherwise allow. `token_count` reflects the rendered body; `estimated_token_count` reflects the budgeted plan. The split plan (chunk count, headings, boundaries) is identical to `render_headings=True`. |
+| **Recursive** (default) | Common heading breadcrumb omitted; *internal* relative headings (e.g. sibling `###` titles inside a merged chunk) are still rendered | **Render-aware**: the split budget grows to fill `max_tokens` with body content, and `estimated_token_count == token_count == measured body tokens`. The split plan (chunk count, boundaries) may differ from `render_headings=True` because bodies pack more content. |
 
-> [!WARNING]
-> **Recursive splitter caveat**: with `render_headings=False`, the rendered `body` is intentionally shorter than the budget implies. This stems from the structural coupling between a section's title and its role as either chunk-prefix (not rendered) or internal-relative-heading (still rendered), which is only determined after chunks are packed/merged. Reconciling the budget requires a deeper refactor and is tracked for a later revision. If you need a render-aware budget today, use `splitter="section"`.
+> [!NOTE]
+> Both splitters keep heading tokens in the draft-level accounting so that
+> merge arithmetic stays self-consistent — when merging two chunks shrinks
+> their common prefix, the displaced heading tokens fall back into the body as
+> internal relative headings that still render. Only the split-budget decision
+> and the final `estimated_token_count` are render-aware, so the running
+> estimate always matches the actually-rendered `body`.
 
 ```python
-# Section splitter: render-aware budget (body fills max_tokens)
+# Both splitters: render-aware budget (body fills max_tokens)
 lumber(doc, splitter="section", render_headings=False, max_tokens=1000)
-
-# Recursive splitter: body drops the breadcrumb but the budget still reserves
-# tokens for it (documented limitation).
 lumber(doc, splitter="recursive", render_headings=False, max_tokens=1000)
 ```
 

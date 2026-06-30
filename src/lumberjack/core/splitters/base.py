@@ -60,6 +60,29 @@ class _BaseSplitter(SplitterProtocol):
         """
         return self._heading_path_token_count(path)
 
+    def _draft_budget_tokens(self, draft: ChunkDraft) -> int:
+        """Render-aware token budget a draft occupies.
+
+        Drafts carry full heading token counts internally so that merge
+        arithmetic stays self-consistent (when a merge shrinks the common
+        prefix, the displaced heading tokens fall back into the body as
+        internal relative headings).  This helper translates that internal
+        count into the *rendered* footprint so budget comparisons match what
+        will actually appear in ``Chunk.body``:
+
+        * ``render_headings=True``  — the common breadcrumb is rendered, so
+          the full ``token_count`` counts toward the budget.
+        * ``render_headings=False`` — the common breadcrumb is omitted, so
+          only the body (which still includes internal relative headings)
+          counts.  Using ``body_token_count`` here is correct for both
+          splitters: SectionSplitter's drafts already exclude heading tokens
+          via the budget hook, and RecursiveSplitter's merge arithmetic
+          folds displaced heading tokens into ``body_token_count``.
+        """
+        if self.options.render_headings:
+            return draft.token_count
+        return draft.body_token_count
+
     def _split_section(self, section: MeasuredSection) -> list[ChunkDraft]:
         raise NotImplementedError
 
@@ -173,9 +196,21 @@ class _BaseSplitter(SplitterProtocol):
         max_tokens = self.options.ideal_max_tokens
         standalone_kinds = self.options.standalone_kinds
 
+        # Full heading token count — kept on every draft so merge arithmetic
+        # stays self-consistent (displaced heading tokens fall back into the
+        # body when a merge shrinks the common prefix).
         prefix_tokens = (
-            self._heading_budget_token_count(headings) if node.level > 0 else 0
+            self._heading_path_token_count(headings) if node.level > 0 else 0
         )
+        # Body-only budget for splitting decisions.  When render_headings=True
+        # the common breadcrumb is rendered, so the heading tokens are
+        # subtracted from max_tokens.  When render_headings=False the
+        # breadcrumb is omitted and the full max_tokens is available for body.
+        if self.options.render_headings:
+            body_budget = max(0, max_tokens - prefix_tokens)
+        else:
+            body_budget = max_tokens
+
         if prefix_tokens >= max_tokens or not blocks:
             entry = self._entry_from_blocks(
                 headings, blocks, body_token_count=section.counts.body
@@ -198,7 +233,7 @@ class _BaseSplitter(SplitterProtocol):
         current_start_line: int | None = None
         current_end_line: int | None = None
 
-        budget = max(0, max_tokens - prefix_tokens) if prefix_tokens > 0 else max_tokens
+        budget = body_budget
 
         def draft_current() -> ChunkDraft:
             entry = Entry(
@@ -286,8 +321,12 @@ class _BaseSplitter(SplitterProtocol):
                 if current_parts
                 else block_tokens
             )
-            candidate_total = prefix_tokens + candidate_body_tokens
-            if current_parts and candidate_total > max_tokens:
+            # Compare the body footprint against the body-only budget.
+            # Whether or not headings render, the heading tokens are constant
+            # for every fragment here (all share ``headings``), so comparing
+            # body tokens against ``budget`` is equivalent to comparing the
+            # full rendered footprint against ``max_tokens``.
+            if current_parts and candidate_body_tokens > budget:
                 chunks.append(draft_current())
                 current_parts = []
                 current_joined = ""
@@ -296,8 +335,7 @@ class _BaseSplitter(SplitterProtocol):
                 current_end_line = None
                 candidate_body_tokens = block_tokens
 
-            single_block_total = prefix_tokens + block_tokens
-            if single_block_total <= max_tokens:
+            if block_tokens <= budget:
                 current_parts.append(block.text)
                 candidate_text = (
                     current_joined + SEPARATOR + block.text
@@ -396,12 +434,20 @@ class _BaseSplitter(SplitterProtocol):
                 continue
             index += 1
             token_count = self.tokenizer.count(body)
+            # The running estimate mirrors the rendered footprint: full
+            # token_count when the common breadcrumb renders, body tokens only
+            # when it is omitted.  ``body_token_count`` is correct for both
+            # splitters here — SectionSplitter's drafts already exclude heading
+            # tokens via the budget hook, and RecursiveSplitter's merge
+            # arithmetic folds any displaced (internal relative) heading tokens
+            # into body_token_count — so the estimate matches the actually
+            # rendered body.
+            estimated = self._draft_budget_tokens(chunk)
             # Adjust the estimate for the trailing phantom \n\n in the last
             # entry.  When the last entry has empty body, its heading's
             # trailing \n\n (from heading_path_token_count) was counted in
             # the incremental estimate but is never rendered — there is no
             # next entry for it to separate from.
-            estimated = chunk.token_count
             if chunk.entries:
                 last = chunk.entries[-1]
                 if not last.body.strip():
@@ -476,11 +522,21 @@ class _BaseSplitter(SplitterProtocol):
         self,
         left_draft: ChunkDraft,
         right_draft: ChunkDraft,
+        *,
+        expected_common: HeadingPath | None = None,
     ) -> ChunkDraft:
         left_headings = left_draft.headings
         right_headings = right_draft.headings
 
-        common_headings = common_heading_path([left_headings, right_headings])
+        # Callers that know the merged common prefix by construction (e.g. the
+        # recursive splitter packing a section's own body with its children —
+        # the common prefix is always the section's path) may pass it directly
+        # via ``expected_common`` to avoid recomputing the longest common
+        # prefix of the two heading paths.
+        if expected_common is not None:
+            common_headings = expected_common
+        else:
+            common_headings = common_heading_path([left_headings, right_headings])
         headings_token_count = self._heading_budget_token_count(common_headings)
 
         left_body_token_count = left_draft.token_count - headings_token_count
@@ -574,7 +630,10 @@ class _BaseSplitter(SplitterProtocol):
                 and current.chunk_type == "paragraph"
             ):
                 merged_draft = self._merge_drafts(previous, current)
-                if merged_draft.token_count <= self.options.max_tokens:
+                # Compare the rendered footprint against max_tokens.  Because
+                # can_merge guarantees previous.headings == current.headings,
+                # the merged common prefix is that shared path.
+                if self._draft_budget_tokens(merged_draft) <= self.options.max_tokens:
                     merged[i - 1] = merged_draft
                     del merged[i]
             i -= 1
