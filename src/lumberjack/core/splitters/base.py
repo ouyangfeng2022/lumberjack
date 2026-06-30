@@ -454,27 +454,27 @@ class BaseSplitter(SplitterProtocol):
                 continue
             index += 1
             token_count = self.token_counter.count_text(body)
-            # The running estimate mirrors the rendered footprint: full
-            # token_count when the common breadcrumb renders, body tokens only
-            # when it is omitted.  ``body_token_count`` is correct for both
-            # splitters here — SectionSplitter's drafts already exclude heading
-            # tokens via the budget hook, and RecursiveSplitter's merge
-            # arithmetic folds any displaced (internal relative) heading tokens
-            # into body_token_count — so the estimate matches the actually
-            # rendered body.
-            estimated = self._draft_budget_tokens(chunk)
-            # Adjust the estimate for the trailing phantom \n\n in the last
-            # entry.  When the last entry has empty body, its heading's
-            # trailing \n\n (from heading_path_token_count) was counted in
-            # the incremental estimate but is never rendered — there is no
-            # next entry for it to separate from.
-            if chunk.entries:
-                last = chunk.entries[-1]
-                if not last.body.strip():
-                    relative = last.headings[len(headings) :]
-                    if relative:
-                        ht = render_heading_path(relative)
-                        estimated -= self._separator_delta_after(ht)
+            # Exact counting modes (simple, accurate) report the full rendered
+            # recount for both token_count and estimated_token_count — the
+            # integer-truncation non-additivity of ``chars // 4`` (simple) and
+            # the zero-estimation requirement (accurate) both rule out the
+            # incremental running estimate here.
+            if self.count_mode == "incremental":
+                estimated = self._draft_budget_tokens(chunk)
+                # Adjust the estimate for the trailing phantom \n\n in the
+                # last entry.  When the last entry has empty body, its
+                # heading's trailing \n\n (from heading_path_token_count)
+                # was counted in the incremental estimate but is never
+                # rendered — there is no next entry for it to separate from.
+                if chunk.entries:
+                    last = chunk.entries[-1]
+                    if not last.body.strip():
+                        relative = last.headings[len(headings) :]
+                        if relative:
+                            ht = render_heading_path(relative)
+                            estimated -= self._separator_delta_after(ht)
+            else:
+                estimated = token_count
             finalized.append(
                 Chunk(
                     chunk_id=f"chunk-{index:04d}",
