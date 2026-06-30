@@ -325,7 +325,7 @@ def test_markdown_parser_rejects_string_extra_block_kinds() -> None:
     with pytest.raises(
         TypeError, match="extra_block_kinds must be an iterable of strings"
     ):
-        MarkdownItParser(extra_block_kinds="aside")  # ty: ignore[invalid-argument-type]
+        MarkdownItParser(extra_block_kinds="aside")
 
 
 def test_markdown_parser_rejects_non_string_extra_block_kind() -> None:
