@@ -7,7 +7,9 @@ from markdown_it.token import Token
 from mdit_py_plugins.footnote import footnote_plugin
 from mdit_py_plugins.tasklists import tasklists_plugin
 
+from lumberjack.core.models import MarkdownBlock
 from lumberjack.core.parsers.markdown.parser import (
+    MarkdownBlockContext,
     MarkdownBlockSpec,
     MarkdownItParser,
     MarkdownParser,
@@ -417,6 +419,100 @@ def test_markdown_block_spec_rejects_non_callable_handler() -> None:
                 ),
             )
         )
+
+
+def test_markdown_block_spec_handler_builds_custom_block() -> None:
+    seen_contexts: list[MarkdownBlockContext] = []
+
+    def build_block(
+        context: MarkdownBlockContext,
+    ) -> tuple[MarkdownBlock | None, int]:
+        seen_contexts.append(context)
+        return (
+            MarkdownBlock(
+                kind="callout",
+                text=f"handled:{context.token.content}",
+                start_line=1,
+                end_line=1,
+                attrs={"source_token_type": context.token.type},
+            ),
+            context.index + 1,
+        )
+
+    parser = MarkdownItParser(
+        block_specs=(
+            MarkdownBlockSpec(
+                kind="callout",
+                token_types=("callout_block",),
+                handler=build_block,
+            ),
+        )
+    )
+    parser._parser.parse = lambda _text, _env: [  # ty: ignore[invalid-assignment]
+        Token("callout_block", "div", 0, map=[0, 1], content="note")
+    ]
+
+    document = parser.parse("!!! note", document_title="callout.md")
+
+    assert seen_contexts
+    assert seen_contexts[0].index == 0
+    assert document.root.blocks[0].kind == "callout"
+    assert document.root.blocks[0].text == "handled:note"
+    assert document.root.blocks[0].attrs["source_token_type"] == "callout_block"
+
+
+def test_markdown_block_spec_handler_can_parse_container_children() -> None:
+    def build_container(
+        context: MarkdownBlockContext,
+    ) -> tuple[MarkdownBlock | None, int]:
+        close_index = context.parser.find_matching_close(
+            context.tokens,
+            context.index,
+        )
+        children = context.parser.parse_child_blocks(
+            context.tokens,
+            context.index + 1,
+            close_index,
+            context.source_lines,
+        )
+        return (
+            MarkdownBlock(
+                kind="callout",
+                text="\n\n".join(child.text for child in children),
+                start_line=1,
+                end_line=2,
+                children=children,
+                attrs={"source_token_type": context.token.type},
+            ),
+            close_index + 1,
+        )
+
+    inline = Token("inline", "", 0, map=[1, 2], content="Body")
+    inline.children = [Token("text", "", 0, content="Body")]
+    parser = MarkdownItParser(
+        block_specs=(
+            MarkdownBlockSpec(
+                kind="callout",
+                token_types=("callout_open",),
+                handler=build_container,
+            ),
+        )
+    )
+    parser._parser.parse = lambda _text, _env: [  # ty: ignore[invalid-assignment]
+        Token("callout_open", "div", 1, map=[0, 2]),
+        Token("paragraph_open", "p", 1, map=[1, 2]),
+        inline,
+        Token("paragraph_close", "p", -1),
+        Token("callout_close", "div", -1),
+    ]
+
+    document = parser.parse("!!! note\nBody", document_title="callout.md")
+
+    block = document.root.blocks[0]
+    assert block.kind == "callout"
+    assert block.text == "Body"
+    assert block.children[0].kind == "paragraph"
+    assert block.children[0].text == "Body"
 
 
 def test_markdown_block_spec_maps_leaf_token_to_declared_kind() -> None:

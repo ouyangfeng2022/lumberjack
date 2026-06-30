@@ -827,6 +827,18 @@ class MarkdownItParser(ParserProtocol[str]):
                 close_index + 1,
             )
 
+        handler = self._block_handlers.get(token.type)
+        if handler is not None:
+            return handler(
+                MarkdownBlockContext(
+                    parser=self,
+                    tokens=tokens,
+                    index=index,
+                    source_lines=source_lines,
+                    token=token,
+                )
+            )
+
         mapped_kind = self._token_type_to_kind.get(token.type)
         if mapped_kind is not None:
             return self._build_fallback_block(
@@ -856,6 +868,20 @@ class MarkdownItParser(ParserProtocol[str]):
             if block is not None and block.text:
                 blocks.append(block)
         return tuple(blocks)
+
+    def parse_child_blocks(
+        self,
+        tokens: list[Token],
+        start: int,
+        end: int,
+        source_lines: list[str],
+    ) -> tuple[MarkdownBlock, ...]:
+        """Parse child block tokens for custom block handlers."""
+        return self._parse_blocks(tokens, start, end, source_lines)
+
+    def find_matching_close(self, tokens: list[Token], index: int) -> int:
+        """Return the matching close-token index for custom block handlers."""
+        return self._find_matching_close(tokens, index)
 
     def _find_matching_close(self, tokens: list[Token], index: int) -> int:
         """Return the index of the matching *_close token for an *_open token at *index*."""
