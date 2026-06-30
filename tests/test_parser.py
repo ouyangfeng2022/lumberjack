@@ -318,6 +318,18 @@ def test_markdown_parser_extra_block_kinds_are_declared_without_token_mapping() 
     assert "aside" in parser.block_kinds
 
 
+def test_markdown_parser_rejects_string_extra_block_kinds() -> None:
+    with pytest.raises(
+        TypeError, match="extra_block_kinds must be an iterable of strings"
+    ):
+        MarkdownItParser(extra_block_kinds="aside")  # ty: ignore[invalid-argument-type]
+
+
+def test_markdown_parser_rejects_non_string_extra_block_kind() -> None:
+    with pytest.raises(TypeError, match="block kind must be a string"):
+        MarkdownItParser(extra_block_kinds=(object(),))  # ty: ignore[invalid-argument-type]
+
+
 def test_markdown_block_spec_rejects_empty_kind() -> None:
     with pytest.raises(ValueError, match="block kind cannot be empty"):
         MarkdownItParser(
@@ -389,6 +401,19 @@ def test_markdown_block_spec_rejects_non_string_token_type() -> None:
                 MarkdownBlockSpec(
                     kind="callout",
                     token_types=(object(),),  # ty: ignore[invalid-argument-type]
+                ),
+            )
+        )
+
+
+def test_markdown_block_spec_rejects_non_callable_handler() -> None:
+    with pytest.raises(TypeError, match="block spec handler must be callable"):
+        MarkdownItParser(
+            block_specs=(
+                MarkdownBlockSpec(
+                    kind="callout",
+                    token_types=("callout_open",),
+                    handler=object(),  # ty: ignore[invalid-argument-type]
                 ),
             )
         )
