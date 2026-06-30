@@ -204,7 +204,7 @@ def test_split_with_table_block_params(client: TestClient) -> None:
         "/lumber/api/split/text",
         json={
             "text": md,
-            "max_tokens": 28,
+            "max_tokens": 5,
             "ideal_max_tokens_ratio": 1,
             "merge_below_tokens": -1,
             "block_configs": {"table": {"repeat_header": False}},

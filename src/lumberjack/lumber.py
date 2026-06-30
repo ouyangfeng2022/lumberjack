@@ -7,7 +7,7 @@ from .core.models import BaseParams, Chunk, SplitOptions
 from .core.options import resolve_block_options
 from .core.parsers import create_parser
 from .core.splitters import create_splitter
-from .core.tokenizers import create_tokenizer
+from .core.tokenizers import create_token_counter, create_tokenizer
 from .formats import detect_format, read_docx_input, read_text_input
 
 
@@ -23,6 +23,7 @@ def lumber(
     render_headings: bool = True,
     block_options: Mapping[str, BaseParams | dict] | None = None,
     tokenizer: str = "simple",
+    token_counter: str = "simple",
     splitter: str = "recursive",
     document_metadata: dict[str, object] | None = None,
     max_heading_level: int | None = None,
@@ -51,7 +52,11 @@ def lumber(
             from ``Chunk.body`` while preserving ``Chunk.headings`` metadata.
             See :attr:`SplitOptions.render_headings` for budget semantics.
         block_options: Per-block-kind :class:`BaseParams` overrides.
-        tokenizer: Built-in tokenizer name (``"simple"`` or ``"tiktoken"``).
+        tokenizer: Built-in tokenizer engine name (``"simple"`` or
+            ``"tiktoken"``). Ignored when ``token_counter="simple"``.
+        token_counter: Counting mode — ``"simple"`` (chars // 4, the default),
+            ``"estimate"`` (tiktoken with additive incremental estimate), or
+            ``"accurate"`` (tiktoken, fully cached, no estimation).
         splitter: Built-in splitter name (``"recursive"`` or ``"section"``).
         document_metadata: Extra metadata merged into the document.
         max_heading_level: Maximum heading level to parse as sections.
@@ -73,10 +78,26 @@ def lumber(
             "splitter must be a string selecting a built-in splitter. "
             "For custom splitters, parse manually and call splitter.split()."
         )
+    if not isinstance(token_counter, str):
+        raise TypeError(
+            "token_counter must be a string selecting a counting mode. "
+            "For custom counting strategies, parse manually and pass the "
+            "tokenizer instance plus count_mode to a splitter."
+        )
 
     input_format = detect_format(text, format)
 
-    tokenizer_impl = create_tokenizer(tokenizer)
+    # Resolve the counting engine + mode. For token_counter="simple" the
+    # tokenizer argument is ignored (chars//4 via ApproxCharTokenizer). For
+    # estimate/accurate the named engine is constructed; a "simple" engine
+    # name is upgraded to "tiktoken" because those modes need a real tokenizer
+    # whose count is additive/cacheable.
+    if token_counter == "simple":
+        tokenizer_impl, count_mode = create_token_counter("simple")
+    else:
+        engine_name = "tiktoken" if tokenizer == "simple" else tokenizer
+        engine = create_tokenizer(engine_name)
+        tokenizer_impl, count_mode = create_token_counter(token_counter, engine)
 
     if input_format == "docx":
         parser_impl = create_parser("docx")
@@ -118,7 +139,12 @@ def lumber(
         block_options=resolved_block_options,
     )
 
-    splitter_impl = create_splitter(splitter, tokenizer=tokenizer_impl, options=options)
+    splitter_impl = create_splitter(
+        splitter,
+        tokenizer=tokenizer_impl,
+        options=options,
+        count_mode=count_mode,
+    )
     return splitter_impl.split(document)
 
 

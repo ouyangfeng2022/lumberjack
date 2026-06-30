@@ -84,6 +84,12 @@ class TestStrategyCountBody:
 class _BogusEngine:
     """Minimal stand-in engine that is not a real tokenizer."""
 
+    def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
+        return ()
+
+    def count(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
+        return len(text)
+
 
 class TestCreateTokenCounter:
     def test_simple_returns_approx_char_and_exact(self) -> None:
@@ -144,7 +150,7 @@ class TestCreateSplitterCountMode:
         from lumberjack.core.tokenizers import ExactTokenCount
 
         splitter = create_splitter("recursive", SimpleCharTokenizer())
-        assert isinstance(splitter.token_counter, ExactTokenCount)
+        assert isinstance(splitter.token_counter, ExactTokenCount)  # ty: ignore[unresolved-attribute]
 
     def test_explicit_incremental_mode(self) -> None:
         from lumberjack.core.tokenizers import IncrementalTokenCount
@@ -152,7 +158,7 @@ class TestCreateSplitterCountMode:
         splitter = create_splitter(
             "recursive", SimpleCharTokenizer(), count_mode="incremental"
         )
-        assert isinstance(splitter.token_counter, IncrementalTokenCount)
+        assert isinstance(splitter.token_counter, IncrementalTokenCount)  # ty: ignore[unresolved-attribute]
 
     def test_explicit_exact_mode(self) -> None:
         from lumberjack.core.tokenizers import ExactTokenCount
@@ -160,12 +166,10 @@ class TestCreateSplitterCountMode:
         splitter = create_splitter(
             "recursive", SimpleCharTokenizer(), count_mode="exact"
         )
-        assert isinstance(splitter.token_counter, ExactTokenCount)
+        assert isinstance(splitter.token_counter, ExactTokenCount)  # ty: ignore[unresolved-attribute]
 
 
-def _split_with_mode(
-    source: str, token_counter: str, max_tokens: int = 1200
-):
+def _split_with_mode(source: str, token_counter: str, max_tokens: int = 1200):
     document = MarkdownItParser().parse(source)
     engine, mode = create_token_counter(token_counter)
     options = SplitOptions(max_tokens=max_tokens)
@@ -227,15 +231,63 @@ class TestAccurateZeroEstimation:
         # Construct a case where block-boundary token merging could make the
         # incremental delta differ from a full recount.  accurate mode must
         # report the full recount.
-        source = (
-            "# Doc\n\n"
-            "The quick brown.\n\n"
-            "fox jumps.\n\n"
-            "over the lazy.\n\n"
-            "dog.\n"
-        )
+        source = "# Doc\n\nThe quick brown.\n\nfox jumps.\n\nover the lazy.\n\ndog.\n"
         chunks, _ = _split_with_mode(source, "accurate", max_tokens=1200)
         engine, _ = create_token_counter("accurate")
         for chunk in chunks:
             assert chunk.token_count == engine.count(chunk.body, cache=True)
             assert chunk.estimated_token_count == chunk.token_count
+
+
+class TestLumberTokenCounter:
+    def test_lumber_accepts_token_counter_simple(self) -> None:
+        from lumberjack import lumber
+
+        chunks = lumber("# T\n\nbody\n", token_counter="simple")
+        assert chunks
+        assert chunks[0].token_count == len(chunks[0].body) // 4
+
+    def test_lumber_accepts_token_counter_estimate(self) -> None:
+        from lumberjack import lumber
+
+        chunks = lumber("# T\n\nbody text here\n", token_counter="estimate")
+        assert chunks
+
+    def test_lumber_accepts_token_counter_accurate(self) -> None:
+        from lumberjack import lumber
+
+        chunks = lumber("# T\n\nbody text here\n", token_counter="accurate")
+        assert chunks
+
+    def test_lumber_simple_ignores_tiktoken_engine(self) -> None:
+        from lumberjack import lumber
+
+        # token_counter=simple must ignore tokenizer=tiktoken and use chars//4
+        chunks = lumber(
+            "# T\n\nbody text\n", token_counter="simple", tokenizer="tiktoken"
+        )
+        assert chunks[0].token_count == len(chunks[0].body) // 4
+
+    def test_lumber_estimate_uses_tiktoken_when_engine_is_simple(self) -> None:
+        from lumberjack import lumber
+
+        # The name->engine upgrade (simple -> tiktoken) happens in lumber()
+        # for estimate/accurate, so this must not raise.
+        chunks = lumber(
+            "# T\n\nbody text\n",
+            token_counter="estimate",
+            tokenizer="simple",
+        )
+        assert chunks
+
+    def test_lumber_unknown_token_counter_raises(self) -> None:
+        from lumberjack import lumber
+
+        with pytest.raises(ValueError, match="Unsupported token_counter"):
+            lumber("# T\n\nbody\n", token_counter="bogus")
+
+    def test_lumber_unknown_tokenizer_raises(self) -> None:
+        from lumberjack import lumber
+
+        with pytest.raises(ValueError, match="Unsupported tokenizer"):
+            lumber("# T\n\nbody\n", token_counter="estimate", tokenizer="bogus")
