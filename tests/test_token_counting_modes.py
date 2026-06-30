@@ -291,3 +291,28 @@ class TestLumberTokenCounter:
 
         with pytest.raises(ValueError, match="Unsupported tokenizer"):
             lumber("# T\n\nbody\n", token_counter="estimate", tokenizer="bogus")
+
+
+class TestCliTokenCounter:
+    def test_default_token_counter_is_simple(self) -> None:
+        from lumberjack.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["input.md"])
+        assert args.token_counter == "simple"
+        assert args.tokenizer == "simple"
+
+    def test_token_counter_accepts_three_modes(self) -> None:
+        from lumberjack.cli import build_parser
+
+        parser = build_parser()
+        for mode in ("simple", "estimate", "accurate"):
+            args = parser.parse_args(["input.md", "--token-counter", mode])
+            assert args.token_counter == mode
+
+    def test_token_counter_rejects_unknown(self) -> None:
+        from lumberjack.cli import build_parser
+
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["input.md", "--token-counter", "bogus"])
