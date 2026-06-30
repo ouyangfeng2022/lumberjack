@@ -7,6 +7,8 @@ from pathlib import Path
 
 from . import lumber
 from .core.options import parse_cli_block_configs
+from .core.parsers import create_parser
+from .formats import detect_format
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -89,14 +91,17 @@ def main() -> None:
     args = parser.parse_args()
     input_path = Path(args.input)
 
+    input_format = detect_format(input_path, args.input_format)
+    parser_impl = create_parser(input_format)
     block_options = parse_cli_block_configs(
         args.block_config,
+        block_kinds=parser_impl.block_kinds,
         json_config=args.block_config_json,
     )
 
     chunks = lumber(
         input_path,
-        format=args.input_format,
+        format=input_format,
         max_tokens=args.max_tokens,
         ideal_max_tokens_ratio=args.ideal_max_tokens_ratio,
         merge_below_tokens=args.merge_below_tokens,
