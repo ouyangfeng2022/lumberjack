@@ -165,3 +165,52 @@ def create_tokenizer(name: str) -> TokenizerProtocol:
     if normalized == "tiktoken":
         return TiktokenTokenizer()
     raise ValueError(f"Unsupported tokenizer: {name}")
+
+
+def create_token_counter(
+    name: str,
+    tokenizer: TokenizerProtocol | None = None,
+) -> tuple[TokenizerProtocol, CountMode]:
+    """Resolve a counting mode into ``(engine, count_mode)``.
+
+    Args:
+        name: Counting mode — ``"simple"``, ``"estimate"``, or ``"accurate"``.
+        tokenizer: Caller-supplied engine instance.  Ignored for ``"simple"``.
+            For ``"estimate"`` / ``"accurate"`` it is used directly when
+            provided, otherwise a ``tiktoken`` engine is constructed.
+
+    Returns:
+        A ``(engine, count_mode)`` tuple.  ``count_mode`` is ``"exact"`` for
+        ``simple`` / ``accurate`` and ``"incremental"`` for ``estimate``.
+
+    Raises:
+        ValueError: If ``name`` is not a supported counting mode.
+    """
+    normalized = name.strip().lower()
+    if normalized == "simple":
+        return ApproxCharTokenizer(), "exact"
+    if normalized == "estimate":
+        engine = tokenizer if tokenizer is not None else create_tokenizer("tiktoken")
+        return engine, "incremental"
+    if normalized == "accurate":
+        engine = tokenizer if tokenizer is not None else create_tokenizer("tiktoken")
+        engine = _ensure_tiktoken_cache_forced(engine)
+        return engine, "exact"
+    raise ValueError(f"Unsupported token_counter: {name}")
+
+
+def _ensure_tiktoken_cache_forced(
+    engine: TokenizerProtocol,
+) -> TokenizerProtocol:
+    """Return a tiktoken engine with ``default_cache=True``.
+
+    If ``engine`` is a :class:`TiktokenTokenizer` that already has caching
+    forced on, return it unchanged.  If it is a ``TiktokenTokenizer`` with
+    caching off, construct a fresh instance with ``default_cache=True`` sharing
+    the same model.  Non-tiktoken engines are returned unchanged.
+    """
+    if isinstance(engine, TiktokenTokenizer):
+        if engine.default_cache:
+            return engine
+        return TiktokenTokenizer(default_cache=True)
+    return engine
