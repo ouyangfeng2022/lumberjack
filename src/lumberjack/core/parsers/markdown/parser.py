@@ -366,6 +366,24 @@ class MarkdownItParser(ParserProtocol[str]):
             "front_matter",
         }
     )
+    _BUILTIN_BLOCK_TOKEN_TYPES: ClassVar[frozenset[str]] = frozenset(
+        {
+            "front_matter",
+            "heading_open",
+            "paragraph_open",
+            "blockquote_open",
+            "bullet_list_open",
+            "ordered_list_open",
+            "list_item_open",
+            "fence",
+            "math_block",
+            "math_block_eqno",
+            "code_block",
+            "html_block",
+            "hr",
+            "table_open",
+        }
+    )
 
     @staticmethod
     def _normalize_block_kind(kind: str) -> str:
@@ -376,6 +394,8 @@ class MarkdownItParser(ParserProtocol[str]):
 
     @staticmethod
     def _normalize_token_type(token_type: str) -> str:
+        if not isinstance(token_type, str):
+            raise TypeError("token type must be a string")
         normalized = token_type.strip()
         if not normalized:
             raise ValueError("token type cannot be empty")
@@ -391,6 +411,8 @@ class MarkdownItParser(ParserProtocol[str]):
 
         for spec in block_specs:
             kind = self._normalize_block_kind(spec.kind)
+            if isinstance(spec.token_types, str | bytes):
+                raise TypeError("token_types must be an iterable of strings")
             token_types = tuple(
                 self._normalize_token_type(token_type)
                 for token_type in spec.token_types
@@ -399,6 +421,11 @@ class MarkdownItParser(ParserProtocol[str]):
                 raise ValueError("block spec token_types cannot be empty")
 
             for token_type in token_types:
+                if token_type in self._BUILTIN_BLOCK_TOKEN_TYPES:
+                    raise ValueError(
+                        f"block spec token type {token_type!r} is handled internally"
+                    )
+
                 existing_kind = token_type_to_kind.get(token_type)
                 if existing_kind is not None and existing_kind != kind:
                     raise ValueError(

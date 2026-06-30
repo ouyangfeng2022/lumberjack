@@ -358,6 +358,63 @@ def test_markdown_block_spec_rejects_conflicting_token_kind_mapping() -> None:
         )
 
 
+def test_markdown_block_spec_rejects_builtin_token_type() -> None:
+    with pytest.raises(ValueError, match="handled internally"):
+        MarkdownItParser(
+            block_specs=(
+                MarkdownBlockSpec(
+                    kind="custom_paragraph",
+                    token_types=("paragraph_open",),
+                ),
+            )
+        )
+
+
+def test_markdown_block_spec_rejects_string_token_types() -> None:
+    with pytest.raises(TypeError, match="token_types must be an iterable of strings"):
+        MarkdownItParser(
+            block_specs=(
+                MarkdownBlockSpec(
+                    kind="callout",
+                    token_types="callout_open",  # ty: ignore[invalid-argument-type]
+                ),
+            )
+        )
+
+
+def test_markdown_block_spec_rejects_non_string_token_type() -> None:
+    with pytest.raises(TypeError, match="token type must be a string"):
+        MarkdownItParser(
+            block_specs=(
+                MarkdownBlockSpec(
+                    kind="callout",
+                    token_types=(object(),),  # ty: ignore[invalid-argument-type]
+                ),
+            )
+        )
+
+
+def test_markdown_block_spec_maps_leaf_token_to_declared_kind() -> None:
+    parser = MarkdownItParser(
+        block_specs=(
+            MarkdownBlockSpec(
+                kind="directive",
+                token_types=("directive",),
+            ),
+        )
+    )
+    parser._parser.parse = lambda _text, _env: [  # ty: ignore[invalid-assignment]
+        Token("directive", "", 0, map=[0, 1], content=":: directive")
+    ]
+
+    document = parser.parse(":: directive", document_title="directive.md")
+
+    assert "directive" in parser.block_kinds
+    assert document.root.blocks[0].kind == "directive"
+    assert document.root.blocks[0].text == ":: directive"
+    assert document.root.blocks[0].attrs["source_token_type"] == "directive"
+
+
 def test_markdown_it_parser_supports_task_list_plugin() -> None:
     parser = MarkdownItParser(plugins=(tasklists_plugin,))
     markdown = "- [x] done\n- [ ] todo"
