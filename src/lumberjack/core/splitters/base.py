@@ -25,7 +25,6 @@ from ..tokenizers import (
 from ..utils import join_markdown
 
 SEPARATOR = "\n\n"
-SEPARATOR_DELTA_WINDOW_CHARS = 8
 
 
 class BaseSplitter(SplitterProtocol):
@@ -61,8 +60,8 @@ class BaseSplitter(SplitterProtocol):
         tokens = 0
         for level, title in path:
             if title:
-                tokens = tokens + self.tokenizer.count(
-                    "#" * level + " " + title + SEPARATOR, cache=True
+                tokens = tokens + self.token_counter.count_text(
+                    "#" * level + " " + title + SEPARATOR
                 )
         return tokens
 
@@ -108,12 +107,7 @@ class BaseSplitter(SplitterProtocol):
 
     def _separator_delta_after(self, text: str) -> int:
         """Estimate the token delta caused by appending the Markdown separator."""
-        if not text:
-            return 0
-        tail = text.rstrip("\n")[-SEPARATOR_DELTA_WINDOW_CHARS:]
-        return self.tokenizer.count(
-            f"{tail}{SEPARATOR}", cache=True
-        ) - self.tokenizer.count(tail, cache=True)
+        return self.token_counter.separator_delta(text, SEPARATOR)
 
     def _validate_options(self) -> None:
         if self.options.max_tokens <= 0:
@@ -146,16 +140,16 @@ class BaseSplitter(SplitterProtocol):
             if not block.text:
                 continue
             if idx == len(section.blocks) - 1:
-                body_token_count += self.tokenizer.count(block.text, cache=True)
+                body_token_count += self.token_counter.count_text(block.text)
             else:
-                body_token_count += self.tokenizer.count(
-                    block.text + SEPARATOR, cache=True
+                body_token_count += self.token_counter.count_text(
+                    block.text + SEPARATOR
                 )
 
         # 2. Count title tokens
         if section.level > 0:
-            title_token_count = self.tokenizer.count(
-                "#" * section.level + " " + section.title + SEPARATOR, cache=True
+            title_token_count = self.token_counter.count_text(
+                "#" * section.level + " " + section.title + SEPARATOR
             )
         else:
             title_token_count = 0
@@ -282,7 +276,7 @@ class BaseSplitter(SplitterProtocol):
                     current_start_line = None
                     current_end_line = None
 
-                block_tokens = self.tokenizer.count(block.text, cache=True)
+                block_tokens = self.token_counter.count_text(block.text)
                 # This chunk will only contain this block and headings.
                 block_pieces = self._block_splitter.split_oversized_block(
                     block,
@@ -290,7 +284,7 @@ class BaseSplitter(SplitterProtocol):
                 )
                 if block_pieces is not None:
                     for piece in block_pieces:
-                        piece_tokens = self.tokenizer.count(piece)
+                        piece_tokens = self.token_counter.count_text(piece)
                         entry = Entry(
                             headings=headings,
                             body=piece,
@@ -331,15 +325,22 @@ class BaseSplitter(SplitterProtocol):
                     )
                 continue
 
-            block_tokens = self.tokenizer.count(block.text, cache=True)
-            candidate_body_tokens = (
-                current_body_tokens
-                - self.tokenizer.count(current_parts[-1], cache=True)
-                + self.tokenizer.count(f"{current_parts[-1]}{SEPARATOR}", cache=True)
-                + block_tokens
-                if current_parts
-                else block_tokens
-            )
+            block_tokens = self.token_counter.count_text(block.text)
+            if current_parts:
+                # Between adjacent blocks, recount the previous block with its
+                # trailing separator so the running total reflects the rendered
+                # join (``last + SEPARATOR``).  Subtree/entry-group boundaries
+                # use the cheaper separator-delta window; block joins do not,
+                # because the previous block is already fully counted here.
+                previous_block = current_parts[-1]
+                candidate_body_tokens = (
+                    current_body_tokens
+                    - self.token_counter.count_text(previous_block)
+                    + self.token_counter.count_text(f"{previous_block}{SEPARATOR}")
+                    + block_tokens
+                )
+            else:
+                candidate_body_tokens = block_tokens
             # Compare the body footprint against the body-only budget.
             # Whether or not headings render, the heading tokens are constant
             # for every fragment here (all share ``headings``), so comparing
@@ -405,7 +406,7 @@ class BaseSplitter(SplitterProtocol):
                 continue
 
             for piece in block_pieces:
-                piece_tokens = self.tokenizer.count(piece)
+                piece_tokens = self.token_counter.count_text(piece)
                 entry = Entry(
                     headings=headings,
                     body=piece,
@@ -452,7 +453,7 @@ class BaseSplitter(SplitterProtocol):
             ):
                 continue
             index += 1
-            token_count = self.tokenizer.count(body)
+            token_count = self.token_counter.count_text(body)
             # The running estimate mirrors the rendered footprint: full
             # token_count when the common breadcrumb renders, body tokens only
             # when it is omitted.  ``body_token_count`` is correct for both

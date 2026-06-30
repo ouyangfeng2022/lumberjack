@@ -526,6 +526,7 @@ def test_estimated_tokens_do_not_use_tail_window_between_blocks() -> None:
     splitter = RecursiveSplitter(
         tokenizer=tokenizer,
         options=SplitOptions(max_tokens=500, merge_below_tokens=0),
+        count_mode="incremental",
     )
 
     chunks = splitter.split(document)
@@ -542,6 +543,7 @@ def test_entry_merge_uses_tail_window_only_between_entry_groups() -> None:
     splitter = RecursiveSplitter(
         tokenizer=tokenizer,
         options=SplitOptions(max_tokens=500, merge_below_tokens=0),
+        count_mode="incremental",
     )
     heading_path = ((1, "A"),)
     heading_tc = len("# A\n\n")
@@ -636,6 +638,7 @@ Three body.
     splitter = RecursiveSplitter(
         tokenizer=tokenizer,
         options=SplitOptions(max_tokens=35, merge_below_tokens=0),
+        count_mode="incremental",
     )
 
     chunks = splitter.split(document)
@@ -2009,3 +2012,35 @@ Small body.
     child_bodies = " ".join(c.body for c in child_chunks)
     assert "Alpha" in child_bodies
     assert "mike." in child_bodies
+
+
+def test_splitter_default_uses_exact_strategy() -> None:
+    """The default splitter build uses the ExactTokenCount strategy."""
+    from lumberjack.core.tokenizers import ExactTokenCount
+
+    splitter = create_splitter("recursive", SimpleCharTokenizer())
+    assert isinstance(splitter.token_counter, ExactTokenCount)
+
+
+def test_splitter_token_counter_routes_through_strategy() -> None:
+    """Both strategies produce the same chunk body and counts for a simple
+    document, because body rendering is independent of counting and the exact
+    path equals full-text counting.
+    """
+    from lumberjack.core.parsers.markdown.parser import MarkdownItParser
+
+    source = "# Title\n\nFirst paragraph here.\n\nSecond paragraph here.\n"
+    document = MarkdownItParser().parse(source)
+    options = SplitOptions(max_tokens=1200)
+
+    exact = create_splitter("recursive", SimpleCharTokenizer(), options=options)
+    incr = create_splitter(
+        "recursive",
+        SimpleCharTokenizer(),
+        options=options,
+        count_mode="incremental",
+    )
+    exact_chunks = exact.split(document)
+    incr_chunks = incr.split(document)
+    assert [c.body for c in exact_chunks] == [c.body for c in incr_chunks]
+    assert [c.token_count for c in exact_chunks] == [c.token_count for c in incr_chunks]
