@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from lumberjack.core.tokenizers import ApproxCharTokenizer, TiktokenTokenizer
+from lumberjack.core.tokenizers import (
+    ApproxCharTokenizer,
+    ExactTokenCount,
+    IncrementalTokenCount,
+    SimpleCharTokenizer,
+    TiktokenTokenizer,
+)
 
 
 class TestApproxCharTokenizer:
@@ -45,3 +51,25 @@ class TestTiktokenDefaultCache:
         text = "explicit cache false"
         tok.count(text, cache=False)
         assert text not in tok._cache
+
+
+class TestStrategyCountBody:
+    def test_exact_count_body_is_non_additive(self) -> None:
+        tok = SimpleCharTokenizer()
+        strategy = ExactTokenCount(tok)
+        # SimpleCharTokenizer counts chars, so "ab" + "\n\n" + "cd" = 6 chars
+        assert strategy.count_body(["ab", "cd"], "\n\n") == 6
+
+    def test_incremental_count_body_matches_exact_for_single_separator(self) -> None:
+        tok = SimpleCharTokenizer()
+        exact = ExactTokenCount(tok)
+        incr = IncrementalTokenCount(tok)
+        # With a char tokenizer the additive arithmetic equals the full count
+        assert incr.count_body(["ab", "cd"], "\n\n") == exact.count_body(
+            ["ab", "cd"], "\n\n"
+        )
+
+    def test_exact_count_body_single_part(self) -> None:
+        tok = SimpleCharTokenizer()
+        strategy = ExactTokenCount(tok)
+        assert strategy.count_body(["abc"], "\n\n") == 3

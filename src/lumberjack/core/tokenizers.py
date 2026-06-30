@@ -1,8 +1,27 @@
 from __future__ import annotations
 
 from threading import RLock
+from typing import Literal, Protocol, TypeAlias
 
 from .protocols import TokenizerProtocol
+
+CountMode: TypeAlias = Literal["exact", "incremental"]  # noqa: UP040
+
+
+class TokenCountStrategy(Protocol):
+    """Abstracts how the splitter counts tokens at internal decision sites.
+
+    Two implementations exist: :class:`ExactTokenCount` counts the fully
+    rendered text at every site (used by the ``simple`` and ``accurate``
+    modes); :class:`IncrementalTokenCount` reuses the additive / separator-delta
+    arithmetic (used by the ``estimate`` mode).
+    """
+
+    def count_body(self, parts: list[str], separator: str) -> int: ...
+
+    def count_text(self, text: str) -> int: ...
+
+    def separator_delta(self, text: str, separator: str) -> int: ...
 
 
 class TiktokenTokenizer(TokenizerProtocol):
@@ -84,6 +103,58 @@ class ApproxCharTokenizer(TokenizerProtocol):
 
     def count(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
         return len(text) // 4
+
+
+class ExactTokenCount:
+    """Counting strategy that counts fully rendered text at every site."""
+
+    def __init__(self, tokenizer: TokenizerProtocol) -> None:
+        self.tokenizer = tokenizer
+
+    def count_body(self, parts: list[str], separator: str) -> int:
+        rendered = separator.join(parts)
+        return self.tokenizer.count(rendered, cache=True)
+
+    def count_text(self, text: str) -> int:
+        return self.tokenizer.count(text, cache=True)
+
+    def separator_delta(self, text: str, separator: str) -> int:
+        if not text:
+            return self.tokenizer.count(separator, cache=True)
+        return self.tokenizer.count(
+            f"{text}{separator}", cache=True
+        ) - self.tokenizer.count(text, cache=True)
+
+
+class IncrementalTokenCount:
+    """Counting strategy that reuses additive / separator-window arithmetic.
+
+    ``separator_delta`` mirrors the original ``_separator_delta_after`` 8-char
+    tail-window approximation so the incremental mode reproduces the legacy
+    estimate behavior.
+    """
+
+    _DELTA_WINDOW = 8
+
+    def __init__(self, tokenizer: TokenizerProtocol) -> None:
+        self.tokenizer = tokenizer
+
+    def count_body(self, parts: list[str], separator: str) -> int:
+        if not parts:
+            return 0
+        rendered = separator.join(parts)
+        return self.tokenizer.count(rendered, cache=True)
+
+    def count_text(self, text: str) -> int:
+        return self.tokenizer.count(text, cache=True)
+
+    def separator_delta(self, text: str, separator: str) -> int:
+        if not text:
+            return 0
+        tail = text.rstrip("\n")[-self._DELTA_WINDOW :]
+        return self.tokenizer.count(
+            f"{tail}{separator}", cache=True
+        ) - self.tokenizer.count(tail, cache=True)
 
 
 def create_tokenizer(name: str) -> TokenizerProtocol:
