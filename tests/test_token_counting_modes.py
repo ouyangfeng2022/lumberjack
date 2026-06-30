@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import pytest
+
 from lumberjack.core.tokenizers import (
     ApproxCharTokenizer,
     ExactTokenCount,
     IncrementalTokenCount,
     SimpleCharTokenizer,
     TiktokenTokenizer,
+    create_token_counter,
 )
 
 
@@ -73,3 +76,61 @@ class TestStrategyCountBody:
         tok = SimpleCharTokenizer()
         strategy = ExactTokenCount(tok)
         assert strategy.count_body(["abc"], "\n\n") == 3
+
+
+class _BogusEngine:
+    """Minimal stand-in engine that is not a real tokenizer."""
+
+
+class TestCreateTokenCounter:
+    def test_simple_returns_approx_char_and_exact(self) -> None:
+        engine, mode = create_token_counter("simple")
+        assert isinstance(engine, ApproxCharTokenizer)
+        assert mode == "exact"
+
+    def test_simple_ignores_provided_tokenizer(self) -> None:
+        provided = TiktokenTokenizer()
+        engine, mode = create_token_counter("simple", provided)
+        assert isinstance(engine, ApproxCharTokenizer)
+        assert mode == "exact"
+
+    def test_estimate_without_tokenizer_defaults_to_tiktoken_incremental(self) -> None:
+        engine, mode = create_token_counter("estimate")
+        assert isinstance(engine, TiktokenTokenizer)
+        assert mode == "incremental"
+
+    def test_estimate_with_simple_tokenizer_uses_provided_instance(self) -> None:
+        # Per the spec, estimate/accurate use a provided engine instance
+        # directly. Name-based "simple -> tiktoken" upgrade applies only when
+        # a name is resolved (handled in lumber()), not to caller-supplied
+        # instances.
+        engine, mode = create_token_counter("estimate", SimpleCharTokenizer())
+        assert isinstance(engine, SimpleCharTokenizer)
+        assert mode == "incremental"
+
+    def test_accurate_forces_cache_on_tiktoken_and_uses_exact(self) -> None:
+        engine, mode = create_token_counter("accurate")
+        assert isinstance(engine, TiktokenTokenizer)
+        assert engine.default_cache is True
+        assert mode == "exact"
+
+    def test_accurate_with_existing_tiktoken_upgrades_cache(self) -> None:
+        existing = TiktokenTokenizer()
+        assert existing.default_cache is False
+        engine, mode = create_token_counter("accurate", existing)
+        assert isinstance(engine, TiktokenTokenizer)
+        assert engine.default_cache is True
+        assert mode == "exact"
+
+    def test_unknown_token_counter_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unsupported token_counter"):
+            create_token_counter("bogus")
+
+    def test_unknown_engine_name_is_not_validated_for_instances(self) -> None:
+        # When the caller supplies an instance, no name validation runs.
+        # Name validation happens inside create_tokenizer (called only when an
+        # engine must be constructed), which is covered by its own tests.
+        bogus = _BogusEngine()
+        engine, mode = create_token_counter("estimate", bogus)
+        assert engine is bogus
+        assert mode == "incremental"
