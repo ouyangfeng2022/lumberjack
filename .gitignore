@@ -26,6 +26,7 @@ output/
 # Tool caches
 .ruff_cache/
 .pytest_cache/
+.worktrees
 
 # IDE
 .idea/
