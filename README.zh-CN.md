@@ -126,14 +126,17 @@ chunks = lumber(
     skip_empty_sections=True,
     render_headings=True,      # False：从 body 中去掉公共标题面包屑
     tokenizer="approx",        # "approx" | "tiktoken" | "transformers"
-    token_counter="accurate",  # "accurate" | "incremental"
     splitter="recursive",      # "recursive" | "section"
 )
 ```
 
-`token_counter` 会配置到 tokenizer 实例上。splitter 不再暴露独立的
-counting-mode 参数，只调用 tokenizer 的计数方法。`approx` 只支持
-`accurate`。
+计数策略是 splitter 类的固有属性，与 tokenizer 无关。默认的 `recursive`
+和 `section` splitter 是**精确法**：每次预算决策都完整重计渲染候选文本
+（`token_count == estimated_token_count`）。`incremental-recursive` 和
+`incremental-section` 变体则一次性预测量整棵树，使用累加估算值 + 8 字符
+尾窗近似 entry 之间的 separator——对重型 tokenizer 更快，代价是
+`estimated_token_count` 会与权威的 `token_count`（finalization 时的完整
+重计）略有偏差。任何 tokenizer 都可以配合任何 splitter 使用。
 
 HTML 输入复用同一条切分管线：
 
@@ -210,7 +213,7 @@ from lumberjack.core.splitters import RecursiveSplitter
 from lumberjack.core.tokenizers import TiktokenTokenizer
 
 parser = MarkdownItParser(plugins=(tasklists_plugin,))
-tokenizer = TiktokenTokenizer(model="gpt-4o-mini", token_counter="accurate")
+tokenizer = TiktokenTokenizer(model="gpt-4o-mini")
 
 document = parser.parse(markdown_text, document_title="guide.md")
 options = SplitOptions(
@@ -240,8 +243,7 @@ lumber <input> [options]
 | `--ideal-max-tokens-ratio` | `0.8` | 优先切分预算比例 |
 | `--merge-below-tokens` | `50` | 小分块合并软阈值 |
 | `--tokenizer` | `approx` | `approx`、`tiktoken` 或 `transformers` |
-| `--token-counter` | `accurate` | `accurate` 或 `incremental`（`approx` 只支持 `accurate`） |
-| `--splitter` | `recursive` | `recursive` 或 `section` |
+| `--splitter` | `recursive` | `recursive`、`section`、`exact-recursive`、`incremental-recursive`、`exact-section`、`incremental-section` |
 | `--no-render-headings` | off | 从 `body` 中省略公共标题面包屑（参见[是否渲染标题](#是否渲染标题render_headings)） |
 | `--block-config` | — | 按块类型配置（可重复指定） |
 | `--block-config-json` | — | 结构化的按块类型 JSON 配置 |
@@ -304,8 +306,7 @@ curl -X POST http://localhost:9612/lumber/api/split/file \
 | `render_headings` | bool | `true` | 为 `false` 时从 `body` 中省略公共标题面包屑（参见[是否渲染标题](#是否渲染标题render_headings)） |
 | `block_configs` | object | `null` | 按块类型配置 |
 | `tokenizer` | string | `"approx"` | `approx`、`tiktoken` 或 `transformers` |
-| `token_counter` | string | `"accurate"` | `accurate` 或 `incremental`（`approx` 只支持 `accurate`） |
-| `splitter` | string | `"recursive"` | `recursive` 或 `section` |
+| `splitter` | string | `"recursive"` | `recursive`、`section`、`exact-recursive`、`incremental-recursive`、`exact-section`、`incremental-section` |
 
 `block_configs` 示例：
 
@@ -378,11 +379,11 @@ docker compose up --build
 
 | 切分器 | body 行为 | 预算行为 |
 | --- | --- | --- |
-| **Section** | 省略公共标题面包屑 | **按渲染口径预算**：原先预留给面包屑的预算会归还给正文内容，因此 `max_tokens` 会严格约束实际渲染的 body，且 `token_count == estimated_token_count == 实测 body tokens`。 |
-| **Recursive**（默认） | 省略公共标题面包屑；但 chunk *内部*的相对标题（例如合并 chunk 中的兄弟 `###` 标题）仍会渲染 | **按渲染口径预算**：切分预算会增长以容纳更多正文内容，且 `estimated_token_count == token_count == 实测 body tokens`。由于正文能打包更多内容，切分计划（分块数量、边界）可能不同于 `render_headings=True`。 |
+| **Section** | 省略公共标题面包屑 | **按渲染口径预算**：原先预留给面包屑的预算会归还给正文内容，因此 `max_tokens` 会严格约束实际渲染的 body（`token_count` 即实测 body tokens）。 |
+| **Recursive**（默认） | 省略公共标题面包屑；但 chunk *内部*的相对标题（例如合并 chunk 中的兄弟 `###` 标题）仍会渲染 | **按渲染口径预算**：切分预算会增长以容纳更多正文内容。由于正文能打包更多内容，切分计划（分块数量、边界）可能不同于 `render_headings=True`。 |
 
 > [!NOTE]
-> 两个切分器都会在 draft 层保留标题 token，让合并算术保持自洽——当两个 chunk 合并后公共前缀变短，被挤出的标题 token 会回到 body 中，作为仍会渲染的内部相对标题。只有切分预算判断和最终 `estimated_token_count` 按渲染口径处理，因此运行估算始终匹配实际渲染出的 `body`。
+> 两个切分器都会在 draft 层保留标题 token，让合并算术保持自洽——当两个 chunk 合并后公共前缀变短，被挤出的标题 token 会回到 body 中，作为仍会渲染的内部相对标题。切分预算判断与运行中的 `estimated_token_count` 都按渲染口径处理，因此估算值始终贴合实际渲染出的 `body`（由于 separator 近似，它与 `token_count` 可能相差一两个 token）。
 
 ```python
 # 两个切分器：按渲染口径预算（body 能填满 max_tokens）

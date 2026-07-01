@@ -34,9 +34,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--splitter",
-        choices=("recursive", "section"),
+        choices=(
+            "recursive",
+            "section",
+            "exact-recursive",
+            "incremental-recursive",
+            "exact-section",
+            "incremental-section",
+        ),
         default="recursive",
-        help="Splitter implementation",
+        help=(
+            "Splitter implementation. 'recursive'/'section' default to the exact "
+            "(full-recount) variants; 'incremental-*' use an additive estimate + "
+            "8-char separator-delta window."
+        ),
     )
     parser.add_argument(
         "--max-tokens", type=int, default=1200, help="Maximum tokens per chunk"

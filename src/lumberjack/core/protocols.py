@@ -9,13 +9,10 @@ if TYPE_CHECKING:
 class TokenizerProtocol(Protocol):
     """Abstraction for counting text units in manual parser/splitter pipelines.
 
-    ``is_exact`` selects the splitter's counting path: exact engines trigger
-    full-count budget decisions on rendered text; non-exact engines trigger
-    the additive incremental estimate path with an 8-char separator delta
-    (the delta logic lives in the splitter, not here).
+    The splitter uses an additive incremental estimate for budget decisions
+    (pre-measured sections + an 8-char separator delta in the splitter); the
+    tokenizer only needs to encode and count.
     """
-
-    is_exact: bool
 
     def encode(self, text: str, *, cache=False) -> tuple[int, ...]: ...
 

@@ -14,11 +14,12 @@ from lumberjack.core.models import (
 from lumberjack.core.options import resolve_block_options
 from lumberjack.core.parsers.markdown.parser import MarkdownParser
 from lumberjack.core.splitters import (
+    IncrementalRecursiveSplitter,
     RecursiveSplitter,
     SectionSplitter,
     create_splitter,
 )
-from tests.helpers import CharacterTokenizer, IncrementalCharacterTokenizer
+from tests.helpers import CharacterTokenizer
 
 FIXTURE = (
     Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md"
@@ -129,7 +130,7 @@ Alpha bravo charlie delta echo foxtrot golf hotel india juliet.
 """
 
 
-class RecordingTokenizer(IncrementalCharacterTokenizer):
+class RecordingTokenizer(CharacterTokenizer):
     """Records every ``count`` argument; drives the incremental split path."""
 
     def __init__(self) -> None:
@@ -454,7 +455,7 @@ def test_splitter_body_includes_nested_headings_by_default() -> None:
 
 def test_splitter_measures_section_token_counts_bottom_up() -> None:
     document = MarkdownParser().parse("# A\n\nBody", document_title="tokens.md")
-    splitter = RecursiveSplitter(
+    splitter = IncrementalRecursiveSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=7,
@@ -525,7 +526,7 @@ def test_estimated_tokens_do_not_use_tail_window_between_blocks() -> None:
         document_title="block-join.md",
     )
     tokenizer = RecordingTokenizer()
-    splitter = RecursiveSplitter(
+    splitter = IncrementalRecursiveSplitter(
         tokenizer=tokenizer,
         options=SplitOptions(max_tokens=500, merge_below_tokens=0),
     )
@@ -541,7 +542,7 @@ def test_estimated_tokens_do_not_use_tail_window_between_blocks() -> None:
 def test_entry_merge_uses_tail_window_only_between_entry_groups() -> None:
     long_body = "a" * 80
     tokenizer = RecordingTokenizer()
-    splitter = RecursiveSplitter(
+    splitter = IncrementalRecursiveSplitter(
         tokenizer=tokenizer,
         options=SplitOptions(max_tokens=500, merge_below_tokens=0),
     )
@@ -590,7 +591,7 @@ def test_heading_estimate_counts_title_once_and_marker_as_one_token() -> None:
         "### Cacheable Title\n\nBody", document_title="tokens.md"
     )
     tokenizer = RecordingTokenizer()
-    splitter = RecursiveSplitter(
+    splitter = IncrementalRecursiveSplitter(
         tokenizer=tokenizer,
         options=SplitOptions(max_tokens=100, merge_below_tokens=0),
     )
@@ -635,7 +636,7 @@ Three body.
 """
     document = MarkdownParser().parse(markdown, document_title="recording.md")
     tokenizer = RecordingTokenizer()
-    splitter = RecursiveSplitter(
+    splitter = IncrementalRecursiveSplitter(
         tokenizer=tokenizer,
         options=SplitOptions(max_tokens=35, merge_below_tokens=0),
     )
@@ -651,7 +652,7 @@ def test_section_chunk_estimate_includes_heading_tokens_without_entries() -> Non
     document = MarkdownParser().parse(
         THIRD_LEVEL_FIXTURE, document_title="third-level.md"
     )
-    splitter = RecursiveSplitter(
+    splitter = IncrementalRecursiveSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(max_tokens=100, merge_below_tokens=0),
     )
@@ -681,7 +682,7 @@ Plain body.
 """,
         document_title="standalone-cache.md",
     )
-    splitter = RecursiveSplitter(
+    splitter = IncrementalRecursiveSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=500,
@@ -700,7 +701,7 @@ Plain body.
     assert measured_h1.can_emit_as_single_chunk is False
     assert measured_root.can_emit_as_single_chunk is False
 
-    disabled_splitter = RecursiveSplitter(
+    disabled_splitter = IncrementalRecursiveSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=500,
@@ -2016,28 +2017,8 @@ Small body.
     assert "mike." in child_bodies
 
 
-def test_splitter_default_uses_exact_engine() -> None:
-    splitter = create_splitter("recursive", CharacterTokenizer())
-    assert splitter.tokenizer.is_exact is True  # ty: ignore[unresolved-attribute]
+def test_splitter_default_uses_approx_char_tokenizer() -> None:
+    from lumberjack.core.tokenizers import ApproxCharTokenizer
 
-
-def test_exact_and_incremental_share_rendered_body() -> None:
-    """Both counting engines produce the same chunk body for a simple document,
-    because body rendering is independent of the counting path.
-    """
-    from lumberjack.core.parsers.markdown.parser import MarkdownItParser
-
-    source = "# Title\n\nFirst paragraph here.\n\nSecond paragraph here.\n"
-    document = MarkdownItParser().parse(source)
-    options = SplitOptions(max_tokens=1200)
-
-    exact = create_splitter("recursive", CharacterTokenizer(), options=options)
-    incr = create_splitter(
-        "recursive",
-        IncrementalCharacterTokenizer(),
-        options=options,
-    )
-    exact_chunks = exact.split(document)
-    incr_chunks = incr.split(document)
-    assert [c.body for c in exact_chunks] == [c.body for c in incr_chunks]
-    assert [c.token_count for c in exact_chunks] == [c.token_count for c in incr_chunks]
+    splitter = create_splitter("recursive")
+    assert isinstance(splitter.tokenizer, ApproxCharTokenizer)  # ty: ignore[unresolved-attribute]

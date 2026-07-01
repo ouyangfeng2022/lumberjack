@@ -38,9 +38,6 @@ class TestApproxCharTokenizer:
         # encode is not used by the splitter; placeholder returns empty tuple
         assert ApproxCharTokenizer().encode("anything") == ()
 
-    def test_is_exact(self) -> None:
-        assert ApproxCharTokenizer.is_exact is True
-
 
 class TestTiktokenDefaultCache:
     def test_default_cache_false_does_not_populate_cache(self) -> None:
@@ -62,9 +59,6 @@ class TestTiktokenDefaultCache:
         text = "explicit cache false"
         tok.count(text, cache=False)
         assert text not in tok._cache
-
-    def test_is_not_exact(self) -> None:
-        assert TiktokenTokenizer.is_exact is False
 
 
 class TestTransformersTokenizer:
@@ -89,7 +83,6 @@ class TestTransformersTokenizer:
         assert tok.encode("abc") == (97, 98, 99)
         assert tok.count("abc") == 3
         assert calls == [("bert-base-uncased", True)]
-        assert tok.is_exact is False
 
 
 class TestSeparatorDeltaAfter:
@@ -97,7 +90,9 @@ class TestSeparatorDeltaAfter:
 
     def _splitter(self):
         return create_splitter(
-            "recursive", TiktokenTokenizer(), SplitOptions(max_tokens=1200)
+            "incremental-recursive",
+            TiktokenTokenizer(),
+            SplitOptions(max_tokens=1200),
         )
 
     def test_uses_8char_tail_window(self) -> None:
@@ -122,25 +117,7 @@ class TestSeparatorDeltaAfter:
 
 
 class _RecordingCountTokenizer:
-    """Non-exact tokenizer that records every ``count`` argument."""
-
-    is_exact = False
-
-    def __init__(self) -> None:
-        self.counted: list[str] = []
-
-    def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
-        return tuple(ord(c) for c in text) if text else ()
-
-    def count(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
-        self.counted.append(text)
-        return len(text)
-
-
-class _RecordingExactTokenizer:
-    """Exact tokenizer that records every ``count`` argument."""
-
-    is_exact = True
+    """Tokenizer that records every ``count`` argument."""
 
     def __init__(self) -> None:
         self.counted: list[str] = []
@@ -154,15 +131,13 @@ class _RecordingExactTokenizer:
 
 
 class TestCreateTokenizer:
-    def test_approx_is_supported_and_exact(self) -> None:
+    def test_approx_is_supported(self) -> None:
         engine = create_tokenizer("approx")
         assert isinstance(engine, ApproxCharTokenizer)
-        assert engine.is_exact is True
 
-    def test_tiktoken_is_supported_and_incremental(self) -> None:
+    def test_tiktoken_is_supported(self) -> None:
         engine = create_tokenizer("tiktoken")
         assert isinstance(engine, TiktokenTokenizer)
-        assert engine.is_exact is False
 
     def test_transformers_is_supported(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def from_pretrained(model: str, use_fast: bool = True):
@@ -189,13 +164,13 @@ class TestCreateSplitterTokenizerEngine:
         splitter = create_splitter("recursive")
         assert isinstance(splitter.tokenizer, ApproxCharTokenizer)  # ty: ignore[unresolved-attribute]
 
-    def test_splitter_does_not_inspect_tokenizer_strategy(self) -> None:
+    def test_splitter_runs_with_custom_tokenizer(self) -> None:
         source = "# Root\n\n## Alpha\n\nAlpha body\n\n## Beta\n\nBeta body\n"
         document = MarkdownItParser().parse(source)
         options = SplitOptions(max_tokens=20, merge_below_tokens=10)
         splitter = create_splitter(
             "recursive",
-            _RecordingExactTokenizer(),
+            _RecordingCountTokenizer(),
             options=options,
         )
 
@@ -228,9 +203,8 @@ class TestChunkCounts:
     def test_approx_token_count_is_chars_div_4(self) -> None:
         chunks, _ = _split_with(self.SOURCE, "approx")
         for chunk in chunks:
+            # token_count is always a full recount of the rendered body
             assert chunk.token_count == len(chunk.body) // 4
-            # exact engine: estimated equals the full recount
-            assert chunk.estimated_token_count == chunk.token_count
 
     def test_tiktoken_token_count_matches_full_recount(self) -> None:
         chunks, _ = _split_with(self.SOURCE, "tiktoken")
@@ -240,8 +214,8 @@ class TestChunkCounts:
             assert chunk.token_count == engine.count(chunk.body, cache=True)
 
 
-class TestExactPathNoIncrementalArithmetic:
-    """The exact path fully recounts rendered text; no tail-window estimates."""
+class TestSplitterUsesTailWindow:
+    """The splitter joins entries via its 8-char tail window."""
 
     SOURCE = (
         "# Parent\n\n"
@@ -252,53 +226,20 @@ class TestExactPathNoIncrementalArithmetic:
         "Child B body content.\n"
     )
 
-    def test_exact_path_uses_no_tail_window(self) -> None:
-        document = MarkdownItParser().parse(self.SOURCE)
-        tok = _RecordingExactTokenizer()
-        splitter = create_splitter(
-            "recursive", tok, SplitOptions(max_tokens=40, merge_below_tokens=10)
-        )
-        splitter.split(document)
-        # The exact path never applies the 8-char tail window: every count
-        # argument is either a block/body piece or a full rendered heading,
-        # never a truncated 8-char tail.
-        assert not any(len(t) == 8 and (t + "\n\n") in tok.counted for t in tok.counted)
-
-    def test_exact_path_recounts_rendered_text(self) -> None:
-        document = MarkdownItParser().parse(self.SOURCE)
-        tok = _RecordingExactTokenizer()
-        splitter = create_splitter(
-            "recursive", tok, SplitOptions(max_tokens=40, merge_below_tokens=10)
-        )
-        splitter.split(document)
-        # The exact path must count actually-rendered candidate text.
-        assert any("Child A" in t for t in tok.counted)
-
-
-class TestIncrementalPathUsesTailWindow:
-    """The incremental path joins via the splitter's 8-char tail window."""
-
-    SOURCE = (
-        "# Parent\n\n"
-        "Parent body with enough text to matter here.\n\n"
-        "## Child A\n\n"
-        "Child A body content.\n\n"
-        "## Child B\n\n"
-        "Child B body content.\n"
-    )
-
-    def test_incremental_path_counts_8char_tail_window(self) -> None:
+    def test_counts_8char_tail_window(self) -> None:
         document = MarkdownItParser().parse(self.SOURCE)
         tok = _RecordingCountTokenizer()
         splitter = create_splitter(
-            "recursive", tok, SplitOptions(max_tokens=40, merge_below_tokens=10)
+            "incremental-recursive",
+            tok,
+            SplitOptions(max_tokens=40, merge_below_tokens=10),
         )
         splitter.split(document)
-        # The incremental path estimates separators by counting the last 8
-        # chars of a tail plus the separator.  At least one such count must
-        # appear (the 8-char tail + "\n\n").
+        # The splitter estimates separators by counting the last 8 chars of a
+        # tail plus the separator.  At least one such count must appear
+        # (the 8-char tail + "\n\n").
         assert any(len(t) == 10 and t.endswith("\n\n") for t in tok.counted), (
-            "incremental path should count an 8-char tail + separator"
+            "splitter should count an 8-char tail + separator"
         )
 
 
@@ -362,3 +303,83 @@ class TestCliTokenizer:
         parser = build_parser()
         with pytest.raises(SystemExit):
             parser.parse_args(["input.md", "--token-counter", "accurate"])
+
+
+class TestSplitterStrategyIsClassProperty:
+    """Exact vs incremental is a property of the splitter class, not the tokenizer."""
+
+    def test_recursive_aliases_to_exact(self) -> None:
+        from lumberjack.core.splitters import (
+            ExactRecursiveSplitter,
+            RecursiveSplitter,
+        )
+
+        assert RecursiveSplitter is ExactRecursiveSplitter
+        assert isinstance(create_splitter("recursive"), ExactRecursiveSplitter)
+        assert isinstance(create_splitter("exact-recursive"), ExactRecursiveSplitter)
+
+    def test_section_aliases_to_exact(self) -> None:
+        from lumberjack.core.splitters import (
+            ExactSectionSplitter,
+            SectionSplitter,
+        )
+
+        assert SectionSplitter is ExactSectionSplitter
+        assert isinstance(create_splitter("section"), ExactSectionSplitter)
+        assert isinstance(create_splitter("exact-section"), ExactSectionSplitter)
+
+    def test_incremental_variants_route_correctly(self) -> None:
+        from lumberjack.core.splitters import (
+            IncrementalRecursiveSplitter,
+            IncrementalSectionSplitter,
+        )
+
+        assert isinstance(
+            create_splitter("incremental-recursive"), IncrementalRecursiveSplitter
+        )
+        assert isinstance(
+            create_splitter("incremental-section"), IncrementalSectionSplitter
+        )
+
+    def test_exact_splitter_has_no_separator_delta(self) -> None:
+        """Exact splitter must not carry the incremental delta-window machinery."""
+        splitter = create_splitter("exact-recursive", _RecordingCountTokenizer())
+        assert not hasattr(splitter, "_separator_delta_after")
+        assert not hasattr(splitter, "_measure_section")
+
+    def test_tokenizer_does_not_drive_strategy(self) -> None:
+        """The same tokenizer yields different strategies on different splitter classes."""
+        tok = _RecordingCountTokenizer()
+        exact = create_splitter("exact-recursive", tok)
+        incr = create_splitter("incremental-recursive", tok)
+        # Same tokenizer instance, different counting machinery on the splitter.
+        assert hasattr(incr, "_separator_delta_after")
+        assert not hasattr(exact, "_separator_delta_after")
+
+
+class TestCliSplitterChoices:
+    def test_default_splitter_is_recursive(self) -> None:
+        from lumberjack.cli import build_parser
+
+        args = build_parser().parse_args(["input.md"])
+        assert args.splitter == "recursive"
+
+    def test_accepts_all_strategy_names(self) -> None:
+        from lumberjack.cli import build_parser
+
+        parser = build_parser()
+        for name in (
+            "recursive",
+            "section",
+            "exact-recursive",
+            "incremental-recursive",
+            "exact-section",
+            "incremental-section",
+        ):
+            assert parser.parse_args(["input.md", "--splitter", name]).splitter == name
+
+    def test_rejects_unknown_splitter(self) -> None:
+        from lumberjack.cli import build_parser
+
+        with pytest.raises(SystemExit):
+            build_parser().parse_args(["input.md", "--splitter", "bogus"])
