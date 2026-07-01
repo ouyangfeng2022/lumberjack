@@ -6,7 +6,6 @@ from typing import Any
 
 from .block import parse_block_config_entry
 from .models import BaseParams, BlockKindRegistry, TableBlockParams
-from .parsers.markdown.parser import MarkdownItParser
 
 BASE_PARAM_FIELDS = frozenset({"isolated", "split", "max_tokens"})
 TABLE_PARAM_FIELDS = frozenset({"repeat_header"})
@@ -93,10 +92,11 @@ def parse_block_config_json(raw: str) -> dict[str, BaseParams] | None:
 def parse_cli_block_configs(
     entries: list[str],
     *,
+    block_kinds: frozenset[str],
     json_config: str = "",
 ) -> dict[str, BaseParams]:
-    """Parse CLI ``--block-config`` entries against the default Markdown registry."""
-    registry: BlockKindRegistry = MarkdownItParser.default_registry()
+    """Parse CLI ``--block-config`` entries against explicit parser block kinds."""
+    registry = BlockKindRegistry(block_kinds)
     result: dict[str, BaseParams] = dict(registry.default_handling())
     for entry in entries:
         kind, params = parse_block_config_entry(entry, registry)

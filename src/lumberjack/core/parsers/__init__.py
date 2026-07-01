@@ -12,11 +12,20 @@ from typing import Literal, overload
 from ..protocols import ParserProtocol
 from .docx import DocxParser
 from .html import HTMLParser
-from .markdown import MarkdownItParser, MarkdownParser
+from .markdown import (
+    MarkdownBlockContext,
+    MarkdownBlockHandler,
+    MarkdownBlockSpec,
+    MarkdownItParser,
+    MarkdownParser,
+)
 
 __all__ = [
     "DocxParser",
     "HTMLParser",
+    "MarkdownBlockContext",
+    "MarkdownBlockHandler",
+    "MarkdownBlockSpec",
     "MarkdownItParser",
     "MarkdownParser",
     "create_parser",

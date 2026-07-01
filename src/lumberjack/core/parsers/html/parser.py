@@ -426,23 +426,21 @@ class HTMLParser(ParserProtocol[str]):
     the existing splitters can operate on HTML input without a separate path.
     """
 
-    _BLOCK_KINDS: frozenset[str] = frozenset(
+    default_block_kinds: ClassVar[frozenset[str]] = frozenset(
         {
             "paragraph",
             "blockquote",
             "list",
             "list_item",
             "code_block",
-            "html_block",
             "html_table",
-            "front_matter",
         }
     )
 
     @property
     def block_kinds(self) -> frozenset[str]:
         """Block kinds this parser can produce."""
-        return self._BLOCK_KINDS
+        return self.default_block_kinds
 
     def parse(
         self,
