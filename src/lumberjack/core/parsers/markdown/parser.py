@@ -406,8 +406,7 @@ class MarkdownItParser(ParserProtocol[str]):
     def _normalize_block_extensions(
         self,
         block_specs: Iterable[MarkdownBlockSpec],
-        extra_block_kinds: Iterable[str],
-    ) -> tuple[dict[str, str], dict[str, MarkdownBlockHandler], frozenset[str]]:
+    ) -> tuple[dict[str, str], dict[str, MarkdownBlockHandler]]:
         token_type_to_kind: dict[str, str] = {}
         handlers: dict[str, MarkdownBlockHandler] = {}
 
@@ -446,17 +445,12 @@ class MarkdownItParser(ParserProtocol[str]):
                 if spec.handler is not None:
                     handlers[token_type] = spec.handler
 
-        if isinstance(extra_block_kinds, str | bytes):
-            raise TypeError("extra_block_kinds must be an iterable of strings")
-        normalized_extra_kinds = frozenset(
-            self._normalize_block_kind(kind) for kind in extra_block_kinds
-        )
-        return token_type_to_kind, handlers, normalized_extra_kinds
+        return token_type_to_kind, handlers
 
     def _compute_block_kinds(self) -> frozenset[str]:
-        """Compute block kinds from parser defaults, active rules, and extensions."""
+        """Compute block kinds from this parser's active rules and extensions."""
         active_rules = self._parser.get_active_rules().get("block", [])
-        kinds: set[str] = set(self.default_block_kinds)
+        kinds: set[str] = set()
         for rule in active_rules:
             mapped = self._RULE_TO_KINDS.get(rule)
             if mapped is None:
@@ -471,7 +465,6 @@ class MarkdownItParser(ParserProtocol[str]):
         if "html_block" in kinds:
             kinds.add("html_table")
 
-        kinds.update(self._extra_block_kinds)
         kinds.update(self._token_type_to_kind.values())
         return frozenset(kinds)
 
@@ -486,7 +479,6 @@ class MarkdownItParser(ParserProtocol[str]):
         *,
         plugins: Iterable[Callable[..., None]] = (),
         block_specs: Iterable[MarkdownBlockSpec] = (),
-        extra_block_kinds: Iterable[str] = (),
         options_update: dict[str, Any] | None = None,
         disable_lheading: bool = False,
         max_heading_level: int | None = None,
@@ -494,8 +486,7 @@ class MarkdownItParser(ParserProtocol[str]):
         (
             self._token_type_to_kind,
             self._block_handlers,
-            self._extra_block_kinds,
-        ) = self._normalize_block_extensions(block_specs, extra_block_kinds)
+        ) = self._normalize_block_extensions(block_specs)
         self._inline = InlineNormalizer()
         self._parser = MarkdownIt(preset, options_update=options_update)
         self._parser.use(dollarmath_plugin)
@@ -827,9 +818,19 @@ class MarkdownItParser(ParserProtocol[str]):
                 close_index + 1,
             )
 
-        handler = self._block_handlers.get(token.type)
-        if handler is not None:
-            return handler(
+        mapped_kind = self._token_type_to_kind.get(token.type)
+        if mapped_kind is not None:
+            handler = self._block_handlers.get(token.type)
+            if handler is None:
+                return self._build_fallback_block(
+                    token,
+                    tokens,
+                    index,
+                    source_lines,
+                    kind=mapped_kind,
+                )
+
+            block, next_index = handler(
                 MarkdownBlockContext(
                     parser=self,
                     tokens=tokens,
@@ -838,18 +839,18 @@ class MarkdownItParser(ParserProtocol[str]):
                     token=token,
                 )
             )
+            if block is not None and block.kind != mapped_kind:
+                raise ValueError(
+                    "Markdown block handler returned undeclared block kind "
+                    f"{block.kind!r} for token type {token.type!r}; "
+                    f"expected {mapped_kind!r}"
+                )
+            return block, next_index
 
-        mapped_kind = self._token_type_to_kind.get(token.type)
-        if mapped_kind is not None:
-            return self._build_fallback_block(
-                token,
-                tokens,
-                index,
-                source_lines,
-                kind=mapped_kind,
-            )
-
-        return self._build_fallback_block(token, tokens, index, source_lines)
+        raise ValueError(
+            "undeclared Markdown block token "
+            f"{token.type!r}; add a MarkdownBlockSpec for custom plugin tokens"
+        )
 
     def _parse_blocks(
         self,
@@ -908,7 +909,7 @@ class MarkdownItParser(ParserProtocol[str]):
         index: int,
         source_lines: list[str],
         *,
-        kind: str | None = None,
+        kind: str,
     ) -> tuple[MarkdownBlock | None, int]:
         """Handle unrecognized token types by capturing source text and children."""
         if token.type.endswith("_close") or token.type == "inline":
@@ -930,11 +931,9 @@ class MarkdownItParser(ParserProtocol[str]):
         if not text.strip():
             return (None, close_index + 1)
 
-        block_kind = kind or token.type.removesuffix("_open")
-
         return (
             MarkdownBlock(
-                kind=block_kind,
+                kind=kind,
                 text=text,
                 start_line=start_line(token),
                 end_line=end_line(token),

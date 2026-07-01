@@ -277,19 +277,14 @@ def test_markdown_it_parser_handles_all_block_and_inline_tokens_in_comprehensive
     }
 
 
-def test_markdown_it_parser_preserves_unknown_block_tokens_as_raw_markdown() -> None:
+def test_markdown_it_parser_rejects_undeclared_custom_block_tokens() -> None:
     parser = MarkdownItParser()
     parser._parser.parse = lambda _text, _env: [  # ty: ignore[invalid-assignment]
         Token("mystery_block", "", 0, map=[0, 1], content="@@ mystery @@")
     ]
 
-    document = parser.parse("@@ mystery @@", document_title="mystery.md")
-
-    assert len(document.root.blocks) == 1
-    assert document.root.blocks[0].kind == "mystery_block"
-    assert document.root.blocks[0].text == "@@ mystery @@"
-    assert document.root.blocks[0].attrs["source_token_type"] == "mystery_block"
-    assert "mystery_block" not in parser.block_kinds
+    with pytest.raises(ValueError, match="undeclared Markdown block token"):
+        parser.parse("@@ mystery @@", document_title="mystery.md")
 
 
 def test_markdown_block_spec_maps_custom_token_to_declared_kind() -> None:
@@ -312,25 +307,6 @@ def test_markdown_block_spec_maps_custom_token_to_declared_kind() -> None:
     assert document.root.blocks[0].kind == "callout"
     assert document.root.blocks[0].text == "!!! note"
     assert document.root.blocks[0].attrs["source_token_type"] == "callout_open"
-
-
-def test_markdown_parser_extra_block_kinds_are_declared_without_token_mapping() -> None:
-    parser = MarkdownItParser(extra_block_kinds=("Custom_Block", " aside "))
-
-    assert "custom_block" in parser.block_kinds
-    assert "aside" in parser.block_kinds
-
-
-def test_markdown_parser_rejects_string_extra_block_kinds() -> None:
-    with pytest.raises(
-        TypeError, match="extra_block_kinds must be an iterable of strings"
-    ):
-        MarkdownItParser(extra_block_kinds="aside")
-
-
-def test_markdown_parser_rejects_non_string_extra_block_kind() -> None:
-    with pytest.raises(TypeError, match="block kind must be a string"):
-        MarkdownItParser(extra_block_kinds=(object(),))  # ty: ignore[invalid-argument-type]
 
 
 def test_markdown_block_spec_rejects_empty_kind() -> None:
@@ -462,6 +438,37 @@ def test_markdown_block_spec_handler_builds_custom_block() -> None:
     assert document.root.blocks[0].attrs["source_token_type"] == "callout_block"
 
 
+def test_markdown_block_spec_handler_must_return_declared_kind() -> None:
+    def build_block(
+        _context: MarkdownBlockContext,
+    ) -> tuple[MarkdownBlock | None, int]:
+        return (
+            MarkdownBlock(
+                kind="aside",
+                text="handled",
+                start_line=1,
+                end_line=1,
+            ),
+            1,
+        )
+
+    parser = MarkdownItParser(
+        block_specs=(
+            MarkdownBlockSpec(
+                kind="callout",
+                token_types=("callout_block",),
+                handler=build_block,
+            ),
+        )
+    )
+    parser._parser.parse = lambda _text, _env: [  # ty: ignore[invalid-assignment]
+        Token("callout_block", "div", 0, map=[0, 1], content="note")
+    ]
+
+    with pytest.raises(ValueError, match="returned undeclared block kind"):
+        parser.parse("!!! note", document_title="callout.md")
+
+
 def test_markdown_block_spec_handler_can_parse_container_children() -> None:
     def build_container(
         context: MarkdownBlockContext,
@@ -553,11 +560,25 @@ def test_markdown_it_parser_supports_task_list_plugin() -> None:
 
 
 def test_markdown_it_parser_supports_footnote_plugin() -> None:
-    parser = MarkdownItParser(plugins=(footnote_plugin,))
+    parser = MarkdownItParser(
+        plugins=(footnote_plugin,),
+        block_specs=(
+            MarkdownBlockSpec(
+                kind="footnote_block",
+                token_types=("footnote_block_open",),
+            ),
+            MarkdownBlockSpec(
+                kind="footnote",
+                token_types=("footnote_open",),
+            ),
+        ),
+    )
     markdown = "Footnote ref[^1].\n\n[^1]: Footnote body\n    continued"
 
     document = parser.parse(markdown, document_title="footnotes.md")
 
+    assert "footnote_block" in parser.block_kinds
+    assert "footnote" in parser.block_kinds
     assert [block.kind for block in document.root.blocks] == [
         "paragraph",
         "footnote_block",
@@ -785,6 +806,16 @@ def test_default_block_kinds_match_default_markdown_parser() -> None:
     assert "table" in MarkdownItParser.default_block_kinds
     assert "html_table" in MarkdownItParser.default_block_kinds
     assert not hasattr(MarkdownItParser, "default_registry")
+
+
+def test_block_kinds_reflect_markdown_parser_preset() -> None:
+    """Parser instance block_kinds should reflect active rules for that instance."""
+    parser = MarkdownItParser(preset="commonmark")
+
+    assert "table" not in parser.block_kinds
+    assert "html_table" in parser.block_kinds
+    assert "paragraph" in parser.block_kinds
+    assert "code_fence" in parser.block_kinds
 
 
 def test_block_kinds_reflect_parser_configuration() -> None:

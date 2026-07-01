@@ -174,7 +174,6 @@ class DocxParser(ParserProtocol[bytes]):
             "list_item",
             "code_block",
             "blockquote",
-            "front_matter",
         }
     )
 
