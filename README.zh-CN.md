@@ -220,6 +220,101 @@ chunks = splitter.split(document)
 自定义组件应遵循 [`lumberjack.core.protocols`](src/lumberjack/core/protocols.py)
 中的协议。它们不通过 `lumber()` 传入，而是用于自行构建的 `parse -> split` 管线。
 
+#### Markdown Parser 自定义插件
+
+`MarkdownItParser` 通过 `plugins` 参数接收普通的 `markdown-it-py` 插件。如果插件只是改变已有 Markdown 结构，例如 task list 仍然解析成 list item，只是在行内增加 checkbox HTML，就不需要额外声明：
+
+```python
+from mdit_py_plugins.tasklists import tasklists_plugin
+from lumberjack.core.parsers.markdown import MarkdownItParser
+
+parser = MarkdownItParser(plugins=(tasklists_plugin,))
+document = parser.parse("- [x] done", document_title="tasks.md")
+```
+
+如果插件会产生新的块级 token type，需要用 `MarkdownBlockSpec` 声明这些 token type 对应的 lumberjack 块类型。解析器会把自定义类型合并进 `parser.block_kinds`，后续 `resolve_block_options()` 和 splitter 校验都应使用这个实例上的 `block_kinds`。
+
+下面是完整示例：使用 `mdit_py_plugins.container.container_plugin` 把自定义 callout 容器解析成一等公民的 `callout` 块类型，并在切分时让它单独成块：
+
+```python
+from mdit_py_plugins.container import container_plugin
+
+from lumberjack.core.models import BaseParams, MarkdownBlock, SplitOptions
+from lumberjack.core.options import resolve_block_options
+from lumberjack.core.parsers.markdown import MarkdownBlockContext, MarkdownBlockSpec
+from lumberjack.core.parsers.markdown import MarkdownItParser
+from lumberjack.core.splitters import RecursiveSplitter
+from lumberjack.core.tokenizers import SimpleCharTokenizer
+
+
+def callout_block(context: MarkdownBlockContext) -> tuple[MarkdownBlock | None, int]:
+    close_index = context.parser.find_matching_close(context.tokens, context.index)
+    children = context.parser.parse_child_blocks(
+        context.tokens,
+        context.index + 1,
+        close_index,
+        context.source_lines,
+    )
+    body = "\n\n".join(child.text for child in children if child.text)
+    return (
+        MarkdownBlock(
+            kind="callout",
+            text=body,
+            start_line=context.token.map[0] + 1 if context.token.map else None,
+            end_line=context.token.map[1] if context.token.map else None,
+            children=children,
+            attrs={
+                "source_token_type": context.token.type,
+                "info": context.token.info.strip(),
+            },
+        ),
+        close_index + 1,
+    )
+
+
+parser = MarkdownItParser(
+    plugins=(lambda md: container_plugin(md, name="callout"),),
+    block_specs=(
+        MarkdownBlockSpec(
+            kind="callout",
+            token_types=("container_callout_open",),
+            handler=callout_block,
+        ),
+    ),
+)
+
+markdown_text = """# Guide
+
+::: callout note
+Remember to configure custom block kinds before splitting.
+:::
+"""
+
+document = parser.parse(markdown_text, document_title="guide.md")
+options = SplitOptions(
+    max_tokens=1200,
+    block_options=resolve_block_options(
+        parser.block_kinds,
+        {"callout": BaseParams(isolated=True, max_tokens=400)},
+    ),
+)
+chunks = RecursiveSplitter(
+    tokenizer=SimpleCharTokenizer(),
+    options=options,
+).split(document)
+```
+
+`MarkdownBlockSpec` 规则：
+
+- `kind` 会规范化为小写，并成为 `MarkdownBlock.kind`。
+- `token_types` 必须是自定义 markdown-it token type 字符串组成的可迭代对象，例如 `("container_callout_open",)`。
+- `handler` 可选。不提供时，lumberjack 会捕获源码片段；如果是容器类 token，还会递归解析子块。
+- handler 接收 `MarkdownBlockContext`，返回 `(block, next_index)`；如果该 token 应被跳过，可以让 `block` 返回 `None`。
+- handler 构造的 block 必须使用声明的 `kind`；返回其他 kind 会抛出 `ValueError`。
+- `paragraph_open`、`fence`、`table_open`、`html_block` 等内置 Markdown token type 由内部逻辑处理，不能通过 `MarkdownBlockSpec` 重映射。
+
+带插件的解析器应使用 `parser.block_kinds` 校验配置，而不是使用 `MarkdownItParser.default_block_kinds`。后者只包含 Markdown 内置块类型；实例上的 `block_kinds` 还包含 `callout` 这类插件提供的类型。
+
 ### CLI
 
 ```bash

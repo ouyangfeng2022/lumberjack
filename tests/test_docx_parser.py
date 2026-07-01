@@ -66,9 +66,18 @@ def test_docx_parser_parses_lists() -> None:
 def test_docx_parser_block_kinds() -> None:
     parser = DocxParser()
     kinds = parser.block_kinds
-    assert "paragraph" in kinds
-    assert "table" in kinds
-    assert "list" in kinds
+
+    assert kinds == DocxParser.default_block_kinds
+    assert kinds == frozenset(
+        {
+            "paragraph",
+            "table",
+            "list",
+            "list_item",
+            "code_block",
+            "blockquote",
+        }
+    )
     assert isinstance(kinds, frozenset)
 
 

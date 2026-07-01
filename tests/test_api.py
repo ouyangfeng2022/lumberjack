@@ -14,7 +14,8 @@ import lumberjack
 from lumberjack import lumber
 from lumberjack.core.models import Chunk, SplitOptions, TableBlockParams
 from lumberjack.core.options import parse_cli_block_configs, resolve_block_options
-from lumberjack.core.parsers.markdown.parser import MarkdownItParser
+from lumberjack.core.parsers.html import HTMLParser
+from lumberjack.core.parsers.markdown.parser import MarkdownBlockSpec, MarkdownItParser
 from lumberjack.core.splitters import RecursiveSplitter
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 from lumberjack.lumber import lumber as module_lumber
@@ -123,6 +124,7 @@ def test_lumber_accepts_table_block_params_mapping() -> None:
 def test_parse_cli_block_configs_json_overrides_short_config() -> None:
     block_options = parse_cli_block_configs(
         ["table:isolated:500"],
+        block_kinds=MarkdownItParser().block_kinds,
         json_config='{"table": {"repeat_header": false}}',
     )
 
@@ -130,6 +132,36 @@ def test_parse_cli_block_configs_json_overrides_short_config() -> None:
     assert table.isolated is False
     assert table.max_tokens is None
     assert table == TableBlockParams(repeat_header=False)
+
+
+def test_parse_cli_block_configs_uses_supplied_parser_block_kinds() -> None:
+    block_options = parse_cli_block_configs(
+        ["html_table:isolated"],
+        block_kinds=HTMLParser().block_kinds,
+    )
+
+    html_table = block_options["html_table"]
+    assert isinstance(html_table, TableBlockParams)
+    assert html_table.isolated is True
+
+
+def test_resolve_block_options_accepts_markdown_block_spec_kind() -> None:
+    parser = MarkdownItParser(
+        block_specs=(
+            MarkdownBlockSpec(
+                kind="callout",
+                token_types=("callout_open",),
+            ),
+        )
+    )
+
+    options = resolve_block_options(
+        parser.block_kinds,
+        {"callout": {"isolated": True, "max_tokens": 25}},
+    )
+
+    assert options["callout"].isolated is True
+    assert options["callout"].max_tokens == 25
 
 
 def test_lumber_auto_detects_html_path(tmp_path: Path) -> None:
