@@ -123,7 +123,7 @@ def test_split_with_options(client: TestClient) -> None:
             "ideal_max_tokens_ratio": 0.8,
             "merge_below_tokens": -1,
             "block_configs": {"paragraph": {"isolated": False}},
-            "tokenizer": "simple",
+            "tokenizer": "tiktoken",
         },
     )
     assert response.status_code == 200
@@ -270,7 +270,8 @@ def test_split_text_accepts_token_counter(client: TestClient) -> None:
     payload = {
         "text": "# T\n\nbody text here\n",
         "input_format": "markdown",
-        "token_counter": "simple",
+        "tokenizer": "approx",
+        "token_counter": "accurate",
     }
     response = client.post("/lumber/api/split/text", json=payload)
     assert response.status_code == 200
@@ -284,6 +285,7 @@ def test_split_text_accepts_token_counter_accurate(client: TestClient) -> None:
     payload = {
         "text": "# T\n\nThe quick brown fox.\n",
         "input_format": "markdown",
+        "tokenizer": "tiktoken",
         "token_counter": "accurate",
     }
     response = client.post("/lumber/api/split/text", json=payload)
@@ -300,7 +302,8 @@ def test_split_file_accepts_token_counter(client: TestClient) -> None:
         "/lumber/api/split/file",
         data={
             "input_format": "markdown",
-            "token_counter": "simple",
+            "tokenizer": "approx",
+            "token_counter": "accurate",
         },
         files={"file": ("doc.md", io.BytesIO(b"# T\n\nbody\n"), "text/markdown")},
     )

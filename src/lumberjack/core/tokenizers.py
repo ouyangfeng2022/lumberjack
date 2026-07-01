@@ -1,41 +1,87 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from threading import RLock
-from typing import Literal, Protocol, TypeAlias
+from typing import Literal, TypeAlias, cast
 
 from .protocols import TokenizerProtocol
 
-CountMode: TypeAlias = Literal["exact", "incremental"]  # noqa: UP040
+TokenCounterMode: TypeAlias = Literal["accurate", "incremental"]  # noqa: UP040
+TokenizerName: TypeAlias = Literal["approx", "tiktoken", "transformers"]  # noqa: UP040
 
 
-class TokenCountStrategy(Protocol):
-    """Abstracts how the splitter counts tokens at internal decision sites.
-
-    Two implementations exist: :class:`ExactTokenCount` counts the fully
-    rendered text at every site (used by the ``simple`` and ``accurate``
-    modes); :class:`IncrementalTokenCount` reuses the additive / separator-delta
-    arithmetic (used by the ``estimate`` mode).
-    """
-
-    def count_text(self, text: str) -> int: ...
-
-    def separator_delta(self, text: str, separator: str) -> int: ...
+DEFAULT_TRANSFORMERS_MODEL = "bert-base-uncased"
 
 
-class TiktokenTokenizer(TokenizerProtocol):
+def _normalize_token_counter(token_counter: str) -> TokenCounterMode:
+    normalized = token_counter.strip().lower()
+    if normalized not in {"accurate", "incremental"}:
+        raise ValueError(f"Unsupported token_counter: {token_counter}")
+    return cast(TokenCounterMode, normalized)
+
+
+class TokenCountingMixin:
+    """Shared token counting behavior implemented by tokenizer engines."""
+
+    _DELTA_WINDOW = 8
+    token_counter: TokenCounterMode
+
+    def count(self, text: str, *, cache=False) -> int:
+        raise NotImplementedError
+
+    @property
+    def is_incremental(self) -> bool:
+        return self.token_counter == "incremental"
+
+    def count_text(self, text: str) -> int:
+        return self.count(text, cache=True)
+
+    def count_budget_text(self, text: str, *, estimated_count: int) -> int:
+        if self.token_counter == "incremental":
+            return estimated_count
+        return self.count_text(text)
+
+    def count_estimated_text(self, text: str, *, estimated_count: int) -> int:
+        if self.token_counter == "incremental":
+            return estimated_count
+        return self.count_text(text)
+
+    def separator_delta(self, text: str, separator: str) -> int:
+        if not text:
+            return 0
+        if self.is_incremental:
+            text = text.rstrip("\n")[-self._DELTA_WINDOW :]
+        return self.count(f"{text}{separator}", cache=True) - self.count(
+            text, cache=True
+        )
+
+
+class TiktokenTokenizer(TokenCountingMixin, TokenizerProtocol):
     """Tokenizer backed by the tiktoken library."""
 
     def __init__(
         self,
         model: str = "gpt-4o-mini",
         max_cache_size: int = 1000,
-        default_cache: bool = False,
+        default_cache: bool | None = None,
+        token_counter: str = "accurate",
     ):
-        import tiktoken
-        from cachetools import LRUCache
+        try:
+            import tiktoken
+            from cachetools import LRUCache
+        except ImportError as e:
+            raise ImportError(
+                "TiktokenTokenizer requires the optional 'tiktoken' and "
+                "'cachetools' dependencies. Install them with "
+                "'lumberjack[tokenizers]'."
+            ) from e
 
+        self.model = model
+        self.token_counter = _normalize_token_counter(token_counter)
         self.encoding = tiktoken.encoding_for_model(model)
-        self.default_cache = default_cache
+        self.default_cache = (
+            self.token_counter == "accurate" if default_cache is None else default_cache
+        )
         self._cache: LRUCache[str, tuple[int, ...]] = LRUCache(maxsize=max_cache_size)
 
         self._lock = RLock()
@@ -78,23 +124,20 @@ class TiktokenTokenizer(TokenizerProtocol):
             self._cache.clear()
 
 
-class SimpleCharTokenizer(TokenizerProtocol):
-    """Character-level tokenizer that counts each character as one token."""
-
-    def encode(self, text: str, *, cache=False) -> tuple[int, ...]:  # noqa: ARG002
-        return tuple(ord(c) for c in text)
-
-    def count(self, text: str, *, cache=False) -> int:  # noqa: ARG002
-        return len(text)
-
-
-class ApproxCharTokenizer(TokenizerProtocol):
+class ApproxCharTokenizer(TokenCountingMixin, TokenizerProtocol):
     """Approximate tokenizer that estimates tokens as ``len(text) // 4``.
 
     A common industry rule of thumb (character count divided by four) used by
-    the ``token_counter="simple"`` counting mode.  The splitter only uses
-    :meth:`count`; :meth:`encode` is a protocol placeholder.
+    the ``tokenizer="approx"`` engine.  The splitter only uses :meth:`count`;
+    :meth:`encode` is a protocol placeholder.
     """
+
+    def __init__(self, token_counter: str = "accurate") -> None:
+        self.token_counter = _normalize_token_counter(token_counter)
+        if self.token_counter == "incremental":
+            raise ValueError(
+                "ApproxCharTokenizer does not support incremental counting"
+            )
 
     def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
         return ()
@@ -103,102 +146,83 @@ class ApproxCharTokenizer(TokenizerProtocol):
         return len(text) // 4
 
 
-class ExactTokenCount:
-    """Counting strategy that counts fully rendered text at every site."""
+class TransformersTokenizer(TokenCountingMixin, TokenizerProtocol):
+    """Tokenizer backed by a Hugging Face fast tokenizer."""
 
-    def __init__(self, tokenizer: TokenizerProtocol) -> None:
-        self.tokenizer = tokenizer
+    def __init__(
+        self,
+        model: str = DEFAULT_TRANSFORMERS_MODEL,
+        max_cache_size: int = 1000,
+        token_counter: str = "accurate",
+    ) -> None:
+        try:
+            from transformers import AutoTokenizer  # type: ignore
+        except ImportError as e:
+            raise ImportError(
+                "TransformersTokenizer requires the optional 'transformers' "
+                "dependency. Install it with 'lumberjack[tokenizers]'."
+            ) from e
 
-    def count_text(self, text: str) -> int:
-        return self.tokenizer.count(text, cache=True)
+        self.model = model
+        self.token_counter = _normalize_token_counter(token_counter)
+        self.tokenizer = AutoTokenizer.from_pretrained(model, use_fast=True)
+        self.max_cache_size = max_cache_size
+        self._cache: OrderedDict[str, tuple[int, ...]] = OrderedDict()
+        self._lock = RLock()
 
-    def separator_delta(self, text: str, separator: str) -> int:
+    def encode(
+        self,
+        text: str,
+        *,
+        cache: bool | None = None,
+    ) -> tuple[int, ...]:
+        if not text:
+            return ()
+
+        if cache:
+            with self._lock:
+                cached = self._cache.get(text)
+                if cached is not None:
+                    self._cache.move_to_end(text)
+                    return cached
+
+        token_ids = tuple(self.tokenizer.encode(text))
+
+        if cache:
+            with self._lock:
+                self._cache[text] = token_ids
+                self._cache.move_to_end(text)
+                if len(self._cache) > self.max_cache_size:
+                    self._cache.popitem(last=False)
+
+        return token_ids
+
+    def count(
+        self,
+        text: str,
+        *,
+        cache: bool | None = None,
+    ) -> int:
         if not text:
             return 0
-        return self.tokenizer.count(
-            f"{text}{separator}", cache=True
-        ) - self.tokenizer.count(text, cache=True)
+        return len(self.encode(text, cache=cache))
+
+    def clear_cache(self) -> None:
+        with self._lock:
+            self._cache.clear()
 
 
-class IncrementalTokenCount:
-    """Counting strategy that reuses additive / separator-window arithmetic.
-
-    ``separator_delta`` mirrors the original ``_separator_delta_after`` 8-char
-    tail-window approximation so the incremental mode reproduces the legacy
-    estimate behavior.
-    """
-
-    _DELTA_WINDOW = 8
-
-    def __init__(self, tokenizer: TokenizerProtocol) -> None:
-        self.tokenizer = tokenizer
-
-    def count_text(self, text: str) -> int:
-        return self.tokenizer.count(text, cache=True)
-
-    def separator_delta(self, text: str, separator: str) -> int:
-        if not text:
-            return 0
-        tail = text.rstrip("\n")[-self._DELTA_WINDOW :]
-        return self.tokenizer.count(
-            f"{tail}{separator}", cache=True
-        ) - self.tokenizer.count(tail, cache=True)
-
-
-def create_tokenizer(name: str) -> TokenizerProtocol:
-    """Instantiate a tokenizer by name (``"simple"`` or ``"tiktoken"``)."""
-    normalized = name.strip().lower()
-    if normalized == "simple":
-        return SimpleCharTokenizer()
-    if normalized == "tiktoken":
-        return TiktokenTokenizer()
-    raise ValueError(f"Unsupported tokenizer: {name}")
-
-
-def create_token_counter(
+def create_tokenizer(
     name: str,
-    tokenizer: TokenizerProtocol | None = None,
-) -> tuple[TokenizerProtocol, CountMode]:
-    """Resolve a counting mode into ``(engine, count_mode)``.
-
-    Args:
-        name: Counting mode — ``"simple"``, ``"estimate"``, or ``"accurate"``.
-        tokenizer: Caller-supplied engine instance.  Ignored for ``"simple"``.
-            For ``"estimate"`` / ``"accurate"`` it is used directly when
-            provided, otherwise a ``tiktoken`` engine is constructed.
-
-    Returns:
-        A ``(engine, count_mode)`` tuple.  ``count_mode`` is ``"exact"`` for
-        ``simple`` / ``accurate`` and ``"incremental"`` for ``estimate``.
-
-    Raises:
-        ValueError: If ``name`` is not a supported counting mode.
-    """
-    normalized = name.strip().lower()
-    if normalized == "simple":
-        return ApproxCharTokenizer(), "exact"
-    if normalized == "estimate":
-        engine = tokenizer if tokenizer is not None else create_tokenizer("tiktoken")
-        return engine, "incremental"
-    if normalized == "accurate":
-        engine = tokenizer if tokenizer is not None else create_tokenizer("tiktoken")
-        engine = _ensure_tiktoken_cache_forced(engine)
-        return engine, "exact"
-    raise ValueError(f"Unsupported token_counter: {name}")
-
-
-def _ensure_tiktoken_cache_forced(
-    engine: TokenizerProtocol,
+    *,
+    token_counter: str = "accurate",
 ) -> TokenizerProtocol:
-    """Return a tiktoken engine with ``default_cache=True``.
-
-    If ``engine`` is a :class:`TiktokenTokenizer` that already has caching
-    forced on, return it unchanged.  If it is a ``TiktokenTokenizer`` with
-    caching off, construct a fresh instance with ``default_cache=True`` sharing
-    the same model.  Non-tiktoken engines are returned unchanged.
-    """
-    if isinstance(engine, TiktokenTokenizer):
-        if engine.default_cache:
-            return engine
-        return TiktokenTokenizer(default_cache=True)
-    return engine
+    """Instantiate a tokenizer by name."""
+    normalized = name.strip().lower()
+    if normalized == "approx":
+        return ApproxCharTokenizer(token_counter=token_counter)
+    if normalized == "tiktoken":
+        return TiktokenTokenizer(token_counter=token_counter)
+    if normalized == "transformers":
+        return TransformersTokenizer(token_counter=token_counter)
+    raise ValueError(f"Unsupported tokenizer: {name}")

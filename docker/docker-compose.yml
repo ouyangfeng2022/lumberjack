@@ -12,6 +12,7 @@ services:
       - "${HOST_PORT:-9612}:9612"
     environment:
       TIKTOKEN_CACHE_DIR: /app/.cache/tiktoken
+      HF_HOME: /app/.cache/huggingface
     volumes:
       - type: bind
         source: ../src

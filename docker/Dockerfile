@@ -93,14 +93,21 @@ COPY --from=frontend-builder /app/frontend-dist ./src/lumberjack/web/static
 # Ensure venv binaries are on PATH
 ENV PATH=/app/.venv/bin:$PATH
 
-# Pre-populate tiktoken cache so the offline server never needs network access.
+# Pre-populate tokenizer caches so the offline server never needs network access.
 RUN mkdir -p /app/.cache/tiktoken \
     && TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken python -c "\
 import tiktoken; \
 [tiktoken.get_encoding(m) for m in ('cl100k_base','o200k_base','p50k_base','r50k_base')]" \
     || echo "⚠ tiktoken cache warm-up failed (non-fatal for offline use)"
 
+RUN mkdir -p /app/.cache/huggingface \
+    && HF_HOME=/app/.cache/huggingface python -c "\
+from transformers import AutoTokenizer; \
+AutoTokenizer.from_pretrained('bert-base-uncased', use_fast=True)" \
+    || echo "⚠ transformers tokenizer cache warm-up failed (non-fatal for offline use)"
+
 ENV TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken
+ENV HF_HOME=/app/.cache/huggingface
 
 # Expose the default lumberjack-serve port
 EXPOSE 9612

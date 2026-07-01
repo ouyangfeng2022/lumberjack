@@ -26,18 +26,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-o", "--output", help="Optional output file path")
     parser.add_argument(
         "--tokenizer",
-        choices=("simple", "tiktoken"),
-        default="simple",
+        choices=("approx", "tiktoken", "transformers"),
+        default="approx",
         help="Tokenizer implementation",
     )
     parser.add_argument(
         "--token-counter",
-        choices=("simple", "estimate", "accurate"),
-        default="simple",
-        help="Token counting mode: simple (chars//4), estimate (tiktoken with "
-        "additive incremental estimate), accurate (tiktoken, fully cached, "
-        "no estimation). The --tokenizer engine is ignored when "
-        "token-counter is simple.",
+        choices=("accurate", "incremental"),
+        default="accurate",
+        help="Token counting strategy: accurate (full rendered recount) or "
+        "incremental (configured tokenizer with additive separator-delta "
+        "estimates). The approx tokenizer only supports accurate.",
     )
     parser.add_argument(
         "--splitter",

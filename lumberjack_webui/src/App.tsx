@@ -15,7 +15,8 @@ const DEFAULT_OPTIONS: Options = {
   merge_below_tokens: 50,
   skip_empty_sections: true,
   block_configs: null,
-  tokenizer: 'simple',
+  tokenizer: 'approx',
+  token_counter: 'accurate',
   splitter: 'recursive',
   document_title: 'document.md',
 };

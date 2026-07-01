@@ -6,7 +6,7 @@ from lumberjack import lumber
 from lumberjack.core.models import SplitOptions
 from lumberjack.core.parsers.docx import DocxParser
 from lumberjack.core.splitters import RecursiveSplitter
-from lumberjack.core.tokenizers import SimpleCharTokenizer
+from tests.helpers import CharacterTokenizer
 
 FIXTURES_ROOT = Path(__file__).resolve().parent / "fixtures" / "docx"
 SAMPLE_DOCX = (FIXTURES_ROOT / "sample.docx").read_bytes()
@@ -92,7 +92,7 @@ def test_docx_through_splitter() -> None:
     parser = DocxParser()
     doc = parser.parse(SAMPLE_DOCX)
 
-    tokenizer = SimpleCharTokenizer()
+    tokenizer = CharacterTokenizer()
     options = SplitOptions(max_tokens=200, merge_below_tokens=20)
     splitter = RecursiveSplitter(tokenizer=tokenizer, options=options)
     chunks = splitter.split(doc)

@@ -163,33 +163,35 @@ class RecursiveSplitter(BaseSplitter):
             if not (child.node.blocks or child.children or child.node.level > 0):
                 continue
 
-            if child.counts.subtree <= budget_token_count:
-                if not child.can_emit_as_single_chunk:
-                    flush_current()
-                    chunks.extend(self._split_section(child))
-                else:
-                    entries = self._entries_from_section(child)
-                    child_common_headings = common_heading_path(
-                        entry.headings for entry in entries
-                    )
-                    child_common_headings_token_count = self._heading_path_token_count(
-                        child_common_headings
-                    )
-                    child_chunk_token_count = (
-                        common_heading_token_count + child.counts.subtree
-                    )
-                    child_body_token_count = (
-                        child_chunk_token_count - child_common_headings_token_count
-                    )
+            if child.can_emit_as_single_chunk:
+                entries = self._entries_from_section(child)
+                child_common_headings = common_heading_path(
+                    entry.headings for entry in entries
+                )
+                child_common_headings_token_count = self._heading_path_token_count(
+                    child_common_headings
+                )
+                child_chunk_token_count = (
+                    common_heading_token_count + child.counts.subtree
+                )
+                child_body_token_count = (
+                    child_chunk_token_count - child_common_headings_token_count
+                )
 
-                    draft = ChunkDraft(
-                        entries=entries,
-                        headings=child.node.path,
-                        headings_token_count=child_common_headings_token_count,
-                        body_token_count=child_body_token_count,
-                        token_count=child_chunk_token_count,
-                    )
+                draft = ChunkDraft(
+                    entries=entries,
+                    headings=child_common_headings,
+                    headings_token_count=child_common_headings_token_count,
+                    body_token_count=child_body_token_count,
+                    token_count=child_chunk_token_count,
+                )
+                if self._draft_budget_tokens(draft) <= budget_token_count:
                     add_packable(draft)
+                    continue
+
+            if child.counts.subtree <= budget_token_count:
+                flush_current()
+                chunks.extend(self._split_section(child))
                 continue
 
             flush_current()

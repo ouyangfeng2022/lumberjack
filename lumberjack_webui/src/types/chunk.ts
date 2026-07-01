@@ -31,6 +31,7 @@ export interface SplitOptions {
   skip_empty_sections: boolean;
   block_configs: Record<string, BlockHandlingState> | null;
   tokenizer: string;
+  token_counter: string;
   splitter: string;
   document_title: string;
 }
