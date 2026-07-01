@@ -62,7 +62,7 @@ pip install lumberjack
 Optional extras:
 
 ```bash
-pip install "lumberjack[tokenizers]"   # tiktoken-based model token counting
+pip install "lumberjack[tokenizers]"   # tiktoken / transformers token counting
 pip install "lumberjack[docx]"         # DOCX document support
 pip install "lumberjack[web]"          # FastAPI web server + UI
 pip install "lumberjack[all]"          # everything
@@ -135,10 +135,15 @@ chunks = lumber(
     merge_below_tokens=50,
     skip_empty_sections=True,
     render_headings=True,      # False: drop common heading breadcrumb from body
-    tokenizer="simple",        # "simple" | "tiktoken"
+    tokenizer="approx",        # "approx" | "tiktoken" | "transformers"
+    token_counter="accurate",  # "accurate" | "incremental"
     splitter="recursive",      # "recursive" | "section"
 )
 ```
+
+`token_counter` configures the tokenizer instance. Splitters do not expose a
+separate counting-mode option; they call the tokenizer's counting methods.
+`approx` supports only `accurate`.
 
 HTML input uses the same splitter pipeline:
 
@@ -216,7 +221,7 @@ from lumberjack.core.splitters import RecursiveSplitter
 from lumberjack.core.tokenizers import TiktokenTokenizer
 
 parser = MarkdownItParser(plugins=(tasklists_plugin,))
-tokenizer = TiktokenTokenizer(model="gpt-4o-mini")
+tokenizer = TiktokenTokenizer(model="gpt-4o-mini", token_counter="accurate")
 
 document = parser.parse(markdown_text, document_title="guide.md")
 options = SplitOptions(
@@ -246,7 +251,8 @@ lumber <input> [options]
 | `--max-tokens`             | `1200`      | Maximum chunk token budget                       |
 | `--ideal-max-tokens-ratio` | `0.8`       | Preferred split budget ratio                     |
 | `--merge-below-tokens`     | `50`        | Soft threshold for small-chunk merging           |
-| `--tokenizer`              | `simple`    | `simple` or `tiktoken`                           |
+| `--tokenizer`              | `approx`    | `approx`, `tiktoken`, or `transformers`          |
+| `--token-counter`          | `accurate`  | `accurate` or `incremental` (`approx` supports only `accurate`) |
 | `--splitter`               | `recursive` | `recursive` or `section`                         |
 | `--no-render-headings`     | off         | Omit common heading breadcrumb from `body` (see [render_headings](#rendering-headings-render_headings)) |
 | `--block-config`           | —           | Per-block-kind config (repeatable)               |
@@ -309,7 +315,8 @@ Both endpoints accept the same options:
 | `skip_empty_sections` | bool | `true` | Discard heading-only chunks |
 | `render_headings` | bool | `true` | Omit common heading breadcrumb from `body` when `false` (see [render_headings](#rendering-headings-render_headings)) |
 | `block_configs` | object | `null` | Per-block-kind config |
-| `tokenizer` | string | `"simple"` | `simple` or `tiktoken` |
+| `tokenizer` | string | `"approx"` | `approx`, `tiktoken`, or `transformers` |
+| `token_counter` | string | `"accurate"` | `accurate` or `incremental` (`approx` supports only `accurate`) |
 | `splitter` | string | `"recursive"` | `recursive` or `section` |
 
 Example `block_configs` payload:
@@ -432,7 +439,7 @@ src/lumberjack/
 ├── core/
 │   ├── models.py            # Data models (Chunk, BaseParams, SplitOptions, ...)
 │   ├── protocols.py         # Protocol interfaces
-│   ├── tokenizers.py        # Simple character & tiktoken tokenizers
+│   ├── tokenizers.py        # Approximate, tiktoken, and transformers tokenizers
 │   ├── block.py             # BlockSplitter for oversized blocks + block-config parsing
 │   ├── options.py           # Split option and block config helpers
 │   ├── utils.py             # Markdown rendering helpers

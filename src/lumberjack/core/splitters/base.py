@@ -16,12 +16,7 @@ from ..models import (
     render_heading_path,
 )
 from ..protocols import SplitterProtocol, TokenizerProtocol
-from ..tokenizers import (
-    CountMode,
-    ExactTokenCount,
-    IncrementalTokenCount,
-    SimpleCharTokenizer,
-)
+from ..tokenizers import ApproxCharTokenizer
 from ..utils import join_markdown
 
 SEPARATOR = "\n\n"
@@ -34,19 +29,12 @@ class BaseSplitter(SplitterProtocol):
         self,
         tokenizer: TokenizerProtocol | None = None,
         options: SplitOptions | None = None,
-        count_mode: CountMode = "exact",
     ):
-        self.tokenizer = tokenizer or SimpleCharTokenizer()
+        self.tokenizer = tokenizer or ApproxCharTokenizer()
         self.options = options or SplitOptions()
-        self.count_mode = count_mode
-        self.token_counter = self._build_token_counter(count_mode)
+        self.token_counter = self.tokenizer
         self._validate_options()
         self._block_splitter = BlockSplitter(self.tokenizer, self.options)
-
-    def _build_token_counter(self, count_mode: CountMode):
-        if count_mode == "incremental":
-            return IncrementalTokenCount(self.tokenizer)
-        return ExactTokenCount(self.tokenizer)
 
     def split(self, document: DocumentAST) -> list[Chunk]:
         measured_root = self._measure_section(document.root)
@@ -95,6 +83,13 @@ class BaseSplitter(SplitterProtocol):
           via the budget hook, and RecursiveSplitter's merge arithmetic
           folds displaced heading tokens into ``body_token_count``.
         """
+        body = self._render_body(draft.entries, common_headings=draft.headings)
+        return self.token_counter.count_budget_text(
+            body,
+            estimated_count=self._draft_running_estimate(draft),
+        )
+
+    def _draft_running_estimate(self, draft: ChunkDraft) -> int:
         if self.options.render_headings:
             return draft.token_count
         return draft.body_token_count
@@ -454,27 +449,24 @@ class BaseSplitter(SplitterProtocol):
                 continue
             index += 1
             token_count = self.token_counter.count_text(body)
-            # Exact counting modes (simple, accurate) report the full rendered
-            # recount for both token_count and estimated_token_count — the
-            # integer-truncation non-additivity of ``chars // 4`` (simple) and
-            # the zero-estimation requirement (accurate) both rule out the
-            # incremental running estimate here.
-            if self.count_mode == "incremental":
-                estimated = self._draft_budget_tokens(chunk)
-                # Adjust the estimate for the trailing phantom \n\n in the
-                # last entry.  When the last entry has empty body, its
-                # heading's trailing \n\n (from heading_path_token_count)
-                # was counted in the incremental estimate but is never
-                # rendered — there is no next entry for it to separate from.
-                if chunk.entries:
-                    last = chunk.entries[-1]
-                    if not last.body.strip():
-                        relative = last.headings[len(headings) :]
-                        if relative:
-                            ht = render_heading_path(relative)
-                            estimated -= self._separator_delta_after(ht)
-            else:
-                estimated = token_count
+            estimated_count = self._draft_running_estimate(chunk)
+            # Adjust the running estimate for the trailing phantom \n\n in the
+            # last entry.  When the last entry has empty body, its heading's
+            # trailing \n\n (from heading_path_token_count) was counted in the
+            # running estimate but is never rendered — there is no next entry
+            # for it to separate from. Tokenizers that compute full rendered
+            # counts ignore this estimate internally.
+            if chunk.entries:
+                last = chunk.entries[-1]
+                if not last.body.strip():
+                    relative = last.headings[len(headings) :]
+                    if relative:
+                        ht = render_heading_path(relative)
+                        estimated_count -= self._separator_delta_after(ht)
+            estimated = self.token_counter.count_estimated_text(
+                body,
+                estimated_count=estimated_count,
+            )
             finalized.append(
                 Chunk(
                     chunk_id=f"chunk-{index:04d}",
@@ -643,7 +635,7 @@ class BaseSplitter(SplitterProtocol):
             )
             if (
                 can_merge
-                and current.token_count < merge_below
+                and self._draft_budget_tokens(current) < merge_below
                 and previous.chunk_type == "paragraph"
                 and current.chunk_type == "paragraph"
             ):

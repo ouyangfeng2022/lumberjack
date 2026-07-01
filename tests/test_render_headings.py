@@ -22,7 +22,7 @@ from lumberjack.core.models import SplitOptions
 from lumberjack.core.parsers.markdown.parser import MarkdownParser
 from lumberjack.core.splitters.recursive import RecursiveSplitter
 from lumberjack.core.splitters.section import SectionSplitter
-from lumberjack.core.tokenizers import SimpleCharTokenizer
+from tests.helpers import CharacterTokenizer
 
 # A document with multiple paragraphs per section so bodies are splittable.
 SPLITTABLE_FIXTURE = """# Big Heading Title Here
@@ -45,8 +45,8 @@ Beta body. Beta body. Beta body.
 
 
 @pytest.fixture
-def tokenizer() -> SimpleCharTokenizer:
-    return SimpleCharTokenizer()
+def tokenizer() -> CharacterTokenizer:
+    return CharacterTokenizer()
 
 
 @pytest.fixture
@@ -75,7 +75,7 @@ class TestSectionSplitterRenderAware:
         max_tokens: int = 108,  # type: ignore[no-untyped-def]
     ) -> list:
         splitter = SectionSplitter(
-            tokenizer=SimpleCharTokenizer(),
+            tokenizer=CharacterTokenizer(),
             options=SplitOptions(
                 max_tokens=max_tokens,
                 ideal_max_tokens_ratio=1,
@@ -137,7 +137,7 @@ class TestSectionSplitterRenderAware:
         splittable_ast,  # type: ignore[no-untyped-def]
     ) -> None:
         """With no headings rendered, token_count == estimated == measured body."""
-        tok = SimpleCharTokenizer()
+        tok = CharacterTokenizer()
         chunks = self._split(splittable_ast, render_headings=False)
         for chunk in chunks:
             measured = tok.count(chunk.body)
@@ -157,7 +157,7 @@ class TestSectionSplitterRenderAware:
         nested_ast,  # type: ignore[no-untyped-def]
     ) -> None:
         splitter = SectionSplitter(
-            tokenizer=SimpleCharTokenizer(),
+            tokenizer=CharacterTokenizer(),
             options=SplitOptions(
                 max_tokens=60,
                 ideal_max_tokens_ratio=1,
@@ -201,7 +201,7 @@ class TestRecursiveSplitterRenderAware:
         max_tokens: int = 60,  # type: ignore[no-untyped-def]
     ) -> list:
         splitter = RecursiveSplitter(
-            tokenizer=SimpleCharTokenizer(),
+            tokenizer=CharacterTokenizer(),
             options=SplitOptions(
                 max_tokens=max_tokens,
                 ideal_max_tokens_ratio=1,
@@ -236,7 +236,7 @@ class TestRecursiveSplitterRenderAware:
         nested_ast,  # type: ignore[no-untyped-def]
     ) -> None:
         """The running estimate matches the rendered body tokens exactly."""
-        tok = SimpleCharTokenizer()
+        tok = CharacterTokenizer()
         chunks = self._split(nested_ast, render_headings=False, max_tokens=60)
         for chunk in chunks:
             measured = tok.count(chunk.body)
@@ -273,7 +273,7 @@ class TestRecursiveSplitterRenderAware:
         splittable_ast,  # type: ignore[no-untyped-def]
     ) -> None:
         """estimated == token_count == measured on the splittable fixture."""
-        tok = SimpleCharTokenizer()
+        tok = CharacterTokenizer()
         chunks = self._split(splittable_ast, render_headings=False, max_tokens=108)
         for chunk in chunks:
             measured = tok.count(chunk.body)
@@ -301,7 +301,7 @@ class TestRecursiveSplitterRenderAware:
             "## Suggested Workflow\n\nFollow these steps.\n"
         )
         ast = MarkdownParser().parse(fixture, document_title="t.md")
-        tok = SimpleCharTokenizer()
+        tok = CharacterTokenizer()
         splitter = RecursiveSplitter(
             tokenizer=tok,
             options=SplitOptions(

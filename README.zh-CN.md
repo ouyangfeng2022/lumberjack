@@ -53,7 +53,7 @@ pip install lumberjack
 可选扩展：
 
 ```bash
-pip install "lumberjack[tokenizers]"   # 基于 tiktoken 的模型 token 计数
+pip install "lumberjack[tokenizers]"   # 基于 tiktoken / transformers 的模型 token 计数
 pip install "lumberjack[docx]"         # DOCX 文档支持
 pip install "lumberjack[web]"          # FastAPI Web 服务器 + UI
 pip install "lumberjack[all]"          # 包含全部功能
@@ -125,10 +125,15 @@ chunks = lumber(
     merge_below_tokens=50,
     skip_empty_sections=True,
     render_headings=True,      # False：从 body 中去掉公共标题面包屑
-    tokenizer="simple",        # "simple" | "tiktoken"
+    tokenizer="approx",        # "approx" | "tiktoken" | "transformers"
+    token_counter="accurate",  # "accurate" | "incremental"
     splitter="recursive",      # "recursive" | "section"
 )
 ```
+
+`token_counter` 会配置到 tokenizer 实例上。splitter 不再暴露独立的
+counting-mode 参数，只调用 tokenizer 的计数方法。`approx` 只支持
+`accurate`。
 
 HTML 输入复用同一条切分管线：
 
@@ -205,7 +210,7 @@ from lumberjack.core.splitters import RecursiveSplitter
 from lumberjack.core.tokenizers import TiktokenTokenizer
 
 parser = MarkdownItParser(plugins=(tasklists_plugin,))
-tokenizer = TiktokenTokenizer(model="gpt-4o-mini")
+tokenizer = TiktokenTokenizer(model="gpt-4o-mini", token_counter="accurate")
 
 document = parser.parse(markdown_text, document_title="guide.md")
 options = SplitOptions(
@@ -234,7 +239,8 @@ lumber <input> [options]
 | `--max-tokens` | `1200` | 最大分块 token 预算 |
 | `--ideal-max-tokens-ratio` | `0.8` | 优先切分预算比例 |
 | `--merge-below-tokens` | `50` | 小分块合并软阈值 |
-| `--tokenizer` | `simple` | `simple` 或 `tiktoken` |
+| `--tokenizer` | `approx` | `approx`、`tiktoken` 或 `transformers` |
+| `--token-counter` | `accurate` | `accurate` 或 `incremental`（`approx` 只支持 `accurate`） |
 | `--splitter` | `recursive` | `recursive` 或 `section` |
 | `--no-render-headings` | off | 从 `body` 中省略公共标题面包屑（参见[是否渲染标题](#是否渲染标题render_headings)） |
 | `--block-config` | — | 按块类型配置（可重复指定） |
@@ -297,7 +303,8 @@ curl -X POST http://localhost:9612/lumber/api/split/file \
 | `skip_empty_sections` | bool | `true` | 丢弃仅有标题无正文的分块 |
 | `render_headings` | bool | `true` | 为 `false` 时从 `body` 中省略公共标题面包屑（参见[是否渲染标题](#是否渲染标题render_headings)） |
 | `block_configs` | object | `null` | 按块类型配置 |
-| `tokenizer` | string | `"simple"` | `simple` 或 `tiktoken` |
+| `tokenizer` | string | `"approx"` | `approx`、`tiktoken` 或 `transformers` |
+| `token_counter` | string | `"accurate"` | `accurate` 或 `incremental`（`approx` 只支持 `accurate`） |
 | `splitter` | string | `"recursive"` | `recursive` 或 `section` |
 
 `block_configs` 示例：
@@ -412,7 +419,7 @@ src/lumberjack/
 ├── core/
 │   ├── models.py            # 数据模型（Chunk、BaseParams、SplitOptions、...）
 │   ├── protocols.py         # 协议接口
-│   ├── tokenizers.py        # 简单字符 & tiktoken 分词器
+│   ├── tokenizers.py        # 估算、tiktoken 和 transformers 分词器
 │   ├── block.py             # 超长块切分 + 块配置解析辅助
 │   ├── options.py           # 切分选项和块配置辅助函数
 │   ├── utils.py             # Markdown 渲染辅助函数

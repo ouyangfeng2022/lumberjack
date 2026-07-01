@@ -18,6 +18,7 @@ export async function splitMarkdown(
       formData.append('block_configs', JSON.stringify(options.block_configs));
     }
     formData.append('tokenizer', options.tokenizer);
+    formData.append('token_counter', options.token_counter);
     formData.append('splitter', options.splitter);
 
     const response = await fetch('/lumber/api/split/file', {
@@ -44,6 +45,7 @@ export async function splitMarkdown(
       skip_empty_sections: options.skip_empty_sections,
       block_configs: options.block_configs,
       tokenizer: options.tokenizer,
+      token_counter: options.token_counter,
       splitter: options.splitter,
     }),
   });

@@ -187,10 +187,32 @@ export default function SplitOptions({ options, onChange }: Props) {
             <select
               className={styles.select}
               value={options.tokenizer}
-              onChange={(e) => update('tokenizer', e.target.value)}
+              onChange={(e) =>
+                onChange({
+                  ...options,
+                  tokenizer: e.target.value,
+                  token_counter:
+                    e.target.value === 'approx' ? 'accurate' : options.token_counter,
+                })
+              }
             >
-              <option value="simple">{t('opts_tokenizer_simple')}</option>
+              <option value="approx">{t('opts_tokenizer_approx')}</option>
               <option value="tiktoken">{t('opts_tokenizer_tiktoken')}</option>
+              <option value="transformers">{t('opts_tokenizer_transformers')}</option>
+            </select>
+          </div>
+
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>{t('opts_token_counter')}</span>
+            <select
+              className={styles.select}
+              value={options.token_counter}
+              onChange={(e) => update('token_counter', e.target.value)}
+            >
+              <option value="accurate">{t('opts_token_counter_accurate')}</option>
+              <option value="incremental" disabled={options.tokenizer === 'approx'}>
+                {t('opts_token_counter_incremental')}
+              </option>
             </select>
           </div>
 

@@ -9,9 +9,19 @@ if TYPE_CHECKING:
 class TokenizerProtocol(Protocol):
     """Abstraction for counting text units in manual parser/splitter pipelines."""
 
+    token_counter: str
+
     def encode(self, text: str, *, cache=False) -> tuple[int, ...]: ...
 
     def count(self, text: str, *, cache=False) -> int: ...
+
+    def count_text(self, text: str) -> int: ...
+
+    def count_budget_text(self, text: str, *, estimated_count: int) -> int: ...
+
+    def count_estimated_text(self, text: str, *, estimated_count: int) -> int: ...
+
+    def separator_delta(self, text: str, separator: str) -> int: ...
 
 
 ParserInput = TypeVar("ParserInput", str, bytes)
