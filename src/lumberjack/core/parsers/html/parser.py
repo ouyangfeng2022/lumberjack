@@ -433,9 +433,7 @@ class HTMLParser(ParserProtocol[str]):
             "list",
             "list_item",
             "code_block",
-            "html_block",
             "html_table",
-            "front_matter",
         }
     )
 

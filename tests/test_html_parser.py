@@ -51,8 +51,16 @@ def test_html_parser_block_kinds_match_default_block_kinds() -> None:
     parser = HTMLParser()
 
     assert parser.block_kinds == HTMLParser.default_block_kinds
-    assert "paragraph" in parser.block_kinds
-    assert "html_table" in parser.block_kinds
+    assert parser.block_kinds == frozenset(
+        {
+            "paragraph",
+            "blockquote",
+            "list",
+            "list_item",
+            "code_block",
+            "html_table",
+        }
+    )
     assert isinstance(parser.block_kinds, frozenset)
 
 
