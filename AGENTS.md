@@ -28,8 +28,8 @@ uv sync --group web
 
 # Run CLI (Markdown)
 uv run lumber path/to/file.md --max-tokens 1200 --merge-below-tokens 50 -f json
-# Run CLI with the accurate counting mode (tiktoken, fully cached)
-uv run lumber path/to/file.md --token-counter accurate --max-tokens 1200 -f json
+# Run CLI with tiktoken (incremental estimate path)
+uv run lumber path/to/file.md --tokenizer tiktoken --max-tokens 1200 -f json
 
 # Run CLI (DOCX)
 uv run lumber path/to/file.docx --input-format docx --max-tokens 1200 -f json
@@ -165,8 +165,8 @@ Implemented in `src/lumberjack/cli.py`.
 - Input is a Markdown (`.md`) or DOCX (`.docx`) file path
 - `--input-format`: `auto` (detect from extension), `markdown`, or `docx`
 - Output format: JSON only
-- Tokenizers (engine): `simple`, `tiktoken`
-- Token counting modes: `simple` (chars // 4, default), `estimate` (tiktoken with additive incremental estimate), `accurate` (tiktoken, fully cached, no estimation). The `--tokenizer` engine is ignored when `--token-counter` is `simple`.
+- Tokenizers (engine): `approx`, `tiktoken`, `transformers`
+- Token counting semantics are chosen by the tokenizer engine: `approx` is an exact-count engine (chars // 4; the splitter fully recounts rendered text at every budget decision); `tiktoken` and `transformers` use the additive incremental estimate path with an 8-char separator-delta window. There is no separate `--token-counter` flag.
 - Splitter choices: `recursive`, `section` (CLI default: `recursive`)
 - `--recursive-split` enables block/text fallback for oversized section bodies
 - `--block-config KIND[:isolated][:nosplit][:TOKENS]` per-block-kind config; repeatable
@@ -181,7 +181,7 @@ Implemented in `src/lumberjack/cli.py`.
 - `Chunk.body` always includes rendered heading context; shared parent headings are deduplicated
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
 - `block_options` maps block kinds to `BlockConfig` (per-kind `isolated`, `split`, `max_tokens`)
-- Token counting modes (`--token-counter`): `simple` uses `chars // 4`; `estimate` uses the additive incremental estimate backed by the configured engine; `accurate` performs no estimation — every internal count recomputes the fully rendered text with caching forced on. `Chunk.token_count` reflects the mode's primary count; `Chunk.estimated_token_count` is retained in all modes and equals `token_count` for `simple` and `accurate`.
+- Token counting path is decided by `TokenizerProtocol.is_exact`: exact engines (`approx`) fully recount rendered text at every budget decision with no pre-measure; non-exact engines (`tiktoken`, `transformers`) pre-measure sections once and use the additive incremental estimate with an 8-char separator-delta window. `Chunk.token_count` is always a full recount of the rendered body; `Chunk.estimated_token_count` is the running estimate used during splitting (equal to `token_count` for exact engines).
 
 ## Constraints
 

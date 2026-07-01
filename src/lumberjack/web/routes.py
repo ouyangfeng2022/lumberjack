@@ -24,7 +24,6 @@ class TextSplitRequest(BaseModel):
     render_headings: bool = True
     block_configs: dict[str, Any] | None = None
     tokenizer: str = "approx"
-    token_counter: str = "accurate"
     splitter: str = "recursive"
     max_heading_level: int | None = None
 
@@ -83,7 +82,6 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
             render_headings=payload.render_headings,
             block_options=block_options,
             tokenizer=payload.tokenizer,
-            token_counter=payload.token_counter,
             splitter=payload.splitter,
             max_heading_level=payload.max_heading_level,
         )
@@ -108,7 +106,6 @@ async def split_file(
     render_headings: bool = Form(True),
     block_configs: str = Form(""),
     tokenizer: str = Form("approx"),
-    token_counter: str = Form("accurate"),
     splitter: str = Form("recursive"),
     max_heading_level: int | None = Form(None),
 ) -> SplitResponse:
@@ -144,7 +141,6 @@ async def split_file(
             render_headings=render_headings,
             block_options=block_options,
             tokenizer=tokenizer,
-            token_counter=token_counter,
             splitter=splitter,
             max_heading_level=max_heading_level,
         )

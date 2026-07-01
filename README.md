@@ -136,14 +136,15 @@ chunks = lumber(
     skip_empty_sections=True,
     render_headings=True,      # False: drop common heading breadcrumb from body
     tokenizer="approx",        # "approx" | "tiktoken" | "transformers"
-    token_counter="accurate",  # "accurate" | "incremental"
     splitter="recursive",      # "recursive" | "section"
 )
 ```
 
-`token_counter` configures the tokenizer instance. Splitters do not expose a
-separate counting-mode option; they call the tokenizer's counting methods.
-`approx` supports only `accurate`.
+The counting path is decided by the tokenizer engine: `approx` is an
+exact-count engine (the splitter fully recounts rendered text at every budget
+decision); `tiktoken` and `transformers` use the additive incremental estimate
+path with an 8-char separator-delta window. Splitters do not expose a
+separate counting-mode option.
 
 HTML input uses the same splitter pipeline:
 
@@ -162,8 +163,8 @@ Each returned `Chunk` carries:
 | `chunk_id`                | Unique identifier                                                        |
 | `chunk_type`              | Origin block type (`"heading"`, `"paragraph"`, `"code_fence"`, ...)     |
 | `body`                    | Rendered chunk text with heading breadcrumbs                             |
-| `token_count`             | Tokens counted from final body                                           |
-| `estimated_token_count`   | Budget estimate used during splitting                                    |
+| `token_count`             | Tokens counted from the rendered body (full recount)                     |
+| `estimated_token_count`   | Token estimate used during splitting                                     |
 | `headings`                | Tuple of `(level, title)` pairs — the heading breadcrumb                 |
 | `section_level`           | Deepest heading level in this chunk                                      |
 | `document_title`          | Resolved from front matter or first H1                                   |
@@ -221,7 +222,7 @@ from lumberjack.core.splitters import RecursiveSplitter
 from lumberjack.core.tokenizers import TiktokenTokenizer
 
 parser = MarkdownItParser(plugins=(tasklists_plugin,))
-tokenizer = TiktokenTokenizer(model="gpt-4o-mini", token_counter="accurate")
+tokenizer = TiktokenTokenizer(model="gpt-4o-mini")
 
 document = parser.parse(markdown_text, document_title="guide.md")
 options = SplitOptions(
@@ -251,8 +252,7 @@ lumber <input> [options]
 | `--max-tokens`             | `1200`      | Maximum chunk token budget                       |
 | `--ideal-max-tokens-ratio` | `0.8`       | Preferred split budget ratio                     |
 | `--merge-below-tokens`     | `50`        | Soft threshold for small-chunk merging           |
-| `--tokenizer`              | `approx`    | `approx`, `tiktoken`, or `transformers`          |
-| `--token-counter`          | `accurate`  | `accurate` or `incremental` (`approx` supports only `accurate`) |
+| `--tokenizer`              | `approx`    | `approx` (exact count), `tiktoken`, or `transformers` (incremental) |
 | `--splitter`               | `recursive` | `recursive` or `section`                         |
 | `--no-render-headings`     | off         | Omit common heading breadcrumb from `body` (see [render_headings](#rendering-headings-render_headings)) |
 | `--block-config`           | —           | Per-block-kind config (repeatable)               |
@@ -315,8 +315,7 @@ Both endpoints accept the same options:
 | `skip_empty_sections` | bool | `true` | Discard heading-only chunks |
 | `render_headings` | bool | `true` | Omit common heading breadcrumb from `body` when `false` (see [render_headings](#rendering-headings-render_headings)) |
 | `block_configs` | object | `null` | Per-block-kind config |
-| `tokenizer` | string | `"approx"` | `approx`, `tiktoken`, or `transformers` |
-| `token_counter` | string | `"accurate"` | `accurate` or `incremental` (`approx` supports only `accurate`) |
+| `tokenizer` | string | `"approx"` | `approx` (exact count), `tiktoken`, or `transformers` (incremental) |
 | `splitter` | string | `"recursive"` | `recursive` or `section` |
 
 Example `block_configs` payload:

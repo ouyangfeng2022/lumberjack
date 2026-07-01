@@ -38,10 +38,14 @@ class TestApproxCharTokenizer:
         # encode is not used by the splitter; placeholder returns empty tuple
         assert ApproxCharTokenizer().encode("anything") == ()
 
+    def test_is_exact(self) -> None:
+        assert ApproxCharTokenizer.is_exact is True
+
 
 class TestTiktokenDefaultCache:
     def test_default_cache_false_does_not_populate_cache(self) -> None:
-        tok = TiktokenTokenizer(default_cache=False)
+        tok = TiktokenTokenizer()
+        assert tok.default_cache is False
         text = "hello world cache test"
         tok.count(text)
         # cache not populated on a non-cache call
@@ -58,6 +62,9 @@ class TestTiktokenDefaultCache:
         text = "explicit cache false"
         tok.count(text, cache=False)
         assert text not in tok._cache
+
+    def test_is_not_exact(self) -> None:
+        assert TiktokenTokenizer.is_exact is False
 
 
 class TestTransformersTokenizer:
@@ -82,184 +89,80 @@ class TestTransformersTokenizer:
         assert tok.encode("abc") == (97, 98, 99)
         assert tok.count("abc") == 3
         assert calls == [("bert-base-uncased", True)]
+        assert tok.is_exact is False
 
 
-class TestStrategySeparatorDelta:
-    def test_accurate_separator_delta_counts_full_text(self) -> None:
-        tok = ApproxCharTokenizer()
-        assert tok.separator_delta("abcdefgh", "\n\n") == 0
+class TestSeparatorDeltaAfter:
+    """The splitter's ``_separator_delta_after`` uses an 8-char tail window."""
 
-    def test_incremental_separator_delta_uses_8char_window(self) -> None:
-        tok = TiktokenTokenizer(token_counter="incremental")
-        assert tok.is_incremental is True
-        assert tok.separator_delta("abcdefgh", "\n\n") == (
+    def _splitter(self):
+        return create_splitter(
+            "recursive", TiktokenTokenizer(), SplitOptions(max_tokens=1200)
+        )
+
+    def test_uses_8char_tail_window(self) -> None:
+        splitter = self._splitter()
+        tok = splitter.tokenizer
+        text = "abcdefgh"
+        assert splitter._separator_delta_after(text) == (
             tok.count("abcdefgh\n\n", cache=True) - tok.count("abcdefgh", cache=True)
         )
 
-    def test_both_strategies_return_zero_for_empty_text(self) -> None:
-        tok = ApproxCharTokenizer()
-        assert tok.separator_delta("", "\n\n") == 0
-        assert (
-            TiktokenTokenizer(token_counter="incremental").separator_delta("", "\n\n")
-            == 0
+    def test_window_truncates_long_tail(self) -> None:
+        splitter = self._splitter()
+        tok = splitter.tokenizer
+        long_text = "x" * 80
+        # _separator_delta_after only counts the last 8 chars of the tail.
+        assert splitter._separator_delta_after(long_text) == (
+            tok.count("xxxxxxxx\n\n", cache=True) - tok.count("xxxxxxxx", cache=True)
         )
 
+    def test_empty_text_returns_zero(self) -> None:
+        assert self._splitter()._separator_delta_after("") == 0
 
-class _BogusEngine:
-    """Minimal stand-in engine that is not a real tokenizer."""
 
-    def __init__(self, token_counter: str = "accurate") -> None:
-        self.token_counter = token_counter
+class _RecordingCountTokenizer:
+    """Non-exact tokenizer that records every ``count`` argument."""
+
+    is_exact = False
+
+    def __init__(self) -> None:
+        self.counted: list[str] = []
 
     def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
-        return ()
+        return tuple(ord(c) for c in text) if text else ()
 
     def count(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
+        self.counted.append(text)
         return len(text)
 
-    @property
-    def is_incremental(self) -> bool:
-        return self.token_counter == "incremental"
 
-    def count_text(self, text: str) -> int:
-        return self.count(text, cache=True)
+class _RecordingExactTokenizer:
+    """Exact tokenizer that records every ``count`` argument."""
 
-    def count_budget_text(self, text: str, *, estimated_count: int) -> int:
-        if self.token_counter == "incremental":
-            return estimated_count
-        return self.count_text(text)
+    is_exact = True
 
-    def count_estimated_text(self, text: str, *, estimated_count: int) -> int:
-        if self.token_counter == "incremental":
-            return estimated_count
-        return self.count_text(text)
-
-    def separator_delta(self, text: str, separator: str) -> int:
-        if not text:
-            return 0
-        if self.is_incremental:
-            text = text.rstrip("\n")[-8:]
-        return self.count(f"{text}{separator}", cache=True) - self.count(
-            text, cache=True
-        )
-
-
-class _NonAdditiveTokenizer:
-    """Tokenizer that makes merged rendered content more expensive than parts."""
-
-    token_counter = "accurate"
+    def __init__(self) -> None:
+        self.counted: list[str] = []
 
     def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
-        return ()
+        return tuple(ord(c) for c in text) if text else ()
 
     def count(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
-        if not text:
-            return 0
-        if "Alpha body" in text and "Beta body" in text:
-            return 10
-        return 1
-
-    @property
-    def is_incremental(self) -> bool:
-        return False
-
-    def count_text(self, text: str) -> int:
-        return self.count(text, cache=True)
-
-    def separator_delta(self, text: str, separator: str) -> int:
-        if not text:
-            return 0
-        return self.count(f"{text}{separator}", cache=True) - self.count(
-            text, cache=True
-        )
-
-    def count_budget_text(self, text: str, *, estimated_count: int) -> int:  # noqa: ARG002
-        return self.count_text(text)
-
-    def count_estimated_text(self, text: str, *, estimated_count: int) -> int:  # noqa: ARG002
-        return self.count_text(text)
-
-
-class _NoStrategyPeekTokenizer(_BogusEngine):
-    @property
-    def is_incremental(self) -> bool:
-        raise AssertionError("splitter must not inspect tokenizer strategy")
-
-    def separator_delta(self, text: str, separator: str) -> int:
-        if not text:
-            return 0
-        return self.count(f"{text}{separator}", cache=True) - self.count(
-            text, cache=True
-        )
-
-    def count_budget_text(self, text: str, *, estimated_count: int) -> int:  # noqa: ARG002
-        return self.count_text(text)
-
-    def count_estimated_text(self, text: str, *, estimated_count: int) -> int:  # noqa: ARG002
-        return self.count_text(text)
-
-
-class TestCreateTokenizerWithCounterMode:
-    def test_approx_accurate_returns_approx_char(self) -> None:
-        engine = create_tokenizer("approx", token_counter="accurate")
-        assert isinstance(engine, ApproxCharTokenizer)
-        assert engine.is_incremental is False
-
-    def test_approx_incremental_is_rejected(self) -> None:
-        with pytest.raises(ValueError, match="does not support incremental"):
-            create_tokenizer("approx", token_counter="incremental")
-
-    def test_tiktoken_incremental_returns_incremental_tokenizer(self) -> None:
-        engine = create_tokenizer("tiktoken", token_counter="incremental")
-        assert isinstance(engine, TiktokenTokenizer)
-        assert engine.is_incremental is True
-
-    def test_tiktoken_accurate_forces_cache(self) -> None:
-        engine = create_tokenizer("tiktoken", token_counter="accurate")
-        assert isinstance(engine, TiktokenTokenizer)
-        assert engine.default_cache is True
-        assert engine.is_incremental is False
-
-    def test_unknown_tokenizer_raises(self) -> None:
-        with pytest.raises(ValueError, match="Unsupported tokenizer"):
-            create_tokenizer("bogus", token_counter="accurate")
-
-    def test_unknown_token_counter_raises(self) -> None:
-        with pytest.raises(ValueError, match="Unsupported token_counter"):
-            create_tokenizer("tiktoken", token_counter="bogus")
-
-
-class TestCreateSplitterTokenizerCounter:
-    def test_splitter_uses_tokenizer_counter_implementation(self) -> None:
-        tokenizer = create_tokenizer("tiktoken", token_counter="incremental")
-        splitter = create_splitter("recursive", tokenizer)
-        assert splitter.token_counter is tokenizer  # ty: ignore[unresolved-attribute]
-
-    def test_default_tokenizer_is_approx_char(self) -> None:
-        splitter = create_splitter("recursive")
-        assert isinstance(splitter.tokenizer, ApproxCharTokenizer)  # ty: ignore[unresolved-attribute]
-
-    def test_splitter_does_not_inspect_tokenizer_strategy(self) -> None:
-        source = "# Root\n\n## Alpha\n\nAlpha body\n\n## Beta\n\nBeta body\n"
-        document = MarkdownItParser().parse(source)
-        options = SplitOptions(max_tokens=20, merge_below_tokens=10)
-        splitter = create_splitter(
-            "recursive",
-            _NoStrategyPeekTokenizer(),
-            options=options,
-        )
-
-        chunks = splitter.split(document)
-
-        assert chunks
+        self.counted.append(text)
+        return len(text)
 
 
 class TestCreateTokenizer:
-    def test_approx_is_supported(self) -> None:
-        assert isinstance(create_tokenizer("approx"), ApproxCharTokenizer)
+    def test_approx_is_supported_and_exact(self) -> None:
+        engine = create_tokenizer("approx")
+        assert isinstance(engine, ApproxCharTokenizer)
+        assert engine.is_exact is True
 
-    def test_tiktoken_is_supported(self) -> None:
-        assert isinstance(create_tokenizer("tiktoken"), TiktokenTokenizer)
+    def test_tiktoken_is_supported_and_incremental(self) -> None:
+        engine = create_tokenizer("tiktoken")
+        assert isinstance(engine, TiktokenTokenizer)
+        assert engine.is_exact is False
 
     def test_transformers_is_supported(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def from_pretrained(model: str, use_fast: bool = True):
@@ -276,25 +179,44 @@ class TestCreateTokenizer:
             create_tokenizer("transformers"), tokenizers.TransformersTokenizer
         )
 
-    def test_simple_is_not_a_tokenizer_engine(self) -> None:
+    def test_unknown_tokenizer_raises(self) -> None:
         with pytest.raises(ValueError, match="Unsupported tokenizer"):
-            create_tokenizer("simple")
+            create_tokenizer("bogus")
 
 
-def _split_with_mode(
+class TestCreateSplitterTokenizerEngine:
+    def test_default_tokenizer_is_approx_char(self) -> None:
+        splitter = create_splitter("recursive")
+        assert isinstance(splitter.tokenizer, ApproxCharTokenizer)  # ty: ignore[unresolved-attribute]
+
+    def test_splitter_does_not_inspect_tokenizer_strategy(self) -> None:
+        source = "# Root\n\n## Alpha\n\nAlpha body\n\n## Beta\n\nBeta body\n"
+        document = MarkdownItParser().parse(source)
+        options = SplitOptions(max_tokens=20, merge_below_tokens=10)
+        splitter = create_splitter(
+            "recursive",
+            _RecordingExactTokenizer(),
+            options=options,
+        )
+
+        chunks = splitter.split(document)
+
+        assert chunks
+
+
+def _split_with(
     source: str,
     tokenizer: str,
-    token_counter: str,
     max_tokens: int = 1200,
 ):
     document = MarkdownItParser().parse(source)
-    engine = create_tokenizer(tokenizer, token_counter=token_counter)
+    engine = create_tokenizer(tokenizer)
     options = SplitOptions(max_tokens=max_tokens)
     splitter = create_splitter("recursive", engine, options=options)
-    return splitter.split(document), engine.token_counter
+    return splitter.split(document), engine
 
 
-class TestThreeModeBoundaries:
+class TestChunkCounts:
     SOURCE = (
         "# Title\n\n"
         "First paragraph with some text.\n\n"
@@ -303,162 +225,125 @@ class TestThreeModeBoundaries:
         "Subsection body content here.\n"
     )
 
-    def test_incremental_and_accurate_share_boundaries_on_tiktoken(self) -> None:
-        incremental_chunks, _ = _split_with_mode(self.SOURCE, "tiktoken", "incremental")
-        accurate_chunks, _ = _split_with_mode(self.SOURCE, "tiktoken", "accurate")
-        # Same engine (tiktoken); boundaries match except where the incremental
-        # approximation flips a borderline decision.  On this simple input the
-        # document fits one chunk in both modes.
-        assert len(incremental_chunks) == len(accurate_chunks)
-        assert [c.start_line for c in incremental_chunks] == [
-            c.start_line for c in accurate_chunks
-        ]
-        assert [c.end_line for c in incremental_chunks] == [
-            c.end_line for c in accurate_chunks
-        ]
-
-    def test_approx_accurate_token_count_is_chars_div_4(self) -> None:
-        chunks, _ = _split_with_mode(self.SOURCE, "approx", "accurate")
+    def test_approx_token_count_is_chars_div_4(self) -> None:
+        chunks, _ = _split_with(self.SOURCE, "approx")
         for chunk in chunks:
             assert chunk.token_count == len(chunk.body) // 4
-            # estimated_token_count equals token_count in accurate mode
+            # exact engine: estimated equals the full recount
             assert chunk.estimated_token_count == chunk.token_count
 
-    def test_accurate_token_count_matches_full_recount(self) -> None:
-        chunks, _ = _split_with_mode(self.SOURCE, "tiktoken", "accurate")
-        engine = create_tokenizer("tiktoken", token_counter="accurate")
+    def test_tiktoken_token_count_matches_full_recount(self) -> None:
+        chunks, _ = _split_with(self.SOURCE, "tiktoken")
+        engine = create_tokenizer("tiktoken")
         for chunk in chunks:
-            # accurate mode: token_count is the full cached recount
+            # token_count is always a full cached recount of the rendered body
             assert chunk.token_count == engine.count(chunk.body, cache=True)
 
 
-class TestSimpleTruncationGuard:
-    def test_approx_truncates_per_chunk_not_per_block(self) -> None:
-        # A document with several short blocks; the rendered body is the unit
-        # of //4 truncation, not per-block.
-        source = "# H\n\nab\n\ncd\n\nef\n\ng\n"
-        chunks, _ = _split_with_mode(source, "approx", "accurate", max_tokens=100)
-        assert chunks
-        for chunk in chunks:
-            assert chunk.token_count == len(chunk.body) // 4
+class TestExactPathNoIncrementalArithmetic:
+    """The exact path fully recounts rendered text; no tail-window estimates."""
 
+    SOURCE = (
+        "# Parent\n\n"
+        "Parent body with enough text to matter here.\n\n"
+        "## Child A\n\n"
+        "Child A body content.\n\n"
+        "## Child B\n\n"
+        "Child B body content.\n"
+    )
 
-class TestAccurateZeroEstimation:
-    def test_accurate_uses_full_count_not_incremental_delta(self) -> None:
-        # Construct a case where block-boundary token merging could make the
-        # incremental delta differ from a full recount.  accurate mode must
-        # report the full recount.
-        source = "# Doc\n\nThe quick brown.\n\nfox jumps.\n\nover the lazy.\n\ndog.\n"
-        chunks, _ = _split_with_mode(source, "tiktoken", "accurate", max_tokens=1200)
-        engine = create_tokenizer("tiktoken", token_counter="accurate")
-        for chunk in chunks:
-            assert chunk.token_count == engine.count(chunk.body, cache=True)
-            assert chunk.estimated_token_count == chunk.token_count
-
-    def test_accurate_split_decisions_use_rendered_recount_not_merged_counts(
-        self,
-    ) -> None:
-        source = "# Root\n\n## Alpha\n\nAlpha body\n\n## Beta\n\nBeta body\n"
-        document = MarkdownItParser().parse(source)
-        options = SplitOptions(
-            max_tokens=5,
-            ideal_max_tokens_ratio=1,
-            merge_below_tokens=None,
-        )
+    def test_exact_path_uses_no_tail_window(self) -> None:
+        document = MarkdownItParser().parse(self.SOURCE)
+        tok = _RecordingExactTokenizer()
         splitter = create_splitter(
-            "recursive",
-            _NonAdditiveTokenizer(),
-            options=options,
+            "recursive", tok, SplitOptions(max_tokens=40, merge_below_tokens=10)
+        )
+        splitter.split(document)
+        # The exact path never applies the 8-char tail window: every count
+        # argument is either a block/body piece or a full rendered heading,
+        # never a truncated 8-char tail.
+        assert not any(len(t) == 8 and (t + "\n\n") in tok.counted for t in tok.counted)
+
+    def test_exact_path_recounts_rendered_text(self) -> None:
+        document = MarkdownItParser().parse(self.SOURCE)
+        tok = _RecordingExactTokenizer()
+        splitter = create_splitter(
+            "recursive", tok, SplitOptions(max_tokens=40, merge_below_tokens=10)
+        )
+        splitter.split(document)
+        # The exact path must count actually-rendered candidate text.
+        assert any("Child A" in t for t in tok.counted)
+
+
+class TestIncrementalPathUsesTailWindow:
+    """The incremental path joins via the splitter's 8-char tail window."""
+
+    SOURCE = (
+        "# Parent\n\n"
+        "Parent body with enough text to matter here.\n\n"
+        "## Child A\n\n"
+        "Child A body content.\n\n"
+        "## Child B\n\n"
+        "Child B body content.\n"
+    )
+
+    def test_incremental_path_counts_8char_tail_window(self) -> None:
+        document = MarkdownItParser().parse(self.SOURCE)
+        tok = _RecordingCountTokenizer()
+        splitter = create_splitter(
+            "recursive", tok, SplitOptions(max_tokens=40, merge_below_tokens=10)
+        )
+        splitter.split(document)
+        # The incremental path estimates separators by counting the last 8
+        # chars of a tail plus the separator.  At least one such count must
+        # appear (the 8-char tail + "\n\n").
+        assert any(len(t) == 10 and t.endswith("\n\n") for t in tok.counted), (
+            "incremental path should count an 8-char tail + separator"
         )
 
-        chunks = splitter.split(document)
 
-        assert len(chunks) == 2
-        assert [chunk.token_count for chunk in chunks] == [1, 1]
-        assert all(
-            "Alpha body" not in chunk.body or "Beta body" not in chunk.body
-            for chunk in chunks
-        )
-
-
-class TestLumberTokenCounter:
-    def test_lumber_accepts_approx_accurate(self) -> None:
+class TestLumberTokenizer:
+    def test_lumber_accepts_approx(self) -> None:
         from lumberjack import lumber
 
-        chunks = lumber("# T\n\nbody\n", tokenizer="approx", token_counter="accurate")
+        chunks = lumber("# T\n\nbody\n", tokenizer="approx")
         assert chunks
         assert chunks[0].token_count == len(chunks[0].body) // 4
 
-    def test_lumber_accepts_tiktoken_incremental(self) -> None:
+    def test_lumber_accepts_tiktoken(self) -> None:
         from lumberjack import lumber
 
-        chunks = lumber(
-            "# T\n\nbody text here\n",
-            tokenizer="tiktoken",
-            token_counter="incremental",
-        )
+        chunks = lumber("# T\n\nbody text here\n", tokenizer="tiktoken")
         assert chunks
 
-    def test_lumber_accepts_tiktoken_accurate(self) -> None:
+    def test_lumber_accepts_transformers(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from lumberjack import lumber
 
-        chunks = lumber(
-            "# T\n\nbody text here\n",
-            tokenizer="tiktoken",
-            token_counter="accurate",
-        )
-        assert chunks
-
-    def test_lumber_approx_accurate_uses_chars_div_4(self) -> None:
-        from lumberjack import lumber
-
-        chunks = lumber("# T\n\nbody text\n", tokenizer="approx")
-        assert chunks[0].token_count == len(chunks[0].body) // 4
-
-    def test_lumber_approx_incremental_is_rejected(self) -> None:
-        from lumberjack import lumber
-
-        with pytest.raises(ValueError, match="does not support incremental"):
-            lumber(
-                "# T\n\nbody text\n", tokenizer="approx", token_counter="incremental"
+        fake = SimpleNamespace(
+            AutoTokenizer=SimpleNamespace(
+                from_pretrained=lambda *_a, **_k: SimpleNamespace(
+                    encode=lambda text: [1] * len(text) if text else []
+                )
             )
-
-    def test_lumber_unknown_token_counter_raises(self) -> None:
-        from lumberjack import lumber
-
-        with pytest.raises(ValueError, match="Unsupported token_counter"):
-            lumber("# T\n\nbody\n", token_counter="bogus")
+        )
+        monkeypatch.setitem(sys.modules, "transformers", fake)
+        chunks = lumber("# T\n\nbody text here\n", tokenizer="transformers")
+        assert chunks
 
     def test_lumber_unknown_tokenizer_raises(self) -> None:
         from lumberjack import lumber
 
         with pytest.raises(ValueError, match="Unsupported tokenizer"):
-            lumber("# T\n\nbody\n", token_counter="incremental", tokenizer="bogus")
+            lumber("# T\n\nbody\n", tokenizer="bogus")
 
 
-class TestCliTokenCounter:
-    def test_default_tokenizer_is_approx_accurate(self) -> None:
+class TestCliTokenizer:
+    def test_default_tokenizer_is_approx(self) -> None:
         from lumberjack.cli import build_parser
 
         parser = build_parser()
         args = parser.parse_args(["input.md"])
-        assert args.token_counter == "accurate"
         assert args.tokenizer == "approx"
-
-    def test_token_counter_accepts_two_strategies(self) -> None:
-        from lumberjack.cli import build_parser
-
-        parser = build_parser()
-        for mode in ("incremental", "accurate"):
-            args = parser.parse_args(["input.md", "--token-counter", mode])
-            assert args.token_counter == mode
-
-    def test_token_counter_rejects_unknown(self) -> None:
-        from lumberjack.cli import build_parser
-
-        parser = build_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["input.md", "--token-counter", "bogus"])
 
     def test_tokenizer_accepts_real_engines_only(self) -> None:
         from lumberjack.cli import build_parser
@@ -470,3 +355,10 @@ class TestCliTokenCounter:
 
         with pytest.raises(SystemExit):
             parser.parse_args(["input.md", "--tokenizer", "simple"])
+
+    def test_no_token_counter_flag(self) -> None:
+        from lumberjack.cli import build_parser
+
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["input.md", "--token-counter", "accurate"])
