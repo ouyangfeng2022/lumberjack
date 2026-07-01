@@ -232,6 +232,118 @@ Custom components should follow the protocols in
 [`lumberjack.core.protocols`](src/lumberjack/core/protocols.py). They are not
 passed through `lumber()`; use the `parse -> split` pipeline directly instead.
 
+#### Markdown Parser Plugins
+
+`MarkdownItParser` accepts regular `markdown-it-py` plugins through
+`plugins`. If a plugin only changes existing Markdown structures, such as task
+lists rendering as list items with inline HTML checkboxes, no extra setup is
+needed:
+
+```python
+from mdit_py_plugins.tasklists import tasklists_plugin
+from lumberjack.core.parsers.markdown import MarkdownItParser
+
+parser = MarkdownItParser(plugins=(tasklists_plugin,))
+document = parser.parse("- [x] done", document_title="tasks.md")
+```
+
+When a plugin emits new block token types, declare how those token types map to
+lumberjack block kinds with `MarkdownBlockSpec`. The parser merges those custom
+kinds into `parser.block_kinds`, which is the set used by
+`resolve_block_options()` and splitter validation.
+
+This complete example uses `mdit_py_plugins.container.container_plugin` to parse
+custom callout containers as a first-class `callout` block kind, then isolates
+that block kind during splitting:
+
+```python
+from mdit_py_plugins.container import container_plugin
+
+from lumberjack.core.models import BaseParams, MarkdownBlock, SplitOptions
+from lumberjack.core.options import resolve_block_options
+from lumberjack.core.parsers.markdown import MarkdownBlockContext, MarkdownBlockSpec
+from lumberjack.core.parsers.markdown import MarkdownItParser
+from lumberjack.core.splitters import RecursiveSplitter
+from lumberjack.core.tokenizers import SimpleCharTokenizer
+
+
+def callout_block(context: MarkdownBlockContext) -> tuple[MarkdownBlock | None, int]:
+    close_index = context.parser.find_matching_close(context.tokens, context.index)
+    children = context.parser.parse_child_blocks(
+        context.tokens,
+        context.index + 1,
+        close_index,
+        context.source_lines,
+    )
+    body = "\n\n".join(child.text for child in children if child.text)
+    return (
+        MarkdownBlock(
+            kind="callout",
+            text=body,
+            start_line=context.token.map[0] + 1 if context.token.map else None,
+            end_line=context.token.map[1] if context.token.map else None,
+            children=children,
+            attrs={
+                "source_token_type": context.token.type,
+                "info": context.token.info.strip(),
+            },
+        ),
+        close_index + 1,
+    )
+
+
+parser = MarkdownItParser(
+    plugins=(lambda md: container_plugin(md, name="callout"),),
+    block_specs=(
+        MarkdownBlockSpec(
+            kind="callout",
+            token_types=("container_callout_open",),
+            handler=callout_block,
+        ),
+    ),
+)
+
+markdown_text = """# Guide
+
+::: callout note
+Remember to configure custom block kinds before splitting.
+:::
+"""
+
+document = parser.parse(markdown_text, document_title="guide.md")
+options = SplitOptions(
+    max_tokens=1200,
+    block_options=resolve_block_options(
+        parser.block_kinds,
+        {"callout": BaseParams(isolated=True, max_tokens=400)},
+    ),
+)
+chunks = RecursiveSplitter(
+    tokenizer=SimpleCharTokenizer(),
+    options=options,
+).split(document)
+```
+
+`MarkdownBlockSpec` rules:
+
+- `kind` is normalized to lowercase and becomes the `MarkdownBlock.kind`.
+- `token_types` must be an iterable of custom markdown-it token type strings,
+  for example `("container_callout_open",)`.
+- `handler` is optional. Without one, lumberjack captures the source slice and
+  recursively parses child block tokens for container-style tokens.
+- A handler receives `MarkdownBlockContext` and returns `(block, next_index)`.
+  Return `None` for the block when the token should be skipped.
+- Handler blocks must use the declared `kind`; returning another kind raises
+  `ValueError`.
+- Built-in Markdown token types such as `paragraph_open`, `fence`,
+  `table_open`, and `html_block` are handled internally and cannot be remapped
+  with `MarkdownBlockSpec`.
+
+Use `parser.block_kinds`, not `MarkdownItParser.default_block_kinds`, when
+validating options for a parser with plugins. `default_block_kinds` only
+contains the built-in Markdown kinds; the instance `block_kinds` also includes
+plugin-provided kinds such as `callout`.
+
 ### CLI
 
 ```bash
