@@ -28,15 +28,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--tokenizer",
         choices=("approx", "tiktoken", "transformers"),
         default="approx",
-        help="Tokenizer implementation",
-    )
-    parser.add_argument(
-        "--token-counter",
-        choices=("accurate", "incremental"),
-        default="accurate",
-        help="Token counting strategy: accurate (full rendered recount) or "
-        "incremental (configured tokenizer with additive separator-delta "
-        "estimates). The approx tokenizer only supports accurate.",
+        help="Tokenizer implementation. 'approx' is an exact-count engine "
+        "(len(text) // 4, fully recounts rendered text); 'tiktoken' and "
+        "'transformers' use the additive incremental estimate path.",
     )
     parser.add_argument(
         "--splitter",
@@ -110,7 +104,6 @@ def main() -> None:
         merge_below_tokens=args.merge_below_tokens,
         block_options=block_options,
         tokenizer=args.tokenizer,
-        token_counter=args.token_counter,
         splitter=args.splitter,
         render_headings=not args.no_render_headings,
         max_heading_level=args.max_heading_level,

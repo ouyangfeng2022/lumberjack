@@ -16,7 +16,6 @@ const DEFAULT_OPTIONS: Options = {
   skip_empty_sections: true,
   block_configs: null,
   tokenizer: 'approx',
-  token_counter: 'accurate',
   splitter: 'recursive',
   document_title: 'document.md',
 };

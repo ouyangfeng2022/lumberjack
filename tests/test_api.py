@@ -349,33 +349,15 @@ def test_manual_pipeline_accepts_markdown_it_parser_with_plugins() -> None:
 
 
 class ConstantTokenizer:
-    token_counter = "accurate"
+    """Exact-count tokenizer that returns 3 tokens for any non-empty text."""
 
-    @property
-    def is_incremental(self) -> bool:
-        return False
+    is_exact = True
 
     def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
         return (1, 2, 3) if text else ()
 
     def count(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
         return len(self.encode(text))
-
-    def count_text(self, text: str) -> int:
-        return self.count(text, cache=True)
-
-    def count_budget_text(self, text: str, *, estimated_count: int) -> int:  # noqa: ARG002
-        return self.count_text(text)
-
-    def count_estimated_text(self, text: str, *, estimated_count: int) -> int:  # noqa: ARG002
-        return self.count_text(text)
-
-    def separator_delta(self, text: str, separator: str) -> int:
-        if not text:
-            return 0
-        return self.count(f"{text}{separator}", cache=True) - self.count(
-            text, cache=True
-        )
 
 
 def test_manual_pipeline_accepts_custom_tokenizer_instance() -> None:

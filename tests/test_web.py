@@ -265,13 +265,12 @@ def test_split_block_configs_default_applies_when_field_not_sent(
     assert body["chunk_count"] == 1
 
 
-def test_split_text_accepts_token_counter(client: TestClient) -> None:
-    """The /split/text endpoint accepts a token_counter field."""
+def test_split_text_with_approx(client: TestClient) -> None:
+    """The /split/text endpoint works with the approx (exact) tokenizer."""
     payload = {
         "text": "# T\n\nbody text here\n",
         "input_format": "markdown",
         "tokenizer": "approx",
-        "token_counter": "accurate",
     }
     response = client.post("/lumber/api/split/text", json=payload)
     assert response.status_code == 200
@@ -281,29 +280,27 @@ def test_split_text_accepts_token_counter(client: TestClient) -> None:
     assert chunk["token_count"] == len(chunk["body"]) // 4
 
 
-def test_split_text_accepts_token_counter_accurate(client: TestClient) -> None:
+def test_split_text_with_tiktoken(client: TestClient) -> None:
     payload = {
         "text": "# T\n\nThe quick brown fox.\n",
         "input_format": "markdown",
         "tokenizer": "tiktoken",
-        "token_counter": "accurate",
     }
     response = client.post("/lumber/api/split/text", json=payload)
     assert response.status_code == 200
     chunk = response.json()["chunks"][0]
-    # accurate mode recomputes the full cached count; must be > 0 and not
-    # equal to chars//4 on typical English text.
+    # tiktoken reports a full cached recount; must be > 0 and not equal to
+    # chars//4 on typical English text.
     assert chunk["token_count"] > 0
     assert chunk["token_count"] != len(chunk["body"]) // 4
 
 
-def test_split_file_accepts_token_counter(client: TestClient) -> None:
+def test_split_file_with_approx(client: TestClient) -> None:
     response = client.post(
         "/lumber/api/split/file",
         data={
             "input_format": "markdown",
             "tokenizer": "approx",
-            "token_counter": "accurate",
         },
         files={"file": ("doc.md", io.BytesIO(b"# T\n\nbody\n"), "text/markdown")},
     )

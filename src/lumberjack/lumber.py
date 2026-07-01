@@ -23,7 +23,6 @@ def lumber(
     render_headings: bool = True,
     block_options: Mapping[str, BaseParams | dict] | None = None,
     tokenizer: str = "approx",
-    token_counter: str = "accurate",
     splitter: str = "recursive",
     document_metadata: dict[str, object] | None = None,
     max_heading_level: int | None = None,
@@ -53,11 +52,9 @@ def lumber(
             See :attr:`SplitOptions.render_headings` for budget semantics.
         block_options: Per-block-kind :class:`BaseParams` overrides.
         tokenizer: Built-in tokenizer engine name (``"approx"``, ``"tiktoken"``,
-            or ``"transformers"``). ``"approx"`` uses ``len(text) // 4``.
-        token_counter: Counting strategy — ``"accurate"`` (full rendered
-            recount, the default) or ``"incremental"`` (configured tokenizer
-            with additive separator-delta estimates). ``"approx"`` only
-            supports ``"accurate"``.
+            or ``"transformers"``). ``"approx"`` counts ``len(text) // 4`` as
+            an exact-count engine (the splitter fully recounts rendered text);
+            the other two use the additive incremental estimate path.
         splitter: Built-in splitter name (``"recursive"`` or ``"section"``).
         document_metadata: Extra metadata merged into the document.
         max_heading_level: Maximum heading level to parse as sections.
@@ -79,21 +76,11 @@ def lumber(
             "splitter must be a string selecting a built-in splitter. "
             "For custom splitters, parse manually and call splitter.split()."
         )
-    if not isinstance(token_counter, str):
-        raise TypeError(
-            "token_counter must be a string selecting a counting mode. "
-            "For custom counting strategies, configure the tokenizer instance "
-            "and pass it to a splitter."
-        )
     normalized_tokenizer = tokenizer.strip().lower()
-    normalized_token_counter = token_counter.strip().lower()
 
     input_format = detect_format(text, format)
 
-    tokenizer_impl = create_tokenizer(
-        normalized_tokenizer,
-        token_counter=normalized_token_counter,
-    )
+    tokenizer_impl = create_tokenizer(normalized_tokenizer)
 
     if input_format == "docx":
         parser_impl = create_parser("docx")

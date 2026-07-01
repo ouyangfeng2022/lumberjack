@@ -2,69 +2,28 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from threading import RLock
-from typing import Literal, TypeAlias, cast
 
 from .protocols import TokenizerProtocol
-
-TokenCounterMode: TypeAlias = Literal["accurate", "incremental"]  # noqa: UP040
-TokenizerName: TypeAlias = Literal["approx", "tiktoken", "transformers"]  # noqa: UP040
-
 
 DEFAULT_TRANSFORMERS_MODEL = "bert-base-uncased"
 
 
-def _normalize_token_counter(token_counter: str) -> TokenCounterMode:
-    normalized = token_counter.strip().lower()
-    if normalized not in {"accurate", "incremental"}:
-        raise ValueError(f"Unsupported token_counter: {token_counter}")
-    return cast(TokenCounterMode, normalized)
+class TiktokenTokenizer(TokenizerProtocol):
+    """Tokenizer backed by the tiktoken library.
 
+    Incremental-count engine (``is_exact = False``): the splitter uses the
+    additive incremental estimate path (pre-measured sections + an 8-char
+    separator-delta window in the splitter) for budget decisions, and only
+    fully recounts at finalization.
+    """
 
-class TokenCountingMixin:
-    """Shared token counting behavior implemented by tokenizer engines."""
-
-    _DELTA_WINDOW = 8
-    token_counter: TokenCounterMode
-
-    def count(self, text: str, *, cache=False) -> int:
-        raise NotImplementedError
-
-    @property
-    def is_incremental(self) -> bool:
-        return self.token_counter == "incremental"
-
-    def count_text(self, text: str) -> int:
-        return self.count(text, cache=True)
-
-    def count_budget_text(self, text: str, *, estimated_count: int) -> int:
-        if self.token_counter == "incremental":
-            return estimated_count
-        return self.count_text(text)
-
-    def count_estimated_text(self, text: str, *, estimated_count: int) -> int:
-        if self.token_counter == "incremental":
-            return estimated_count
-        return self.count_text(text)
-
-    def separator_delta(self, text: str, separator: str) -> int:
-        if not text:
-            return 0
-        if self.is_incremental:
-            text = text.rstrip("\n")[-self._DELTA_WINDOW :]
-        return self.count(f"{text}{separator}", cache=True) - self.count(
-            text, cache=True
-        )
-
-
-class TiktokenTokenizer(TokenCountingMixin, TokenizerProtocol):
-    """Tokenizer backed by the tiktoken library."""
+    is_exact = False
 
     def __init__(
         self,
         model: str = "gpt-4o-mini",
         max_cache_size: int = 1000,
-        default_cache: bool | None = None,
-        token_counter: str = "accurate",
+        default_cache: bool = False,
     ):
         try:
             import tiktoken
@@ -77,13 +36,9 @@ class TiktokenTokenizer(TokenCountingMixin, TokenizerProtocol):
             ) from e
 
         self.model = model
-        self.token_counter = _normalize_token_counter(token_counter)
         self.encoding = tiktoken.encoding_for_model(model)
-        self.default_cache = (
-            self.token_counter == "accurate" if default_cache is None else default_cache
-        )
+        self.default_cache = default_cache
         self._cache: LRUCache[str, tuple[int, ...]] = LRUCache(maxsize=max_cache_size)
-
         self._lock = RLock()
 
     def encode(
@@ -124,20 +79,15 @@ class TiktokenTokenizer(TokenCountingMixin, TokenizerProtocol):
             self._cache.clear()
 
 
-class ApproxCharTokenizer(TokenCountingMixin, TokenizerProtocol):
+class ApproxCharTokenizer(TokenizerProtocol):
     """Approximate tokenizer that estimates tokens as ``len(text) // 4``.
 
-    A common industry rule of thumb (character count divided by four) used by
-    the ``tokenizer="approx"`` engine.  The splitter only uses :meth:`count`;
-    :meth:`encode` is a protocol placeholder.
+    Exact-count engine (``is_exact = True``): the splitter fully recounts
+    rendered text at every budget decision and never uses incremental
+    arithmetic.
     """
 
-    def __init__(self, token_counter: str = "accurate") -> None:
-        self.token_counter = _normalize_token_counter(token_counter)
-        if self.token_counter == "incremental":
-            raise ValueError(
-                "ApproxCharTokenizer does not support incremental counting"
-            )
+    is_exact = True
 
     def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
         return ()
@@ -146,14 +96,15 @@ class ApproxCharTokenizer(TokenCountingMixin, TokenizerProtocol):
         return len(text) // 4
 
 
-class TransformersTokenizer(TokenCountingMixin, TokenizerProtocol):
-    """Tokenizer backed by a Hugging Face fast tokenizer."""
+class TransformersTokenizer(TokenizerProtocol):
+    """Tokenizer backed by a Hugging Face fast tokenizer (incremental path)."""
+
+    is_exact = False
 
     def __init__(
         self,
         model: str = DEFAULT_TRANSFORMERS_MODEL,
         max_cache_size: int = 1000,
-        token_counter: str = "accurate",
     ) -> None:
         try:
             from transformers import AutoTokenizer  # type: ignore
@@ -164,7 +115,6 @@ class TransformersTokenizer(TokenCountingMixin, TokenizerProtocol):
             ) from e
 
         self.model = model
-        self.token_counter = _normalize_token_counter(token_counter)
         self.tokenizer = AutoTokenizer.from_pretrained(model, use_fast=True)
         self.max_cache_size = max_cache_size
         self._cache: OrderedDict[str, tuple[int, ...]] = OrderedDict()
@@ -212,17 +162,13 @@ class TransformersTokenizer(TokenCountingMixin, TokenizerProtocol):
             self._cache.clear()
 
 
-def create_tokenizer(
-    name: str,
-    *,
-    token_counter: str = "accurate",
-) -> TokenizerProtocol:
+def create_tokenizer(name: str) -> TokenizerProtocol:
     """Instantiate a tokenizer by name."""
     normalized = name.strip().lower()
     if normalized == "approx":
-        return ApproxCharTokenizer(token_counter=token_counter)
+        return ApproxCharTokenizer()
     if normalized == "tiktoken":
-        return TiktokenTokenizer(token_counter=token_counter)
+        return TiktokenTokenizer()
     if normalized == "transformers":
-        return TransformersTokenizer(token_counter=token_counter)
+        return TransformersTokenizer()
     raise ValueError(f"Unsupported tokenizer: {name}")
