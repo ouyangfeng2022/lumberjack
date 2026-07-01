@@ -52,10 +52,13 @@ def lumber(
             See :attr:`SplitOptions.render_headings` for budget semantics.
         block_options: Per-block-kind :class:`BaseParams` overrides.
         tokenizer: Built-in tokenizer engine name (``"approx"``, ``"tiktoken"``,
-            or ``"transformers"``). ``"approx"`` counts ``len(text) // 4`` as
-            an exact-count engine (the splitter fully recounts rendered text);
-            the other two use the additive incremental estimate path.
-        splitter: Built-in splitter name (``"recursive"`` or ``"section"``).
+            or ``"transformers"``). Independent of the splitter choice; any
+            tokenizer works with any splitter.
+        splitter: Built-in splitter name. ``"recursive"`` (default) and
+            ``"section"`` alias the exact (full-recount) variants; the
+            explicit names ``"exact-recursive"``, ``"incremental-recursive"``,
+            ``"exact-section"``, and ``"incremental-section"`` select the
+            counting strategy directly.
         document_metadata: Extra metadata merged into the document.
         max_heading_level: Maximum heading level to parse as sections.
             Headings deeper than this level are treated as regular paragraphs.

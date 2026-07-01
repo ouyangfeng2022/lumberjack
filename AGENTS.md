@@ -28,8 +28,8 @@ uv sync --group web
 
 # Run CLI (Markdown)
 uv run lumber path/to/file.md --max-tokens 1200 --merge-below-tokens 50 -f json
-# Run CLI with tiktoken (incremental estimate path)
-uv run lumber path/to/file.md --tokenizer tiktoken --max-tokens 1200 -f json
+# Run CLI with tiktoken on the incremental splitter
+uv run lumber path/to/file.md --tokenizer tiktoken --splitter incremental-recursive --max-tokens 1200 -f json
 
 # Run CLI (DOCX)
 uv run lumber path/to/file.docx --input-format docx --max-tokens 1200 -f json
@@ -166,8 +166,8 @@ Implemented in `src/lumberjack/cli.py`.
 - `--input-format`: `auto` (detect from extension), `markdown`, or `docx`
 - Output format: JSON only
 - Tokenizers (engine): `approx`, `tiktoken`, `transformers`
-- Token counting semantics are chosen by the tokenizer engine: `approx` is an exact-count engine (chars // 4; the splitter fully recounts rendered text at every budget decision); `tiktoken` and `transformers` use the additive incremental estimate path with an 8-char separator-delta window. There is no separate `--token-counter` flag.
-- Splitter choices: `recursive`, `section` (CLI default: `recursive`)
+- Exact vs incremental counting is a property of the splitter class, not the tokenizer. Registry names: `recursive`/`exact-recursive` (exact, default), `incremental-recursive`, `section`/`exact-section` (exact, default), `incremental-section`. Exact splitters fully recount rendered text at every budget decision (walk `SectionNode` directly, no pre-measure); incremental splitters pre-measure into `MeasuredSection` and use an additive estimate + 8-char separator-delta window. There is no separate `--token-counter` flag; any tokenizer works with any splitter.
+- Splitter choices: `recursive` (default, = exact-recursive), `section` (default, = exact-section), `exact-recursive`, `incremental-recursive`, `exact-section`, `incremental-section`
 - `--recursive-split` enables block/text fallback for oversized section bodies
 - `--block-config KIND[:isolated][:nosplit][:TOKENS]` per-block-kind config; repeatable
 - JSON output serializes dataclasses with `dataclasses.asdict`
@@ -181,7 +181,7 @@ Implemented in `src/lumberjack/cli.py`.
 - `Chunk.body` always includes rendered heading context; shared parent headings are deduplicated
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
 - `block_options` maps block kinds to `BlockConfig` (per-kind `isolated`, `split`, `max_tokens`)
-- Token counting path is decided by `TokenizerProtocol.is_exact`: exact engines (`approx`) fully recount rendered text at every budget decision with no pre-measure; non-exact engines (`tiktoken`, `transformers`) pre-measure sections once and use the additive incremental estimate with an 8-char separator-delta window. `Chunk.token_count` is always a full recount of the rendered body; `Chunk.estimated_token_count` is the running estimate used during splitting (equal to `token_count` for exact engines).
+- Exact splitters (`recursive`/`section` defaults, and `exact-*`) fully recount rendered text at every budget decision; `Chunk.token_count == Chunk.estimated_token_count` (both full recounts). Incremental splitters (`incremental-recursive`/`incremental-section`) measure the tree once and use a running additive estimate + 8-char separator-delta window; `Chunk.token_count` is the authoritative full recount at finalization, `Chunk.estimated_token_count` is the split-time running estimate — the two may differ slightly due to the separator approximation.
 
 ## Constraints
 

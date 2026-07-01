@@ -349,9 +349,7 @@ def test_manual_pipeline_accepts_markdown_it_parser_with_plugins() -> None:
 
 
 class ConstantTokenizer:
-    """Exact-count tokenizer that returns 3 tokens for any non-empty text."""
-
-    is_exact = True
+    """Tokenizer that returns 3 tokens for any non-empty text."""
 
     def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
         return (1, 2, 3) if text else ()

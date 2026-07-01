@@ -9,15 +9,7 @@ DEFAULT_TRANSFORMERS_MODEL = "bert-base-uncased"
 
 
 class TiktokenTokenizer(TokenizerProtocol):
-    """Tokenizer backed by the tiktoken library.
-
-    Incremental-count engine (``is_exact = False``): the splitter uses the
-    additive incremental estimate path (pre-measured sections + an 8-char
-    separator-delta window in the splitter) for budget decisions, and only
-    fully recounts at finalization.
-    """
-
-    is_exact = False
+    """Tokenizer backed by the tiktoken library."""
 
     def __init__(
         self,
@@ -80,14 +72,7 @@ class TiktokenTokenizer(TokenizerProtocol):
 
 
 class ApproxCharTokenizer(TokenizerProtocol):
-    """Approximate tokenizer that estimates tokens as ``len(text) // 4``.
-
-    Exact-count engine (``is_exact = True``): the splitter fully recounts
-    rendered text at every budget decision and never uses incremental
-    arithmetic.
-    """
-
-    is_exact = True
+    """Approximate tokenizer that estimates tokens as ``len(text) // 4``."""
 
     def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
         return ()
@@ -97,9 +82,7 @@ class ApproxCharTokenizer(TokenizerProtocol):
 
 
 class TransformersTokenizer(TokenizerProtocol):
-    """Tokenizer backed by a Hugging Face fast tokenizer (incremental path)."""
-
-    is_exact = False
+    """Tokenizer backed by a Hugging Face fast tokenizer."""
 
     def __init__(
         self,
