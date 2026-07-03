@@ -62,7 +62,7 @@ pip install lumberjack
 Optional extras:
 
 ```bash
-pip install "lumberjack[tokenizers]"   # tiktoken-based model token counting
+pip install "lumberjack[tokenizers]"   # tiktoken / transformers token counting
 pip install "lumberjack[docx]"         # DOCX document support
 pip install "lumberjack[web]"          # FastAPI web server + UI
 pip install "lumberjack[all]"          # everything
@@ -135,10 +135,20 @@ chunks = lumber(
     merge_below_tokens=50,
     skip_empty_sections=True,
     render_headings=True,      # False: drop common heading breadcrumb from body
-    tokenizer="simple",        # "simple" | "tiktoken"
+    tokenizer="approx",        # "approx" | "tiktoken" | "transformers"
     splitter="recursive",      # "recursive" | "section"
 )
 ```
+
+Counting strategy is a property of the splitter class, not the tokenizer.
+The default `recursive` and `section` splitters are **exact**: every budget
+decision fully recounts the rendered candidate text (`token_count ==
+estimated_token_count`). The `incremental-recursive` and
+`incremental-section` variants pre-measure the tree once and use a running
+additive estimate with an 8-char separator-delta window for joins — faster
+for heavy tokenizers, at the cost of `estimated_token_count` diverging
+slightly from the authoritative `token_count` (the full recount at
+finalization). Any tokenizer works with any splitter.
 
 HTML input uses the same splitter pipeline:
 
@@ -157,8 +167,8 @@ Each returned `Chunk` carries:
 | `chunk_id`                | Unique identifier                                                        |
 | `chunk_type`              | Origin block type (`"heading"`, `"paragraph"`, `"code_fence"`, ...)     |
 | `body`                    | Rendered chunk text with heading breadcrumbs                             |
-| `token_count`             | Tokens counted from final body                                           |
-| `estimated_token_count`   | Budget estimate used during splitting                                    |
+| `token_count`             | Tokens counted from the rendered body (full recount)                     |
+| `estimated_token_count`   | Token estimate used during splitting                                     |
 | `headings`                | Tuple of `(level, title)` pairs — the heading breadcrumb                 |
 | `section_level`           | Deepest heading level in this chunk                                      |
 | `document_title`          | Resolved from front matter or first H1                                   |
@@ -358,8 +368,8 @@ lumber <input> [options]
 | `--max-tokens`             | `1200`      | Maximum chunk token budget                       |
 | `--ideal-max-tokens-ratio` | `0.8`       | Preferred split budget ratio                     |
 | `--merge-below-tokens`     | `50`        | Soft threshold for small-chunk merging           |
-| `--tokenizer`              | `simple`    | `simple` or `tiktoken`                           |
-| `--splitter`               | `recursive` | `recursive` or `section`                         |
+| `--tokenizer`              | `approx`    | `approx`, `tiktoken`, or `transformers` |
+| `--splitter`               | `recursive` | `recursive`, `section`, `exact-recursive`, `incremental-recursive`, `exact-section`, `incremental-section` |
 | `--no-render-headings`     | off         | Omit common heading breadcrumb from `body` (see [render_headings](#rendering-headings-render_headings)) |
 | `--block-config`           | —           | Per-block-kind config (repeatable)               |
 | `--block-config-json`      | —           | Structured per-block-kind JSON config            |
@@ -421,8 +431,8 @@ Both endpoints accept the same options:
 | `skip_empty_sections` | bool | `true` | Discard heading-only chunks |
 | `render_headings` | bool | `true` | Omit common heading breadcrumb from `body` when `false` (see [render_headings](#rendering-headings-render_headings)) |
 | `block_configs` | object | `null` | Per-block-kind config |
-| `tokenizer` | string | `"simple"` | `simple` or `tiktoken` |
-| `splitter` | string | `"recursive"` | `recursive` or `section` |
+| `tokenizer` | string | `"approx"` | `approx`, `tiktoken`, or `transformers` |
+| `splitter` | string | `"recursive"` | `recursive`, `section`, `exact-recursive`, `incremental-recursive`, `exact-section`, `incremental-section` |
 
 Example `block_configs` payload:
 
@@ -498,16 +508,17 @@ intact. Both splitters are render-aware:
 
 | Splitter | Body behavior | Budget behavior |
 | --- | --- | --- |
-| **Section** | Common heading breadcrumb omitted | **Render-aware**: the budget previously reserved for the breadcrumb is reclaimed for body content, so `max_tokens` faithfully bounds the rendered body and `token_count == estimated_token_count == measured body tokens`. |
-| **Recursive** (default) | Common heading breadcrumb omitted; *internal* relative headings (e.g. sibling `###` titles inside a merged chunk) are still rendered | **Render-aware**: the split budget grows to fill `max_tokens` with body content, and `estimated_token_count == token_count == measured body tokens`. The split plan (chunk count, boundaries) may differ from `render_headings=True` because bodies pack more content. |
+| **Section** | Common heading breadcrumb omitted | **Render-aware**: the budget previously reserved for the breadcrumb is reclaimed for body content, so `max_tokens` faithfully bounds the rendered body (`token_count` measures the rendered body tokens). |
+| **Recursive** (default) | Common heading breadcrumb omitted; *internal* relative headings (e.g. sibling `###` titles inside a merged chunk) are still rendered | **Render-aware**: the split budget grows to fill `max_tokens` with body content. The split plan (chunk count, boundaries) may differ from `render_headings=True` because bodies pack more content. |
 
 > [!NOTE]
 > Both splitters keep heading tokens in the draft-level accounting so that
 > merge arithmetic stays self-consistent — when merging two chunks shrinks
 > their common prefix, the displaced heading tokens fall back into the body as
-> internal relative headings that still render. Only the split-budget decision
-> and the final `estimated_token_count` are render-aware, so the running
-> estimate always matches the actually-rendered `body`.
+> internal relative headings that still render. The split-budget decision and
+> the running `estimated_token_count` are render-aware, so the estimate tracks
+> the actually-rendered `body` (it may differ from `token_count` by a token or
+> two due to the separator approximation).
 
 ```python
 # Both splitters: render-aware budget (body fills max_tokens)
@@ -544,7 +555,7 @@ src/lumberjack/
 ├── core/
 │   ├── models.py            # Data models (Chunk, BaseParams, SplitOptions, ...)
 │   ├── protocols.py         # Protocol interfaces
-│   ├── tokenizers.py        # Simple character & tiktoken tokenizers
+│   ├── tokenizers.py        # Approximate, tiktoken, and transformers tokenizers
 │   ├── block.py             # BlockSplitter for oversized blocks + block-config parsing
 │   ├── options.py           # Split option and block config helpers
 │   ├── utils.py             # Markdown rendering helpers

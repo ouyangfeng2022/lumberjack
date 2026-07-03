@@ -23,7 +23,7 @@ class TextSplitRequest(BaseModel):
     skip_empty_sections: bool = True
     render_headings: bool = True
     block_configs: dict[str, Any] | None = None
-    tokenizer: str = "simple"
+    tokenizer: str = "approx"
     splitter: str = "recursive"
     max_heading_level: int | None = None
 
@@ -105,7 +105,7 @@ async def split_file(
     skip_empty_sections: bool = Form(True),
     render_headings: bool = Form(True),
     block_configs: str = Form(""),
-    tokenizer: str = Form("simple"),
+    tokenizer: str = Form("approx"),
     splitter: str = Form("recursive"),
     max_heading_level: int | None = Form(None),
 ) -> SplitResponse:

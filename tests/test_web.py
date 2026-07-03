@@ -123,7 +123,7 @@ def test_split_with_options(client: TestClient) -> None:
             "ideal_max_tokens_ratio": 0.8,
             "merge_below_tokens": -1,
             "block_configs": {"paragraph": {"isolated": False}},
-            "tokenizer": "simple",
+            "tokenizer": "tiktoken",
         },
     )
     assert response.status_code == 200
@@ -204,7 +204,7 @@ def test_split_with_table_block_params(client: TestClient) -> None:
         "/lumber/api/split/text",
         json={
             "text": md,
-            "max_tokens": 28,
+            "max_tokens": 5,
             "ideal_max_tokens_ratio": 1,
             "merge_below_tokens": -1,
             "block_configs": {"table": {"repeat_header": False}},
@@ -263,3 +263,47 @@ def test_split_block_configs_default_applies_when_field_not_sent(
     # With default DEFAULT policy, table can merge with adjacent content
     # So all content should be in one chunk
     assert body["chunk_count"] == 1
+
+
+def test_split_text_with_approx(client: TestClient) -> None:
+    """The /split/text endpoint works with the approx (exact) tokenizer."""
+    payload = {
+        "text": "# T\n\nbody text here\n",
+        "input_format": "markdown",
+        "tokenizer": "approx",
+    }
+    response = client.post("/lumber/api/split/text", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["chunk_count"] >= 1
+    chunk = data["chunks"][0]
+    assert chunk["token_count"] == len(chunk["body"]) // 4
+
+
+def test_split_text_with_tiktoken(client: TestClient) -> None:
+    payload = {
+        "text": "# T\n\nThe quick brown fox.\n",
+        "input_format": "markdown",
+        "tokenizer": "tiktoken",
+    }
+    response = client.post("/lumber/api/split/text", json=payload)
+    assert response.status_code == 200
+    chunk = response.json()["chunks"][0]
+    # tiktoken reports a full cached recount; must be > 0 and not equal to
+    # chars//4 on typical English text.
+    assert chunk["token_count"] > 0
+    assert chunk["token_count"] != len(chunk["body"]) // 4
+
+
+def test_split_file_with_approx(client: TestClient) -> None:
+    response = client.post(
+        "/lumber/api/split/file",
+        data={
+            "input_format": "markdown",
+            "tokenizer": "approx",
+        },
+        files={"file": ("doc.md", io.BytesIO(b"# T\n\nbody\n"), "text/markdown")},
+    )
+    assert response.status_code == 200
+    chunk = response.json()["chunks"][0]
+    assert chunk["token_count"] == len(chunk["body"]) // 4

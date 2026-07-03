@@ -8,7 +8,7 @@ from lumberjack.core.parsers.html import HTMLParser
 from lumberjack.core.parsers.html.table_parser import HTMLTableParser
 from lumberjack.core.parsers.markdown.parser import MarkdownParser
 from lumberjack.core.splitters import create_splitter
-from lumberjack.core.tokenizers import SimpleCharTokenizer
+from tests.helpers import CharacterTokenizer
 
 
 def test_html_parser_builds_document_ast_with_sections_and_blocks():
@@ -226,7 +226,7 @@ def test_html_table_to_markdown_with_caption():
 
 def test_text_splitter_handles_html_table_block():
     """Test that TextSplitter can split HTML blocks containing tables."""
-    tokenizer = SimpleCharTokenizer()
+    tokenizer = CharacterTokenizer()
     splitter = BlockSplitter(
         tokenizer,
         options=SplitOptions(block_options={"html_table": TableBlockParams()}),
@@ -253,7 +253,7 @@ def test_text_splitter_handles_html_table_block():
 
 
 def test_table_splitter_reads_table_params_from_options() -> None:
-    tokenizer = SimpleCharTokenizer()
+    tokenizer = CharacterTokenizer()
     splitter = BlockSplitter(
         tokenizer,
         options=SplitOptions(
