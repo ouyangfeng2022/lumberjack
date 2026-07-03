@@ -206,6 +206,13 @@ class SplitOptions:
             body content, so ``token_count`` measures the final rendered body;
             ``estimated_token_count`` stays close but may differ slightly due to
             join approximations.
+        subtree_merge: SectionSplitter only. When True (default), first attempts
+            to collapse an entire subtree (own body + all descendants) into a
+            single chunk when it fits ``ideal_max_tokens`` and contains no
+            standalone block; otherwise emits one chunk per heading section.
+            When False, always emits one chunk per heading section's direct
+            body and recurses into children, never collapsing a whole subtree.
+            Has no effect on RecursiveSplitter.
         block_options: Per-block-kind configuration. Keys are lowercase block
             kind strings matching :attr:`MarkdownBlock.kind` values; values are
             :class:`BaseParams` instances. Callers that need parser-specific
@@ -219,6 +226,7 @@ class SplitOptions:
     merge_below_tokens: int | None = 50
     skip_empty_sections: bool = True
     render_headings: bool = True
+    subtree_merge: bool = True
     block_options: dict[str, BaseParams] = field(default_factory=dict)
 
     # Cached derived fields — computed in __post_init__.
