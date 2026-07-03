@@ -93,7 +93,7 @@ Main components:
 - **Splitters**: `src/lumberjack/core/splitters/` — operate on `DocumentAST`, format-agnostic
   - `base.py` provides `BaseSplitter` shared state and helpers
   - `recursive.py` provides `RecursiveSplitter` (registry: "recursive") — structure-first, budget-aware
-  - `section.py` provides `SectionSplitter` (registry: "section") — subtree-first: collapses a fitting subtree into one chunk, otherwise one chunk per heading section
+  - `section.py` provides `SectionSplitter` (registry: "section") — subtree-first (gated by `SplitOptions.subtree_merge`, default True): collapses a fitting subtree into one chunk, otherwise one chunk per heading section
   - `registry.py` provides `SPLITTER_REGISTRY` and `create_splitter()` factory
 - **Visitor**: `src/lumberjack/core/visitor.py`
   - `AstVisitor` — lightweight AST visitor with enter/depart hooks for section/block/inline and structured content (table cells, code, math); works with any `DocumentAST`
@@ -176,7 +176,7 @@ Implemented in `src/lumberjack/cli.py`.
 
 - Whole document is kept as one chunk when it already fits the budget
 - `RecursiveSplitter` (default): merges adjacent sibling sections when they fit within `max_tokens`
-- `SectionSplitter`: first attempts to collapse an entire subtree (own body + all descendants) into a single chunk when it fits `ideal_max_tokens` and has no standalone block; otherwise emits one chunk per heading section direct body and recurses into children (no cross-section merging)
+- `SectionSplitter`: with `subtree_merge=True` (default), first attempts to collapse an entire subtree (own body + all descendants) into a single chunk when it fits `ideal_max_tokens` and has no standalone block; with `subtree_merge=False`, always emits one chunk per heading section direct body and recurses into children (no cross-section merging in either mode)
 - Text fallback order is paragraph break -> line break -> sentence -> word -> hard split
 - `Chunk.body` always includes rendered heading context; shared parent headings are deduplicated
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
