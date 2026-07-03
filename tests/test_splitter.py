@@ -2238,3 +2238,117 @@ def test_section_splitter_subtree_merge_does_not_cross_top_level_sections() -> N
     assert "Alpha beta" in chunks[0].body
     assert "Echo foxtrot" in chunks[1].body
     assert "Echo foxtrot" not in chunks[0].body
+
+
+def test_split_options_subtree_merge_defaults_true() -> None:
+    assert SplitOptions().subtree_merge is True
+
+
+def test_section_splitter_subtree_merge_option_controls_behavior() -> None:
+    """subtree_merge=True collapses a fitting subtree; False keeps per-section."""
+    fixture = """# Parent
+
+Parent intro.
+
+## One
+
+One body.
+
+## Two
+
+Two body.
+"""
+    document = MarkdownParser().parse(fixture, document_title="t.md")
+
+    merged = SectionSplitter(
+        tokenizer=CharacterTokenizer(),
+        options=SplitOptions(max_tokens=1000, merge_below_tokens=0, subtree_merge=True),
+    ).split(document)
+    assert len(merged) == 1
+    assert merged[0].headings == ((1, "Parent"),)
+    assert "## One" in merged[0].body
+    assert "## Two" in merged[0].body
+
+    per_section = SectionSplitter(
+        tokenizer=CharacterTokenizer(),
+        options=SplitOptions(
+            max_tokens=1000, merge_below_tokens=0, subtree_merge=False
+        ),
+    ).split(document)
+    # subtree_merge=False: three chunks, one per section.  The "# Parent"
+    # body lives under the document root (level 0), so its headings tuple is
+    # empty under ancestor-heading rendering.
+    assert len(per_section) == 3
+    assert per_section[0].headings == ()
+    assert per_section[1].headings == ((1, "Parent"),)
+    assert per_section[2].headings == ((1, "Parent"),)
+    assert per_section[0].body == "# Parent\n\nParent intro."
+    assert per_section[1].body == "# Parent\n\n## One\n\nOne body."
+    assert per_section[2].body == "# Parent\n\n## Two\n\nTwo body."
+
+
+def test_incremental_section_splitter_subtree_merge_option_controls_behavior() -> None:
+    """IncrementalSectionSplitter honors subtree_merge the same way."""
+    fixture = """# Parent
+
+Parent intro.
+
+## One
+
+One body.
+
+## Two
+
+Two body.
+"""
+    document = MarkdownParser().parse(fixture, document_title="t.md")
+
+    merged = IncrementalSectionSplitter(
+        tokenizer=CharacterTokenizer(),
+        options=SplitOptions(max_tokens=1000, merge_below_tokens=0, subtree_merge=True),
+    ).split(document)
+    assert len(merged) == 1
+    assert merged[0].headings == ((1, "Parent"),)
+
+    per_section = IncrementalSectionSplitter(
+        tokenizer=CharacterTokenizer(),
+        options=SplitOptions(
+            max_tokens=1000, merge_below_tokens=0, subtree_merge=False
+        ),
+    ).split(document)
+    assert len(per_section) == 3
+    assert per_section[0].headings == ()
+    assert per_section[1].headings == ((1, "Parent"),)
+    assert per_section[2].headings == ((1, "Parent"),)
+
+
+def test_subtree_merge_false_still_splits_standalone_blocks() -> None:
+    """subtree_merge=False still routes standalone blocks through body splitting."""
+    fixture = """# Parent
+
+| A | B |
+|---|---|
+| 1 | 2 |
+
+## One
+
+One body.
+"""
+    document = MarkdownParser().parse(fixture, document_title="t.md")
+    splitter = SectionSplitter(
+        tokenizer=CharacterTokenizer(),
+        options=SplitOptions(
+            max_tokens=10000,
+            merge_below_tokens=0,
+            subtree_merge=False,
+            block_options=markdown_block_options(
+                {"table": BaseParams(isolated=True)},
+            ),
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    # Standalone table forces its own chunk regardless of subtree_merge.
+    assert len(chunks) >= 2
+    assert any("| A |" in c.body for c in chunks)

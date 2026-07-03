@@ -40,18 +40,19 @@ class ExactSectionSplitter(ExactCountingMixin, BaseSplitter):
         if not (section.blocks or section.children or section.level > 0):
             return []
 
-        body_has_standalone = any(
-            b.kind in self.options.standalone_kinds for b in section.blocks
-        )
-        child_has_standalone = any(
-            self._section_has_standalone(child) for child in section.children
-        )
-        if not body_has_standalone and not child_has_standalone:
-            entries = self._entries_from_section(section)
-            common = common_heading_path(entry.headings for entry in entries)
-            single = self._draft_from_entries(entries, common, origin="section")
-            if self._draft_budget_tokens(single) <= self.options.ideal_max_tokens:
-                return [single]
+        if self.options.subtree_merge:
+            body_has_standalone = any(
+                b.kind in self.options.standalone_kinds for b in section.blocks
+            )
+            child_has_standalone = any(
+                self._section_has_standalone(child) for child in section.children
+            )
+            if not body_has_standalone and not child_has_standalone:
+                entries = self._entries_from_section(section)
+                common = common_heading_path(entry.headings for entry in entries)
+                single = self._draft_from_entries(entries, common, origin="section")
+                if self._draft_budget_tokens(single) <= self.options.ideal_max_tokens:
+                    return [single]
 
         chunks: list[ChunkDraft] = []
         standalone_kinds = self.options.standalone_kinds
@@ -107,6 +108,9 @@ class IncrementalSectionSplitter(IncrementalCountingMixin, BaseSplitter):
     pre-measured and budget decisions use a running estimate rather than full
     rendered recounts.
 
+    The subtree-merge short-circuit is gated on ``SplitOptions.subtree_merge``
+    (default True); set it False to always emit one chunk per heading section.
+
     Registered as ``"incremental-section"``.  Works with any tokenizer.
     """
 
@@ -125,7 +129,7 @@ class IncrementalSectionSplitter(IncrementalCountingMixin, BaseSplitter):
         if not (node.blocks or section.children or node.level > 0):
             return []
 
-        if section.can_emit_as_single_chunk:
+        if self.options.subtree_merge and section.can_emit_as_single_chunk:
             entries = self._entries_from_section(section)
             common = common_heading_path(entry.headings for entry in entries)
             headings_token_count = self._heading_path_token_count(common)
