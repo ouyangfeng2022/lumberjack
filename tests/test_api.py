@@ -199,15 +199,15 @@ def test_lumber_accepts_section_splitter() -> None:
     )
 
     assert [chunk.headings for chunk in chunks] == [
+        (),
         ((1, "Development Guide"),),
-        ((1, "Development Guide"), (2, "Current Scope")),
+        ((1, "Development Guide"),),
         ((1, "Development Guide"), (2, "Milestones")),
-        ((1, "Development Guide"), (2, "Milestones"), (3, "M0")),
-        ((1, "Development Guide"), (2, "Milestones"), (3, "M1")),
+        ((1, "Development Guide"), (2, "Milestones")),
     ]
 
 
-def test_lumber_body_always_renders_full_common_heading_path() -> None:
+def test_lumber_body_always_renders_full_ancestor_heading_path() -> None:
     chunks = lumber(
         MERGED_SECTION_FIXTURE,
         document_title="development.md",
@@ -278,7 +278,7 @@ def test_chunk_to_dict_serializes_heading_path() -> None:
     assert payload["body"] == chunk.body
     assert payload["token_count"] == chunk.token_count
     assert payload["estimated_token_count"] == chunk.estimated_token_count
-    assert payload["headings"] == ((1, "Overview"), (2, "Details"), (3, "Notes"))
+    assert payload["headings"] == ((1, "Overview"), (2, "Details"))
     assert payload["section_level"] == 3
     assert payload["document_title"] == "sample.md"
     assert payload["document_path"] is None
@@ -286,7 +286,7 @@ def test_chunk_to_dict_serializes_heading_path() -> None:
     assert payload["end_line"] == 19
 
 
-def test_chunk_to_dict_uses_common_heading_path_for_merged_sections() -> None:
+def test_chunk_to_dict_uses_ancestor_heading_path_for_merged_sections() -> None:
     chunk = lumber(
         MERGED_SECTION_FIXTURE,
         document_title="development.md",
@@ -296,7 +296,7 @@ def test_chunk_to_dict_uses_common_heading_path_for_merged_sections() -> None:
     payload = asdict(chunk)
 
     assert payload["headings"] == ((1, "Development Guide"),)
-    assert payload["section_level"] == 1
+    assert payload["section_level"] == 3
 
 
 def test_parse_markdown_and_split_preserve_line_ranges_with_single_parser() -> None:
@@ -321,7 +321,7 @@ def test_parse_markdown_and_split_preserve_line_ranges_with_single_parser() -> N
     assert chunks[0].document_path == "/tmp/sample.md"
     assert chunks[0].start_line == 1
     assert chunks[0].end_line == 1
-    assert chunks[-1].headings == ((1, "Overview"), (2, "Details"), (3, "Notes"))
+    assert chunks[-1].headings == ((1, "Overview"), (2, "Details"))
     assert (
         chunks[-1].body
         == "# Overview\n\n## Details\n\n### Notes\n\nFinal notes live here."

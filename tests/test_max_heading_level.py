@@ -78,17 +78,19 @@ Content here.
     chunks = lumber(markdown, splitter="recursive")
     assert len(chunks) >= 1  # At least one chunk
 
-    # Check that all heading levels are present in the chunk
+    # Ancestor metadata excludes the chunk's own H4 title, while section_level
+    # still reports the deepest covered heading level.
     chunk = chunks[0]
-    assert len(chunk.headings) == 4  # H1, H2, H3, H4
+    assert len(chunk.headings) == 3  # H1, H2, H3 ancestors
+    assert chunk.section_level == 4
 
     # With max_heading_level=2, only H1 and H2 create sections
     chunks = lumber(markdown, splitter="recursive", max_heading_level=2)
     chunk = chunks[0]
-    # Should only have H1 and H2 in headings
-    assert len(chunk.headings) == 2  # Only H1 and H2
+    # H2 is the chunk's own section title, so only H1 is ancestor metadata.
+    assert len(chunk.headings) == 1
     assert chunk.headings[0][0] == 1  # H1
-    assert chunk.headings[1][0] == 2  # H2
+    assert chunk.section_level == 2
 
     # Check that H3 and H4 are in the body as text
     assert "### Detail" in chunk.body

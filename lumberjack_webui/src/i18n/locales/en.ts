@@ -28,7 +28,7 @@ const en = {
   opts_hide_advanced: 'Hide advanced options',
   opts_merge_below_tokens: 'Merge below tokens (empty to disable)',
   opts_skip_empty_sections: 'Skip empty sections',
-  opts_render_headings: 'Include section headings in each chunk',
+  opts_render_headings: 'Include ancestor headings in each chunk',
   opts_splitter: 'Splitter',
   opts_splitter_recursive: 'Recursive',
   opts_splitter_section: 'Section',

@@ -1,17 +1,18 @@
 """Tests for ``SplitOptions.render_headings``.
 
-Both splitters are render-aware. When ``render_headings`` is False the common
+Both splitters are render-aware. When ``render_headings`` is False the ancestor
 heading breadcrumb is excluded from the split budget *and* omitted from the
-rendered body, so:
+rendered body, while the chunk's own heading and internal headings still render.
+So:
 
-* the rendered body can grow up to ``max_tokens`` (heading tokens are
-  reclaimed for content), and
+* the rendered body can grow into the budget previously occupied by ancestor
+  headings, and
 * ``estimated_token_count == token_count == tokenizer.count(body)`` exactly —
   the running estimate matches the actually-rendered body.
 
-``Chunk.headings`` metadata is preserved either way. Internal relative
-headings (siblings merged into one chunk) always render regardless of the
-flag, because they are chunk-internal structure, not the common prefix.
+``Chunk.headings`` stores ancestor headings either way. The chunk's own heading
+and internal relative headings always render regardless of the flag, because
+they are chunk-internal structure, not the ancestor prefix.
 """
 
 from __future__ import annotations
@@ -21,7 +22,10 @@ import pytest
 from lumberjack.core.models import SplitOptions
 from lumberjack.core.parsers.markdown.parser import MarkdownParser
 from lumberjack.core.splitters.recursive import RecursiveSplitter
-from lumberjack.core.splitters.section import SectionSplitter
+from lumberjack.core.splitters.section import (
+    IncrementalSectionSplitter,
+    SectionSplitter,
+)
 from tests.helpers import CharacterTokenizer
 
 # A document with multiple paragraphs per section so bodies are splittable.
@@ -65,7 +69,7 @@ def nested_ast():  # type: ignore[no-untyped-def]
 
 
 class TestSectionSplitterRenderAware:
-    """SectionSplitter excludes heading tokens from the budget when not rendered."""
+    """SectionSplitter excludes ancestor heading tokens when not rendered."""
 
     @staticmethod
     def _split(
@@ -85,16 +89,16 @@ class TestSectionSplitterRenderAware:
         )
         return splitter.split(ast)
 
-    def test_false_omits_common_heading_from_body(
+    def test_false_omits_ancestors_but_keeps_own_heading(
         self,
-        splittable_ast,  # type: ignore[no-untyped-def]
+        nested_ast,  # type: ignore[no-untyped-def]
     ) -> None:
-        chunks = self._split(splittable_ast, render_headings=False)
+        chunks = self._split(nested_ast, render_headings=False, max_tokens=60)
         assert chunks, "expected at least one chunk"
         for chunk in chunks:
-            # No rendered ATX heading line at the start of the body.
-            assert not chunk.body.lstrip().startswith("#")
-            assert "Big Heading Title Here" not in chunk.body
+            assert chunk.body.lstrip().startswith("###")
+            assert "# Root" not in chunk.body
+            assert "## Scope" not in chunk.body
 
     def test_false_preserves_headings_metadata(
         self,
@@ -102,9 +106,10 @@ class TestSectionSplitterRenderAware:
     ) -> None:
         chunks = self._split(splittable_ast, render_headings=False)
         for chunk in chunks:
-            assert chunk.headings == ((1, "Big Heading Title Here"),)
+            assert chunk.headings == ()
+            assert chunk.section_level == 1
 
-    def test_true_renders_common_heading_in_body(
+    def test_true_renders_ancestor_and_own_heading_in_body(
         self,
         splittable_ast,  # type: ignore[no-untyped-def]
     ) -> None:
@@ -112,25 +117,17 @@ class TestSectionSplitterRenderAware:
         assert chunks
         assert chunks[0].body.startswith("# Big Heading Title Here")
 
-    def test_false_enlarges_body_budget(
+    def test_false_keeps_h1_budget_when_only_own_heading_renders(
         self,
         splittable_ast,  # type: ignore[no-untyped-def]
     ) -> None:
-        """At max_tokens=108, False packs ~2 paragraphs per chunk vs ~1 for True."""
+        """Hiding ancestors reclaims no budget for a top-level section."""
         true_chunks = self._split(splittable_ast, render_headings=True, max_tokens=108)
         false_chunks = self._split(
             splittable_ast, render_headings=False, max_tokens=108
         )
-        # Fewer chunks when the heading is not reserved.
-        assert len(false_chunks) < len(true_chunks)
-        # And each False chunk carries more body tokens (the heading budget is
-        # reclaimed for content).
-        avg_true = sum(c.token_count for c in true_chunks) / len(true_chunks)
-        avg_false = sum(c.token_count for c in false_chunks) / len(false_chunks)
-        # True includes ~26 heading tokens per chunk; False does not, so the
-        # False average body is larger than the True average body would be even
-        # after subtracting the heading overhead.
-        assert avg_false > avg_true - 26
+        assert len(false_chunks) == len(true_chunks)
+        assert [c.body for c in false_chunks] == [c.body for c in true_chunks]
 
     def test_false_token_count_equals_body_tokens(
         self,
@@ -168,10 +165,13 @@ class TestSectionSplitterRenderAware:
         chunks = splitter.split(nested_ast)
         assert len(chunks) == 2
         headings = [c.headings for c in chunks]
-        assert ((1, "Root"), (2, "Scope"), (3, "A")) in headings
-        assert ((1, "Root"), (2, "Scope"), (3, "B")) in headings
+        assert headings == [
+            ((1, "Root"), (2, "Scope")),
+            ((1, "Root"), (2, "Scope")),
+        ]
         for chunk in chunks:
-            # Bodies are body-only — no ATX headings.
+            # Ancestors are hidden, own section headings remain.
+            assert chunk.body.lstrip().startswith("###")
             assert "Alpha body" in chunk.body or "Beta body" in chunk.body
             assert "Root" not in chunk.body and "Scope" not in chunk.body
 
@@ -182,7 +182,38 @@ class TestSectionSplitterRenderAware:
         """Oversized body splitting still tags every fragment with the path."""
         chunks = self._split(splittable_ast, render_headings=False, max_tokens=60)
         for chunk in chunks:
-            assert chunk.headings == ((1, "Big Heading Title Here"),)
+            assert chunk.headings == ()
+            assert chunk.section_level == 1
+
+    def test_incremental_false_uses_rendered_heading_budget(self) -> None:
+        ast = MarkdownParser().parse(
+            """# Very Long Root Ancestor Heading
+
+## Very Long Scope Ancestor Heading
+
+### Leaf
+
+alpha alpha alpha alpha alpha
+
+beta beta beta beta beta beta
+""",
+            document_title="t.md",
+        )
+        splitter = IncrementalSectionSplitter(
+            tokenizer=CharacterTokenizer(),
+            options=SplitOptions(
+                max_tokens=40,
+                ideal_max_tokens_ratio=1,
+                merge_below_tokens=0,
+                render_headings=False,
+            ),
+        )
+
+        chunks = splitter.split(ast)
+
+        assert len(chunks) == 2
+        assert all(chunk.body.startswith("### Leaf") for chunk in chunks)
+        assert all(chunk.token_count <= 40 for chunk in chunks)
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +222,7 @@ class TestSectionSplitterRenderAware:
 
 
 class TestRecursiveSplitterRenderAware:
-    """RecursiveSplitter excludes the common breadcrumb from budget and body."""
+    """RecursiveSplitter excludes the ancestor breadcrumb from budget and body."""
 
     @staticmethod
     def _split(
@@ -211,7 +242,7 @@ class TestRecursiveSplitterRenderAware:
         )
         return splitter.split(ast)
 
-    def test_false_omits_common_heading_from_body(
+    def test_false_omits_ancestor_heading_from_body(
         self,
         nested_ast,  # type: ignore[no-untyped-def]
     ) -> None:
@@ -219,7 +250,7 @@ class TestRecursiveSplitterRenderAware:
         for chunk in chunks:
             assert not chunk.body.lstrip().startswith("# Root")
             # Internal relative headings (### A / ### B) may still appear
-            # because they are chunk-internal structure, not common prefix.
+            # because they are chunk-internal structure, not ancestor prefix.
             assert "Alpha body" in chunk.body or "Beta body" in chunk.body
 
     def test_false_preserves_headings_metadata(
@@ -252,21 +283,17 @@ class TestRecursiveSplitterRenderAware:
         for chunk in chunks:
             assert chunk.token_count <= 108
 
-    def test_false_enlarges_body_budget(
+    def test_false_keeps_h1_budget_when_only_own_heading_renders(
         self,
         splittable_ast,  # type: ignore[no-untyped-def]
     ) -> None:
-        """Fewer, larger chunks when the heading budget is reclaimed."""
+        """Hiding ancestors reclaims no budget for a top-level section."""
         true_chunks = self._split(splittable_ast, render_headings=True, max_tokens=108)
         false_chunks = self._split(
             splittable_ast, render_headings=False, max_tokens=108
         )
-        # Fewer chunks because each carries more body content.
-        assert len(false_chunks) < len(true_chunks)
-        # And each False chunk is larger on average.
-        avg_true = sum(c.token_count for c in true_chunks) / len(true_chunks)
-        avg_false = sum(c.token_count for c in false_chunks) / len(false_chunks)
-        assert avg_false > avg_true
+        assert len(false_chunks) == len(true_chunks)
+        assert [c.body for c in false_chunks] == [c.body for c in true_chunks]
 
     def test_false_estimated_equals_measured_splittable(
         self,
@@ -284,7 +311,7 @@ class TestRecursiveSplitterRenderAware:
         self,
         nested_ast,  # type: ignore[no-untyped-def]
     ) -> None:
-        """RecursiveSplitter only drops the common prefix; internal headings stay."""
+        """RecursiveSplitter only drops the ancestor prefix; internal headings stay."""
         chunks = self._split(nested_ast, render_headings=False, max_tokens=120)
         # When siblings merge into one chunk, ### A and ### B are internal
         # relative headings and must still appear in the body.
@@ -314,7 +341,7 @@ class TestRecursiveSplitterRenderAware:
         chunks = splitter.split(ast)
         assert len(chunks) == 1
         chunk = chunks[0]
-        # Common breadcrumb (# Development Guide) is not rendered.
+        # Ancestor breadcrumb (# Development Guide) is not rendered.
         assert "# Development Guide" not in chunk.body
         # Internal relative headings are rendered.
         assert "## Current Scope" in chunk.body

@@ -124,7 +124,7 @@ chunks = lumber(
     ideal_max_tokens_ratio=0.8,
     merge_below_tokens=50,
     skip_empty_sections=True,
-    render_headings=True,      # False：从 body 中去掉公共标题面包屑
+    render_headings=True,      # False：从 body 中去掉祖先标题面包屑
     tokenizer="approx",        # "approx" | "tiktoken" | "transformers"
     splitter="recursive",      # "recursive" | "section"
 )
@@ -157,7 +157,7 @@ chunks = lumber(
 | `body` | 带有标题面包屑的渲染文本 |
 | `token_count` | 根据最终正文计算的 token 数 |
 | `estimated_token_count` | 切分时使用的预算估算值 |
-| `headings` | `(level, title)` 元组 —— 标题面包屑 |
+| `headings` | `(level, title)` 元组 —— 祖先标题面包屑 |
 | `section_level` | 当前分块中最深的标题层级 |
 | `document_title` | 从 front matter 或首个 H1 解析得到的文档标题 |
 | `start_line` / `end_line` | 源文件中的 1 起始行范围 |
@@ -339,7 +339,7 @@ lumber <input> [options]
 | `--merge-below-tokens` | `50` | 小分块合并软阈值 |
 | `--tokenizer` | `approx` | `approx`、`tiktoken` 或 `transformers` |
 | `--splitter` | `recursive` | `recursive`、`section`、`exact-recursive`、`incremental-recursive`、`exact-section`、`incremental-section` |
-| `--no-render-headings` | off | 从 `body` 中省略公共标题面包屑（参见[是否渲染标题](#是否渲染标题render_headings)） |
+| `--no-render-headings` | off | 从 `body` 中省略祖先标题面包屑（参见[是否渲染标题](#是否渲染标题render_headings)） |
 | `--block-config` | — | 按块类型配置（可重复指定） |
 | `--block-config-json` | — | 结构化的按块类型 JSON 配置 |
 
@@ -398,7 +398,7 @@ curl -X POST http://localhost:9612/lumber/api/split/file \
 | `ideal_max_tokens_ratio` | float | `0.8` | 优先切分预算比例 |
 | `merge_below_tokens` | int | `50` | 小分块合并软阈值 |
 | `skip_empty_sections` | bool | `true` | 丢弃仅有标题无正文的分块 |
-| `render_headings` | bool | `true` | 为 `false` 时从 `body` 中省略公共标题面包屑（参见[是否渲染标题](#是否渲染标题render_headings)） |
+| `render_headings` | bool | `true` | 为 `false` 时从 `body` 中省略祖先标题面包屑（参见[是否渲染标题](#是否渲染标题render_headings)） |
 | `block_configs` | object | `null` | 按块类型配置 |
 | `tokenizer` | string | `"approx"` | `approx`、`tiktoken` 或 `transformers` |
 | `splitter` | string | `"recursive"` | `recursive`、`section`、`exact-recursive`、`incremental-recursive`、`exact-section`、`incremental-section` |
@@ -431,7 +431,7 @@ curl -X POST http://localhost:9612/lumber/api/split/file \
       "body": "# Hello\n\nWorld",
       "token_count": 8,
       "estimated_token_count": 8,
-      "headings": [[1, "Hello"]],
+      "headings": [],
       "section_level": 1,
       "document_title": "guide.md",
       "document_path": null,
@@ -470,15 +470,15 @@ docker compose up --build
 
 ### 是否渲染标题（`render_headings`）
 
-默认情况下，每个分块渲染出的 `body` 都会以公共标题面包屑开头（例如 `# Title\n\n## Section`）。设置 `render_headings=False` 可以从 `body` 中省略该面包屑，同时保留 `Chunk.headings` 元数据。两个切分器都按渲染结果预算：
+默认情况下，每个分块渲染出的 `body` 都会以祖先标题面包屑开头，随后保留该分块自身的标题（例如一个 H2 leaf 会渲染为 `# Title\n\n## Section`）。`Chunk.headings` 只保存祖先标题。设置 `render_headings=False` 可以从 `body` 中省略祖先标题面包屑；分块自身标题和 chunk 内部的相对标题仍会渲染。两个切分器都按渲染结果预算：
 
 | 切分器 | body 行为 | 预算行为 |
 | --- | --- | --- |
-| **Section** | 省略公共标题面包屑 | **按渲染口径预算**：原先预留给面包屑的预算会归还给正文内容，因此 `max_tokens` 会严格约束实际渲染的 body（`token_count` 即实测 body tokens）。 |
-| **Recursive**（默认） | 省略公共标题面包屑；但 chunk *内部*的相对标题（例如合并 chunk 中的兄弟 `###` 标题）仍会渲染 | **按渲染口径预算**：切分预算会增长以容纳更多正文内容。由于正文能打包更多内容，切分计划（分块数量、边界）可能不同于 `render_headings=True`。 |
+| **Section** | 省略祖先标题面包屑；该 section 自身标题仍会渲染 | **按渲染口径预算**：原先预留给祖先标题的预算会归还给渲染内容，因此 `max_tokens` 会严格约束实际渲染的 body（`token_count` 即实测 body tokens）。 |
+| **Recursive**（默认） | 省略祖先标题面包屑；chunk 自身标题和 chunk *内部*的相对标题（例如合并 chunk 中的兄弟 `###` 标题）仍会渲染 | **按渲染口径预算**：切分预算只会因为隐藏祖先标题而增长。有祖先标题的分块，其切分计划（分块数量、边界）可能不同于 `render_headings=True`。 |
 
 > [!NOTE]
-> 两个切分器都会在 draft 层保留标题 token，让合并算术保持自洽——当两个 chunk 合并后公共前缀变短，被挤出的标题 token 会回到 body 中，作为仍会渲染的内部相对标题。切分预算判断与运行中的 `estimated_token_count` 都按渲染口径处理，因此估算值始终贴合实际渲染出的 `body`（由于 separator 近似，它与 `token_count` 可能相差一两个 token）。
+> 两个切分器都会在 draft 层保留标题 token，让合并算术保持自洽——当两个 chunk 合并后共享的祖先前缀发生变化，被挤出的标题 token 会回到 body 中，作为仍会渲染的自身标题或内部相对标题。切分预算判断与运行中的 `estimated_token_count` 都按渲染口径处理，因此估算值始终贴合实际渲染出的 `body`（由于 separator 近似，它与 `token_count` 可能相差一两个 token）。
 
 ```python
 # 两个切分器：按渲染口径预算（body 能填满 max_tokens）

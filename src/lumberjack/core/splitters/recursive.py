@@ -211,8 +211,8 @@ class IncrementalRecursiveSplitter(IncrementalCountingMixin, BaseSplitter):
         # body when a merge shrinks the common prefix).
         common_heading_token_count = self._heading_path_token_count(node.path)
         # Body/child budget for the packing decision.  When render_headings=
-        # False the common breadcrumb is not rendered, so the full
-        # ideal_max_tokens is available for body and child content.
+        # False, ancestor breadcrumbs may be hidden, but own/internal headings
+        # still render; candidate drafts perform the final render-aware check.
         if self.options.render_headings:
             budget_token_count = (
                 self.options.ideal_max_tokens - common_heading_token_count

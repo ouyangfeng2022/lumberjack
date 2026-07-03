@@ -47,8 +47,8 @@ def lumber(
             smaller than ``max_tokens``.
         skip_empty_sections: Discard chunks containing only a heading
             with no body content when enabled.
-        render_headings: When False, omit the chunk's common heading breadcrumb
-            from ``Chunk.body`` while preserving ``Chunk.headings`` metadata.
+        render_headings: When False, omit the chunk's ancestor heading
+            breadcrumb from ``Chunk.body`` while keeping the chunk's own heading.
             See :attr:`SplitOptions.render_headings` for budget semantics.
         block_options: Per-block-kind :class:`BaseParams` overrides.
         tokenizer: Built-in tokenizer engine name (``"approx"``, ``"tiktoken"``,

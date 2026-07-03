@@ -199,16 +199,13 @@ class SplitOptions:
         skip_empty_sections: When True, discard chunks that contain only a heading
             with no body content. Chunks with zero rendered tokens are always discarded
             regardless of this setting.
-        render_headings: When False, omit the chunk's common heading breadcrumb from
-            the rendered ``Chunk.body`` while keeping ``Chunk.headings`` metadata
-            intact. Both splitters are render-aware: the split budget grows to fill
-            ``max_tokens`` with body content (the heading tokens are reclaimed), so
-            ``token_count`` (the full recount) then equals the measured body tokens;
-            ``estimated_token_count`` (the split-time estimate) stays close but may
-            differ slightly due to join approximations.
-            Internal relative headings (e.g. sibling titles inside a merged chunk in
-            the recursive splitter) always render regardless of this flag, because
-            they are chunk-internal structure rather than the common prefix.
+        render_headings: When False, omit only the chunk's ancestor heading
+            breadcrumb from the rendered ``Chunk.body`` while keeping the chunk's
+            own heading and internal relative headings. Both splitters are
+            render-aware: hidden ancestor heading tokens are reclaimed for rendered
+            body content, so ``token_count`` measures the final rendered body;
+            ``estimated_token_count`` stays close but may differ slightly due to
+            join approximations.
         block_options: Per-block-kind configuration. Keys are lowercase block
             kind strings matching :attr:`MarkdownBlock.kind` values; values are
             :class:`BaseParams` instances. Callers that need parser-specific
@@ -255,15 +252,17 @@ class Chunk:
             window) used for budget decisions; ``token_count`` is the authoritative
             full recount of the rendered body. The two may differ slightly due
             to join approximations.
-        headings: Tuple of ``(level, title)`` pairs representing the heading path.
+        headings: Tuple of ``(level, title)`` pairs representing the chunk's
+            ancestor heading path.
 
-            ``# H1 \\n\\n ## H2.1 \\n\\n Content1``, headings=[(1, "H1"), (2, "H2.1")].
+            ``# H1 \\n\\n ## H2.1 \\n\\n Content1``, headings=[(1, "H1")].
 
             ``# H1 \\n\\n ## H2.1 \\n\\n Content1 ## H2.2 \\n\\n Content2``, headings=[(1, "H1")].
 
         section_level: Deepest heading level in this chunk.
 
-            ``section_level = max((level for level, _ in headings), default=0)``.
+            ``section_level`` is derived from the full section paths covered by
+            the chunk, not from the ancestor-only ``headings`` metadata.
 
         document_title: Title of the source document.
         document_path: File path of the source document, if split from a file.
@@ -309,6 +308,18 @@ def common_heading_path(paths: Iterable[HeadingPath]) -> HeadingPath:
         if not common:
             break
     return common
+
+
+def ancestor_heading_path(paths: Iterable[HeadingPath]) -> HeadingPath:
+    path_list = [tuple(path) for path in paths]
+    if not path_list:
+        return ()
+
+    first = path_list[0]
+    if all(path == first for path in path_list):
+        return first[:-1] if first else ()
+
+    return common_heading_path(path_list)
 
 
 @dataclass(slots=True)

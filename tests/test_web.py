@@ -75,8 +75,8 @@ def test_split_text_accepts_render_headings_false(client: TestClient) -> None:
 
     assert response.status_code == 200
     chunk = response.json()["chunks"][0]
-    assert chunk["headings"] == [[1, "Parent"]]
-    assert chunk["body"] == "Intro."
+    assert chunk["headings"] == []
+    assert chunk["body"] == "# Parent\n\nIntro."
 
 
 def test_split_file_accepts_render_headings_false(client: TestClient) -> None:
@@ -89,8 +89,8 @@ def test_split_file_accepts_render_headings_false(client: TestClient) -> None:
 
     assert response.status_code == 200
     chunk = response.json()["chunks"][0]
-    assert chunk["headings"] == [[1, "Parent"]]
-    assert chunk["body"] == "Intro."
+    assert chunk["headings"] == []
+    assert chunk["body"] == "# Parent\n\nIntro."
 
 
 def test_split_with_html_file_auto_detects_format(client: TestClient) -> None:
@@ -145,7 +145,7 @@ def test_split_ignores_legacy_render_common_headings_form_field(
 
     assert response.status_code == 200
     chunk = response.json()["chunks"][0]
-    assert chunk["headings"] == [[1, "Parent"], [2, "Child"]]
+    assert chunk["headings"] == [[1, "Parent"]]
     assert chunk["body"] == "# Parent\n\n## Child\n\nChild body."
 
 

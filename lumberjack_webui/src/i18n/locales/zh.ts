@@ -28,7 +28,7 @@ const zh = {
   opts_hide_advanced: '隐藏高级选项',
   opts_merge_below_tokens: '低于此词元数时合并（留空禁用）',
   opts_skip_empty_sections: '跳过空白章节',
-  opts_render_headings: '在每个块中包含章节标题',
+  opts_render_headings: '在每个块中包含祖先标题',
   opts_splitter: '切分器',
   opts_splitter_recursive: '递归切分',
   opts_splitter_section: '章节切分',

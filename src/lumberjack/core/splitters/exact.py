@@ -44,7 +44,7 @@ class ExactCountingMixin(BaseSplitter):
 
     def _draft_budget_tokens(self, draft: ChunkDraft) -> int:
         """Rendered footprint a draft occupies — full recount of the body."""
-        return self._rendered_token_count(draft.entries, common_headings=draft.headings)
+        return self._rendered_token_count(draft.entries)
 
     def _merge_drafts(
         self,
@@ -86,8 +86,9 @@ class ExactCountingMixin(BaseSplitter):
         max_tokens = self.options.ideal_max_tokens
         if self.options.render_headings:
             prefix_tokens = self._heading_path_token_count(headings)
-            return max(0, max_tokens - prefix_tokens)
-        return max_tokens
+        else:
+            prefix_tokens = self._heading_path_token_count(headings[-1:])
+        return max(0, max_tokens - prefix_tokens)
 
     def _draft_from_entries(
         self,
@@ -98,7 +99,7 @@ class ExactCountingMixin(BaseSplitter):
         chunk_type: str = "paragraph",
     ) -> ChunkDraft:
         """Build a ChunkDraft from entries, deriving token counts from render."""
-        body_tokens = self._rendered_token_count(entries, common_headings=headings)
+        body_tokens = self._rendered_token_count(entries)
         prefix_tokens = self._heading_path_token_count(headings)
         return ChunkDraft(
             entries=entries,
@@ -165,11 +166,10 @@ class ExactCountingMixin(BaseSplitter):
             if not current_entries:
                 return
             entries = list(current_entries)
-            common = common_heading_path(e.headings for e in entries)
             chunks.append(
                 self._draft_from_entries(
                     entries,
-                    common,
+                    common_heading_path(e.headings for e in entries),
                     origin="fragment",
                 )
             )
@@ -253,12 +253,9 @@ class ExactCountingMixin(BaseSplitter):
                 continue
 
             candidate_entries = [*current_entries, entry]
-            common = common_heading_path(e.headings for e in candidate_entries)
             if (
                 current_entries
-                and self._rendered_token_count(
-                    candidate_entries, common_headings=common
-                )
+                and self._rendered_token_count(candidate_entries)
                 > self.options.ideal_max_tokens
             ):
                 flush_current()
