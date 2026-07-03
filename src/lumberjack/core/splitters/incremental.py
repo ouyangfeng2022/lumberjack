@@ -9,6 +9,7 @@ from ..models import (
     MeasuredSection,
     SectionNode,
     SectionTokenCounts,
+    ancestor_heading_path,
     common_heading_path,
     render_heading_path,
 )
@@ -52,7 +53,10 @@ class IncrementalCountingMixin(BaseSplitter):
     def _draft_running_estimate(self, draft: ChunkDraft) -> int:
         if self.options.render_headings:
             return draft.token_count
-        return draft.body_token_count
+        hidden_headings = ancestor_heading_path(
+            entry.headings for entry in draft.entries
+        )
+        return draft.token_count - self._heading_path_token_count(hidden_headings)
 
     def _draft_budget_tokens(self, draft: ChunkDraft) -> int:
         """Rendered footprint a draft occupies — the running additive estimate."""
@@ -253,16 +257,13 @@ class IncrementalCountingMixin(BaseSplitter):
         prefix_tokens = (
             self._heading_path_token_count(headings) if node.level > 0 else 0
         )
-        # Body-only budget for splitting decisions.  When render_headings=True
-        # the common breadcrumb is rendered, so the heading tokens are
-        # subtracted from max_tokens.  When render_headings=False the
-        # breadcrumb is omitted and the full max_tokens is available for body.
         if self.options.render_headings:
-            body_budget = max(0, max_tokens - prefix_tokens)
+            rendered_heading_tokens = prefix_tokens
         else:
-            body_budget = max_tokens
+            rendered_heading_tokens = self._heading_path_token_count(headings[-1:])
+        body_budget = max(0, max_tokens - rendered_heading_tokens)
 
-        if prefix_tokens >= max_tokens or not blocks:
+        if rendered_heading_tokens >= max_tokens or not blocks:
             entry = self._entry_from_blocks(
                 headings, blocks, body_token_count=section.counts.body
             )

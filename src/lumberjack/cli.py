@@ -70,7 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-render-headings",
         action="store_true",
-        help="Omit the chunk's common heading breadcrumb from the rendered body. "
+        help="Omit the chunk's ancestor heading breadcrumb from the rendered body. "
         "The split budget is based on the rendered body.",
     )
     parser.add_argument(

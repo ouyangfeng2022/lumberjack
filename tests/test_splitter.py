@@ -187,10 +187,11 @@ def test_heading_splitter_keeps_sections_separate_without_repeating_children() -
     chunks = splitter.split(document)
 
     assert [chunk.headings for chunk in chunks] == [
+        (),
         ((1, "Parent"),),
-        ((1, "Parent"), (2, "One")),
-        ((1, "Parent"), (2, "Two")),
+        ((1, "Parent"),),
     ]
+    assert [chunk.section_level for chunk in chunks] == [1, 2, 2]
     assert chunks[0].body == "# Parent\n\nParent intro."
     assert chunks[1].body == "# Parent\n\n## One\n\nOne body."
     assert chunks[2].body == "# Parent\n\n## Two\n\nTwo body."
@@ -214,7 +215,8 @@ def test_heading_splitter_splits_oversized_section_body() -> None:
     chunks = splitter.split(document)
 
     assert len(chunks) > 1
-    assert all(chunk.headings == ((1, "Long"),) for chunk in chunks)
+    assert all(chunk.headings == () for chunk in chunks)
+    assert all(chunk.section_level == 1 for chunk in chunks)
     assert all(chunk.body.startswith("# Long\n\n") for chunk in chunks)
     assert "Alpha bravo" in chunks[0].body
     assert "juliet." in chunks[-1].body
@@ -240,7 +242,8 @@ def test_heading_splitter_splits_oversized_body_with_nosplit_blocks_kept_intact(
 
     # Paragraph is nosplit so the oversized body stays as one chunk
     assert len(chunks) == 1
-    assert chunks[0].headings == ((1, "Long"),)
+    assert chunks[0].headings == ()
+    assert chunks[0].section_level == 1
     assert chunks[0].estimated_token_count > splitter.options.max_tokens
     assert "Alpha bravo charlie" in chunks[0].body
 
@@ -260,12 +263,10 @@ def test_heading_splitter_respects_empty_section_options() -> None:
             skip_empty_sections=False,
         ),
     ).split(document)
-    assert [chunk.headings for chunk in default_chunks] == [
-        ((1, "Empty"), (2, "Child")),
-    ]
+    assert [chunk.headings for chunk in default_chunks] == [((1, "Empty"),)]
     assert [chunk.headings for chunk in kept_chunks] == [
+        (),
         ((1, "Empty"),),
-        ((1, "Empty"), (2, "Child")),
     ]
     assert kept_chunks[0].body == "# Empty"
 
@@ -302,7 +303,7 @@ def test_splitter_deduplicates_shared_parent_heading_in_merged_chunk() -> None:
     assert "### M1" in chunks[0].body
     assert "## Suggested Workflow" in chunks[0].body
     assert chunks[0].headings == ((1, "Development Guide"),)
-    assert chunks[0].section_level == 1
+    assert chunks[0].section_level == 3
 
 
 def test_split_options_no_longer_exposes_render_common_headings() -> None:
@@ -381,7 +382,7 @@ def test_splitter_greedily_merges_same_level_siblings_before_descending() -> Non
     assert all(chunk.estimated_token_count <= 62 for chunk in chunks)
 
 
-def test_splitter_exposes_body_without_common_headings_for_single_leaf_chunk() -> None:
+def test_splitter_exposes_ancestor_headings_for_single_leaf_chunk() -> None:
     document = MarkdownParser().parse(
         THIRD_LEVEL_FIXTURE, document_title="third-level.md"
     )
@@ -394,11 +395,12 @@ def test_splitter_exposes_body_without_common_headings_for_single_leaf_chunk() -
 
     chunks = splitter.split(document)
 
-    assert chunks[0].headings == ((1, "Root"), (2, "Scope"), (3, "A"))
+    assert chunks[0].headings == ((1, "Root"), (2, "Scope"))
+    assert chunks[0].section_level == 3
     assert chunks[0].body == "# Root\n\n## Scope\n\n### A\n\nAlpha body."
 
 
-def test_splitter_exposes_body_without_common_headings_for_multi_entry_chunk() -> None:
+def test_splitter_exposes_common_ancestor_headings_for_multi_entry_chunk() -> None:
     document = MarkdownParser().parse(
         THIRD_LEVEL_FIXTURE, document_title="third-level.md"
     )
@@ -415,6 +417,47 @@ def test_splitter_exposes_body_without_common_headings_for_multi_entry_chunk() -
         chunks[0].body
         == "# Root\n\n## Scope\n\n### A\n\nAlpha body.\n\n### B\n\nBeta body."
     )
+
+
+def test_splitter_fragment_uses_ancestor_headings_and_keeps_own_title() -> None:
+    document = MarkdownParser().parse(
+        THIRD_LEVEL_FIXTURE, document_title="third-level.md"
+    )
+    splitter = RecursiveSplitter(
+        tokenizer=CharacterTokenizer(),
+        options=SplitOptions(
+            max_tokens=30,
+            ideal_max_tokens_ratio=1,
+            merge_below_tokens=0,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert chunks[0].headings == ((1, "Root"), (2, "Scope"))
+    assert chunks[0].section_level == 3
+    assert chunks[0].body == "# Root\n\n## Scope\n\n### A\n\nAlpha body."
+
+
+def test_splitter_render_headings_false_keeps_self_title_only() -> None:
+    document = MarkdownParser().parse(
+        THIRD_LEVEL_FIXTURE, document_title="third-level.md"
+    )
+    splitter = RecursiveSplitter(
+        tokenizer=CharacterTokenizer(),
+        options=SplitOptions(
+            max_tokens=30,
+            ideal_max_tokens_ratio=1,
+            merge_below_tokens=0,
+            render_headings=False,
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert chunks[0].headings == ((1, "Root"), (2, "Scope"))
+    assert chunks[0].section_level == 3
+    assert chunks[0].body == "### A\n\nAlpha body."
 
 
 def test_splitter_body_includes_headings_by_default() -> None:
@@ -1212,10 +1255,8 @@ def test_section_splitter_handles_front_matter_as_root_body_chunk() -> None:
     assert chunks[0].body == (
         "---\ntitle: Test Document\nauthor: Alice\ndate: 2024-01-01\n---"
     )
-    assert [chunk.headings for chunk in chunks[1:]] == [
-        ((1, "Introduction"),),
-        ((1, "Body"),),
-    ]
+    assert [chunk.headings for chunk in chunks[1:]] == [(), ()]
+    assert [chunk.section_level for chunk in chunks[1:]] == [1, 1]
 
 
 def test_front_matter_can_be_isolated_with_block_params() -> None:
@@ -1645,7 +1686,8 @@ def test_standalone_block_preserves_heading_context() -> None:
     code_chunks = [c for c in chunks if c.chunk_type == "code_fence"]
 
     assert len(code_chunks) == 1
-    assert code_chunks[0].headings == ((1, "Doc"), (2, "Section"))
+    assert code_chunks[0].headings == ((1, "Doc"),)
+    assert code_chunks[0].section_level == 2
 
 
 def test_standalone_blocks_in_nested_section_tree() -> None:
@@ -2006,11 +2048,13 @@ Small body.
     chunks = splitter.split(document)
 
     # Parent body ("Small body.") fits budget → single chunk despite large subtree
-    parent_chunks = [c for c in chunks if c.headings == ((1, "Parent"),)]
+    parent_chunks = [c for c in chunks if c.section_level == 1]
     assert len(parent_chunks) == 1
     assert "Small body." in parent_chunks[0].body
     # Child body is oversized → split into multiple chunks
-    child_chunks = [c for c in chunks if c.headings == ((1, "Parent"), (2, "Child"))]
+    child_chunks = [
+        c for c in chunks if c.headings == ((1, "Parent"),) and c.section_level == 2
+    ]
     assert len(child_chunks) > 1
     child_bodies = " ".join(c.body for c in child_chunks)
     assert "Alpha" in child_bodies

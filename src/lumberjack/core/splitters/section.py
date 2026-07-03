@@ -1,22 +1,10 @@
 from __future__ import annotations
 
-from ..models import ChunkDraft, Entry, HeadingPath, MeasuredSection, SectionNode
+from ..models import ChunkDraft, Entry, MeasuredSection, SectionNode
 from ..utils import join_markdown
 from .base import BaseSplitter
 from .exact import ExactCountingMixin
 from .incremental import IncrementalCountingMixin
-
-
-def _section_heading_budget(self: BaseSplitter, path: HeadingPath) -> int:
-    """Exclude heading tokens from the budget when they are not rendered.
-
-    SectionSplitter chunks never contain internal relative headings, so the
-    common heading path is the only heading context and it is omitted from
-    ``Chunk.body`` when ``render_headings=False``.
-    """
-    if not self.options.render_headings:
-        return 0
-    return self._heading_path_token_count(path)
 
 
 class ExactSectionSplitter(ExactCountingMixin, BaseSplitter):
@@ -31,8 +19,6 @@ class ExactSectionSplitter(ExactCountingMixin, BaseSplitter):
     Registered as ``"section"`` (the default) and ``"exact-section"``.
     Works with any tokenizer.
     """
-
-    _heading_budget_token_count = _section_heading_budget
 
     def _split_section(self, section: SectionNode) -> list[ChunkDraft]:
         """Return one direct-body draft per section, then recurse into children."""
@@ -91,8 +77,6 @@ class IncrementalSectionSplitter(IncrementalCountingMixin, BaseSplitter):
 
     Registered as ``"incremental-section"``.  Works with any tokenizer.
     """
-
-    _heading_budget_token_count = _section_heading_budget
 
     def _split_section(
         self,

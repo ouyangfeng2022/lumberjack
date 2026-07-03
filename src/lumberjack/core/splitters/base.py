@@ -9,6 +9,7 @@ from ..models import (
     HeadingPath,
     MarkdownBlock,
     SplitOptions,
+    ancestor_heading_path,
     common_heading_path,
     render_heading_path,
 )
@@ -72,21 +73,21 @@ class BaseSplitter(SplitterProtocol):
         self,
         entries: list[Entry],
         *,
-        common_headings: HeadingPath,
+        ancestor_headings: HeadingPath,
     ) -> str:
         """Render entries into Markdown body content."""
         if not entries:
             return ""
 
         parts: list[str] = []
-        if common_headings and self.options.render_headings:
-            parts.append(render_heading_path(common_headings))
+        if ancestor_headings and self.options.render_headings:
+            parts.append(render_heading_path(ancestor_headings))
 
-        previous_headings = common_headings
+        previous_headings = ancestor_headings
         for entry in entries:
             shared_headings = common_heading_path((previous_headings, entry.headings))
-            if len(shared_headings) < len(common_headings):
-                shared_headings = common_headings
+            if len(shared_headings) < len(ancestor_headings):
+                shared_headings = ancestor_headings
             relative_headings = entry.headings[len(shared_headings) :]
 
             entry_parts: list[str] = []
@@ -105,11 +106,15 @@ class BaseSplitter(SplitterProtocol):
         self,
         entries: list[Entry],
         *,
-        common_headings: HeadingPath,
+        ancestor_headings: HeadingPath | None = None,
     ) -> int:
         """Full token count of the rendered body for *entries*."""
+        if ancestor_headings is None:
+            ancestor_headings = ancestor_heading_path(
+                entry.headings for entry in entries
+            )
         return self.tokenizer.count(
-            self._render_body(entries, common_headings=common_headings), cache=True
+            self._render_body(entries, ancestor_headings=ancestor_headings), cache=True
         )
 
     # ------------------------------------------------------------------
@@ -117,14 +122,7 @@ class BaseSplitter(SplitterProtocol):
     # ------------------------------------------------------------------
 
     def _heading_budget_token_count(self, path: HeadingPath) -> int:
-        """Heading tokens counted toward the split budget.
-
-        The base implementation always returns the full heading token count —
-        headings consume budget whether or not they are rendered.  Topologies
-        that can prove every entry in a chunk shares the chunk's common heading
-        path (no internal relative headings) may override this to return 0 when
-        ``render_headings=False``, making the budget match the rendered body.
-        """
+        """Full heading token count for a draft's internal common prefix."""
         return self._heading_path_token_count(path)
 
     # ------------------------------------------------------------------
@@ -205,8 +203,8 @@ class BaseSplitter(SplitterProtocol):
         document_path = str(doc_path) if doc_path is not None else None
         index = 0
         for chunk in chunks:
-            headings = common_heading_path(entry.headings for entry in chunk.entries)
-            body = self._render_body(chunk.entries, common_headings=headings)
+            headings = ancestor_heading_path(entry.headings for entry in chunk.entries)
+            body = self._render_body(chunk.entries, ancestor_headings=headings)
             if not body:
                 continue
             if self.options.skip_empty_sections and not any(
@@ -217,6 +215,10 @@ class BaseSplitter(SplitterProtocol):
             # token_count: always a full recount of the rendered body.
             token_count = self.tokenizer.count(body, cache=True)
             estimated = self._finalize_estimate(chunk, headings, token_count)
+            section_level = max(
+                (level for entry in chunk.entries for level, _title in entry.headings),
+                default=0,
+            )
             finalized.append(
                 Chunk(
                     chunk_id=f"chunk-{index:04d}",
@@ -225,7 +227,7 @@ class BaseSplitter(SplitterProtocol):
                     token_count=token_count,
                     estimated_token_count=estimated,
                     headings=headings,
-                    section_level=headings[-1][0] if headings else 0,
+                    section_level=section_level,
                     document_title=document.title,
                     document_path=document_path,
                     start_line=min(
