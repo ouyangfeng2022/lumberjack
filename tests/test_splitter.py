@@ -15,6 +15,7 @@ from lumberjack.core.options import resolve_block_options
 from lumberjack.core.parsers.markdown.parser import MarkdownParser
 from lumberjack.core.splitters import (
     IncrementalRecursiveSplitter,
+    IncrementalSectionSplitter,
     RecursiveSplitter,
     SectionSplitter,
     create_splitter,
@@ -175,7 +176,8 @@ def test_create_splitter_routes_recursive_and_section() -> None:
     assert not issubclass(SectionSplitter, RecursiveSplitter)
 
 
-def test_heading_splitter_keeps_sections_separate_without_repeating_children() -> None:
+def test_heading_splitter_merges_small_subtree_into_one_chunk() -> None:
+    """A small subtree collapses into one chunk; children render once each."""
     document = MarkdownParser().parse(
         HEADING_SPLITTER_FIXTURE, document_title="heading.md"
     )
@@ -186,17 +188,15 @@ def test_heading_splitter_keeps_sections_separate_without_repeating_children() -
 
     chunks = splitter.split(document)
 
-    assert [chunk.headings for chunk in chunks] == [
-        (),
-        ((1, "Parent"),),
-        ((1, "Parent"),),
-    ]
-    assert [chunk.section_level for chunk in chunks] == [1, 2, 2]
-    assert chunks[0].body == "# Parent\n\nParent intro."
-    assert chunks[1].body == "# Parent\n\n## One\n\nOne body."
-    assert chunks[2].body == "# Parent\n\n## Two\n\nTwo body."
-    assert "One body." not in chunks[0].body
-    assert "Two body." not in chunks[0].body
+    assert len(chunks) == 1
+    assert chunks[0].headings == ((1, "Parent"),)
+    # Common parent breadcrumb renders once; each child renders once.
+    assert chunks[0].body.count("# Parent") == 1
+    assert chunks[0].body.count("## One") == 1
+    assert chunks[0].body.count("## Two") == 1
+    assert "Parent intro." in chunks[0].body
+    assert "One body." in chunks[0].body
+    assert "Two body." in chunks[0].body
 
 
 def test_heading_splitter_splits_oversized_section_body() -> None:
@@ -263,12 +263,15 @@ def test_heading_splitter_respects_empty_section_options() -> None:
             skip_empty_sections=False,
         ),
     ).split(document)
+
+    # The small subtree collapses to one chunk in both cases.  ``# Empty``
+    # has no body of its own, so the only entry is ``## Child`` and the
+    # chunk metadata exposes that entry's ancestor path.
     assert [chunk.headings for chunk in default_chunks] == [((1, "Empty"),)]
-    assert [chunk.headings for chunk in kept_chunks] == [
-        (),
-        ((1, "Empty"),),
-    ]
-    assert kept_chunks[0].body == "# Empty"
+    assert [chunk.headings for chunk in kept_chunks] == [((1, "Empty"),)]
+    assert "# Empty" in kept_chunks[0].body
+    assert "## Child" in kept_chunks[0].body
+    assert "Child body." in kept_chunks[0].body
 
 
 def test_splitter_respects_budget_except_unsplittable_code_fence() -> None:
@@ -1245,7 +1248,7 @@ def test_section_splitter_handles_front_matter_as_root_body_chunk() -> None:
     document = MarkdownParser().parse(FRONT_MATTER_FIXTURE, document_title="doc.md")
     splitter = SectionSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=500, merge_below_tokens=0),
+        options=SplitOptions(max_tokens=100, merge_below_tokens=0),
     )
 
     chunks = splitter.split(document)
@@ -2066,3 +2069,172 @@ def test_splitter_default_uses_approx_char_tokenizer() -> None:
 
     splitter = create_splitter("recursive")
     assert isinstance(splitter.tokenizer, ApproxCharTokenizer)  # ty: ignore[unresolved-attribute]
+
+
+def test_section_splitter_merges_subtree_when_within_budget() -> None:
+    """Subtree whose total rendered tokens <= ideal_max_tokens collapses to one chunk."""
+    fixture = """# Parent
+
+Parent intro.
+
+## One
+
+One body.
+
+## Two
+
+Two body.
+"""
+    document = MarkdownParser().parse(fixture, document_title="t.md")
+    splitter = SectionSplitter(
+        tokenizer=CharacterTokenizer(),
+        options=SplitOptions(max_tokens=1000, merge_below_tokens=0),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].headings == ((1, "Parent"),)
+    # Whole subtree rendered into one body
+    assert "Parent intro." in chunks[0].body
+    assert "## One" in chunks[0].body
+    assert "One body." in chunks[0].body
+    assert "## Two" in chunks[0].body
+    assert "Two body." in chunks[0].body
+
+
+def test_section_splitter_does_not_merge_when_subtree_has_standalone() -> None:
+    """Standalone block in the subtree disables the single-chunk short-circuit."""
+    fixture = """# Parent
+
+| A | B |
+|---|---|
+| 1 | 2 |
+
+## One
+
+One body.
+"""
+    document = MarkdownParser().parse(fixture, document_title="t.md")
+    splitter = SectionSplitter(
+        tokenizer=CharacterTokenizer(),
+        options=SplitOptions(
+            max_tokens=10000,  # well above subtree size
+            merge_below_tokens=0,
+            block_options=markdown_block_options(
+                {"table": BaseParams(isolated=True)},
+            ),
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    # Standalone table forces split: not collapsed into one chunk.
+    assert len(chunks) >= 2
+    table_chunk = next(c for c in chunks if "| A |" in c.body)
+    assert table_chunk.headings == ()
+    assert table_chunk.body.startswith("# Parent")
+
+
+def test_incremental_section_splitter_merges_subtree_when_within_budget() -> None:
+    """IncrementalSectionSplitter collapses a fitting subtree to one chunk."""
+    fixture = """# Parent
+
+Parent intro.
+
+## One
+
+One body.
+
+## Two
+
+Two body.
+"""
+    document = MarkdownParser().parse(fixture, document_title="t.md")
+    splitter = IncrementalSectionSplitter(
+        tokenizer=CharacterTokenizer(),
+        options=SplitOptions(max_tokens=1000, merge_below_tokens=0),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].headings == ((1, "Parent"),)
+    assert "Parent intro." in chunks[0].body
+    assert "## One" in chunks[0].body
+    assert "One body." in chunks[0].body
+    assert "## Two" in chunks[0].body
+    assert "Two body." in chunks[0].body
+    # token_count is the authoritative full recount, estimated stays close.
+    assert chunks[0].token_count > 0
+    assert abs(chunks[0].token_count - chunks[0].estimated_token_count) <= 5
+
+
+def test_incremental_section_splitter_does_not_merge_when_subtree_has_standalone() -> (
+    None
+):
+    """Standalone block disables the incremental single-chunk short-circuit."""
+    fixture = """# Parent
+
+| A | B |
+|---|---|
+| 1 | 2 |
+
+## One
+
+One body.
+"""
+    document = MarkdownParser().parse(fixture, document_title="t.md")
+    splitter = IncrementalSectionSplitter(
+        tokenizer=CharacterTokenizer(),
+        options=SplitOptions(
+            max_tokens=10000,
+            merge_below_tokens=0,
+            block_options=markdown_block_options(
+                {"table": BaseParams(isolated=True)},
+            ),
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) >= 2
+
+
+def test_section_splitter_subtree_merge_does_not_cross_top_level_sections() -> None:
+    """Two top-level sections each collapse independently; not merged together.
+
+    With ``max_tokens=200`` (ideal=160), the whole document exceeds the ideal
+    budget so the root short-circuit fails and falls through to per-section
+    splitting.  Each top-level section then independently collapses into one
+    chunk (each well under 160 tokens).  The two sections are NOT merged
+    together — there is no cross-sibling merging in SectionSplitter.
+    """
+    first_body = "Alpha beta gamma delta. " * 4  # ~100 chars
+    second_body = "Echo foxtrot golf hotel. " * 4  # ~100 chars
+    fixture = f"""# First
+
+{first_body}
+
+# Second
+
+{second_body}
+"""
+    document = MarkdownParser().parse(fixture, document_title="t.md")
+    splitter = SectionSplitter(
+        tokenizer=CharacterTokenizer(),
+        options=SplitOptions(max_tokens=200, merge_below_tokens=0),
+    )
+
+    chunks = splitter.split(document)
+
+    # Root short-circuit fails (total > ideal); each top-level section
+    # collapses to its own chunk.
+    assert len(chunks) == 2
+    assert chunks[0].headings == ()
+    assert chunks[1].headings == ()
+    assert chunks[0].body.startswith("# First")
+    assert chunks[1].body.startswith("# Second")
+    assert "Alpha beta" in chunks[0].body
+    assert "Echo foxtrot" in chunks[1].body
+    assert "Echo foxtrot" not in chunks[0].body

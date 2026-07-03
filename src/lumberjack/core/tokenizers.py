@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Iterable
 from threading import RLock
+from typing import Protocol, cast
 
 from .protocols import TokenizerProtocol
 
 DEFAULT_TRANSFORMERS_MODEL = "bert-base-uncased"
+
+
+class _TransformersTokenizerProtocol(Protocol):
+    def encode(self, text: str) -> Iterable[int]: ...
 
 
 class TiktokenTokenizer(TokenizerProtocol):
@@ -90,7 +96,7 @@ class TransformersTokenizer(TokenizerProtocol):
         max_cache_size: int = 1000,
     ) -> None:
         try:
-            from transformers import AutoTokenizer  # type: ignore
+            from transformers import AutoTokenizer
         except ImportError as e:
             raise ImportError(
                 "TransformersTokenizer requires the optional 'transformers' "
@@ -98,7 +104,10 @@ class TransformersTokenizer(TokenizerProtocol):
             ) from e
 
         self.model = model
-        self.tokenizer = AutoTokenizer.from_pretrained(model, use_fast=True)
+        self.tokenizer = cast(
+            _TransformersTokenizerProtocol,
+            AutoTokenizer.from_pretrained(model, use_fast=True),
+        )
         self.max_cache_size = max_cache_size
         self._cache: OrderedDict[str, tuple[int, ...]] = OrderedDict()
         self._lock = RLock()
