@@ -2157,3 +2157,40 @@ One body.
     chunks = splitter.split(document)
 
     assert len(chunks) >= 2
+
+
+def test_section_splitter_subtree_merge_does_not_cross_top_level_sections() -> None:
+    """Two top-level sections each collapse independently; not merged together.
+
+    With ``max_tokens=200`` (ideal=160), the whole document exceeds the ideal
+    budget so the root short-circuit fails and falls through to per-section
+    splitting.  Each top-level section then independently collapses into one
+    chunk (each well under 160 tokens).  The two sections are NOT merged
+    together — there is no cross-sibling merging in SectionSplitter.
+    """
+    first_body = "Alpha beta gamma delta. " * 4  # ~100 chars
+    second_body = "Echo foxtrot golf hotel. " * 4  # ~100 chars
+    fixture = f"""# First
+
+{first_body}
+
+# Second
+
+{second_body}
+"""
+    document = MarkdownParser().parse(fixture, document_title="t.md")
+    splitter = SectionSplitter(
+        tokenizer=CharacterTokenizer(),
+        options=SplitOptions(max_tokens=200, merge_below_tokens=0),
+    )
+
+    chunks = splitter.split(document)
+
+    # Root short-circuit fails (total > ideal); each top-level section
+    # collapses to its own chunk.
+    assert len(chunks) == 2
+    assert chunks[0].headings == ((1, "First"),)
+    assert chunks[1].headings == ((1, "Second"),)
+    assert "Alpha beta" in chunks[0].body
+    assert "Echo foxtrot" in chunks[1].body
+    assert "Echo foxtrot" not in chunks[0].body
