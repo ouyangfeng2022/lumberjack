@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from ..models import ChunkDraft, Entry, MeasuredSection, SectionNode
+from ..models import (
+    ChunkDraft,
+    Entry,
+    MeasuredSection,
+    SectionNode,
+    common_heading_path,
+)
 from ..utils import join_markdown
 from .base import BaseSplitter
 from .exact import ExactCountingMixin
@@ -8,20 +14,45 @@ from .incremental import IncrementalCountingMixin
 
 
 class ExactSectionSplitter(ExactCountingMixin, BaseSplitter):
-    """One chunk per heading section (exact counting).
+    """Subtree-first section splitter (exact counting).
 
-    Each heading-defined section becomes its own chunk.  Oversized section
-    bodies are further split by token budget respecting ``block_options``
-    (standalone isolation, splittable kinds, per-block budgets).  Every
-    budget decision fully recounts the rendered candidate text — no
-    pre-measure, no incremental arithmetic.
+    First attempts to collapse an entire subtree (own body + all descendants)
+    into a single chunk when it fits ``ideal_max_tokens`` and contains no
+    standalone block.  Otherwise emits one chunk per heading section's direct
+    body and recurses into children (no cross-section merging).  Oversized
+    section bodies are further split by token budget respecting
+    ``block_options`` (standalone isolation, splittable kinds, per-block
+    budgets).  Every budget decision fully recounts the rendered candidate
+    text — no pre-measure, no incremental arithmetic.
 
     Registered as ``"section"`` (the default) and ``"exact-section"``.
     Works with any tokenizer.
     """
 
     def _split_section(self, section: SectionNode) -> list[ChunkDraft]:
-        """Return one direct-body draft per section, then recurse into children."""
+        """Return one direct-body draft per section, then recurse into children.
+
+        Short-circuit: if the entire subtree (own body + all descendants) fits
+        within ``ideal_max_tokens`` and contains no standalone block, collapse
+        it into a single chunk.  Otherwise fall through to the per-section
+        split path below (unchanged).
+        """
+        if not (section.blocks or section.children or section.level > 0):
+            return []
+
+        body_has_standalone = any(
+            b.kind in self.options.standalone_kinds for b in section.blocks
+        )
+        child_has_standalone = any(
+            self._section_has_standalone(child) for child in section.children
+        )
+        if not body_has_standalone and not child_has_standalone:
+            entries = self._entries_from_section(section)
+            common = common_heading_path(entry.headings for entry in entries)
+            single = self._draft_from_entries(entries, common, origin="section")
+            if self._draft_budget_tokens(single) <= self.options.ideal_max_tokens:
+                return [single]
+
         chunks: list[ChunkDraft] = []
         standalone_kinds = self.options.standalone_kinds
 
@@ -69,11 +100,12 @@ class ExactSectionSplitter(ExactCountingMixin, BaseSplitter):
 
 
 class IncrementalSectionSplitter(IncrementalCountingMixin, BaseSplitter):
-    """Section topology with the additive incremental estimate path.
+    """Subtree-first section splitter with the additive incremental estimate path.
 
-    Same one-chunk-per-section packing as :class:`ExactSectionSplitter`, but
-    the subtree is pre-measured and budget decisions use a running estimate
-    rather than full rendered recounts.
+    Same subtree-first packing as :class:`ExactSectionSplitter` (collapse a
+    fitting subtree into one chunk, otherwise per-section), but the subtree is
+    pre-measured and budget decisions use a running estimate rather than full
+    rendered recounts.
 
     Registered as ``"incremental-section"``.  Works with any tokenizer.
     """
@@ -82,9 +114,36 @@ class IncrementalSectionSplitter(IncrementalCountingMixin, BaseSplitter):
         self,
         section: MeasuredSection,
     ) -> list[ChunkDraft]:
-        """Return one direct-body draft per section, then recurse into children."""
-        chunks: list[ChunkDraft] = []
+        """Return one direct-body draft per section, then recurse into children.
+
+        Short-circuit: if the pre-measured subtree fits within
+        ``ideal_max_tokens`` and ``can_emit_as_single_chunk`` is True, collapse
+        it into a single chunk.  Otherwise fall through to the per-section
+        split path below (unchanged).
+        """
         node = section.node
+        if not (node.blocks or section.children or node.level > 0):
+            return []
+
+        if section.can_emit_as_single_chunk:
+            entries = self._entries_from_section(section)
+            common = common_heading_path(entry.headings for entry in entries)
+            headings_token_count = self._heading_path_token_count(common)
+            chunk_token_count = (
+                self._heading_path_token_count(node.path[:-1]) + section.counts.subtree
+            )
+            single = ChunkDraft(
+                entries=entries,
+                headings=common,
+                headings_token_count=headings_token_count,
+                body_token_count=chunk_token_count - headings_token_count,
+                token_count=chunk_token_count,
+                split_origin="section",
+            )
+            if self._draft_budget_tokens(single) <= self.options.ideal_max_tokens:
+                return [single]
+
+        chunks: list[ChunkDraft] = []
 
         if node.blocks or node.level > 0:
             body_has_standalone = any(
