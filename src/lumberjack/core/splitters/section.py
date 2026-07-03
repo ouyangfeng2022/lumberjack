@@ -27,13 +27,16 @@ def _section_heading_budget(self: BaseSplitter, path: HeadingPath) -> int:
 
 
 class ExactSectionSplitter(ExactCountingMixin, BaseSplitter):
-    """One chunk per heading section (exact counting).
+    """Subtree-first section splitter (exact counting).
 
-    Each heading-defined section becomes its own chunk.  Oversized section
-    bodies are further split by token budget respecting ``block_options``
-    (standalone isolation, splittable kinds, per-block budgets).  Every
-    budget decision fully recounts the rendered candidate text — no
-    pre-measure, no incremental arithmetic.
+    First attempts to collapse an entire subtree (own body + all descendants)
+    into a single chunk when it fits ``ideal_max_tokens`` and contains no
+    standalone block.  Otherwise emits one chunk per heading section's direct
+    body and recurses into children (no cross-section merging).  Oversized
+    section bodies are further split by token budget respecting
+    ``block_options`` (standalone isolation, splittable kinds, per-block
+    budgets).  Every budget decision fully recounts the rendered candidate
+    text — no pre-measure, no incremental arithmetic.
 
     Registered as ``"section"`` (the default) and ``"exact-section"``.
     Works with any tokenizer.
@@ -112,11 +115,12 @@ class ExactSectionSplitter(ExactCountingMixin, BaseSplitter):
 
 
 class IncrementalSectionSplitter(IncrementalCountingMixin, BaseSplitter):
-    """Section topology with the additive incremental estimate path.
+    """Subtree-first section splitter with the additive incremental estimate path.
 
-    Same one-chunk-per-section packing as :class:`ExactSectionSplitter`, but
-    the subtree is pre-measured and budget decisions use a running estimate
-    rather than full rendered recounts.
+    Same subtree-first packing as :class:`ExactSectionSplitter` (collapse a
+    fitting subtree into one chunk, otherwise per-section), but the subtree is
+    pre-measured and budget decisions use a running estimate rather than full
+    rendered recounts.
 
     Registered as ``"incremental-section"``.  Works with any tokenizer.
     """
