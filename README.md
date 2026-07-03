@@ -487,7 +487,7 @@ Open <http://localhost:9612>.
 | Strategy | Registry Name | Behavior |
 | --- | --- | --- |
 | **Recursive** | `recursive` (default) | Structure-first, budget-aware. Merges adjacent sibling sections when they fit. |
-| **Section** | `section` | One chunk per heading section's direct body. Child sections are separate chunks. |
+| **Section** | `section` | Subtree-first: collapses an entire subtree into one chunk when it fits the budget and has no standalone block; otherwise one chunk per heading section's direct body (no cross-section merging). |
 
 Recursive splitting order:
 
