@@ -15,6 +15,7 @@ from lumberjack.core.options import resolve_block_options
 from lumberjack.core.parsers.markdown.parser import MarkdownParser
 from lumberjack.core.splitters import (
     IncrementalRecursiveSplitter,
+    IncrementalSectionSplitter,
     RecursiveSplitter,
     SectionSplitter,
     create_splitter,
@@ -2086,3 +2087,66 @@ One body.
     assert len(chunks) >= 2
     table_chunk = next(c for c in chunks if "| A |" in c.body)
     assert table_chunk.headings == ((1, "Parent"),)
+
+
+def test_incremental_section_splitter_merges_subtree_when_within_budget() -> None:
+    """IncrementalSectionSplitter collapses a fitting subtree to one chunk."""
+    fixture = """# Parent
+
+Parent intro.
+
+## One
+
+One body.
+
+## Two
+
+Two body.
+"""
+    document = MarkdownParser().parse(fixture, document_title="t.md")
+    splitter = IncrementalSectionSplitter(
+        tokenizer=CharacterTokenizer(),
+        options=SplitOptions(max_tokens=1000, merge_below_tokens=0),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].headings == ((1, "Parent"),)
+    assert "Parent intro." in chunks[0].body
+    assert "## One" in chunks[0].body
+    assert "One body." in chunks[0].body
+    assert "## Two" in chunks[0].body
+    assert "Two body." in chunks[0].body
+    # token_count is the authoritative full recount, estimated stays close.
+    assert chunks[0].token_count > 0
+    assert abs(chunks[0].token_count - chunks[0].estimated_token_count) <= 5
+
+
+def test_incremental_section_splitter_does_not_merge_when_subtree_has_standalone() -> None:
+    """Standalone block disables the incremental single-chunk short-circuit."""
+    fixture = """# Parent
+
+| A | B |
+|---|---|
+| 1 | 2 |
+
+## One
+
+One body.
+"""
+    document = MarkdownParser().parse(fixture, document_title="t.md")
+    splitter = IncrementalSectionSplitter(
+        tokenizer=CharacterTokenizer(),
+        options=SplitOptions(
+            max_tokens=10000,
+            merge_below_tokens=0,
+            block_options=markdown_block_options(
+                {"table": BaseParams(isolated=True)},
+            ),
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) >= 2

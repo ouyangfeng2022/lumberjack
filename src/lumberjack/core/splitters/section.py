@@ -127,9 +127,36 @@ class IncrementalSectionSplitter(IncrementalCountingMixin, BaseSplitter):
         self,
         section: MeasuredSection,
     ) -> list[ChunkDraft]:
-        """Return one direct-body draft per section, then recurse into children."""
-        chunks: list[ChunkDraft] = []
+        """Return one direct-body draft per section, then recurse into children.
+
+        Short-circuit: if the pre-measured subtree fits within
+        ``ideal_max_tokens`` and ``can_emit_as_single_chunk`` is True, collapse
+        it into a single chunk.  Otherwise fall through to the per-section
+        split path below (unchanged).
+        """
         node = section.node
+        if not (node.blocks or section.children or node.level > 0):
+            return []
+
+        if section.can_emit_as_single_chunk:
+            entries = self._entries_from_section(section)
+            common = common_heading_path(entry.headings for entry in entries)
+            headings_token_count = self._heading_path_token_count(common)
+            chunk_token_count = (
+                self._heading_path_token_count(node.path[:-1]) + section.counts.subtree
+            )
+            single = ChunkDraft(
+                entries=entries,
+                headings=common,
+                headings_token_count=headings_token_count,
+                body_token_count=chunk_token_count - headings_token_count,
+                token_count=chunk_token_count,
+                split_origin="section",
+            )
+            if self._draft_budget_tokens(single) <= self.options.ideal_max_tokens:
+                return [single]
+
+        chunks: list[ChunkDraft] = []
 
         if node.blocks or node.level > 0:
             body_has_standalone = any(
