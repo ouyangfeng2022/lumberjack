@@ -198,13 +198,14 @@ def test_lumber_accepts_section_splitter() -> None:
         skip_empty_sections=False,
     )
 
-    assert [chunk.headings for chunk in chunks] == [
-        ((1, "Development Guide"),),
-        ((1, "Development Guide"), (2, "Current Scope")),
-        ((1, "Development Guide"), (2, "Milestones")),
-        ((1, "Development Guide"), (2, "Milestones"), (3, "M0")),
-        ((1, "Development Guide"), (2, "Milestones"), (3, "M1")),
-    ]
+    # The whole subtree fits within the budget, so the section splitter's
+    # subtree-merge short-circuit collapses it into a single chunk whose
+    # common heading is the top-level title.
+    assert [chunk.headings for chunk in chunks] == [((1, "Development Guide"),)]
+    assert "## Current Scope" in chunks[0].body
+    assert "## Milestones" in chunks[0].body
+    assert "### M0" in chunks[0].body
+    assert "### M1" in chunks[0].body
 
 
 def test_lumber_body_always_renders_full_common_heading_path() -> None:
