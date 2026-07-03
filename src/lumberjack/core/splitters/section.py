@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from ..models import ChunkDraft, Entry, HeadingPath, MeasuredSection, SectionNode
+from ..models import (
+    ChunkDraft,
+    Entry,
+    HeadingPath,
+    MeasuredSection,
+    SectionNode,
+    common_heading_path,
+)
 from ..utils import join_markdown
 from .base import BaseSplitter
 from .exact import ExactCountingMixin
@@ -35,7 +42,29 @@ class ExactSectionSplitter(ExactCountingMixin, BaseSplitter):
     _heading_budget_token_count = _section_heading_budget
 
     def _split_section(self, section: SectionNode) -> list[ChunkDraft]:
-        """Return one direct-body draft per section, then recurse into children."""
+        """Return one direct-body draft per section, then recurse into children.
+
+        Short-circuit: if the entire subtree (own body + all descendants) fits
+        within ``ideal_max_tokens`` and contains no standalone block, collapse
+        it into a single chunk.  Otherwise fall through to the per-section
+        split path below (unchanged).
+        """
+        if not (section.blocks or section.children or section.level > 0):
+            return []
+
+        body_has_standalone = any(
+            b.kind in self.options.standalone_kinds for b in section.blocks
+        )
+        child_has_standalone = any(
+            self._section_has_standalone(child) for child in section.children
+        )
+        if not body_has_standalone and not child_has_standalone:
+            entries = self._entries_from_section(section)
+            common = common_heading_path(entry.headings for entry in entries)
+            single = self._draft_from_entries(entries, common, origin="section")
+            if self._draft_budget_tokens(single) <= self.options.ideal_max_tokens:
+                return [single]
+
         chunks: list[ChunkDraft] = []
         standalone_kinds = self.options.standalone_kinds
 
