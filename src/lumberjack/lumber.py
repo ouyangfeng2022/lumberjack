@@ -18,7 +18,7 @@ def lumber(
     document_title: str | None = None,
     max_tokens: int = 1200,
     ideal_max_tokens_ratio: float = 0.8,
-    merge_below_tokens: int | None = 50,
+    merge_below_ratio: float = 0.125,
     skip_empty_sections: bool = True,
     render_headings: bool = True,
     block_options: Mapping[str, BaseParams | dict] | None = None,
@@ -42,9 +42,12 @@ def lumber(
         max_tokens: Target maximum token count per chunk.
         ideal_max_tokens_ratio: Ratio of ``max_tokens`` used as the
             preferred split budget before post-processing merges.
-        merge_below_tokens: Soft threshold for merging short tails. A negative
-            value or ``None`` disables merging entirely; otherwise it must be
-            smaller than ``max_tokens``.
+        merge_below_ratio: Tail-fragment merge threshold as a fraction of
+            ``max_tokens`` in ``[0.0, 1.0)``.  Tail chunks below
+            ``int(max_tokens * merge_below_ratio)`` tokens are merged into
+            their same-heading predecessor when the result fits
+            ``max_tokens``.  ``0.0`` disables merging entirely.
+            Default ``0.125``.
         skip_empty_sections: Discard chunks containing only a heading
             with no body content when enabled.
         render_headings: When False, omit the chunk's ancestor heading
@@ -57,8 +60,10 @@ def lumber(
         splitter: Built-in splitter name. ``"recursive"`` (default) and
             ``"section"`` alias the exact (full-recount) variants; the
             explicit names ``"exact-recursive"``, ``"incremental-recursive"``,
-            ``"exact-section"``, and ``"incremental-section"`` select the
-            counting strategy directly.
+            ``"exact-section"``, ``"incremental-section"``,
+            ``"exact-section-flat"``, and ``"incremental-section-flat"``
+            select the counting strategy directly. ``section-flat`` variants
+            disable subtree-collapse and tail-fragment merging.
         document_metadata: Extra metadata merged into the document.
         max_heading_level: Maximum heading level to parse as sections.
             Headings deeper than this level are treated as regular paragraphs.
@@ -119,7 +124,7 @@ def lumber(
     options = SplitOptions(
         max_tokens=max_tokens,
         ideal_max_tokens_ratio=ideal_max_tokens_ratio,
-        merge_below_tokens=merge_below_tokens,
+        merge_below_ratio=merge_below_ratio,
         skip_empty_sections=skip_empty_sections,
         render_headings=render_headings,
         block_options=resolved_block_options,
