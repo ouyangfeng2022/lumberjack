@@ -2022,3 +2022,67 @@ def test_splitter_default_uses_approx_char_tokenizer() -> None:
 
     splitter = create_splitter("recursive")
     assert isinstance(splitter.tokenizer, ApproxCharTokenizer)  # ty: ignore[unresolved-attribute]
+
+
+def test_section_splitter_merges_subtree_when_within_budget() -> None:
+    """Subtree whose total rendered tokens <= ideal_max_tokens collapses to one chunk."""
+    fixture = """# Parent
+
+Parent intro.
+
+## One
+
+One body.
+
+## Two
+
+Two body.
+"""
+    document = MarkdownParser().parse(fixture, document_title="t.md")
+    splitter = SectionSplitter(
+        tokenizer=CharacterTokenizer(),
+        options=SplitOptions(max_tokens=1000, merge_below_tokens=0),
+    )
+
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].headings == ((1, "Parent"),)
+    # Whole subtree rendered into one body
+    assert "Parent intro." in chunks[0].body
+    assert "## One" in chunks[0].body
+    assert "One body." in chunks[0].body
+    assert "## Two" in chunks[0].body
+    assert "Two body." in chunks[0].body
+
+
+def test_section_splitter_does_not_merge_when_subtree_has_standalone() -> None:
+    """Standalone block in the subtree disables the single-chunk short-circuit."""
+    fixture = """# Parent
+
+| A | B |
+|---|---|
+| 1 | 2 |
+
+## One
+
+One body.
+"""
+    document = MarkdownParser().parse(fixture, document_title="t.md")
+    splitter = SectionSplitter(
+        tokenizer=CharacterTokenizer(),
+        options=SplitOptions(
+            max_tokens=10000,  # well above subtree size
+            merge_below_tokens=0,
+            block_options=markdown_block_options(
+                {"table": BaseParams(isolated=True)},
+            ),
+        ),
+    )
+
+    chunks = splitter.split(document)
+
+    # Standalone table forces split: not collapsed into one chunk.
+    assert len(chunks) >= 2
+    table_chunk = next(c for c in chunks if "| A |" in c.body)
+    assert table_chunk.headings == ((1, "Parent"),)
