@@ -203,7 +203,9 @@ class SplitOptions:
             the rendered ``Chunk.body`` while keeping ``Chunk.headings`` metadata
             intact. Both splitters are render-aware: the split budget grows to fill
             ``max_tokens`` with body content (the heading tokens are reclaimed), so
-            ``token_count == estimated_token_count == measured body tokens``.
+            ``token_count`` (the full recount) then equals the measured body tokens;
+            ``estimated_token_count`` (the split-time estimate) stays close but may
+            differ slightly due to join approximations.
             Internal relative headings (e.g. sibling titles inside a merged chunk in
             the recursive splitter) always render regardless of this flag, because
             they are chunk-internal structure rather than the common prefix.
@@ -249,7 +251,10 @@ class Chunk:
             ``"code_fence"``, ``"document"``).
         body: Rendered chunk text, optionally including heading breadcrumbs.
         token_count: Token count measured by the configured tokenizer.
-        estimated_token_count: Estimated token count when exact counting is unavailable.
+        estimated_token_count: Split-time running estimate (additive + separator-delta
+            window) used for budget decisions; ``token_count`` is the authoritative
+            full recount of the rendered body. The two may differ slightly due
+            to join approximations.
         headings: Tuple of ``(level, title)`` pairs representing the heading path.
 
             ``# H1 \\n\\n ## H2.1 \\n\\n Content1``, headings=[(1, "H1"), (2, "H2.1")].

@@ -22,7 +22,7 @@ def lumber(
     skip_empty_sections: bool = True,
     render_headings: bool = True,
     block_options: Mapping[str, BaseParams | dict] | None = None,
-    tokenizer: str = "simple",
+    tokenizer: str = "approx",
     splitter: str = "recursive",
     document_metadata: dict[str, object] | None = None,
     max_heading_level: int | None = None,
@@ -51,8 +51,14 @@ def lumber(
             from ``Chunk.body`` while preserving ``Chunk.headings`` metadata.
             See :attr:`SplitOptions.render_headings` for budget semantics.
         block_options: Per-block-kind :class:`BaseParams` overrides.
-        tokenizer: Built-in tokenizer name (``"simple"`` or ``"tiktoken"``).
-        splitter: Built-in splitter name (``"recursive"`` or ``"section"``).
+        tokenizer: Built-in tokenizer engine name (``"approx"``, ``"tiktoken"``,
+            or ``"transformers"``). Independent of the splitter choice; any
+            tokenizer works with any splitter.
+        splitter: Built-in splitter name. ``"recursive"`` (default) and
+            ``"section"`` alias the exact (full-recount) variants; the
+            explicit names ``"exact-recursive"``, ``"incremental-recursive"``,
+            ``"exact-section"``, and ``"incremental-section"`` select the
+            counting strategy directly.
         document_metadata: Extra metadata merged into the document.
         max_heading_level: Maximum heading level to parse as sections.
             Headings deeper than this level are treated as regular paragraphs.
@@ -73,10 +79,11 @@ def lumber(
             "splitter must be a string selecting a built-in splitter. "
             "For custom splitters, parse manually and call splitter.split()."
         )
+    normalized_tokenizer = tokenizer.strip().lower()
 
     input_format = detect_format(text, format)
 
-    tokenizer_impl = create_tokenizer(tokenizer)
+    tokenizer_impl = create_tokenizer(normalized_tokenizer)
 
     if input_format == "docx":
         parser_impl = create_parser("docx")
@@ -118,7 +125,11 @@ def lumber(
         block_options=resolved_block_options,
     )
 
-    splitter_impl = create_splitter(splitter, tokenizer=tokenizer_impl, options=options)
+    splitter_impl = create_splitter(
+        splitter,
+        tokenizer=tokenizer_impl,
+        options=options,
+    )
     return splitter_impl.split(document)
 
 

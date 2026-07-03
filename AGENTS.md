@@ -28,6 +28,8 @@ uv sync --group web
 
 # Run CLI (Markdown)
 uv run lumber path/to/file.md --max-tokens 1200 --merge-below-tokens 50 -f json
+# Run CLI with tiktoken on the incremental splitter
+uv run lumber path/to/file.md --tokenizer tiktoken --splitter incremental-recursive --max-tokens 1200 -f json
 
 # Run CLI (DOCX)
 uv run lumber path/to/file.docx --input-format docx --max-tokens 1200 -f json
@@ -163,8 +165,9 @@ Implemented in `src/lumberjack/cli.py`.
 - Input is a Markdown (`.md`) or DOCX (`.docx`) file path
 - `--input-format`: `auto` (detect from extension), `markdown`, or `docx`
 - Output format: JSON only
-- Tokenizers: `simple`, `tiktoken`
-- Splitter choices: `recursive`, `section` (CLI default: `recursive`)
+- Tokenizers (engine): `approx`, `tiktoken`, `transformers`
+- Exact vs incremental counting is a property of the splitter class, not the tokenizer. Registry names: `recursive`/`exact-recursive` (exact, default), `incremental-recursive`, `section`/`exact-section` (exact, default), `incremental-section`. Exact splitters fully recount rendered text at every budget decision (walk `SectionNode` directly, no pre-measure); incremental splitters pre-measure into `MeasuredSection` and use an additive estimate + 8-char separator-delta window. There is no separate `--token-counter` flag; any tokenizer works with any splitter.
+- Splitter choices: `recursive` (default, = exact-recursive), `section` (default, = exact-section), `exact-recursive`, `incremental-recursive`, `exact-section`, `incremental-section`
 - `--recursive-split` enables block/text fallback for oversized section bodies
 - `--block-config KIND[:isolated][:nosplit][:TOKENS]` per-block-kind config; repeatable
 - JSON output serializes dataclasses with `dataclasses.asdict`
@@ -178,6 +181,7 @@ Implemented in `src/lumberjack/cli.py`.
 - `Chunk.body` always includes rendered heading context; shared parent headings are deduplicated
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
 - `block_options` maps block kinds to `BlockConfig` (per-kind `isolated`, `split`, `max_tokens`)
+- Exact splitters (`recursive`/`section` defaults, and `exact-*`) fully recount rendered text at every budget decision; `Chunk.token_count == Chunk.estimated_token_count` (both full recounts). Incremental splitters (`incremental-recursive`/`incremental-section`) measure the tree once and use a running additive estimate + 8-char separator-delta window; `Chunk.token_count` is the authoritative full recount at finalization, `Chunk.estimated_token_count` is the split-time running estimate — the two may differ slightly due to the separator approximation.
 
 ## Constraints
 

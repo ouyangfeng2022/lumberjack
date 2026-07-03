@@ -17,8 +17,8 @@ from lumberjack.core.options import parse_cli_block_configs, resolve_block_optio
 from lumberjack.core.parsers.html import HTMLParser
 from lumberjack.core.parsers.markdown.parser import MarkdownBlockSpec, MarkdownItParser
 from lumberjack.core.splitters import RecursiveSplitter
-from lumberjack.core.tokenizers import SimpleCharTokenizer
 from lumberjack.lumber import lumber as module_lumber
+from tests.helpers import CharacterTokenizer
 
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md"
 FIXTURE = FIXTURE_PATH.read_text(encoding="utf-8")
@@ -78,7 +78,7 @@ def test_lumber_uses_string_input_and_document_metadata() -> None:
     chunks = lumber(
         FIXTURE,
         document_title="sample.md",
-        max_tokens=180,
+        max_tokens=51,
         document_metadata={"path": str(FIXTURE_PATH.resolve())},
     )
 
@@ -109,7 +109,7 @@ def test_lumber_accepts_table_block_params_mapping() -> None:
 | Gamma | 300 |
 | Delta | 400 |
 """,
-        max_tokens=28,
+        max_tokens=5,
         ideal_max_tokens_ratio=1,
         merge_below_tokens=-1,
         block_options={"table": {"repeat_header": False}},
@@ -178,7 +178,7 @@ def test_lumber_accepts_ideal_max_tokens_ratio() -> None:
     chunks = lumber(
         "# A\n\nalpha1\n\nbravo2",
         document_title="ideal.md",
-        max_tokens=30,
+        max_tokens=4,
         ideal_max_tokens_ratio=0.5,
         merge_below_tokens=-1,
     )
@@ -249,14 +249,14 @@ def test_lumber_rejects_unknown_splitter() -> None:
 
 
 def test_lumber_rejects_tokenizer_instances() -> None:
-    tokenizer: Any = SimpleCharTokenizer()
+    tokenizer: Any = CharacterTokenizer()
 
     with pytest.raises(TypeError, match="tokenizer must be a string"):
         lumber(FIXTURE, tokenizer=tokenizer)
 
 
 def test_lumber_rejects_splitter_instances() -> None:
-    splitter: Any = RecursiveSplitter(tokenizer=SimpleCharTokenizer())
+    splitter: Any = RecursiveSplitter(tokenizer=CharacterTokenizer())
 
     with pytest.raises(TypeError, match="splitter must be a string"):
         lumber(FIXTURE, splitter=splitter)
@@ -266,7 +266,8 @@ def test_chunk_to_dict_serializes_heading_path() -> None:
     chunk = lumber(
         FIXTURE,
         document_title="sample.md",
-        max_tokens=180,
+        max_tokens=43,
+        merge_below_tokens=-1,
         block_options={},
     )[-1]
 
@@ -310,7 +311,8 @@ def test_parse_markdown_and_split_preserve_line_ranges_with_single_parser() -> N
     chunks = lumber(
         FIXTURE,
         document_title="sample.md",
-        max_tokens=200,
+        max_tokens=43,
+        merge_below_tokens=-1,
         document_metadata={"path": "/tmp/sample.md"},
         block_options={},
     )
@@ -346,7 +348,7 @@ def test_manual_pipeline_can_disable_setext_headings() -> None:
     parser = MarkdownItParser(disable_lheading=True)
     document = parser.parse("Title\n=====\n\nbody", document_title="setext.md")
     splitter = RecursiveSplitter(
-        tokenizer=SimpleCharTokenizer(),
+        tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=500,
             block_options=resolve_block_options(parser.block_kinds, None),
@@ -365,7 +367,7 @@ def test_manual_pipeline_accepts_markdown_it_parser_with_plugins() -> None:
     markdown = "- [x] done\n- [ ] todo"
     document = parser.parse(markdown, document_title="tasks.md")
     splitter = RecursiveSplitter(
-        tokenizer=SimpleCharTokenizer(),
+        tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=500,
             block_options=resolve_block_options(parser.block_kinds, None),
@@ -379,6 +381,8 @@ def test_manual_pipeline_accepts_markdown_it_parser_with_plugins() -> None:
 
 
 class ConstantTokenizer:
+    """Tokenizer that returns 3 tokens for any non-empty text."""
+
     def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
         return (1, 2, 3) if text else ()
 

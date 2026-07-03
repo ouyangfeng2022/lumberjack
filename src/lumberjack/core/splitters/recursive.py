@@ -1,32 +1,165 @@
 from __future__ import annotations
 
-from ..models import ChunkDraft, Entry, MeasuredSection, common_heading_path
+from ..models import (
+    ChunkDraft,
+    Entry,
+    MeasuredSection,
+    SectionNode,
+    common_heading_path,
+)
+from ..utils import join_markdown
 from .base import BaseSplitter
+from .exact import ExactCountingMixin
+from .incremental import IncrementalCountingMixin
 
 
-class RecursiveSplitter(BaseSplitter):
-    """Recursively split a document into token-bounded chunks.
+class ExactRecursiveSplitter(ExactCountingMixin, BaseSplitter):
+    """Recursively split a document into token-bounded chunks (exact counting).
 
-    Unlike SectionSplitter which keeps each heading section intact, this splitter
-    recursively breaks down oversized sections and merges small adjacent chunks
-    to stay within the configured max_tokens budget.
+    Walks the raw :class:`SectionNode` tree.  Oversized sections are broken
+    down by descending into children and packing adjacent body/child entries
+    that fit the budget; small adjacent chunks are merged.  Every budget
+    decision fully recounts the rendered candidate text — no pre-measure, no
+    incremental arithmetic, no separator-delta window.
 
-    ``render_headings`` semantics: drafts carry full heading token counts
-    internally so that merge arithmetic stays self-consistent — when a merge
-    shrinks the common prefix, the displaced heading tokens fall back into the
-    body as internal relative headings that still render.  Only the two
-    outward-facing budget/estimate touch points (``_draft_budget_tokens`` for
-    split decisions and ``estimated_token_count`` at finalization) are
-    render-aware.  As a result ``render_headings=False`` omits the common
-    breadcrumb from ``Chunk.body`` and lets bodies grow to fill ``max_tokens``,
-    while ``estimated_token_count`` matches the actually-rendered body tokens.
+    Registered as ``"recursive"`` (the default) and ``"exact-recursive"``.
+    Works with any tokenizer.
+    """
+
+    def _split_section(self, section: SectionNode) -> list[ChunkDraft]:
+        """Recursively split a section via full rendered token counts."""
+        if not (section.blocks or section.children or section.level > 0):
+            return []
+
+        entries = self._entries_from_section(section)
+        common_headings = common_heading_path(entry.headings for entry in entries)
+
+        standalone_kinds = self.options.standalone_kinds
+        body_has_standalone = any(b.kind in standalone_kinds for b in section.blocks)
+        child_has_standalone = any(
+            self._section_has_standalone(child) for child in section.children
+        )
+        can_emit_as_single_chunk = not body_has_standalone and not child_has_standalone
+
+        if can_emit_as_single_chunk:
+            single = self._draft_from_entries(
+                entries,
+                common_headings,
+                origin="section",
+            )
+            if self._draft_budget_tokens(single) <= self.options.ideal_max_tokens:
+                return [single]
+
+        if section.children:
+            return self._split_section_children(section)
+
+        chunks = self._split_section_body(section)
+        return self._merge_small_chunks(chunks, parent_headings=section.path)
+
+    def _split_section_children(
+        self,
+        section: SectionNode,
+    ) -> list[ChunkDraft]:
+        """Pack a section's body entries and child drafts by full rendered counts."""
+        node = section
+        chunks: list[ChunkDraft] = []
+        current_draft: ChunkDraft | None = None
+        standalone_kinds = self.options.standalone_kinds
+
+        def flush_current() -> None:
+            nonlocal current_draft
+            if not current_draft:
+                return
+            chunks.append(current_draft)
+            current_draft = None
+
+        def add_packable(new_draft: ChunkDraft) -> None:
+            nonlocal current_draft
+            if not current_draft:
+                current_draft = new_draft
+                return
+
+            temp_merged = self._merge_drafts(
+                current_draft, new_draft, expected_common=node.path
+            )
+            if self._draft_budget_tokens(temp_merged) > self.options.ideal_max_tokens:
+                flush_current()
+                current_draft = new_draft
+                return
+            current_draft = temp_merged
+
+        if node.blocks:
+            body_has_standalone = any(b.kind in standalone_kinds for b in node.blocks)
+            if body_has_standalone:
+                flush_current()
+                chunks.extend(self._split_section_body(node))
+            else:
+                body = join_markdown([b.text for b in node.blocks])
+                body_tokens = self.tokenizer.count(body, cache=True)
+                entry = Entry(
+                    headings=node.path,
+                    body=body,
+                    start_line=self._min_start_lines(node.blocks),
+                    end_line=self._max_end_lines(node.blocks),
+                    body_token_count=body_tokens,
+                )
+                draft = self._draft_from_entries(
+                    [entry],
+                    node.path,
+                    origin="section",
+                )
+                if self._draft_budget_tokens(draft) <= self.options.ideal_max_tokens:
+                    add_packable(draft)
+                else:
+                    flush_current()
+                    chunks.extend(self._split_section_body(node))
+
+        for child in section.children:
+            if not (child.blocks or child.children or child.level > 0):
+                continue
+
+            child_entries = self._entries_from_section(child)
+            if not child_entries:
+                continue
+            child_common = common_heading_path(
+                entry.headings for entry in child_entries
+            )
+            child_single = self._draft_from_entries(
+                child_entries,
+                child_common,
+                origin="section",
+            )
+
+            # If the child subtree fits as one chunk within budget, pack it.
+            if (
+                self._section_has_standalone(child)
+                or self._draft_budget_tokens(child_single)
+                > self.options.ideal_max_tokens
+            ):
+                flush_current()
+                chunks.extend(self._split_section(child))
+            else:
+                add_packable(child_single)
+
+        flush_current()
+        return self._merge_small_chunks(chunks, parent_headings=node.path)
+
+
+class IncrementalRecursiveSplitter(IncrementalCountingMixin, BaseSplitter):
+    """Recursive topology with the additive incremental estimate path.
+
+    Sections are pre-measured once into :class:`MeasuredSection`; budget
+    decisions use a running estimate and an 8-char separator-delta window
+    for joins; a full recount happens only at finalization.
+
+    Registered as ``"incremental-recursive"``.  Works with any tokenizer.
     """
 
     def _split_section(
         self,
         section: MeasuredSection,
     ) -> list[ChunkDraft]:
-        """Recursively split a section into chunk drafts."""
+        """Recursively split a measured section into chunk drafts."""
         if not (section.node.blocks or section.children or section.node.level > 0):
             return []
         entries = self._entries_from_section(section)
@@ -163,33 +296,35 @@ class RecursiveSplitter(BaseSplitter):
             if not (child.node.blocks or child.children or child.node.level > 0):
                 continue
 
-            if child.counts.subtree <= budget_token_count:
-                if not child.can_emit_as_single_chunk:
-                    flush_current()
-                    chunks.extend(self._split_section(child))
-                else:
-                    entries = self._entries_from_section(child)
-                    child_common_headings = common_heading_path(
-                        entry.headings for entry in entries
-                    )
-                    child_common_headings_token_count = self._heading_path_token_count(
-                        child_common_headings
-                    )
-                    child_chunk_token_count = (
-                        common_heading_token_count + child.counts.subtree
-                    )
-                    child_body_token_count = (
-                        child_chunk_token_count - child_common_headings_token_count
-                    )
+            if child.can_emit_as_single_chunk:
+                entries = self._entries_from_section(child)
+                child_common_headings = common_heading_path(
+                    entry.headings for entry in entries
+                )
+                child_common_headings_token_count = self._heading_path_token_count(
+                    child_common_headings
+                )
+                child_chunk_token_count = (
+                    common_heading_token_count + child.counts.subtree
+                )
+                child_body_token_count = (
+                    child_chunk_token_count - child_common_headings_token_count
+                )
 
-                    draft = ChunkDraft(
-                        entries=entries,
-                        headings=child.node.path,
-                        headings_token_count=child_common_headings_token_count,
-                        body_token_count=child_body_token_count,
-                        token_count=child_chunk_token_count,
-                    )
+                draft = ChunkDraft(
+                    entries=entries,
+                    headings=child_common_headings,
+                    headings_token_count=child_common_headings_token_count,
+                    body_token_count=child_body_token_count,
+                    token_count=child_chunk_token_count,
+                )
+                if self._draft_budget_tokens(draft) <= budget_token_count:
                     add_packable(draft)
+                    continue
+
+            if child.counts.subtree <= budget_token_count:
+                flush_current()
+                chunks.extend(self._split_section(child))
                 continue
 
             flush_current()
@@ -198,23 +333,12 @@ class RecursiveSplitter(BaseSplitter):
         flush_current()
         return self._merge_small_chunks(chunks, parent_headings=node.path)
 
-    def _entries_from_section(self, section: MeasuredSection) -> list[Entry]:
-        """Render-ready entries for a section selected as a chunk."""
-        node = section.node
-        entries: list[Entry] = []
-        if node.blocks or (not section.children and node.level > 0):
-            entries.append(
-                self._entry_from_blocks(
-                    node.path,
-                    node.blocks,
-                    body_token_count=section.counts.body,
-                )
-            )
 
-        for child in section.children:
-            entries.extend(self._entries_from_section(child))
+# Backward-compatible alias: the default ``recursive`` splitter is the exact one.
+RecursiveSplitter = ExactRecursiveSplitter
 
-        return entries
-
-
-__all__ = ["RecursiveSplitter"]
+__all__ = [
+    "ExactRecursiveSplitter",
+    "IncrementalRecursiveSplitter",
+    "RecursiveSplitter",
+]

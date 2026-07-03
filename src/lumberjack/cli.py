@@ -28,15 +28,28 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-o", "--output", help="Optional output file path")
     parser.add_argument(
         "--tokenizer",
-        choices=("simple", "tiktoken"),
-        default="simple",
-        help="Tokenizer implementation",
+        choices=("approx", "tiktoken", "transformers"),
+        default="approx",
+        help="Tokenizer implementation. 'approx' is an exact-count engine "
+        "(len(text) // 4, fully recounts rendered text); 'tiktoken' and "
+        "'transformers' use the additive incremental estimate path.",
     )
     parser.add_argument(
         "--splitter",
-        choices=("recursive", "section"),
+        choices=(
+            "recursive",
+            "section",
+            "exact-recursive",
+            "incremental-recursive",
+            "exact-section",
+            "incremental-section",
+        ),
         default="recursive",
-        help="Splitter implementation",
+        help=(
+            "Splitter implementation. 'recursive'/'section' default to the exact "
+            "(full-recount) variants; 'incremental-*' use an additive estimate + "
+            "8-char separator-delta window."
+        ),
     )
     parser.add_argument(
         "--max-tokens", type=int, default=1200, help="Maximum tokens per chunk"

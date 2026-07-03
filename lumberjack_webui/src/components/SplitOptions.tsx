@@ -187,10 +187,11 @@ export default function SplitOptions({ options, onChange }: Props) {
             <select
               className={styles.select}
               value={options.tokenizer}
-              onChange={(e) => update('tokenizer', e.target.value)}
+              onChange={(e) => onChange({ ...options, tokenizer: e.target.value })}
             >
-              <option value="simple">{t('opts_tokenizer_simple')}</option>
+              <option value="approx">{t('opts_tokenizer_approx')}</option>
               <option value="tiktoken">{t('opts_tokenizer_tiktoken')}</option>
+              <option value="transformers">{t('opts_tokenizer_transformers')}</option>
             </select>
           </div>
 

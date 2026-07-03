@@ -8,39 +8,54 @@ from ..models import (
     Entry,
     HeadingPath,
     MarkdownBlock,
-    MeasuredSection,
-    SectionNode,
-    SectionTokenCounts,
     SplitOptions,
     common_heading_path,
     render_heading_path,
 )
 from ..protocols import SplitterProtocol, TokenizerProtocol
-from ..tokenizers import SimpleCharTokenizer
+from ..tokenizers import ApproxCharTokenizer
 from ..utils import join_markdown
 
 SEPARATOR = "\n\n"
-SEPARATOR_DELTA_WINDOW_CHARS = 8
 
 
 class BaseSplitter(SplitterProtocol):
-    """Shared state and helpers for splitter strategies."""
+    """Shared state and helpers for splitter strategies.
+
+    Concrete splitters combine this base with one counting-strategy mixin:
+
+    * :class:`ExactCountingMixin` — full recount at every budget decision
+      (walks the raw ``SectionNode`` tree, no pre-measure).
+    * :class:`IncrementalCountingMixin` — additive running estimate +
+      8-char separator-delta window (walks a pre-measured
+      :class:`MeasuredSection` tree).
+
+    Each mixin owns :meth:`split`, :meth:`_draft_budget_tokens`,
+    :meth:`_merge_drafts`, :meth:`_finalize_estimate`, body splitting, and
+    section entry rendering.  This class holds only the pieces that are
+    independent of both topology and counting strategy: tokenizer/options
+    wiring, rendering helpers, finalization shell, and small-chunk merging.
+    """
 
     def __init__(
         self,
         tokenizer: TokenizerProtocol | None = None,
         options: SplitOptions | None = None,
     ):
-        self.tokenizer = tokenizer or SimpleCharTokenizer()
+        self.tokenizer = tokenizer or ApproxCharTokenizer()
         self.options = options or SplitOptions()
         self._validate_options()
         self._block_splitter = BlockSplitter(self.tokenizer, self.options)
 
-    def split(self, document: DocumentAST) -> list[Chunk]:
-        measured_root = self._measure_section(document.root)
-        drafts = self._split_section(measured_root)
-        drafts = self._post_process_drafts(drafts)
-        return self._finalize_chunks(drafts, document)
+    def split(self, document: DocumentAST) -> list[Chunk]:  # pragma: no cover
+        raise NotImplementedError(
+            "split() is provided by a counting-strategy mixin "
+            "(ExactCountingMixin or IncrementalCountingMixin)"
+        )
+
+    # ------------------------------------------------------------------
+    # Rendering helpers (strategy-agnostic)
+    # ------------------------------------------------------------------
 
     def _heading_path_token_count(self, path: HeadingPath) -> int:
         if not path:
@@ -53,54 +68,106 @@ class BaseSplitter(SplitterProtocol):
                 )
         return tokens
 
+    def _render_body(
+        self,
+        entries: list[Entry],
+        *,
+        common_headings: HeadingPath,
+    ) -> str:
+        """Render entries into Markdown body content."""
+        if not entries:
+            return ""
+
+        parts: list[str] = []
+        if common_headings and self.options.render_headings:
+            parts.append(render_heading_path(common_headings))
+
+        previous_headings = common_headings
+        for entry in entries:
+            shared_headings = common_heading_path((previous_headings, entry.headings))
+            if len(shared_headings) < len(common_headings):
+                shared_headings = common_headings
+            relative_headings = entry.headings[len(shared_headings) :]
+
+            entry_parts: list[str] = []
+            if relative_headings:
+                entry_parts.append(render_heading_path(relative_headings))
+            if entry.body:
+                entry_parts.append(entry.body)
+            rendered = join_markdown(entry_parts)
+            if rendered:
+                parts.append(rendered)
+            previous_headings = entry.headings
+
+        return join_markdown(parts)
+
+    def _rendered_token_count(
+        self,
+        entries: list[Entry],
+        *,
+        common_headings: HeadingPath,
+    ) -> int:
+        """Full token count of the rendered body for *entries*."""
+        return self.tokenizer.count(
+            self._render_body(entries, common_headings=common_headings), cache=True
+        )
+
+    # ------------------------------------------------------------------
+    # Budget hooks (overridden by topology classes if needed)
+    # ------------------------------------------------------------------
+
     def _heading_budget_token_count(self, path: HeadingPath) -> int:
         """Heading tokens counted toward the split budget.
 
         The base implementation always returns the full heading token count —
-        headings consume budget whether or not they are rendered.  Subclasses
+        headings consume budget whether or not they are rendered.  Topologies
         that can prove every entry in a chunk shares the chunk's common heading
         path (no internal relative headings) may override this to return 0 when
         ``render_headings=False``, making the budget match the rendered body.
         """
         return self._heading_path_token_count(path)
 
+    # ------------------------------------------------------------------
+    # Strategy hooks (provided by the counting-strategy mixin)
+    # ------------------------------------------------------------------
+
     def _draft_budget_tokens(self, draft: ChunkDraft) -> int:
-        """Render-aware token budget a draft occupies.
+        """Rendered footprint of a draft, used for budget decisions.
 
-        Drafts carry full heading token counts internally so that merge
-        arithmetic stays self-consistent (when a merge shrinks the common
-        prefix, the displaced heading tokens fall back into the body as
-        internal relative headings).  This helper translates that internal
-        count into the *rendered* footprint so budget comparisons match what
-        will actually appear in ``Chunk.body``:
-
-        * ``render_headings=True``  — the common breadcrumb is rendered, so
-          the full ``token_count`` counts toward the budget.
-        * ``render_headings=False`` — the common breadcrumb is omitted, so
-          only the body (which still includes internal relative headings)
-          counts.  Using ``body_token_count`` here is correct for both
-          splitters: SectionSplitter's drafts already exclude heading tokens
-          via the budget hook, and RecursiveSplitter's merge arithmetic
-          folds displaced heading tokens into ``body_token_count``.
+        Provided by :class:`ExactCountingMixin` (full recount) or
+        :class:`IncrementalCountingMixin` (running estimate).
         """
-        if self.options.render_headings:
-            return draft.token_count
-        return draft.body_token_count
+        raise NotImplementedError
 
-    def _split_section(self, section: MeasuredSection) -> list[ChunkDraft]:
+    def _merge_drafts(
+        self,
+        left_draft: ChunkDraft,
+        right_draft: ChunkDraft,
+        *,
+        expected_common: HeadingPath | None = None,
+    ) -> ChunkDraft:
+        """Merge two drafts; provided by the counting-strategy mixin."""
+        raise NotImplementedError
+
+    def _finalize_estimate(
+        self,
+        chunk: ChunkDraft,
+        headings: HeadingPath,
+        token_count: int,
+    ) -> int:
+        """Estimated token count carried onto the final Chunk; mixin-provided."""
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Topology hook (overridden by concrete splitters)
+    # ------------------------------------------------------------------
+
+    def _split_section(self, section) -> list[ChunkDraft]:
+        """Topology + counting-strategy specific section splitter."""
         raise NotImplementedError
 
     def _post_process_drafts(self, drafts: list[ChunkDraft]) -> list[ChunkDraft]:
         return drafts
-
-    def _separator_delta_after(self, text: str) -> int:
-        """Estimate the token delta caused by appending the Markdown separator."""
-        if not text:
-            return 0
-        tail = text.rstrip("\n")[-SEPARATOR_DELTA_WINDOW_CHARS:]
-        return self.tokenizer.count(
-            f"{tail}{SEPARATOR}", cache=True
-        ) - self.tokenizer.count(tail, cache=True)
 
     def _validate_options(self) -> None:
         if self.options.max_tokens <= 0:
@@ -123,301 +190,9 @@ class BaseSplitter(SplitterProtocol):
                     f"block_options[{kind!r}].max_tokens must be positive, got {cfg.max_tokens}"
                 )
 
-    def _measure_section(self, section: SectionNode) -> MeasuredSection:
-        """Return a measured wrapper for *section* and all descendants."""
-        children = tuple(self._measure_section(child) for child in section.children)
-
-        # 1. Count body tokens
-        body_token_count = 0
-        for idx, block in enumerate(section.blocks):
-            if not block.text:
-                continue
-            if idx == len(section.blocks) - 1:
-                body_token_count += self.tokenizer.count(block.text, cache=True)
-            else:
-                body_token_count += self.tokenizer.count(
-                    block.text + SEPARATOR, cache=True
-                )
-
-        # 2. Count title tokens
-        if section.level > 0:
-            title_token_count = self.tokenizer.count(
-                "#" * section.level + " " + section.title + SEPARATOR, cache=True
-            )
-        else:
-            title_token_count = 0
-
-        # 3. Count subtree tokens
-        subtree_token_count = title_token_count + body_token_count
-        previous_tail = section.blocks[-1].text if section.blocks else ""
-        prev_child: MeasuredSection | None = None
-        for child in children:
-            # When the previous child is a leaf section with no body
-            # blocks, its heading's trailing \n\n (from
-            # heading_path_token_count) already serves as the separator
-            # to this child.  Adding sep_delta would double-count it.
-            if previous_tail and not (
-                prev_child is not None
-                and not prev_child.node.blocks
-                and not prev_child.children
-            ):
-                subtree_token_count += self._separator_delta_after(previous_tail)
-            subtree_token_count += child.counts.subtree
-            previous_tail = child.tail_text
-            prev_child = child
-
-        if previous_tail:
-            tail_text = previous_tail
-        elif section.level > 0:
-            tail_text = "#" * section.level + " " + section.title
-        else:
-            tail_text = ""
-
-        body_has_standalone = any(
-            block.kind in self.options.standalone_kinds for block in section.blocks
-        )
-        can_emit_as_single_chunk = not body_has_standalone and all(
-            child.can_emit_as_single_chunk for child in children
-        )
-        return MeasuredSection(
-            node=section,
-            counts=SectionTokenCounts(
-                title=title_token_count,
-                body=body_token_count,
-                subtree=subtree_token_count,
-            ),
-            tail_text=tail_text,
-            can_emit_as_single_chunk=can_emit_as_single_chunk,
-            children=children,
-        )
-
-    def _split_section_body(
-        self,
-        section: MeasuredSection,
-    ) -> list[ChunkDraft]:
-        """Split a section's own blocks into fragments, then into chunk drafts."""
-        node = section.node
-        headings = node.path
-        blocks = node.blocks
-        max_tokens = self.options.ideal_max_tokens
-        standalone_kinds = self.options.standalone_kinds
-
-        # Full heading token count — kept on every draft so merge arithmetic
-        # stays self-consistent (displaced heading tokens fall back into the
-        # body when a merge shrinks the common prefix).
-        prefix_tokens = (
-            self._heading_path_token_count(headings) if node.level > 0 else 0
-        )
-        # Body-only budget for splitting decisions.  When render_headings=True
-        # the common breadcrumb is rendered, so the heading tokens are
-        # subtracted from max_tokens.  When render_headings=False the
-        # breadcrumb is omitted and the full max_tokens is available for body.
-        if self.options.render_headings:
-            body_budget = max(0, max_tokens - prefix_tokens)
-        else:
-            body_budget = max_tokens
-
-        if prefix_tokens >= max_tokens or not blocks:
-            entry = self._entry_from_blocks(
-                headings, blocks, body_token_count=section.counts.body
-            )
-            return [
-                ChunkDraft(
-                    entries=[entry],
-                    headings=node.path,
-                    headings_token_count=prefix_tokens,
-                    body_token_count=entry.body_token_count,
-                    token_count=prefix_tokens + entry.body_token_count,
-                    split_origin="fragment",
-                )
-            ]
-
-        chunks: list[ChunkDraft] = []
-        current_parts: list[str] = []
-        current_joined = ""
-        current_body_tokens = 0
-        current_start_line: int | None = None
-        current_end_line: int | None = None
-
-        budget = body_budget
-
-        def draft_current() -> ChunkDraft:
-            entry = Entry(
-                headings=headings,
-                body=join_markdown(current_parts),
-                start_line=current_start_line,
-                end_line=current_end_line,
-                body_token_count=current_body_tokens,
-            )
-            token_count = prefix_tokens + current_body_tokens
-            return ChunkDraft(
-                entries=[entry],
-                headings=headings,
-                headings_token_count=prefix_tokens,
-                body_token_count=token_count - prefix_tokens,
-                token_count=token_count,
-                split_origin="fragment",
-            )
-
-        for block in blocks:
-            if standalone_kinds and block.kind in standalone_kinds:
-                if current_parts:
-                    chunks.append(draft_current())
-                    current_parts = []
-                    current_joined = ""
-                    current_body_tokens = 0
-                    current_start_line = None
-                    current_end_line = None
-
-                block_tokens = self.tokenizer.count(block.text, cache=True)
-                # This chunk will only contain this block and headings.
-                block_pieces = self._block_splitter.split_oversized_block(
-                    block,
-                    default_budget=budget,
-                )
-                if block_pieces is not None:
-                    for piece in block_pieces:
-                        piece_tokens = self.tokenizer.count(piece)
-                        entry = Entry(
-                            headings=headings,
-                            body=piece,
-                            start_line=block.start_line,
-                            end_line=block.end_line,
-                            body_token_count=piece_tokens,
-                        )
-                        chunks.append(
-                            ChunkDraft(
-                                entries=[entry],
-                                headings=headings,
-                                headings_token_count=prefix_tokens,
-                                body_token_count=piece_tokens,
-                                token_count=prefix_tokens + piece_tokens,
-                                split_origin="text_piece",
-                                chunk_type=block.kind,
-                            )
-                        )
-                else:
-                    entry = Entry(
-                        headings=headings,
-                        body=block.text,
-                        start_line=block.start_line,
-                        end_line=block.end_line,
-                        body_token_count=block_tokens,
-                    )
-
-                    chunks.append(
-                        ChunkDraft(
-                            entries=[entry],
-                            headings=headings,
-                            headings_token_count=prefix_tokens,
-                            body_token_count=block_tokens,
-                            token_count=prefix_tokens + block_tokens,
-                            split_origin="fragment",
-                            chunk_type=block.kind,
-                        )
-                    )
-                continue
-
-            block_tokens = self.tokenizer.count(block.text, cache=True)
-            candidate_body_tokens = (
-                current_body_tokens
-                - self.tokenizer.count(current_parts[-1], cache=True)
-                + self.tokenizer.count(f"{current_parts[-1]}{SEPARATOR}", cache=True)
-                + block_tokens
-                if current_parts
-                else block_tokens
-            )
-            # Compare the body footprint against the body-only budget.
-            # Whether or not headings render, the heading tokens are constant
-            # for every fragment here (all share ``headings``), so comparing
-            # body tokens against ``budget`` is equivalent to comparing the
-            # full rendered footprint against ``max_tokens``.
-            if current_parts and candidate_body_tokens > budget:
-                chunks.append(draft_current())
-                current_parts = []
-                current_joined = ""
-                current_body_tokens = 0
-                current_start_line = None
-                current_end_line = None
-                candidate_body_tokens = block_tokens
-
-            if block_tokens <= budget:
-                current_parts.append(block.text)
-                candidate_text = (
-                    current_joined + SEPARATOR + block.text
-                    if current_joined
-                    else block.text
-                )
-                current_body_tokens = candidate_body_tokens
-                current_joined = candidate_text
-                if block.start_line is not None and (
-                    current_start_line is None or block.start_line < current_start_line
-                ):
-                    current_start_line = block.start_line
-                if block.end_line is not None and (
-                    current_end_line is None or block.end_line > current_end_line
-                ):
-                    current_end_line = block.end_line
-                continue
-            # TODO: chunk.tokens should not exceed the max_tokens.
-            # Special chunks can be split using a smaller tokens.
-            block_pieces = self._block_splitter.split_oversized_block(
-                block,
-                default_budget=budget,
-            )
-            if block_pieces is None:
-                entry = Entry(
-                    headings=headings,
-                    body=block.text,
-                    start_line=block.start_line,
-                    end_line=block.end_line,
-                    body_token_count=block_tokens,
-                )
-                chunks.append(
-                    ChunkDraft(
-                        entries=[entry],
-                        headings=headings,
-                        headings_token_count=prefix_tokens,
-                        body_token_count=block_tokens,
-                        token_count=prefix_tokens + block_tokens,
-                        split_origin="fragment",
-                        chunk_type="paragraph",
-                    )
-                )
-                current_parts = []
-                current_joined = ""
-                current_body_tokens = 0
-                current_start_line = None
-                current_end_line = None
-                continue
-
-            for piece in block_pieces:
-                piece_tokens = self.tokenizer.count(piece)
-                entry = Entry(
-                    headings=headings,
-                    body=piece,
-                    start_line=block.start_line,
-                    end_line=block.end_line,
-                    body_token_count=piece_tokens,
-                )
-                chunks.append(
-                    ChunkDraft(
-                        entries=[entry],
-                        headings=headings,
-                        headings_token_count=prefix_tokens,
-                        body_token_count=piece_tokens,
-                        token_count=prefix_tokens + piece_tokens,
-                        split_origin="text_piece",
-                        chunk_type="paragraph",
-                    )
-                )
-
-        if current_parts:
-            rendered = join_markdown(current_parts)
-            if rendered:
-                chunks.append(draft_current())
-
-        return chunks
+    # ------------------------------------------------------------------
+    # Finalize (shared shell; estimate delegated to the strategy mixin)
+    # ------------------------------------------------------------------
 
     def _finalize_chunks(
         self,
@@ -439,28 +214,9 @@ class BaseSplitter(SplitterProtocol):
             ):
                 continue
             index += 1
-            token_count = self.tokenizer.count(body)
-            # The running estimate mirrors the rendered footprint: full
-            # token_count when the common breadcrumb renders, body tokens only
-            # when it is omitted.  ``body_token_count`` is correct for both
-            # splitters here — SectionSplitter's drafts already exclude heading
-            # tokens via the budget hook, and RecursiveSplitter's merge
-            # arithmetic folds any displaced (internal relative) heading tokens
-            # into body_token_count — so the estimate matches the actually
-            # rendered body.
-            estimated = self._draft_budget_tokens(chunk)
-            # Adjust the estimate for the trailing phantom \n\n in the last
-            # entry.  When the last entry has empty body, its heading's
-            # trailing \n\n (from heading_path_token_count) was counted in
-            # the incremental estimate but is never rendered — there is no
-            # next entry for it to separate from.
-            if chunk.entries:
-                last = chunk.entries[-1]
-                if not last.body.strip():
-                    relative = last.headings[len(headings) :]
-                    if relative:
-                        ht = render_heading_path(relative)
-                        estimated -= self._separator_delta_after(ht)
+            # token_count: always a full recount of the rendered body.
+            token_count = self.tokenizer.count(body, cache=True)
+            estimated = self._finalize_estimate(chunk, headings, token_count)
             finalized.append(
                 Chunk(
                     chunk_id=f"chunk-{index:04d}",
@@ -522,88 +278,6 @@ class BaseSplitter(SplitterProtocol):
             return "#" * level + " " + title
         return ""
 
-    def _merge_drafts(
-        self,
-        left_draft: ChunkDraft,
-        right_draft: ChunkDraft,
-        *,
-        expected_common: HeadingPath | None = None,
-    ) -> ChunkDraft:
-        left_headings = left_draft.headings
-        right_headings = right_draft.headings
-
-        # Callers that know the merged common prefix by construction (e.g. the
-        # recursive splitter packing a section's own body with its children —
-        # the common prefix is always the section's path) may pass it directly
-        # via ``expected_common`` to avoid recomputing the longest common
-        # prefix of the two heading paths.
-        if expected_common is not None:
-            common_headings = expected_common
-        else:
-            common_headings = common_heading_path([left_headings, right_headings])
-        headings_token_count = self._heading_budget_token_count(common_headings)
-
-        left_body_token_count = left_draft.token_count - headings_token_count
-        right_body_token_count = right_draft.token_count - headings_token_count
-
-        body_token_count = left_body_token_count + right_body_token_count
-
-        # Account for the \n\n separator between the last left entry and
-        # the first right entry introduced by join_markdown during rendering.
-        #
-        # When the last left entry has empty body, its heading's trailing
-        # \n\n (from heading_path_token_count in _measure_section) already
-        # serves as the separator to the next entry.  Adding sep_delta here
-        # would double-count that separator.
-        if left_draft.entries and right_draft.entries:
-            last_left = left_draft.entries[-1]
-            if last_left.body:
-                left_tail = self._entry_group_tail(left_draft.entries)
-                body_token_count += self._separator_delta_after(left_tail)
-
-        return ChunkDraft(
-            entries=[*left_draft.entries, *right_draft.entries],
-            headings=common_headings,
-            headings_token_count=headings_token_count,
-            body_token_count=body_token_count,
-            token_count=headings_token_count + body_token_count,
-            split_origin="merge",
-            chunk_type=left_draft.chunk_type,
-        )
-
-    def _render_body(
-        self,
-        entries: list[Entry],
-        *,
-        common_headings: HeadingPath,
-    ) -> str:
-        """Render entries into Markdown body content."""
-        if not entries:
-            return ""
-
-        parts: list[str] = []
-        if common_headings and self.options.render_headings:
-            parts.append(render_heading_path(common_headings))
-
-        previous_headings = common_headings
-        for entry in entries:
-            shared_headings = common_heading_path((previous_headings, entry.headings))
-            if len(shared_headings) < len(common_headings):
-                shared_headings = common_headings
-            relative_headings = entry.headings[len(shared_headings) :]
-
-            entry_parts: list[str] = []
-            if relative_headings:
-                entry_parts.append(render_heading_path(relative_headings))
-            if entry.body:
-                entry_parts.append(entry.body)
-            rendered = join_markdown(entry_parts)
-            if rendered:
-                parts.append(rendered)
-            previous_headings = entry.headings
-
-        return join_markdown(parts)
-
     def _merge_small_chunks(
         self,
         chunks: list[ChunkDraft],
@@ -629,7 +303,7 @@ class BaseSplitter(SplitterProtocol):
             )
             if (
                 can_merge
-                and current.token_count < merge_below
+                and self._draft_budget_tokens(current) < merge_below
                 and previous.chunk_type == "paragraph"
                 and current.chunk_type == "paragraph"
             ):
@@ -642,6 +316,26 @@ class BaseSplitter(SplitterProtocol):
                     del merged[i]
             i -= 1
         return merged
+
+    @staticmethod
+    def _min_start(entries: list[Entry]) -> int | None:
+        vals = [e.start_line for e in entries if e.start_line is not None]
+        return min(vals) if vals else None
+
+    @staticmethod
+    def _max_end(entries: list[Entry]) -> int | None:
+        vals = [e.end_line for e in entries if e.end_line is not None]
+        return max(vals) if vals else None
+
+    @staticmethod
+    def _min_start_lines(blocks: list[MarkdownBlock]) -> int | None:
+        vals = [b.start_line for b in blocks if b.start_line is not None]
+        return min(vals) if vals else None
+
+    @staticmethod
+    def _max_end_lines(blocks: list[MarkdownBlock]) -> int | None:
+        vals = [b.end_line for b in blocks if b.end_line is not None]
+        return max(vals) if vals else None
 
 
 __all__ = ["BaseSplitter"]
