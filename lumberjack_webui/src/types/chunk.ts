@@ -29,6 +29,7 @@ export interface SplitOptions {
   ideal_max_tokens_ratio: number;
   merge_below_tokens: number | null;
   skip_empty_sections: boolean;
+  render_headings: boolean;
   block_configs: Record<string, BlockHandlingState> | null;
   tokenizer: string;
   splitter: string;
