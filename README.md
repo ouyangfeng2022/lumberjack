@@ -132,7 +132,7 @@ chunks = lumber(
     document_title="guide.md",
     max_tokens=1200,
     ideal_max_tokens_ratio=0.8,
-    merge_below_tokens=50,
+    merge_below_ratio=0.125,
     skip_empty_sections=True,
     render_headings=True,      # False: drop ancestor heading breadcrumb from body
     tokenizer="approx",        # "approx" | "tiktoken" | "transformers"
@@ -367,9 +367,9 @@ lumber <input> [options]
 | `-o`, `--output`           | stdout      | Write output to file                             |
 | `--max-tokens`             | `1200`      | Maximum chunk token budget                       |
 | `--ideal-max-tokens-ratio` | `0.8`       | Preferred split budget ratio                     |
-| `--merge-below-tokens`     | `50`        | Soft threshold for small-chunk merging           |
+| `--merge-below-ratio`      | `0.125`     | Tail-fragment merge threshold as fraction of max-tokens (0 disables) |
 | `--tokenizer`              | `approx`    | `approx`, `tiktoken`, or `transformers` |
-| `--splitter`               | `recursive` | `recursive`, `section`, `exact-recursive`, `incremental-recursive`, `exact-section`, `incremental-section` |
+| `--splitter`               | `recursive` | `recursive`, `section`, `section-flat`, `exact-recursive`, `incremental-recursive`, `exact-section`, `incremental-section`, `exact-section-flat`, `incremental-section-flat` |
 | `--no-render-headings`     | off         | Omit ancestor heading breadcrumb from `body` (see [render_headings](#rendering-headings-render_headings)) |
 | `--block-config`           | —           | Per-block-kind config (repeatable)               |
 | `--block-config-json`      | —           | Structured per-block-kind JSON config            |
@@ -427,12 +427,12 @@ Both endpoints accept the same options:
 | `input_format` | string | `"markdown"` for text, `"auto"` for file upload | `auto`, `markdown`, `html`, or `docx` |
 | `max_tokens` | int | `1200` | Maximum chunk token budget |
 | `ideal_max_tokens_ratio` | float | `0.8` | Preferred split budget ratio |
-| `merge_below_tokens` | int | `50` | Soft merge threshold |
+| `merge_below_ratio` | float | `0.125` | Tail-fragment merge threshold as fraction of max_tokens (0 disables) |
 | `skip_empty_sections` | bool | `true` | Discard heading-only chunks |
 | `render_headings` | bool | `true` | Omit ancestor heading breadcrumb from `body` when `false` (see [render_headings](#rendering-headings-render_headings)) |
 | `block_configs` | object | `null` | Per-block-kind config |
 | `tokenizer` | string | `"approx"` | `approx`, `tiktoken`, or `transformers` |
-| `splitter` | string | `"recursive"` | `recursive`, `section`, `exact-recursive`, `incremental-recursive`, `exact-section`, `incremental-section` |
+| `splitter` | string | `"recursive"` | `recursive`, `section`, `section-flat`, `exact-recursive`, `incremental-recursive`, `exact-section`, `incremental-section`, `exact-section-flat`, `incremental-section-flat` |
 
 Example `block_configs` payload:
 
@@ -487,7 +487,10 @@ Open <http://localhost:9612>.
 | Strategy | Registry Name | Behavior |
 | --- | --- | --- |
 | **Recursive** | `recursive` (default) | Structure-first, budget-aware. Merges adjacent sibling sections when they fit. |
-| **Section** | `section` | Subtree-first (`subtree_merge=True`, default): collapses an entire subtree into one chunk when it fits the budget and has no standalone block; `subtree_merge=False` always emits one chunk per heading section's direct body (no cross-section merging in either mode). |
+| **Section** | `section` | Subtree-first: collapses an entire subtree into one chunk when it fits the budget and has no standalone block; otherwise one chunk per heading section (with tail-fragment merging). |
+| **Section Flat** | `section-flat` | Per-heading section splitter: always one chunk per heading section's direct body, no subtree-collapse, no tail-fragment merging. |
+| **Incremental Section** | `incremental-section` | Same topology as `Section` with the additive incremental estimate path. |
+| **Incremental Section Flat** | `incremental-section-flat` | Same as `Section Flat` with the additive incremental estimate path. |
 
 Recursive splitting order:
 

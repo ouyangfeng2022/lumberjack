@@ -27,7 +27,7 @@ uv sync --group dev --group test --extra tokenizers --extra docx
 uv sync --group web
 
 # Run CLI (Markdown)
-uv run lumber path/to/file.md --max-tokens 1200 --merge-below-tokens 50 -f json
+uv run lumber path/to/file.md --max-tokens 1200 --merge-below-ratio 0.125 -f json
 # Run CLI with tiktoken on the incremental splitter
 uv run lumber path/to/file.md --tokenizer tiktoken --splitter incremental-recursive --max-tokens 1200 -f json
 
@@ -93,7 +93,7 @@ Main components:
 - **Splitters**: `src/lumberjack/core/splitters/` — operate on `DocumentAST`, format-agnostic
   - `base.py` provides `BaseSplitter` shared state and helpers
   - `recursive.py` provides `RecursiveSplitter` (registry: "recursive") — structure-first, budget-aware
-  - `section.py` provides `SectionSplitter` (registry: "section") — subtree-first (gated by `SplitOptions.subtree_merge`, default True): collapses a fitting subtree into one chunk, otherwise one chunk per heading section
+  - `section.py` provides `SectionSplitter` (registry: "section"/"exact-section") and `SectionFlatSplitter` (registry: "section-flat"/"exact-section-flat"). `SectionSplitter` is subtree-first: collapses a fitting subtree into one chunk, otherwise one chunk per heading section (with tail-fragment merging). `SectionFlatSplitter` emits one chunk per heading section's direct body and recurses into children, with **no** subtree-collapse and **no** tail-fragment merging (regardless of `merge_below_ratio`). `IncrementalSectionSplitter`/`IncrementalSectionFlatSplitter` are the incremental-measure variants.
   - `registry.py` provides `SPLITTER_REGISTRY` and `create_splitter()` factory
 - **Visitor**: `src/lumberjack/core/visitor.py`
   - `AstVisitor` — lightweight AST visitor with enter/depart hooks for section/block/inline and structured content (table cells, code, math); works with any `DocumentAST`
@@ -166,8 +166,8 @@ Implemented in `src/lumberjack/cli.py`.
 - `--input-format`: `auto` (detect from extension), `markdown`, or `docx`
 - Output format: JSON only
 - Tokenizers (engine): `approx`, `tiktoken`, `transformers`
-- Exact vs incremental counting is a property of the splitter class, not the tokenizer. Registry names: `recursive`/`exact-recursive` (exact, default), `incremental-recursive`, `section`/`exact-section` (exact, default), `incremental-section`. Exact splitters fully recount rendered text at every budget decision (walk `SectionNode` directly, no pre-measure); incremental splitters pre-measure into `MeasuredSection` and use an additive estimate + 8-char separator-delta window. There is no separate `--token-counter` flag; any tokenizer works with any splitter.
-- Splitter choices: `recursive` (default, = exact-recursive), `section` (default, = exact-section), `exact-recursive`, `incremental-recursive`, `exact-section`, `incremental-section`
+- Exact vs incremental counting is a property of the splitter class, not the tokenizer. Registry names: `recursive`/`exact-recursive` (exact, default), `incremental-recursive`, `section`/`exact-section` (exact, default), `section-flat`/`exact-section-flat`, `incremental-section`, `incremental-section-flat`. Exact splitters fully recount rendered text at every budget decision (walk `SectionNode` directly, no pre-measure); incremental splitters pre-measure into `MeasuredSection` and use an additive estimate + 8-char separator-delta window. There is no separate `--token-counter` flag; any tokenizer works with any splitter.
+- Splitter choices: `recursive` (default, = exact-recursive), `section` (default, = exact-section), `section-flat` (= exact-section-flat), `exact-recursive`, `incremental-recursive`, `exact-section`, `incremental-section`, `exact-section-flat`, `incremental-section-flat`
 - `--recursive-split` enables block/text fallback for oversized section bodies
 - `--block-config KIND[:isolated][:nosplit][:TOKENS]` per-block-kind config; repeatable
 - JSON output serializes dataclasses with `dataclasses.asdict`
@@ -176,7 +176,8 @@ Implemented in `src/lumberjack/cli.py`.
 
 - Whole document is kept as one chunk when it already fits the budget
 - `RecursiveSplitter` (default): merges adjacent sibling sections when they fit within `max_tokens`
-- `SectionSplitter`: with `subtree_merge=True` (default), first attempts to collapse an entire subtree (own body + all descendants) into a single chunk when it fits `ideal_max_tokens` and has no standalone block; with `subtree_merge=False`, always emits one chunk per heading section direct body and recurses into children (no cross-section merging in either mode)
+- `SectionSplitter` (default `section`/`exact-section`): subtree-first — collapses a fitting subtree into one chunk, otherwise one chunk per heading section (with tail-fragment merging). `SectionFlatSplitter` (`section-flat`/`exact-section-flat`): always per-heading, no subtree-collapse, no tail-fragment merging.
+- Tail-fragment merging (`merge_below_ratio`, default `0.125`): bottom-up, merges same-heading adjacent `paragraph` chunks whose tail is below `int(max_tokens * ratio)` tokens, when the merged result fits `max_tokens`. Disabled when `ratio == 0`. `section-flat` variants disable this entirely.
 - Text fallback order is paragraph break -> line break -> sentence -> word -> hard split
 - `Chunk.body` always includes rendered heading context; shared parent headings are deduplicated
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
