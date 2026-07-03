@@ -39,10 +39,13 @@ def build_parser() -> argparse.ArgumentParser:
         choices=(
             "recursive",
             "section",
+            "section-flat",
             "exact-recursive",
             "incremental-recursive",
             "exact-section",
             "incremental-section",
+            "exact-section-flat",
+            "incremental-section-flat",
         ),
         default="recursive",
         help=(
@@ -61,11 +64,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Preferred split budget as a ratio of --max-tokens",
     )
     parser.add_argument(
-        "--merge-below-tokens",
-        type=int,
-        default=50,
-        help="Merge adjacent chunks below this token threshold when possible "
-        "(use -1 to disable merging)",
+        "--merge-below-ratio",
+        type=float,
+        default=0.125,
+        help="Tail-fragment merge threshold as a fraction of --max-tokens "
+        "in [0.0, 1.0); 0 disables merging (default: 0.125)",
     )
     parser.add_argument(
         "--no-render-headings",
@@ -117,7 +120,7 @@ def main() -> None:
         format=input_format,
         max_tokens=args.max_tokens,
         ideal_max_tokens_ratio=args.ideal_max_tokens_ratio,
-        merge_below_tokens=args.merge_below_tokens,
+        merge_below_ratio=args.merge_below_ratio,
         block_options=block_options,
         tokenizer=args.tokenizer,
         splitter=args.splitter,

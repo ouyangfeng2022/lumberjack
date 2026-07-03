@@ -87,7 +87,7 @@ def test_large_html_table_splitting():
 """
 
     # Set small token budget to force splitting
-    chunks = lumber(markdown, max_tokens=200, merge_below_tokens=-1)
+    chunks = lumber(markdown, max_tokens=200, merge_below_ratio=0.0)
 
     # Should be split into multiple chunks
     assert len(chunks) > 1
@@ -120,7 +120,7 @@ def test_large_html_table_can_omit_repeated_header_rows():
     chunks = lumber(
         markdown,
         max_tokens=200,
-        merge_below_tokens=-1,
+        merge_below_ratio=0.0,
         block_options={"html_table": TableBlockParams(repeat_header=False)},
     )
 

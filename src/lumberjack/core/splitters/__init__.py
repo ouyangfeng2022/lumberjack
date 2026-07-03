@@ -10,22 +10,29 @@ from .recursive import (
     RecursiveSplitter,
 )
 from .section import (
+    ExactSectionFlatSplitter,
     ExactSectionSplitter,
+    IncrementalSectionFlatSplitter,
     IncrementalSectionSplitter,
+    SectionFlatSplitter,
     SectionSplitter,
 )
 
 # Splitter topology + counting strategy, keyed by name.  ``recursive`` and
 # ``section`` default to the exact (full-recount) variants for backward
 # compatibility; pass ``incremental-recursive`` / ``incremental-section`` to
-# opt into the additive-estimate path.
+# opt into the additive-estimate path.  ``section-flat`` variants disable
+# subtree-collapse and tail-fragment merging.
 SPLITTER_REGISTRY: dict[str, type[BaseSplitter]] = {
     "recursive": ExactRecursiveSplitter,
     "exact-recursive": ExactRecursiveSplitter,
     "incremental-recursive": IncrementalRecursiveSplitter,
     "section": ExactSectionSplitter,
     "exact-section": ExactSectionSplitter,
+    "section-flat": ExactSectionFlatSplitter,
+    "exact-section-flat": ExactSectionFlatSplitter,
     "incremental-section": IncrementalSectionSplitter,
+    "incremental-section-flat": IncrementalSectionFlatSplitter,
 }
 
 
@@ -39,11 +46,15 @@ def create_splitter(
     Args:
         name: Splitter name.  One of ``"recursive"`` (alias for
             ``"exact-recursive"``, the default), ``"section"`` (alias for
-            ``"exact-section"``), ``"exact-recursive"``,
-            ``"incremental-recursive"``, ``"exact-section"``, or
-            ``"incremental-section"``.  Exact splitters fully recount rendered
-            text at every budget decision; incremental splitters use an
-            additive estimate + 8-char separator-delta window.
+            ``"exact-section"``), ``"section-flat"`` (alias for
+            ``"exact-section-flat"``), ``"exact-recursive"``,
+            ``"incremental-recursive"``, ``"exact-section"``,
+            ``"incremental-section"``, ``"exact-section-flat"``, or
+            ``"incremental-section-flat"``.  Exact splitters fully recount
+            rendered text at every budget decision; incremental splitters
+            use an additive estimate + 8-char separator-delta window.
+            ``section-flat`` variants disable subtree-collapse and
+            tail-fragment merging.
         tokenizer: Tokenizer engine.  Defaults to :class:`ApproxCharTokenizer`.
         options: Split options.
 
@@ -61,10 +72,13 @@ __all__ = [
     "SPLITTER_REGISTRY",
     "BaseSplitter",
     "ExactRecursiveSplitter",
+    "ExactSectionFlatSplitter",
     "ExactSectionSplitter",
     "IncrementalRecursiveSplitter",
+    "IncrementalSectionFlatSplitter",
     "IncrementalSectionSplitter",
     "RecursiveSplitter",
+    "SectionFlatSplitter",
     "SectionSplitter",
     "create_splitter",
 ]

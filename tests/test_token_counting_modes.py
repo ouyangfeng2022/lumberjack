@@ -167,7 +167,7 @@ class TestCreateSplitterTokenizerEngine:
     def test_splitter_runs_with_custom_tokenizer(self) -> None:
         source = "# Root\n\n## Alpha\n\nAlpha body\n\n## Beta\n\nBeta body\n"
         document = MarkdownItParser().parse(source)
-        options = SplitOptions(max_tokens=20, merge_below_tokens=10)
+        options = SplitOptions(max_tokens=20, merge_below_ratio=0.5)
         splitter = create_splitter(
             "recursive",
             _RecordingCountTokenizer(),
@@ -232,7 +232,7 @@ class TestSplitterUsesTailWindow:
         splitter = create_splitter(
             "incremental-recursive",
             tok,
-            SplitOptions(max_tokens=40, merge_below_tokens=10),
+            SplitOptions(max_tokens=40, merge_below_ratio=0.25),
         )
         splitter.split(document)
         # The splitter estimates separators by counting the last 8 chars of a

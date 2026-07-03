@@ -19,7 +19,7 @@ class TextSplitRequest(BaseModel):
     input_format: str = "markdown"
     max_tokens: int = 1200
     ideal_max_tokens_ratio: float = 0.8
-    merge_below_tokens: int | None = 50
+    merge_below_ratio: float = 0.125
     skip_empty_sections: bool = True
     render_headings: bool = True
     block_configs: dict[str, Any] | None = None
@@ -77,7 +77,7 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
             format=payload.input_format,
             max_tokens=payload.max_tokens,
             ideal_max_tokens_ratio=payload.ideal_max_tokens_ratio,
-            merge_below_tokens=payload.merge_below_tokens,
+            merge_below_ratio=payload.merge_below_ratio,
             skip_empty_sections=payload.skip_empty_sections,
             render_headings=payload.render_headings,
             block_options=block_options,
@@ -101,7 +101,7 @@ async def split_file(
     input_format: str = Form("auto"),
     max_tokens: int = Form(1200),
     ideal_max_tokens_ratio: float = Form(0.8),
-    merge_below_tokens: int | None = Form(50),
+    merge_below_ratio: float = Form(0.125),
     skip_empty_sections: bool = Form(True),
     render_headings: bool = Form(True),
     block_configs: str = Form(""),
@@ -136,7 +136,7 @@ async def split_file(
             document_title=file.filename,
             max_tokens=max_tokens,
             ideal_max_tokens_ratio=ideal_max_tokens_ratio,
-            merge_below_tokens=merge_below_tokens,
+            merge_below_ratio=merge_below_ratio,
             skip_empty_sections=skip_empty_sections,
             render_headings=render_headings,
             block_options=block_options,

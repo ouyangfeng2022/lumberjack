@@ -192,10 +192,12 @@ class SplitOptions:
         ideal_max_tokens: Computed as ``max(1, int(max_tokens *
             ideal_max_tokens_ratio))``.  This is the effective split budget
             used during chunking.
-        merge_below_tokens: Soft threshold for merging short tails produced by
-            fragment or text fallback splitting. This is not a final minimum
-            chunk size. A negative value or ``None`` disables merging entirely;
-            otherwise the value must be non-negative and smaller than ``max_tokens``.
+        merge_below_ratio: Tail-fragment merge threshold as a fraction of
+            ``max_tokens`` in ``[0.0, 1.0)``.  Tail chunks below
+            ``int(max_tokens * merge_below_ratio)`` tokens are merged into
+            their same-heading predecessor when the result fits
+            ``max_tokens``.  ``0.0`` disables merging entirely.  Default
+            ``0.125`` (i.e. 12.5% of ``max_tokens``).
         skip_empty_sections: When True, discard chunks that contain only a heading
             with no body content. Chunks with zero rendered tokens are always discarded
             regardless of this setting.
@@ -204,15 +206,8 @@ class SplitOptions:
             own heading and internal relative headings. Both splitters are
             render-aware: hidden ancestor heading tokens are reclaimed for rendered
             body content, so ``token_count`` measures the final rendered body;
-            ``estimated_token_count`` stays close but may differ slightly due to
-            join approximations.
-        subtree_merge: SectionSplitter only. When True (default), first attempts
-            to collapse an entire subtree (own body + all descendants) into a
-            single chunk when it fits ``ideal_max_tokens`` and contains no
-            standalone block; otherwise emits one chunk per heading section.
-            When False, always emits one chunk per heading section's direct
-            body and recurses into children, never collapsing a whole subtree.
-            Has no effect on RecursiveSplitter.
+            ``estimated_token_count`` stays close but may differ slightly due
+            to join approximations.
         block_options: Per-block-kind configuration. Keys are lowercase block
             kind strings matching :attr:`MarkdownBlock.kind` values; values are
             :class:`BaseParams` instances. Callers that need parser-specific
@@ -223,10 +218,9 @@ class SplitOptions:
 
     max_tokens: int = 1200
     ideal_max_tokens_ratio: float = 0.8
-    merge_below_tokens: int | None = 50
+    merge_below_ratio: float = 0.125
     skip_empty_sections: bool = True
     render_headings: bool = True
-    subtree_merge: bool = True
     block_options: dict[str, BaseParams] = field(default_factory=dict)
 
     # Cached derived fields — computed in __post_init__.
@@ -234,6 +228,10 @@ class SplitOptions:
     standalone_kinds: frozenset[str] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        if not (0.0 <= self.merge_below_ratio < 1.0):
+            raise ValueError(
+                f"merge_below_ratio must be in [0.0, 1.0), got {self.merge_below_ratio}"
+            )
         object.__setattr__(
             self,
             "ideal_max_tokens",
