@@ -1,0 +1,42 @@
+# ty configuration — see https://docs.astral.sh/ty/reference/configuration/
+#
+# The project declares `requires-python = ">=3.10"` in pyproject.toml and ships
+# its package for 3.10–3.14. We type-check against the *lowest* supported runtime
+# (3.10) so ty surfaces real compatibility bugs: stdlib members, syntax, and
+# conditional type definitions introduced in newer versions. ruff's
+# `target-version = "py313"` is the development-runtime target and is
+# independent of this choice.
+
+[environment]
+python-version = "3.10"
+# Point ty at the project virtualenv so third-party imports
+# (markdown-it-py, pyyaml, python-docx, fastapi, ...) resolve without --python.
+python = ".venv"
+
+[src]
+# Check the library and the tests; everything else is non-Python or generated.
+include = ["src", "tests"]
+exclude = [
+    # Frontend (React/TS, no Python) — would just slow down file discovery.
+    "lumberjack_webui",
+    # Built artifacts.
+    "build",
+    "dist",
+    "wheels",
+    "*.egg-info",
+    # Vendored/copied static assets produced by the frontend build.
+    "src/lumberjack/web/static",
+]
+
+[rules]
+# Promote the high-signal correctness rules that catch real bugs to errors.
+# Everything else stays at ty's default severity (most as warnings).
+unresolved-import = "error"
+unresolved-attribute = "error"
+unresolved-reference = "error"
+invalid-argument-type = "error"
+invalid-return-type = "error"
+invalid-assignment = "error"
+missing-argument = "error"
+call-non-callable = "error"
+division-by-zero = "error"

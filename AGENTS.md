@@ -4,7 +4,7 @@
 
 The project is in the **development stage** and compatibility does not need to be considered. Allow all disruptive changes.
 
-Markdown / DOCX document splitter for RAG preprocessing. Python 3.13+, `src/` layout, built with `hatchling` + `hatch-vcs`.
+Markdown / DOCX document splitter for RAG preprocessing. Python 3.10+, `src/` layout, built with `hatchling` + `hatch-vcs`.
 
 Current runtime dependencies:
 

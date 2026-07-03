@@ -6,8 +6,8 @@ from typing import Any, Literal, TypeAlias
 
 from .utils import join_markdown
 
-HeadingKey: TypeAlias = tuple[int, str]  # noqa: UP040
-HeadingPath: TypeAlias = tuple[HeadingKey, ...]  # noqa: UP040
+HeadingKey: TypeAlias = tuple[int, str]
+HeadingPath: TypeAlias = tuple[HeadingKey, ...]
 
 
 @dataclass(slots=True, frozen=True)
