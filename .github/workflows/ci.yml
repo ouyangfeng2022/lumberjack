@@ -25,16 +25,18 @@ jobs:
           # hatch-vcs derives the version from git tags; need full history.
           fetch-depth: 0
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install uv
+      - name: Install uv and Python ${{ matrix.python-version }}
         uses: astral-sh/setup-uv@v6
+        with:
+          # setup-uv installs this exact Python via `uv python install`,
+          # so uv won't fall back to a runner-default (e.g. 3.14).
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --group dev --group test --extra tokenizers --extra docx
+        # `web` is an optional-dependency extra (not a group); tests/test_web.py
+        # imports fastapi.testclient, so the web server stack must be installed.
+        run: uv sync --group dev --group test --extra tokenizers --extra docx --extra web
 
       - name: Type check
         run: uv run ty check .
