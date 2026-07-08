@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # hatch-vcs derives the version from git tags; need full history.
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        run: uv sync --group dev --group test --extra tokenizers --extra docx
+
+      - name: Type check
+        run: uv run ty check .
+
+      - name: Lint
+        run: uv run ruff check --fix
+
+      - name: Verify formatting
+        run: uv run ruff format --check
+
+      - name: Test
+        run: uv run pytest
+
+  frontend:
+    name: Frontend (lint + build)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: lumberjack_webui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: lumberjack_webui
+
+      - name: Lint
+        run: npm run lint
+        working-directory: lumberjack_webui
+
+      - name: Build (includes tsc type check)
+        run: npm run build
+        working-directory: lumberjack_webui
