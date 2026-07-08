@@ -102,7 +102,7 @@ def test_docx_through_splitter() -> None:
     doc = parser.parse(SAMPLE_DOCX)
 
     tokenizer = CharacterTokenizer()
-    options = SplitOptions(max_tokens=200, merge_below_tokens=20)
+    options = SplitOptions(max_tokens=200, merge_below_ratio=0.1)
     splitter = RecursiveSplitter(tokenizer=tokenizer, options=options)
     chunks = splitter.split(doc)
 

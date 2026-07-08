@@ -121,7 +121,7 @@ def test_split_with_options(client: TestClient) -> None:
             "text": SIMPLE_MD,
             "max_tokens": 100,
             "ideal_max_tokens_ratio": 0.8,
-            "merge_below_tokens": -1,
+            "merge_below_ratio": 0.0,
             "block_configs": {"paragraph": {"isolated": False}},
             "tokenizer": "tiktoken",
         },
@@ -206,7 +206,7 @@ def test_split_with_table_block_params(client: TestClient) -> None:
             "text": md,
             "max_tokens": 5,
             "ideal_max_tokens_ratio": 1,
-            "merge_below_tokens": -1,
+            "merge_below_ratio": 0.0,
             "block_configs": {"table": {"repeat_header": False}},
         },
     )

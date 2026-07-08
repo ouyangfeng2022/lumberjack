@@ -174,14 +174,11 @@ class BaseSplitter(SplitterProtocol):
             raise ValueError(
                 "ideal_max_tokens_ratio must be greater than 0 and at most 1"
             )
-        if (
-            self.options.merge_below_tokens is None
-            or self.options.merge_below_tokens < 0
-        ):
-            # None or negative means merging is disabled; nothing else to validate.
-            pass
-        elif self.options.merge_below_tokens >= self.options.max_tokens:
-            raise ValueError("merge_below_tokens must be smaller than max_tokens")
+        if not (0.0 <= self.options.merge_below_ratio < 1.0):
+            raise ValueError(
+                f"merge_below_ratio must be in [0.0, 1.0), "
+                f"got {self.options.merge_below_ratio}"
+            )
         for kind, cfg in self.options.block_options.items():
             if cfg.max_tokens is not None and cfg.max_tokens <= 0:
                 raise ValueError(
@@ -286,9 +283,13 @@ class BaseSplitter(SplitterProtocol):
         *,
         parent_headings: HeadingPath | None = None,
     ) -> list[ChunkDraft]:
-        """Merge adjacent same-parent chunks below *merge_below_tokens*, bottom-up."""
-        merge_below = self.options.merge_below_tokens
-        if merge_below is None or merge_below < 0:
+        """Merge adjacent same-parent chunks below the merge threshold, bottom-up.
+
+        Threshold = ``int(max_tokens * merge_below_ratio)``;
+        ``merge_below_ratio == 0`` disables merging entirely.
+        """
+        merge_below = int(self.options.max_tokens * self.options.merge_below_ratio)
+        if merge_below <= 0:
             return chunks
         if not chunks:
             return chunks

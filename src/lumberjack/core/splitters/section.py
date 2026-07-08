@@ -40,19 +40,18 @@ class ExactSectionSplitter(ExactCountingMixin, BaseSplitter):
         if not (section.blocks or section.children or section.level > 0):
             return []
 
-        if self.options.subtree_merge:
-            body_has_standalone = any(
-                b.kind in self.options.standalone_kinds for b in section.blocks
-            )
-            child_has_standalone = any(
-                self._section_has_standalone(child) for child in section.children
-            )
-            if not body_has_standalone and not child_has_standalone:
-                entries = self._entries_from_section(section)
-                common = common_heading_path(entry.headings for entry in entries)
-                single = self._draft_from_entries(entries, common, origin="section")
-                if self._draft_budget_tokens(single) <= self.options.ideal_max_tokens:
-                    return [single]
+        body_has_standalone = any(
+            b.kind in self.options.standalone_kinds for b in section.blocks
+        )
+        child_has_standalone = any(
+            self._section_has_standalone(child) for child in section.children
+        )
+        if not body_has_standalone and not child_has_standalone:
+            entries = self._entries_from_section(section)
+            common = common_heading_path(entry.headings for entry in entries)
+            single = self._draft_from_entries(entries, common, origin="section")
+            if self._draft_budget_tokens(single) <= self.options.ideal_max_tokens:
+                return [single]
 
         chunks: list[ChunkDraft] = []
         standalone_kinds = self.options.standalone_kinds
@@ -108,9 +107,6 @@ class IncrementalSectionSplitter(IncrementalCountingMixin, BaseSplitter):
     pre-measured and budget decisions use a running estimate rather than full
     rendered recounts.
 
-    The subtree-merge short-circuit is gated on ``SplitOptions.subtree_merge``
-    (default True); set it False to always emit one chunk per heading section.
-
     Registered as ``"incremental-section"``.  Works with any tokenizer.
     """
 
@@ -129,7 +125,7 @@ class IncrementalSectionSplitter(IncrementalCountingMixin, BaseSplitter):
         if not (node.blocks or section.children or node.level > 0):
             return []
 
-        if self.options.subtree_merge and section.can_emit_as_single_chunk:
+        if section.can_emit_as_single_chunk:
             entries = self._entries_from_section(section)
             common = common_heading_path(entry.headings for entry in entries)
             headings_token_count = self._heading_path_token_count(common)
@@ -184,7 +180,142 @@ class IncrementalSectionSplitter(IncrementalCountingMixin, BaseSplitter):
         return chunks
 
 
-# Backward-compatible alias: the default ``section`` splitter is the exact one.
-SectionSplitter = ExactSectionSplitter
+class ExactSectionFlatSplitter(ExactCountingMixin, BaseSplitter):
+    """Per-heading section splitter without subtree-collapse or tail merging.
 
-__all__ = ["ExactSectionSplitter", "IncrementalSectionSplitter", "SectionSplitter"]
+    Emits one chunk per heading section's direct body and recurses into
+    children.  Unlike :class:`ExactSectionSplitter`, this variant:
+
+    1. Never collapses an entire subtree into a single chunk (no
+       subtree-collapse short-circuit).
+    2. Never calls :meth:`_merge_small_chunks` — tail-fragment merging is
+       fully disabled in this variant, regardless of ``merge_below_ratio``.
+
+    Oversized section bodies are still split by token budget respecting
+    ``block_options`` (standalone isolation, splittable kinds, per-block
+    budgets).  Every budget decision fully recounts the rendered candidate
+    text.
+
+    Registered as ``"section-flat"`` and ``"exact-section-flat"``.
+    Works with any tokenizer.
+    """
+
+    def _split_section(self, section: SectionNode) -> list[ChunkDraft]:
+        """Return one direct-body draft per section, then recurse into children.
+
+        No subtree-collapse short-circuit and no tail-fragment merging.
+        """
+        if not (section.blocks or section.children or section.level > 0):
+            return []
+
+        chunks: list[ChunkDraft] = []
+        standalone_kinds = self.options.standalone_kinds
+
+        if section.blocks or section.level > 0:
+            body_has_standalone = any(
+                b.kind in standalone_kinds for b in section.blocks
+            )
+            body = join_markdown([b.text for b in section.blocks])
+            body_tokens = self.tokenizer.count(body, cache=True)
+            body_budget = self._exact_body_budget(section.path)
+            should_split_body = body_has_standalone or body_tokens > body_budget
+            if should_split_body:
+                body_chunks = self._split_section_body(section)
+                chunks.extend(body_chunks)
+            else:
+                entry = Entry(
+                    headings=section.path,
+                    body=body,
+                    start_line=self._min_start_lines(section.blocks),
+                    end_line=self._max_end_lines(section.blocks),
+                    body_token_count=body_tokens,
+                )
+                headings_token_count = self._heading_budget_token_count(section.path)
+                chunks.append(
+                    ChunkDraft(
+                        entries=[entry],
+                        headings=section.path,
+                        headings_token_count=headings_token_count,
+                        body_token_count=body_tokens,
+                        token_count=headings_token_count + body_tokens,
+                    )
+                )
+
+        for child in section.children:
+            chunks.extend(self._split_section(child))
+
+        return chunks
+
+
+class IncrementalSectionFlatSplitter(IncrementalCountingMixin, BaseSplitter):
+    """Per-heading section splitter (incremental estimate) without subtree-collapse or tail merging.
+
+    Same per-section topology as :class:`ExactSectionFlatSplitter`, but uses
+    the additive incremental estimate path: the subtree is pre-measured and
+    budget decisions use a running estimate rather than full rendered
+    recounts.
+
+    No subtree-collapse short-circuit and no tail-fragment merging.
+
+    Registered as ``"incremental-section-flat"``.  Works with any tokenizer.
+    """
+
+    def _split_section(
+        self,
+        section: MeasuredSection,
+    ) -> list[ChunkDraft]:
+        """Return one direct-body draft per section, then recurse into children.
+
+        No subtree-collapse short-circuit and no tail-fragment merging.
+        """
+        node = section.node
+        if not (node.blocks or section.children or node.level > 0):
+            return []
+
+        chunks: list[ChunkDraft] = []
+
+        if node.blocks or node.level > 0:
+            body_has_standalone = any(
+                b.kind in self.options.standalone_kinds for b in node.blocks
+            )
+            if (
+                body_has_standalone
+                or section.counts.body > self.options.ideal_max_tokens
+            ):
+                body_chunks = self._split_section_body(section)
+                chunks.extend(body_chunks)
+            else:
+                entry = self._entry_from_blocks(
+                    node.path,
+                    node.blocks,
+                    body_token_count=section.counts.body,
+                )
+                headings_token_count = self._heading_budget_token_count(node.path)
+                chunks.append(
+                    ChunkDraft(
+                        entries=[entry],
+                        headings=node.path,
+                        headings_token_count=headings_token_count,
+                        body_token_count=section.counts.body,
+                        token_count=headings_token_count + section.counts.body,
+                    )
+                )
+
+        for child in section.children:
+            chunks.extend(self._split_section(child))
+
+        return chunks
+
+
+# Backward-compatible aliases: the default ``section`` splitter is the exact one.
+SectionSplitter = ExactSectionSplitter
+SectionFlatSplitter = ExactSectionFlatSplitter
+
+__all__ = [
+    "ExactSectionFlatSplitter",
+    "ExactSectionSplitter",
+    "IncrementalSectionFlatSplitter",
+    "IncrementalSectionSplitter",
+    "SectionFlatSplitter",
+    "SectionSplitter",
+]

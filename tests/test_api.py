@@ -111,7 +111,7 @@ def test_lumber_accepts_table_block_params_mapping() -> None:
 """,
         max_tokens=5,
         ideal_max_tokens_ratio=1,
-        merge_below_tokens=-1,
+        merge_below_ratio=0.0,
         block_options={"table": {"repeat_header": False}},
     )
 
@@ -180,7 +180,7 @@ def test_lumber_accepts_ideal_max_tokens_ratio() -> None:
         document_title="ideal.md",
         max_tokens=4,
         ideal_max_tokens_ratio=0.5,
-        merge_below_tokens=-1,
+        merge_below_ratio=0.0,
     )
 
     assert [chunk.body for chunk in chunks] == [
@@ -268,7 +268,7 @@ def test_chunk_to_dict_serializes_heading_path() -> None:
         FIXTURE,
         document_title="sample.md",
         max_tokens=43,
-        merge_below_tokens=-1,
+        merge_below_ratio=0.0,
         block_options={},
     )[-1]
 
@@ -313,7 +313,7 @@ def test_parse_markdown_and_split_preserve_line_ranges_with_single_parser() -> N
         FIXTURE,
         document_title="sample.md",
         max_tokens=43,
-        merge_below_tokens=-1,
+        merge_below_ratio=0.0,
         document_metadata={"path": "/tmp/sample.md"},
         block_options={},
     )
