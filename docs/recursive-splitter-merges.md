@@ -280,7 +280,7 @@ paragraph 1: word word word word word
 
 **触发条件**：在子树切分完成后（`recursive.py:60` 叶子 body 切分后、`recursive.py:172`
 `_split_section_children` 返回前），对产生的 chunks 做一次**自底向上**的扫描，
-把过小的尾部 chunk 合并到前一个相邻 chunk。仅在 `merge_below_tokens >= 0` 时启用。
+把过小的尾部 chunk 合并到前一个相邻 chunk。仅在 `merge_below_ratio > 0` 时启用。
 
 **合并对象**：**严格相邻**的兄弟 chunk（`i-1` 和 `i`）。
 
@@ -310,7 +310,7 @@ self._draft_budget_tokens(merged_draft) <= max_tokens
 
 输入：5 段内容 + 一个极小的尾部 `final tiny.`
 
-`max_tokens=50, merge_below_tokens=15`：
+`max_tokens=50, merge_below_ratio=0.3（阈值 15）`：
 
 ```
 [chunk 0] headings=((1, 'Section'),)  token=35  body='# Section\n\np0: word word word word '
@@ -321,9 +321,9 @@ self._draft_budget_tokens(merged_draft) <= max_tokens
 ```
 
 **分析**：原本每段（约 35 tokens）单独成 chunk，`final tiny.`（约 11 tokens）也是一个小 chunk。
-后处理扫描发现 `final tiny.` 小于 `merge_below_tokens=15`，且与前一个 chunk（`p4`）相邻、
+后处理扫描发现 `final tiny.` 小于阈值 15 (=int(50 * 0.3))，且与前一个 chunk（`p4`）相邻、
 同 headings、同类型 → 合并进 chunk 4（35 → 48 tokens，仍未超过 max_tokens=50）。
-注意 p0-p3 没有互相合并，因为它们各自 35 tokens >= merge_below_tokens=15（门控要求**右侧** chunk 足够小）。
+注意 p0-p3 没有互相合并，因为它们各自 35 tokens >= 阈值 15（门控要求**右侧** chunk 足够小）。
 
 ---
 

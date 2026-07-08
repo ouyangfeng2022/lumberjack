@@ -83,7 +83,7 @@ class TestSectionSplitterRenderAware:
             options=SplitOptions(
                 max_tokens=max_tokens,
                 ideal_max_tokens_ratio=1,
-                merge_below_tokens=0,
+                merge_below_ratio=0.0,
                 render_headings=render_headings,
             ),
         )
@@ -158,7 +158,7 @@ class TestSectionSplitterRenderAware:
             options=SplitOptions(
                 max_tokens=60,
                 ideal_max_tokens_ratio=1,
-                merge_below_tokens=0,
+                merge_below_ratio=0.0,
                 render_headings=False,
             ),
         )
@@ -204,7 +204,7 @@ beta beta beta beta beta beta
             options=SplitOptions(
                 max_tokens=40,
                 ideal_max_tokens_ratio=1,
-                merge_below_tokens=0,
+                merge_below_ratio=0.0,
                 render_headings=False,
             ),
         )
@@ -236,7 +236,7 @@ class TestRecursiveSplitterRenderAware:
             options=SplitOptions(
                 max_tokens=max_tokens,
                 ideal_max_tokens_ratio=1,
-                merge_below_tokens=0,
+                merge_below_ratio=0.0,
                 render_headings=render_headings,
             ),
         )
@@ -334,7 +334,7 @@ class TestRecursiveSplitterRenderAware:
             options=SplitOptions(
                 max_tokens=400,
                 ideal_max_tokens_ratio=1,
-                merge_below_tokens=0,
+                merge_below_ratio=0.0,
                 render_headings=False,
             ),
         )
@@ -374,7 +374,7 @@ class TestRenderHeadingsOption:
             splitter="section",
             max_tokens=60,
             ideal_max_tokens_ratio=1,
-            merge_below_tokens=0,
+            merge_below_ratio=0.0,
             render_headings=False,
         )
         assert chunks
@@ -390,7 +390,7 @@ class TestRenderHeadingsOption:
             splitter="recursive",
             max_tokens=60,
             ideal_max_tokens_ratio=1,
-            merge_below_tokens=0,
+            merge_below_ratio=0.0,
             render_headings=False,
         )
         assert chunks

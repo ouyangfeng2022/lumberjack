@@ -122,11 +122,11 @@ chunks = lumber(
     document_title="guide.md",
     max_tokens=1200,
     ideal_max_tokens_ratio=0.8,
-    merge_below_tokens=50,
+    merge_below_ratio=0.125,
     skip_empty_sections=True,
     render_headings=True,      # False：从 body 中去掉祖先标题面包屑
     tokenizer="approx",        # "approx" | "tiktoken" | "transformers"
-    splitter="recursive",      # "recursive" | "section"
+    splitter="recursive",      # "recursive" | "section" | "section-flat"
 )
 ```
 
@@ -336,9 +336,9 @@ lumber <input> [options]
 | `-o`, `--output` | stdout | 将输出写入文件 |
 | `--max-tokens` | `1200` | 最大分块 token 预算 |
 | `--ideal-max-tokens-ratio` | `0.8` | 优先切分预算比例 |
-| `--merge-below-tokens` | `50` | 小分块合并软阈值 |
+| `--merge-below-ratio` | `0.125` | 尾部碎片合并阈值，max-tokens 的比例（0 禁用） |
 | `--tokenizer` | `approx` | `approx`、`tiktoken` 或 `transformers` |
-| `--splitter` | `recursive` | `recursive`、`section`、`exact-recursive`、`incremental-recursive`、`exact-section`、`incremental-section` |
+| `--splitter` | `recursive` | `recursive`、`section`、`section-flat`、`exact-recursive`、`incremental-recursive`、`exact-section`、`incremental-section`、`exact-section-flat`、`incremental-section-flat` |
 | `--no-render-headings` | off | 从 `body` 中省略祖先标题面包屑（参见[是否渲染标题](#是否渲染标题render_headings)） |
 | `--block-config` | — | 按块类型配置（可重复指定） |
 | `--block-config-json` | — | 结构化的按块类型 JSON 配置 |
@@ -396,12 +396,12 @@ curl -X POST http://localhost:9612/lumber/api/split/file \
 | `input_format` | string | 文本接口为 `"markdown"`，文件上传为 `"auto"` | `auto`、`markdown`、`html` 或 `docx` |
 | `max_tokens` | int | `1200` | 最大分块 token 预算 |
 | `ideal_max_tokens_ratio` | float | `0.8` | 优先切分预算比例 |
-| `merge_below_tokens` | int | `50` | 小分块合并软阈值 |
+| `merge_below_ratio` | float | `0.125` | 尾部碎片合并阈值，max-tokens 的比例（0 禁用） |
 | `skip_empty_sections` | bool | `true` | 丢弃仅有标题无正文的分块 |
 | `render_headings` | bool | `true` | 为 `false` 时从 `body` 中省略祖先标题面包屑（参见[是否渲染标题](#是否渲染标题render_headings)） |
 | `block_configs` | object | `null` | 按块类型配置 |
 | `tokenizer` | string | `"approx"` | `approx`、`tiktoken` 或 `transformers` |
-| `splitter` | string | `"recursive"` | `recursive`、`section`、`exact-recursive`、`incremental-recursive`、`exact-section`、`incremental-section` |
+| `splitter` | string | `"recursive"` | `recursive`、`section`、`section-flat`、`exact-recursive`、`incremental-recursive`、`exact-section`、`incremental-section`、`exact-section-flat`、`incremental-section-flat` |
 
 `block_configs` 示例：
 
@@ -456,7 +456,10 @@ docker compose up --build
 | 策略 | 注册名 | 行为 |
 | --- | --- | --- |
 | **Recursive** | `recursive`（默认） | 结构优先、预算感知；相邻同级章节会在预算允许时合并进同一个分块。 |
-| **Section** | `section` | 子树优先（`subtree_merge=True`，默认）：当整棵子树（含后代）在预算内且不含独立块时，合并为单个分块；`subtree_merge=False` 时每个标题章节的直接正文始终对应一个分块（两种模式下都不跨章节合并）。 |
+| **Section** | `section` | 子树优先：整棵子树（含后代）在预算内且不含独立块时合并为单分块；否则每个标题章节的直接正文一个分块（含尾部碎片合并）。 |
+| **Section Flat** | `section-flat` | 每个标题章节的直接正文独立成块、递归子节点；不做子树合并、不做尾部碎片合并。 |
+| **Incremental Section** | `incremental-section` | 同 Section 的拓扑结构，使用累加估算路径。 |
+| **Incremental Section Flat** | `incremental-section-flat` | 同 Section Flat 的拓扑结构，使用累加估算路径。 |
 
 递归切分顺序：
 
