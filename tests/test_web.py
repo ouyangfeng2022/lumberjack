@@ -151,12 +151,16 @@ def test_split_ignores_legacy_render_common_headings_form_field(
 
 def test_unprefixed_api_path_is_not_registered(client: TestClient) -> None:
     response = client.post("/api/split/text", json={"text": SIMPLE_MD})
-    assert response.status_code == 405
+    # 405 when the static SPA catch-all is mounted, 404 in API-only mode.
+    # Both confirm the route itself is not registered as a valid endpoint.
+    assert response.status_code in (404, 405)
 
 
 def test_legacy_combined_split_path_is_not_registered(client: TestClient) -> None:
     response = client.post("/lumber/api/split", data={"text": SIMPLE_MD})
-    assert response.status_code == 405
+    # 405 when the static SPA catch-all is mounted, 404 in API-only mode.
+    # Both confirm the route itself is not registered as a valid endpoint.
+    assert response.status_code in (404, 405)
 
 
 def test_split_with_block_configs(client: TestClient) -> None:
