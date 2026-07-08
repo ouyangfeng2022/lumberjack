@@ -1,0 +1,16 @@
+# CODEOWNERS — reviewers auto-requested on PRs that touch matching paths.
+# Docs: https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Syntax: <pattern> @username (or @org/team)
+# Later rules take precedence over earlier ones. Add more specific rules at the bottom.
+
+# Default owner for everything in the repository.
+* @ouyangfeng2022
+
+# --- Per-area owners (uncomment and edit to add specific reviewers) ---
+# Core splitting pipeline
+# /src/lumberjack/core/        @expert-on-splitters
+# Markdown parser
+# /src/lumberjack/core/parsers/markdown/ @expert-on-markdown
+# Web UI
+# /lumberjack_webui/           @expert-on-frontend

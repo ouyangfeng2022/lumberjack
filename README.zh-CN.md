@@ -65,7 +65,7 @@ pip install "lumberjack[all]"          # 包含全部功能
 ### 从源码构建（用于开发）
 
 ```bash
-git clone https://github.com/tianleG/lumberjack.git
+git clone https://github.com/ouyangfeng2022/lumberjack.git
 cd lumberjack
 uv sync --all-group --all-extra
 ```
@@ -549,7 +549,7 @@ src/lumberjack/
 
 ```bash
 # 克隆并安装全部依赖
-git clone https://github.com/tianleG/lumberjack.git
+git clone https://github.com/ouyangfeng2022/lumberjack.git
 cd lumberjack
 uv sync --group dev --group test --extra tokenizers --extra docx
 
@@ -566,6 +566,16 @@ uv run ty check
 
 > [!TIP]
 > 本项目使用 [ruff](https://docs.astral.sh/ruff/) 进行代码检查与格式化，使用 [ty](https://docs.astral.sh/ty/) 进行类型检查。
+
+## 参与贡献
+
+欢迎各种形式的贡献——bug 报告、功能建议、Pull Request,我们都非常感谢。
+
+- **Bug 与功能建议**:使用 bug 报告或功能建议模板[提交 issue](https://github.com/ouyangfeng2022/lumberjack/issues/new/choose)。
+- **代码贡献**:请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)(英文)了解环境搭建、代码规范和 PR 流程。每个 PR 需通过 CI 并获得至少 1 个批准后才能合并。
+- **提问与讨论**:使用 [GitHub Discussions](https://github.com/ouyangfeng2022/lumberjack/discussions)。
+
+请在所有交流中遵守我们的[行为准则](CODE_OF_CONDUCT.md)。
 
 ## 许可证
 

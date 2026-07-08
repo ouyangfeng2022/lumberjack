@@ -74,7 +74,7 @@ pip install "lumberjack[all]"          # everything
 ### From source (for development)
 
 ```bash
-git clone https://github.com/tianleG/lumberjack.git
+git clone https://github.com/ouyangfeng2022/lumberjack.git
 cd lumberjack
 uv sync --all-group --all-extra
 ```
@@ -591,7 +591,7 @@ This project uses [uv](https://docs.astral.sh/uv/) for dependency management.
 
 ```bash
 # Clone and install all dependencies
-git clone https://github.com/tianleG/lumberjack.git
+git clone https://github.com/ouyangfeng2022/lumberjack.git
 cd lumberjack
 uv sync --group dev --group test --extra tokenizers --extra docx
 
@@ -608,6 +608,16 @@ uv run ty check
 
 > [!TIP]
 > This project uses [ruff](https://docs.astral.sh/ruff/) for linting & formatting, and [ty](https://docs.astral.sh/ty/) for type checking.
+
+## Contributing
+
+Contributions are welcome! Whether it's a bug report, a feature idea, or a pull request — we appreciate your help.
+
+- **Bugs & features**: open an [issue](https://github.com/ouyangfeng2022/lumberjack/issues/new/choose) using the bug report or feature request template.
+- **Code**: read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, coding standards, and the pull request workflow. Every PR needs to pass CI and get one approval before merging.
+- **Questions & discussion**: use [GitHub Discussions](https://github.com/ouyangfeng2022/lumberjack/discussions).
+
+Please follow our [Code of Conduct](CODE_OF_CONDUCT.md) in all interactions.
 
 ## License
 

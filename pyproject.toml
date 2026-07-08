@@ -38,9 +38,9 @@ web = ["fastapi>=0.115.0", "uvicorn>=0.34.0", "python-multipart>=0.0.18"]
 all = ["lumberjack[tokenizers,docx,web]"]
 
 [project.urls]
-Homepage = "https://gitee.com/celery-flandre/lumberjack"
-Repository = "https://gitee.com/celery-flandre/lumberjack"
-Issues = "https://gitee.com/celery-flandre/lumberjack/issues"
+Homepage = "https://github.com/ouyangfeng2022/lumberjack"
+Repository = "https://github.com/ouyangfeng2022/lumberjack"
+Issues = "https://github.com/ouyangfeng2022/lumberjack/issues"
 
 [project.scripts]
 lumber = "lumberjack.cli:main"
