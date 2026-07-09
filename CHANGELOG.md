@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Renamed the section-family splitters so class and registry names describe their actual behavior. The subtree-first splitter (formerly `SectionSplitter`, registry `section`/`exact-section`/`incremental-section`) is now `SubtreeSplitter` with registry `subtree`/`exact-subtree`/`incremental-subtree`. The per-heading splitter (formerly `SectionFlatSplitter`, registry `section-flat`/`exact-section-flat`/`incremental-section-flat`) is now `SectionSplitter` with registry `section`/`exact-section`/`incremental-section`.
+
+### Removed
+
+- `SectionFlatSplitter`, `ExactSectionFlatSplitter`, and `IncrementalSectionFlatSplitter` aliases and the `section-flat`/`exact-section-flat`/`incremental-section-flat` registry names. Use the renamed `SectionSplitter` (registry `section`) instead. The previous subtree-first `SectionSplitter`/`ExactSectionSplitter`/`IncrementalSectionSplitter` names are now `SubtreeSplitter`/`ExactSubtreeSplitter`/`IncrementalSubtreeSplitter`.
+
 ### Added
 
 - Structure-aware Markdown splitting with recursive and section strategies

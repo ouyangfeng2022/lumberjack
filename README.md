@@ -142,15 +142,15 @@ chunks = lumber(
     skip_empty_sections=True,
     render_headings=True,      # False: drop ancestor heading breadcrumb from body
     tokenizer="approx",        # "approx" | "tiktoken" | "transformers"
-    splitter="recursive",      # "recursive" | "section"
+    splitter="recursive",      # "recursive" | "subtree" | "section"
 )
 ```
 
 Counting strategy is a property of the splitter class, not the tokenizer.
-The default `recursive` and `section` splitters are **exact**: every budget
+The default `recursive`, `subtree`, and `section` splitters are **exact**: every budget
 decision fully recounts the rendered candidate text (`token_count ==
-estimated_token_count`). The `incremental-recursive` and
-`incremental-section` variants pre-measure the tree once and use a running
+estimated_token_count`). The `incremental-recursive`,
+`incremental-subtree`, and `incremental-section` variants pre-measure the tree once and use a running
 additive estimate with an 8-char separator-delta window for joins — faster
 for heavy tokenizers, at the cost of `estimated_token_count` diverging
 slightly from the authoritative `token_count` (the full recount at
@@ -375,7 +375,7 @@ lumber <input> [options]
 | `--ideal-max-tokens-ratio` | `0.8`       | Preferred split budget ratio                     |
 | `--merge-below-ratio`      | `0.125`     | Tail-fragment merge threshold as fraction of max-tokens (0 disables) |
 | `--tokenizer`              | `approx`    | `approx`, `tiktoken`, or `transformers` |
-| `--splitter`               | `recursive` | `recursive`, `section`, `section-flat`, `exact-recursive`, `incremental-recursive`, `exact-section`, `incremental-section`, `exact-section-flat`, `incremental-section-flat` |
+| `--splitter`               | `recursive` | `recursive`, `subtree`, `section`, `exact-recursive`, `incremental-recursive`, `exact-subtree`, `incremental-subtree`, `exact-section`, `incremental-section` |
 | `--no-render-headings`     | off         | Omit ancestor heading breadcrumb from `body` (see [render_headings](#rendering-headings-render_headings)) |
 | `--block-config`           | —           | Per-block-kind config (repeatable)               |
 | `--block-config-json`      | —           | Structured per-block-kind JSON config            |
@@ -438,7 +438,7 @@ Both endpoints accept the same options:
 | `render_headings` | bool | `true` | Omit ancestor heading breadcrumb from `body` when `false` (see [render_headings](#rendering-headings-render_headings)) |
 | `block_configs` | object | `null` | Per-block-kind config |
 | `tokenizer` | string | `"approx"` | `approx`, `tiktoken`, or `transformers` |
-| `splitter` | string | `"recursive"` | `recursive`, `section`, `section-flat`, `exact-recursive`, `incremental-recursive`, `exact-section`, `incremental-section`, `exact-section-flat`, `incremental-section-flat` |
+| `splitter` | string | `"recursive"` | `recursive`, `subtree`, `section`, `exact-recursive`, `incremental-recursive`, `exact-subtree`, `incremental-subtree`, `exact-section`, `incremental-section` |
 
 Example `block_configs` payload:
 
@@ -493,10 +493,10 @@ Open <http://localhost:9612>.
 | Strategy | Registry Name | Behavior |
 | --- | --- | --- |
 | **Recursive** | `recursive` (default) | Structure-first, budget-aware. Merges adjacent sibling sections when they fit. |
-| **Section** | `section` | Subtree-first: collapses an entire subtree into one chunk when it fits the budget and has no standalone block; otherwise one chunk per heading section (with tail-fragment merging). |
-| **Section Flat** | `section-flat` | Per-heading section splitter: always one chunk per heading section's direct body, no subtree-collapse, no tail-fragment merging. |
-| **Incremental Section** | `incremental-section` | Same topology as `Section` with the additive incremental estimate path. |
-| **Incremental Section Flat** | `incremental-section-flat` | Same as `Section Flat` with the additive incremental estimate path. |
+| **Subtree** | `subtree` | Subtree-first: collapses an entire subtree into one chunk when it fits the budget and has no standalone block; otherwise one chunk per heading section (with tail-fragment merging). |
+| **Section** | `section` | Per-heading section splitter: always one chunk per heading section's direct body, no subtree-collapse, no tail-fragment merging. |
+| **Incremental Subtree** | `incremental-subtree` | Same topology as `Subtree` with the additive incremental estimate path. |
+| **Incremental Section** | `incremental-section` | Same as `Section` with the additive incremental estimate path. |
 
 Recursive splitting order:
 
@@ -533,7 +533,7 @@ still render. Both splitters are render-aware:
 
 ```python
 # Both splitters: render-aware budget (body fills max_tokens)
-lumber(doc, splitter="section", render_headings=False, max_tokens=1000)
+lumber(doc, splitter="subtree", render_headings=False, max_tokens=1000)
 lumber(doc, splitter="recursive", render_headings=False, max_tokens=1000)
 ```
 
@@ -571,11 +571,11 @@ src/lumberjack/
 │   ├── options.py           # Split option and block config helpers
 │   ├── utils.py             # Markdown rendering helpers
 │   ├── visitor.py           # AstVisitor for AST traversal
-│   ├── splitters/           # Recursive & section splitters
+│   ├── splitters/           # Recursive, subtree & section splitters
 │   │   ├── base.py          # Shared splitter helpers
 │   │   ├── recursive.py     # RecursiveSplitter
-│   │   ├── section.py       # SectionSplitter
-│   │   └── registry.py      # Splitter registry/factory
+│   │   ├── section.py       # SubtreeSplitter & SectionSplitter
+│   │   └── __init__.py      # Splitter registry/factory
 │   └── parsers/             # Format-specific parsers: raw input -> DocumentAST
 │       ├── markdown/
 │       │   ├── parser.py    # MarkdownItParser (markdown-it-py backend)

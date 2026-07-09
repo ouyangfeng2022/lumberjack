@@ -57,13 +57,15 @@ def lumber(
         tokenizer: Built-in tokenizer engine name (``"approx"``, ``"tiktoken"``,
             or ``"transformers"``). Independent of the splitter choice; any
             tokenizer works with any splitter.
-        splitter: Built-in splitter name. ``"recursive"`` (default) and
-            ``"section"`` alias the exact (full-recount) variants; the
-            explicit names ``"exact-recursive"``, ``"incremental-recursive"``,
-            ``"exact-section"``, ``"incremental-section"``,
-            ``"exact-section-flat"``, and ``"incremental-section-flat"``
-            select the counting strategy directly. ``section-flat`` variants
-            disable subtree-collapse and tail-fragment merging.
+        splitter: Built-in splitter name. ``"recursive"`` (default),
+        ``"subtree"``, and ``"section"`` alias the exact (full-recount)
+        variants; the explicit names ``"exact-recursive"``,
+        ``"incremental-recursive"``, ``"exact-subtree"``,
+        ``"incremental-subtree"``, ``"exact-section"``, and
+        ``"incremental-section"`` select the counting strategy directly.
+        ``subtree`` is subtree-first (collapses a fitting subtree into one
+        chunk, with tail-fragment merging); ``section`` is per-heading, with
+        no subtree-collapse and no tail-fragment merging.
         document_metadata: Extra metadata merged into the document.
         max_heading_level: Maximum heading level to parse as sections.
             Headings deeper than this level are treated as regular paragraphs.

@@ -320,25 +320,25 @@ class TestSplitterStrategyIsClassProperty:
 
     def test_section_aliases_to_exact(self) -> None:
         from lumberjack.core.splitters import (
-            ExactSectionSplitter,
-            SectionSplitter,
+            ExactSubtreeSplitter,
+            SubtreeSplitter,
         )
 
-        assert SectionSplitter is ExactSectionSplitter
-        assert isinstance(create_splitter("section"), ExactSectionSplitter)
-        assert isinstance(create_splitter("exact-section"), ExactSectionSplitter)
+        assert SubtreeSplitter is ExactSubtreeSplitter
+        assert isinstance(create_splitter("subtree"), ExactSubtreeSplitter)
+        assert isinstance(create_splitter("exact-subtree"), ExactSubtreeSplitter)
 
     def test_incremental_variants_route_correctly(self) -> None:
         from lumberjack.core.splitters import (
             IncrementalRecursiveSplitter,
-            IncrementalSectionSplitter,
+            IncrementalSubtreeSplitter,
         )
 
         assert isinstance(
             create_splitter("incremental-recursive"), IncrementalRecursiveSplitter
         )
         assert isinstance(
-            create_splitter("incremental-section"), IncrementalSectionSplitter
+            create_splitter("incremental-subtree"), IncrementalSubtreeSplitter
         )
 
     def test_exact_splitter_has_no_separator_delta(self) -> None:
@@ -370,9 +370,12 @@ class TestCliSplitterChoices:
         parser = build_parser()
         for name in (
             "recursive",
+            "subtree",
             "section",
             "exact-recursive",
             "incremental-recursive",
+            "exact-subtree",
+            "incremental-subtree",
             "exact-section",
             "incremental-section",
         ):

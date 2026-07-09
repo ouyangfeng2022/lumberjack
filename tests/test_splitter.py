@@ -15,9 +15,9 @@ from lumberjack.core.options import resolve_block_options
 from lumberjack.core.parsers.markdown.parser import MarkdownParser
 from lumberjack.core.splitters import (
     IncrementalRecursiveSplitter,
-    IncrementalSectionSplitter,
+    IncrementalSubtreeSplitter,
     RecursiveSplitter,
-    SectionSplitter,
+    SubtreeSplitter,
     create_splitter,
 )
 from tests.helpers import CharacterTokenizer
@@ -170,10 +170,10 @@ def test_create_splitter_routes_recursive_and_section() -> None:
         RecursiveSplitter,
     )
     assert isinstance(
-        create_splitter("section", CharacterTokenizer(), options),
-        SectionSplitter,
+        create_splitter("subtree", CharacterTokenizer(), options),
+        SubtreeSplitter,
     )
-    assert not issubclass(SectionSplitter, RecursiveSplitter)
+    assert not issubclass(SubtreeSplitter, RecursiveSplitter)
 
 
 def test_heading_splitter_merges_small_subtree_into_one_chunk() -> None:
@@ -181,7 +181,7 @@ def test_heading_splitter_merges_small_subtree_into_one_chunk() -> None:
     document = MarkdownParser().parse(
         HEADING_SPLITTER_FIXTURE, document_title="heading.md"
     )
-    splitter = SectionSplitter(
+    splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(max_tokens=1000, merge_below_ratio=0.0),
     )
@@ -203,7 +203,7 @@ def test_heading_splitter_splits_oversized_section_body() -> None:
     document = MarkdownParser().parse(
         HEADING_OVERSIZED_FIXTURE, document_title="heading.md"
     )
-    splitter = SectionSplitter(
+    splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=35,
@@ -225,11 +225,11 @@ def test_heading_splitter_splits_oversized_section_body() -> None:
 def test_heading_splitter_splits_oversized_body_with_nosplit_blocks_kept_intact() -> (
     None
 ):
-    """SectionSplitter respects nosplit block options for oversized bodies."""
+    """SubtreeSplitter respects nosplit block options for oversized bodies."""
     document = MarkdownParser().parse(
         HEADING_OVERSIZED_FIXTURE, document_title="heading.md"
     )
-    splitter = SectionSplitter(
+    splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=35,
@@ -251,11 +251,11 @@ def test_heading_splitter_splits_oversized_body_with_nosplit_blocks_kept_intact(
 def test_heading_splitter_respects_empty_section_options() -> None:
     document = MarkdownParser().parse("# Empty\n\n## Child\n\nChild body.")
 
-    default_chunks = SectionSplitter(
+    default_chunks = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(max_tokens=1000, merge_below_ratio=0.0),
     ).split(document)
-    kept_chunks = SectionSplitter(
+    kept_chunks = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=1000,
@@ -1244,9 +1244,9 @@ def test_front_matter_is_handled_as_normal_block_by_default() -> None:
     assert chunks[0].end_line == 13
 
 
-def test_section_splitter_handles_front_matter_as_root_body_chunk() -> None:
+def test_subtree_splitter_handles_front_matter_as_root_body_chunk() -> None:
     document = MarkdownParser().parse(FRONT_MATTER_FIXTURE, document_title="doc.md")
-    splitter = SectionSplitter(
+    splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(max_tokens=100, merge_below_ratio=0.0),
     )
@@ -1636,8 +1636,8 @@ def test_oversized_standalone_code_fence_without_split_stays_intact() -> None:
     assert chunks[0].estimated_token_count > 50
 
 
-def test_section_splitter_isolates_standalone_blocks_in_body() -> None:
-    """SectionSplitter isolates standalone blocks from direct body."""
+def test_subtree_splitter_isolates_standalone_blocks_in_body() -> None:
+    """SubtreeSplitter isolates standalone blocks from direct body."""
     md = """# Doc
 
 Intro.
@@ -1653,7 +1653,7 @@ Outro.
 Child body.
 """
     document = MarkdownParser().parse(md, document_title="section.md")
-    splitter = SectionSplitter(
+    splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=1000,
@@ -1850,14 +1850,14 @@ def test_lumber_api_accepts_block_max_tokens() -> None:
 
 
 # ---------------------------------------------------------------------------
-# SectionSplitter block_options consistency with RecursiveSplitter
+# SubtreeSplitter block_options consistency with RecursiveSplitter
 # ---------------------------------------------------------------------------
 
 
-def test_section_splitter_keeps_oversized_lists_intact_when_nosplit() -> None:
-    """SectionSplitter respects nosplit for lists, same as RecursiveSplitter."""
+def test_subtree_splitter_keeps_oversized_lists_intact_when_nosplit() -> None:
+    """SubtreeSplitter respects nosplit for lists, same as RecursiveSplitter."""
     document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
-    splitter = SectionSplitter(
+    splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=20,
@@ -1873,10 +1873,10 @@ def test_section_splitter_keeps_oversized_lists_intact_when_nosplit() -> None:
     assert chunks[0].token_count > 20
 
 
-def test_section_splitter_can_split_oversized_lists_by_default() -> None:
-    """SectionSplitter splits lists when not in nosplit, same as RecursiveSplitter."""
+def test_subtree_splitter_can_split_oversized_lists_by_default() -> None:
+    """SubtreeSplitter splits lists when not in nosplit, same as RecursiveSplitter."""
     document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
-    splitter = SectionSplitter(
+    splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=20,
@@ -1892,8 +1892,8 @@ def test_section_splitter_can_split_oversized_lists_by_default() -> None:
     assert all(chunk.estimated_token_count <= 20 for chunk in chunks)
 
 
-def test_section_splitter_splits_oversized_tables_when_isolated() -> None:
-    """SectionSplitter isolates and splits oversized tables, same as RecursiveSplitter."""
+def test_subtree_splitter_splits_oversized_tables_when_isolated() -> None:
+    """SubtreeSplitter isolates and splits oversized tables, same as RecursiveSplitter."""
     md = """# Data
 
 | Name | Value |
@@ -1904,7 +1904,7 @@ def test_section_splitter_splits_oversized_tables_when_isolated() -> None:
 | Delta | 400 |
 """
     document = MarkdownParser().parse(md, document_title="table.md")
-    splitter = SectionSplitter(
+    splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=58,
@@ -1922,8 +1922,8 @@ def test_section_splitter_splits_oversized_tables_when_isolated() -> None:
     assert all("| ---- | ----- |" in c.body for c in table_chunks)
 
 
-def test_section_splitter_can_omit_repeated_header_for_split_tables() -> None:
-    """SectionSplitter uses the same table params as RecursiveSplitter."""
+def test_subtree_splitter_can_omit_repeated_header_for_split_tables() -> None:
+    """SubtreeSplitter uses the same table params as RecursiveSplitter."""
     md = """# Data
 
 | Name | Value |
@@ -1934,7 +1934,7 @@ def test_section_splitter_can_omit_repeated_header_for_split_tables() -> None:
 | Delta | 400 |
 """
     document = MarkdownParser().parse(md, document_title="table.md")
-    splitter = SectionSplitter(
+    splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=58,
@@ -1957,8 +1957,8 @@ def test_section_splitter_can_omit_repeated_header_for_split_tables() -> None:
     assert all("| Name | Value |" not in c.body for c in table_chunks[1:])
 
 
-def test_section_splitter_keeps_oversized_tables_intact_when_nosplit() -> None:
-    """SectionSplitter keeps oversized tables intact when nosplit, same as RecursiveSplitter."""
+def test_subtree_splitter_keeps_oversized_tables_intact_when_nosplit() -> None:
+    """SubtreeSplitter keeps oversized tables intact when nosplit, same as RecursiveSplitter."""
     md = """# Data
 
 | Name | Value |
@@ -1969,7 +1969,7 @@ def test_section_splitter_keeps_oversized_tables_intact_when_nosplit() -> None:
 | Delta | 400 |
 """
     document = MarkdownParser().parse(md, document_title="table.md")
-    splitter = SectionSplitter(
+    splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=58,
@@ -1985,11 +1985,11 @@ def test_section_splitter_keeps_oversized_tables_intact_when_nosplit() -> None:
     assert chunks[0].token_count > 58
 
 
-def test_section_splitter_uses_per_block_max_tokens() -> None:
-    """SectionSplitter respects per-block max_tokens, same as RecursiveSplitter."""
+def test_subtree_splitter_uses_per_block_max_tokens() -> None:
+    """SubtreeSplitter respects per-block max_tokens, same as RecursiveSplitter."""
     long_para = " ".join(f"word{i}" for i in range(100))
     document = MarkdownParser().parse(long_para, document_title="override.md")
-    splitter = SectionSplitter(
+    splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=500,
@@ -2005,13 +2005,13 @@ def test_section_splitter_uses_per_block_max_tokens() -> None:
     assert all(c.token_count <= 30 for c in chunks)
 
 
-def test_section_splitter_merges_small_fragments() -> None:
-    """SectionSplitter merges small fragments from body splitting, same as RecursiveSplitter."""
+def test_subtree_splitter_merges_small_fragments() -> None:
+    """SubtreeSplitter merges small fragments from body splitting, same as RecursiveSplitter."""
     document = MarkdownParser().parse(
         "# A\n\nalpha1\n\nbravo2",
         document_title="merge.md",
     )
-    splitter = SectionSplitter(
+    splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=30,
@@ -2026,8 +2026,8 @@ def test_section_splitter_merges_small_fragments() -> None:
     assert 15 < chunks[0].token_count <= 30
 
 
-def test_section_splitter_uses_body_not_subtree_for_oversize_check() -> None:
-    """SectionSplitter checks body tokens (not subtree) for the oversize decision."""
+def test_subtree_splitter_uses_body_not_subtree_for_oversize_check() -> None:
+    """SubtreeSplitter checks body tokens (not subtree) for the oversize decision."""
     md = (
         """# Parent
 
@@ -2039,7 +2039,7 @@ Small body.
         + "Alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike."
     )
     document = MarkdownParser().parse(md, document_title="body-vs-subtree.md")
-    splitter = SectionSplitter(
+    splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=50,
@@ -2071,7 +2071,7 @@ def test_splitter_default_uses_approx_char_tokenizer() -> None:
     assert isinstance(splitter.tokenizer, ApproxCharTokenizer)  # ty: ignore[unresolved-attribute]
 
 
-def test_section_splitter_merges_subtree_when_within_budget() -> None:
+def test_subtree_splitter_merges_subtree_when_within_budget() -> None:
     """Subtree whose total rendered tokens <= ideal_max_tokens collapses to one chunk."""
     fixture = """# Parent
 
@@ -2086,7 +2086,7 @@ One body.
 Two body.
 """
     document = MarkdownParser().parse(fixture, document_title="t.md")
-    splitter = SectionSplitter(
+    splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(max_tokens=1000, merge_below_ratio=0.0),
     )
@@ -2103,7 +2103,7 @@ Two body.
     assert "Two body." in chunks[0].body
 
 
-def test_section_splitter_does_not_merge_when_subtree_has_standalone() -> None:
+def test_subtree_splitter_does_not_merge_when_subtree_has_standalone() -> None:
     """Standalone block in the subtree disables the single-chunk short-circuit."""
     fixture = """# Parent
 
@@ -2116,7 +2116,7 @@ def test_section_splitter_does_not_merge_when_subtree_has_standalone() -> None:
 One body.
 """
     document = MarkdownParser().parse(fixture, document_title="t.md")
-    splitter = SectionSplitter(
+    splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=10000,  # well above subtree size
@@ -2136,8 +2136,8 @@ One body.
     assert table_chunk.body.startswith("# Parent")
 
 
-def test_incremental_section_splitter_merges_subtree_when_within_budget() -> None:
-    """IncrementalSectionSplitter collapses a fitting subtree to one chunk."""
+def test_incremental_subtree_splitter_merges_subtree_when_within_budget() -> None:
+    """IncrementalSubtreeSplitter collapses a fitting subtree to one chunk."""
     fixture = """# Parent
 
 Parent intro.
@@ -2151,7 +2151,7 @@ One body.
 Two body.
 """
     document = MarkdownParser().parse(fixture, document_title="t.md")
-    splitter = IncrementalSectionSplitter(
+    splitter = IncrementalSubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(max_tokens=1000, merge_below_ratio=0.0),
     )
@@ -2170,7 +2170,7 @@ Two body.
     assert abs(chunks[0].token_count - chunks[0].estimated_token_count) <= 5
 
 
-def test_incremental_section_splitter_does_not_merge_when_subtree_has_standalone() -> (
+def test_incremental_subtree_splitter_does_not_merge_when_subtree_has_standalone() -> (
     None
 ):
     """Standalone block disables the incremental single-chunk short-circuit."""
@@ -2185,7 +2185,7 @@ def test_incremental_section_splitter_does_not_merge_when_subtree_has_standalone
 One body.
 """
     document = MarkdownParser().parse(fixture, document_title="t.md")
-    splitter = IncrementalSectionSplitter(
+    splitter = IncrementalSubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=10000,
@@ -2201,14 +2201,14 @@ One body.
     assert len(chunks) >= 2
 
 
-def test_section_splitter_does_not_cross_top_level_sections() -> None:
+def test_subtree_splitter_does_not_cross_top_level_sections() -> None:
     """Two top-level sections each collapse independently; not merged together.
 
     With ``max_tokens=200`` (ideal=160), the whole document exceeds the ideal
     budget so the root short-circuit fails and falls through to per-section
     splitting.  Each top-level section then independently collapses into one
     chunk (each well under 160 tokens).  The two sections are NOT merged
-    together — there is no cross-sibling merging in SectionSplitter.
+    together — there is no cross-sibling merging in SubtreeSplitter.
     """
     first_body = "Alpha beta gamma delta. " * 4  # ~100 chars
     second_body = "Echo foxtrot golf hotel. " * 4  # ~100 chars
@@ -2221,7 +2221,7 @@ def test_section_splitter_does_not_cross_top_level_sections() -> None:
 {second_body}
 """
     document = MarkdownParser().parse(fixture, document_title="t.md")
-    splitter = SectionSplitter(
+    splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(max_tokens=200, merge_below_ratio=0.0),
     )
@@ -2240,8 +2240,8 @@ def test_section_splitter_does_not_cross_top_level_sections() -> None:
     assert "Echo foxtrot" not in chunks[0].body
 
 
-def test_section_vs_section_flat_splitter_behavior() -> None:
-    """`section` collapses a fitting subtree; `section-flat` keeps per-section."""
+def test_subtree_vs_section_splitter_behavior() -> None:
+    """`subtree` collapses a fitting subtree; `section` keeps per-heading."""
     fixture = """# Parent
 
 Parent intro.
@@ -2256,7 +2256,7 @@ Two body.
 """
     document = MarkdownParser().parse(fixture, document_title="t.md")
 
-    merged = SectionSplitter(
+    merged = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(max_tokens=1000, merge_below_ratio=0.0),
     ).split(document)
@@ -2265,13 +2265,13 @@ Two body.
     assert "## One" in merged[0].body
     assert "## Two" in merged[0].body
 
-    from lumberjack.core.splitters import ExactSectionFlatSplitter
+    from lumberjack.core.splitters import ExactSectionSplitter
 
-    per_section = ExactSectionFlatSplitter(
+    per_section = ExactSectionSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(max_tokens=1000, merge_below_ratio=0.0),
     ).split(document)
-    # section-flat: three chunks, one per section.  The "# Parent" body
+    # section: three chunks, one per section.  The "# Parent" body
     # lives under the document root (level 0), so its headings tuple is
     # empty under ancestor-heading rendering.
     assert len(per_section) == 3
@@ -2283,8 +2283,8 @@ Two body.
     assert per_section[2].body == "# Parent\n\n## Two\n\nTwo body."
 
 
-def test_incremental_section_vs_flat_splitter_behavior() -> None:
-    """IncrementalSectionFlatSplitter behaves like ExactSectionFlatSplitter."""
+def test_incremental_subtree_vs_section_splitter_behavior() -> None:
+    """Incremental section (per-heading) behaves like its exact variant."""
     fixture = """# Parent
 
 Parent intro.
@@ -2299,16 +2299,16 @@ Two body.
 """
     document = MarkdownParser().parse(fixture, document_title="t.md")
 
-    merged = IncrementalSectionSplitter(
+    merged = IncrementalSubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(max_tokens=1000, merge_below_ratio=0.0),
     ).split(document)
     assert len(merged) == 1
     assert merged[0].headings == ((1, "Parent"),)
 
-    from lumberjack.core.splitters import IncrementalSectionFlatSplitter
+    from lumberjack.core.splitters import IncrementalSectionSplitter
 
-    per_section = IncrementalSectionFlatSplitter(
+    per_section = IncrementalSectionSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(max_tokens=1000, merge_below_ratio=0.0),
     ).split(document)
@@ -2318,8 +2318,8 @@ Two body.
     assert per_section[2].headings == ((1, "Parent"),)
 
 
-def test_section_flat_still_splits_standalone_blocks() -> None:
-    """section-flat still routes standalone blocks through body splitting."""
+def test_section_splitter_still_splits_standalone_blocks() -> None:
+    """section splitter still routes standalone blocks through body splitting."""
     fixture = """# Parent
 
 | A | B |
@@ -2331,9 +2331,9 @@ def test_section_flat_still_splits_standalone_blocks() -> None:
 One body.
 """
     document = MarkdownParser().parse(fixture, document_title="t.md")
-    from lumberjack.core.splitters import ExactSectionFlatSplitter
+    from lumberjack.core.splitters import ExactSectionSplitter
 
-    splitter = ExactSectionFlatSplitter(
+    splitter = ExactSectionSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=10000,
@@ -2422,24 +2422,23 @@ def test_merge_below_ratio_threshold_derived_from_max_tokens() -> None:
     assert 15 < chunks_merge[0].token_count <= 30
 
 
-def test_section_flat_registry_lookup() -> None:
+def test_section_splitter_registry_lookup() -> None:
     from lumberjack.core.splitters import (
-        ExactSectionFlatSplitter,
-        IncrementalSectionFlatSplitter,
+        ExactSectionSplitter,
+        IncrementalSectionSplitter,
         create_splitter,
     )
 
-    assert create_splitter("section-flat").__class__ is ExactSectionFlatSplitter
-    assert create_splitter("exact-section-flat").__class__ is ExactSectionFlatSplitter
+    assert create_splitter("section").__class__ is ExactSectionSplitter
+    assert create_splitter("exact-section").__class__ is ExactSectionSplitter
     assert (
-        create_splitter("incremental-section-flat").__class__
-        is IncrementalSectionFlatSplitter
+        create_splitter("incremental-section").__class__ is IncrementalSectionSplitter
     )
 
 
-def test_section_flat_does_not_subtree_collapse() -> None:
-    """section-flat 永远不合并整棵子树, 即使它很小."""
-    from lumberjack.core.splitters import ExactSectionFlatSplitter
+def test_section_splitter_does_not_subtree_collapse() -> None:
+    """section 永远不合并整棵子树, 即使它很小."""
+    from lumberjack.core.splitters import ExactSectionSplitter
 
     fixture = """# Parent
 
@@ -2454,28 +2453,28 @@ One body.
 Two body.
 """
     document = MarkdownParser().parse(fixture, document_title="t.md")
-    splitter = ExactSectionFlatSplitter(
+    splitter = ExactSectionSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(max_tokens=10000, merge_below_ratio=0.0),
     )
 
     chunks = splitter.split(document)
 
-    # 即使整棵子树远小于预算, section-flat 也不做 subtree-collapse.
+    # 即使整棵子树远小于预算, section 也不做 subtree-collapse.
     assert len(chunks) == 3
 
 
-def test_section_flat_does_not_merge_tail_fragments() -> None:
-    """section-flat 不调用 _merge_small_chunks, 尾部碎片保留."""
-    from lumberjack.core.splitters import ExactSectionFlatSplitter
+def test_section_splitter_does_not_merge_tail_fragments() -> None:
+    """section 不调用 _merge_small_chunks, 尾部碎片保留."""
+    from lumberjack.core.splitters import ExactSectionSplitter
 
     # 构造一个 body 超过 ideal_max_tokens 的 section, 强制 _split_section_body
     # 切出多块; 尾部碎片(小于 merge 阈值)在 section 模式下会被合并,
-    # 在 section-flat 模式下保留.
+    # 在 section 模式下保留.
     body = "x " * 200  # ~400 tokens
     document = MarkdownParser().parse(f"# A\n\n{body}", document_title="t.md")
 
-    flat_splitter = ExactSectionFlatSplitter(
+    flat_splitter = ExactSectionSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=100,
@@ -2486,7 +2485,7 @@ def test_section_flat_does_not_merge_tail_fragments() -> None:
     )
     flat_chunks = flat_splitter.split(document)
 
-    section_splitter = SectionSplitter(
+    section_splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=100,
@@ -2505,9 +2504,9 @@ def test_section_flat_does_not_merge_tail_fragments() -> None:
     assert len(flat_chunks) >= 2
 
 
-def test_incremental_section_flat_does_not_subtree_collapse() -> None:
-    """incremental-section-flat 同样不做 subtree-collapse 与尾部合并."""
-    from lumberjack.core.splitters import IncrementalSectionFlatSplitter
+def test_incremental_section_splitter_does_not_subtree_collapse() -> None:
+    """incremental-section 同样不做 subtree-collapse 与尾部合并."""
+    from lumberjack.core.splitters import IncrementalSectionSplitter
 
     fixture = """# Parent
 
@@ -2522,7 +2521,7 @@ One body.
 Two body.
 """
     document = MarkdownParser().parse(fixture, document_title="t.md")
-    splitter = IncrementalSectionFlatSplitter(
+    splitter = IncrementalSectionSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(max_tokens=10000, merge_below_ratio=0.0),
     )
