@@ -56,16 +56,22 @@ paragraph/line/sentence/word fallback when a block or section is too large.
 ### As a library
 
 ```bash
-pip install lumberjack
+pip install git+https://github.com/ouyangfeng2022/lumberjack.git
 ```
 
-Optional extras:
+Optional extras (use the `lumberjack[...] @ git+...` form so the extras apply to the git source):
 
 ```bash
-pip install "lumberjack[tokenizers]"   # tiktoken / transformers token counting
-pip install "lumberjack[docx]"         # DOCX document support
-pip install "lumberjack[web]"          # FastAPI web server + UI
-pip install "lumberjack[all]"          # everything
+pip install "lumberjack[tokenizers] @ git+https://github.com/ouyangfeng2022/lumberjack.git"   # tiktoken / transformers token counting
+pip install "lumberjack[docx] @ git+https://github.com/ouyangfeng2022/lumberjack.git"         # DOCX document support
+pip install "lumberjack[web] @ git+https://github.com/ouyangfeng2022/lumberjack.git"          # FastAPI web server + UI
+pip install "lumberjack[all] @ git+https://github.com/ouyangfeng2022/lumberjack.git"          # everything
+```
+
+To pin a specific version, append `@<tag>` or `@<commit>`:
+
+```bash
+pip install "lumberjack @ git+https://github.com/ouyangfeng2022/lumberjack.git@v0.1.0"
 ```
 
 > [!NOTE]
@@ -108,7 +114,7 @@ lumber document.md --max-tokens 1200
 ### Web UI
 
 ```bash
-pip install "lumberjack[web]"
+pip install "lumberjack[web] @ git+https://github.com/ouyangfeng2022/lumberjack.git"
 lumberjack-serve
 ```
 
