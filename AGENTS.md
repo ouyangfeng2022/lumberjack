@@ -93,7 +93,8 @@ Main components:
 - **Splitters**: `src/lumberjack/core/splitters/` — operate on `DocumentAST`, format-agnostic
   - `base.py` provides `BaseSplitter` shared state and helpers
   - `recursive.py` provides `RecursiveSplitter` (registry: "recursive") — structure-first, budget-aware
-  - `section.py` provides `SubtreeSplitter` (registry: "subtree"/"exact-subtree") and `SectionSplitter` (registry: "section"/"exact-section"). `SubtreeSplitter` is subtree-first: collapses a fitting subtree into one chunk, otherwise one chunk per heading section (with tail-fragment merging). `SectionSplitter` emits one chunk per heading section's direct body and recurses into children, with **no** subtree-collapse and **no** tail-fragment merging (regardless of `merge_below_ratio`). `IncrementalSubtreeSplitter`/`IncrementalSectionSplitter` are the incremental-measure variants.
+  - `subtree.py` provides `SubtreeSplitter` (registry: "subtree"/"exact-subtree") — subtree-first: collapses a fitting subtree into one chunk, otherwise one chunk per heading section (with tail-fragment merging).
+  - `section.py` provides `SectionSplitter` (registry: "section"/"exact-section"). It emits one chunk per heading section's direct body and recurses into children, with **no** subtree-collapse and **no** tail-fragment merging (regardless of `merge_below_ratio`). `IncrementalSubtreeSplitter`/`IncrementalSectionSplitter` are the incremental-measure variants.
   - `__init__.py` provides `SPLITTER_REGISTRY` and `create_splitter()` factory
 - **Visitor**: `src/lumberjack/core/visitor.py`
   - `AstVisitor` — lightweight AST visitor with enter/depart hooks for section/block/inline and structured content (table cells, code, math); works with any `DocumentAST`

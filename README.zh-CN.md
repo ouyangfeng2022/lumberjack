@@ -534,7 +534,8 @@ src/lumberjack/
 │   ├── splitters/           # 递归、子树 & 章节切分器
 │   │   ├── base.py          # 共享切分器辅助逻辑
 │   │   ├── recursive.py     # RecursiveSplitter
-│   │   ├── section.py       # SubtreeSplitter & SectionSplitter
+│   │   ├── subtree.py       # SubtreeSplitter
+│   │   ├── section.py       # SectionSplitter
 │   │   └── __init__.py      # 切分器注册表/工厂
 │   └── parsers/             # 格式解析器：原始输入 -> DocumentAST
 │       ├── markdown/

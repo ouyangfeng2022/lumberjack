@@ -576,7 +576,8 @@ src/lumberjack/
 │   ├── splitters/           # Recursive, subtree & section splitters
 │   │   ├── base.py          # Shared splitter helpers
 │   │   ├── recursive.py     # RecursiveSplitter
-│   │   ├── section.py       # SubtreeSplitter & SectionSplitter
+│   │   ├── subtree.py       # SubtreeSplitter
+│   │   ├── section.py       # SectionSplitter
 │   │   └── __init__.py      # Splitter registry/factory
 │   └── parsers/             # Format-specific parsers: raw input -> DocumentAST
 │       ├── markdown/

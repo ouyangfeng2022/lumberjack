@@ -11,10 +11,12 @@ from .recursive import (
 )
 from .section import (
     ExactSectionSplitter,
-    ExactSubtreeSplitter,
     IncrementalSectionSplitter,
-    IncrementalSubtreeSplitter,
     SectionSplitter,
+)
+from .subtree import (
+    ExactSubtreeSplitter,
+    IncrementalSubtreeSplitter,
     SubtreeSplitter,
 )
 

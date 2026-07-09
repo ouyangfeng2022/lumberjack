@@ -22,7 +22,7 @@ import pytest
 from lumberjack.core.models import SplitOptions
 from lumberjack.core.parsers.markdown.parser import MarkdownParser
 from lumberjack.core.splitters.recursive import RecursiveSplitter
-from lumberjack.core.splitters.section import (
+from lumberjack.core.splitters.subtree import (
     IncrementalSubtreeSplitter,
     SubtreeSplitter,
 )
