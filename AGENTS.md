@@ -235,6 +235,17 @@ In short: if a user reading the changelog would not care about the change, it do
 - Each entry should be a concise, user-facing description of the change, not an implementation detail.
 - Create `CHANGELOG.md` if it does not yet exist.
 
+## Versioning
+
+Package versions are managed by Git tags through `hatch-vcs` (`dynamic = ["version"]` with `[tool.hatch.version] source = "vcs"` in `pyproject.toml`). Do not maintain a separate hard-coded package version unless the versioning strategy is deliberately changed.
+
+Before every code push, decide whether the change set requires a version update:
+
+- If the push is ordinary development work, no tag is required; `hatch-vcs` will expose a `.devN` version after the latest tag.
+- If the push is a release or should produce a stable installable version, choose the next SemVer version, update the changelog release section, and create the corresponding Git tag (for example `v0.2.0`) before publishing.
+- If the push contains user-visible behavior that is not being released yet, update `CHANGELOG.md` under `Unreleased` but leave the package version to the VCS-derived development version.
+- If the push is docs-only, tests-only, formatting-only, or internal tooling-only, record that no version bump is needed.
+
 ### Commit workflow
 
 When a change warrants a changelog entry, do it in the same commit (or PR) as the code change — never as a follow-up:
@@ -242,8 +253,9 @@ When a change warrants a changelog entry, do it in the same commit (or PR) as th
 1. Make the code change.
 2. Run the verification steps above (`ty check`, `ruff`, `pytest`).
 3. If the change is user-visible, update `CHANGELOG.md` with an entry describing it.
-4. Stage the code change **and** the `CHANGELOG.md` update together.
-5. Commit (and, if applicable, push/PR) both in the same change set.
+4. Before pushing, decide whether the change set needs a release version tag, an `Unreleased` changelog entry only, or no version update.
+5. Stage the code change **and** the `CHANGELOG.md` update together.
+6. Commit (and, if applicable, push/PR) both in the same change set.
 
 ## Code Organization
 
