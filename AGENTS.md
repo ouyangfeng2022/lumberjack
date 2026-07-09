@@ -211,6 +211,40 @@ After Python code changes:
 4. Run `uv run ruff format`
 5. Run the relevant `pytest` scope
 
+## Changelog
+
+`CHANGELOG.md` records changes that are user-visible — i.e. things a consumer of lumberjack would notice (new features, behavior changes, bug fixes, removed/renamed APIs, dependency changes, CLI/web option changes, etc.).
+
+Whether to update `CHANGELOG.md` is judged on a **per-change basis**:
+
+- **Update it** for changes a user could observe: new features, behavior changes, bug fixes, removed/deprecated API, changed CLI options, changed dependencies, performance changes.
+- **Skip it** for purely internal changes that don't affect users: docs/typo fixes, comment tweaks, refactors with no behavior change, test-only changes, CI/internal tooling churn, formatting/lint fixes.
+
+In short: if a user reading the changelog would not care about the change, it does not need an entry.
+
+### Format
+
+- Add entries under an `Unreleased` section at the top of the file.
+- Follow the [Keep a Changelog](https://keepachangelog.com/) format and group entries by type:
+  - `Added` for new features
+  - `Changed` for changes in existing functionality
+  - `Deprecated` for soon-to-be removed features
+  - `Removed` for now removed features
+  - `Fixed` for any bug fixes
+  - `Security` for vulnerabilities
+- Each entry should be a concise, user-facing description of the change, not an implementation detail.
+- Create `CHANGELOG.md` if it does not yet exist.
+
+### Commit workflow
+
+When a change warrants a changelog entry, do it in the same commit (or PR) as the code change — never as a follow-up:
+
+1. Make the code change.
+2. Run the verification steps above (`ty check`, `ruff`, `pytest`).
+3. If the change is user-visible, update `CHANGELOG.md` with an entry describing it.
+4. Stage the code change **and** the `CHANGELOG.md` update together.
+5. Commit (and, if applicable, push/PR) both in the same change set.
+
 ## Code Organization
 
 ```
