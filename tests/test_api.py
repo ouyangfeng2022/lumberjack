@@ -189,16 +189,16 @@ def test_lumber_accepts_ideal_max_tokens_ratio() -> None:
     ]
 
 
-def test_lumber_accepts_section_splitter() -> None:
+def test_lumber_accepts_subtree_splitter() -> None:
     chunks = lumber(
         MERGED_SECTION_FIXTURE,
         document_title="development.md",
-        splitter="section",
+        splitter="subtree",
         max_tokens=1000,
         skip_empty_sections=False,
     )
 
-    # The whole subtree fits within the budget, so the section splitter's
+    # The whole subtree fits within the budget, so the subtree splitter's
     # subtree-merge short-circuit collapses it into a single chunk whose
     # common heading is the top-level title.
     assert [chunk.headings for chunk in chunks] == [((1, "Development Guide"),)]

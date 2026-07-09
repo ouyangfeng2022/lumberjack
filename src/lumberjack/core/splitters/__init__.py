@@ -10,29 +10,30 @@ from .recursive import (
     RecursiveSplitter,
 )
 from .section import (
-    ExactSectionFlatSplitter,
     ExactSectionSplitter,
-    IncrementalSectionFlatSplitter,
+    ExactSubtreeSplitter,
     IncrementalSectionSplitter,
-    SectionFlatSplitter,
+    IncrementalSubtreeSplitter,
     SectionSplitter,
+    SubtreeSplitter,
 )
 
-# Splitter topology + counting strategy, keyed by name.  ``recursive`` and
-# ``section`` default to the exact (full-recount) variants for backward
-# compatibility; pass ``incremental-recursive`` / ``incremental-section`` to
-# opt into the additive-estimate path.  ``section-flat`` variants disable
-# subtree-collapse and tail-fragment merging.
+# Splitter topology + counting strategy, keyed by name.  ``recursive``,
+# ``subtree``, and ``section`` default to the exact (full-recount) variants;
+# pass ``incremental-recursive`` / ``incremental-subtree`` /
+# ``incremental-section`` to opt into the additive-estimate path.  The
+# ``section`` family is per-heading — it emits one chunk per heading section's
+# direct body with no subtree-collapse and no tail-fragment merging.
 SPLITTER_REGISTRY: dict[str, type[BaseSplitter]] = {
     "recursive": ExactRecursiveSplitter,
     "exact-recursive": ExactRecursiveSplitter,
     "incremental-recursive": IncrementalRecursiveSplitter,
+    "subtree": ExactSubtreeSplitter,
+    "exact-subtree": ExactSubtreeSplitter,
+    "incremental-subtree": IncrementalSubtreeSplitter,
     "section": ExactSectionSplitter,
     "exact-section": ExactSectionSplitter,
-    "section-flat": ExactSectionFlatSplitter,
-    "exact-section-flat": ExactSectionFlatSplitter,
     "incremental-section": IncrementalSectionSplitter,
-    "incremental-section-flat": IncrementalSectionFlatSplitter,
 }
 
 
@@ -45,16 +46,17 @@ def create_splitter(
 
     Args:
         name: Splitter name.  One of ``"recursive"`` (alias for
-            ``"exact-recursive"``, the default), ``"section"`` (alias for
-            ``"exact-section"``), ``"section-flat"`` (alias for
-            ``"exact-section-flat"``), ``"exact-recursive"``,
-            ``"incremental-recursive"``, ``"exact-section"``,
-            ``"incremental-section"``, ``"exact-section-flat"``, or
-            ``"incremental-section-flat"``.  Exact splitters fully recount
+            ``"exact-recursive"``, the default), ``"subtree"`` (alias for
+            ``"exact-subtree"``), ``"section"`` (alias for
+            ``"exact-section"``), ``"exact-recursive"``,
+            ``"incremental-recursive"``, ``"exact-subtree"``,
+            ``"incremental-subtree"``, ``"exact-section"``, or
+            ``"incremental-section"``.  Exact splitters fully recount
             rendered text at every budget decision; incremental splitters
             use an additive estimate + 8-char separator-delta window.
-            ``section-flat`` variants disable subtree-collapse and
-            tail-fragment merging.
+            ``subtree`` is subtree-first (collapses a fitting subtree into
+            one chunk, with tail-fragment merging); ``section`` is
+            per-heading (no subtree-collapse, no tail-fragment merging).
         tokenizer: Tokenizer engine.  Defaults to :class:`ApproxCharTokenizer`.
         options: Split options.
 
@@ -72,13 +74,13 @@ __all__ = [
     "SPLITTER_REGISTRY",
     "BaseSplitter",
     "ExactRecursiveSplitter",
-    "ExactSectionFlatSplitter",
     "ExactSectionSplitter",
+    "ExactSubtreeSplitter",
     "IncrementalRecursiveSplitter",
-    "IncrementalSectionFlatSplitter",
     "IncrementalSectionSplitter",
+    "IncrementalSubtreeSplitter",
     "RecursiveSplitter",
-    "SectionFlatSplitter",
     "SectionSplitter",
+    "SubtreeSplitter",
     "create_splitter",
 ]

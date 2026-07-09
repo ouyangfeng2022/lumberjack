@@ -23,8 +23,8 @@ from lumberjack.core.models import SplitOptions
 from lumberjack.core.parsers.markdown.parser import MarkdownParser
 from lumberjack.core.splitters.recursive import RecursiveSplitter
 from lumberjack.core.splitters.section import (
-    IncrementalSectionSplitter,
-    SectionSplitter,
+    IncrementalSubtreeSplitter,
+    SubtreeSplitter,
 )
 from tests.helpers import CharacterTokenizer
 
@@ -64,12 +64,12 @@ def nested_ast():  # type: ignore[no-untyped-def]
 
 
 # ---------------------------------------------------------------------------
-# SectionSplitter — render-aware budgeting
+# SubtreeSplitter — render-aware budgeting
 # ---------------------------------------------------------------------------
 
 
-class TestSectionSplitterRenderAware:
-    """SectionSplitter excludes ancestor heading tokens when not rendered."""
+class TestSubtreeSplitterRenderAware:
+    """SubtreeSplitter excludes ancestor heading tokens when not rendered."""
 
     @staticmethod
     def _split(
@@ -78,7 +78,7 @@ class TestSectionSplitterRenderAware:
         render_headings: bool,
         max_tokens: int = 108,  # type: ignore[no-untyped-def]
     ) -> list:
-        splitter = SectionSplitter(
+        splitter = SubtreeSplitter(
             tokenizer=CharacterTokenizer(),
             options=SplitOptions(
                 max_tokens=max_tokens,
@@ -153,7 +153,7 @@ class TestSectionSplitterRenderAware:
         self,
         nested_ast,  # type: ignore[no-untyped-def]
     ) -> None:
-        splitter = SectionSplitter(
+        splitter = SubtreeSplitter(
             tokenizer=CharacterTokenizer(),
             options=SplitOptions(
                 max_tokens=60,
@@ -199,7 +199,7 @@ beta beta beta beta beta beta
 """,
             document_title="t.md",
         )
-        splitter = IncrementalSectionSplitter(
+        splitter = IncrementalSubtreeSplitter(
             tokenizer=CharacterTokenizer(),
             options=SplitOptions(
                 max_tokens=40,
@@ -371,7 +371,7 @@ class TestRenderHeadingsOption:
 
         chunks = lumber(
             NESTED_FIXTURE,
-            splitter="section",
+            splitter="subtree",
             max_tokens=60,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,

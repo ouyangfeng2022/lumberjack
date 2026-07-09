@@ -13,8 +13,8 @@ from .exact import ExactCountingMixin
 from .incremental import IncrementalCountingMixin
 
 
-class ExactSectionSplitter(ExactCountingMixin, BaseSplitter):
-    """Subtree-first section splitter (exact counting).
+class ExactSubtreeSplitter(ExactCountingMixin, BaseSplitter):
+    """Subtree-first splitter (exact counting).
 
     First attempts to collapse an entire subtree (own body + all descendants)
     into a single chunk when it fits ``ideal_max_tokens`` and contains no
@@ -25,7 +25,7 @@ class ExactSectionSplitter(ExactCountingMixin, BaseSplitter):
     budgets).  Every budget decision fully recounts the rendered candidate
     text — no pre-measure, no incremental arithmetic.
 
-    Registered as ``"section"`` (the default) and ``"exact-section"``.
+    Registered as ``"subtree"`` (the default) and ``"exact-subtree"``.
     Works with any tokenizer.
     """
 
@@ -62,7 +62,7 @@ class ExactSectionSplitter(ExactCountingMixin, BaseSplitter):
             )
             body = join_markdown([b.text for b in section.blocks])
             body_tokens = self.tokenizer.count(body, cache=True)
-            # SectionSplitter emits one chunk per section, so the heading
+            # SubtreeSplitter emits one chunk per section, so the heading
             # breadcrumb is the only heading context and is constant for this
             # draft — comparing body tokens against the body-only budget is
             # equivalent to comparing the full rendered footprint against
@@ -99,15 +99,15 @@ class ExactSectionSplitter(ExactCountingMixin, BaseSplitter):
         return chunks
 
 
-class IncrementalSectionSplitter(IncrementalCountingMixin, BaseSplitter):
-    """Subtree-first section splitter with the additive incremental estimate path.
+class IncrementalSubtreeSplitter(IncrementalCountingMixin, BaseSplitter):
+    """Subtree-first splitter with the additive incremental estimate path.
 
-    Same subtree-first packing as :class:`ExactSectionSplitter` (collapse a
+    Same subtree-first packing as :class:`ExactSubtreeSplitter` (collapse a
     fitting subtree into one chunk, otherwise per-section), but the subtree is
     pre-measured and budget decisions use a running estimate rather than full
     rendered recounts.
 
-    Registered as ``"incremental-section"``.  Works with any tokenizer.
+    Registered as ``"incremental-subtree"``.  Works with any tokenizer.
     """
 
     def _split_section(
@@ -180,11 +180,11 @@ class IncrementalSectionSplitter(IncrementalCountingMixin, BaseSplitter):
         return chunks
 
 
-class ExactSectionFlatSplitter(ExactCountingMixin, BaseSplitter):
+class ExactSectionSplitter(ExactCountingMixin, BaseSplitter):
     """Per-heading section splitter without subtree-collapse or tail merging.
 
     Emits one chunk per heading section's direct body and recurses into
-    children.  Unlike :class:`ExactSectionSplitter`, this variant:
+    children.  Unlike :class:`ExactSubtreeSplitter`, this variant:
 
     1. Never collapses an entire subtree into a single chunk (no
        subtree-collapse short-circuit).
@@ -196,7 +196,7 @@ class ExactSectionFlatSplitter(ExactCountingMixin, BaseSplitter):
     budgets).  Every budget decision fully recounts the rendered candidate
     text.
 
-    Registered as ``"section-flat"`` and ``"exact-section-flat"``.
+    Registered as ``"section"`` (the default) and ``"exact-section"``.
     Works with any tokenizer.
     """
 
@@ -247,17 +247,17 @@ class ExactSectionFlatSplitter(ExactCountingMixin, BaseSplitter):
         return chunks
 
 
-class IncrementalSectionFlatSplitter(IncrementalCountingMixin, BaseSplitter):
+class IncrementalSectionSplitter(IncrementalCountingMixin, BaseSplitter):
     """Per-heading section splitter (incremental estimate) without subtree-collapse or tail merging.
 
-    Same per-section topology as :class:`ExactSectionFlatSplitter`, but uses
+    Same per-section topology as :class:`ExactSectionSplitter`, but uses
     the additive incremental estimate path: the subtree is pre-measured and
     budget decisions use a running estimate rather than full rendered
     recounts.
 
     No subtree-collapse short-circuit and no tail-fragment merging.
 
-    Registered as ``"incremental-section-flat"``.  Works with any tokenizer.
+    Registered as ``"incremental-section"``.  Works with any tokenizer.
     """
 
     def _split_section(
@@ -307,15 +307,16 @@ class IncrementalSectionFlatSplitter(IncrementalCountingMixin, BaseSplitter):
         return chunks
 
 
-# Backward-compatible aliases: the default ``section`` splitter is the exact one.
+# Backward-compatible aliases: the default ``subtree`` and ``section``
+# splitters are the exact variants.
+SubtreeSplitter = ExactSubtreeSplitter
 SectionSplitter = ExactSectionSplitter
-SectionFlatSplitter = ExactSectionFlatSplitter
 
 __all__ = [
-    "ExactSectionFlatSplitter",
     "ExactSectionSplitter",
-    "IncrementalSectionFlatSplitter",
+    "ExactSubtreeSplitter",
     "IncrementalSectionSplitter",
-    "SectionFlatSplitter",
+    "IncrementalSubtreeSplitter",
     "SectionSplitter",
+    "SubtreeSplitter",
 ]

@@ -31,6 +31,7 @@ const en = {
   opts_render_headings: 'Include ancestor headings in each chunk',
   opts_splitter: 'Splitter',
   opts_splitter_recursive: 'Recursive',
+  opts_splitter_subtree: 'Subtree',
   opts_splitter_section: 'Section',
   opts_tokenizer: 'Tokenizer',
   opts_tokenizer_approx: 'Approx',

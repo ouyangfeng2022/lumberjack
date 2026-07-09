@@ -31,6 +31,7 @@ const zh = {
   opts_render_headings: '在每个块中包含祖先标题',
   opts_splitter: '切分器',
   opts_splitter_recursive: '递归切分',
+  opts_splitter_subtree: '子树切分',
   opts_splitter_section: '章节切分',
   opts_tokenizer: '分词器',
   opts_tokenizer_approx: '估算字符',
