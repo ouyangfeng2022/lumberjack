@@ -188,7 +188,6 @@ class DocxParser(ParserProtocol[bytes]):
         *,
         document_title: str | None = None,
         document_metadata: dict[str, object] | None = None,
-        max_heading_level: int | None = None,  # noqa: ARG002
     ) -> DocumentAST:
         """Parse DOCX binary data into a DocumentAST.
 
@@ -196,10 +195,6 @@ class DocxParser(ParserProtocol[bytes]):
             data: Raw DOCX file content.
             document_title: Optional override for the document title.
             document_metadata: Optional metadata dict merged into the result.
-            max_heading_level: Currently ignored. Accepted for protocol parity
-                with the Markdown and HTML parsers; DOCX heading levels are
-                determined by paragraph styles and are not remapped at parse
-                time (may be supported in the future).
         """
         from docx import Document
 

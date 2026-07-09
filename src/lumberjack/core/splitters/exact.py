@@ -34,7 +34,7 @@ class ExactCountingMixin(BaseSplitter):
 
     def split(self, document: DocumentAST) -> list[Chunk]:
         """Split by walking the raw ``SectionNode`` tree (no pre-measure)."""
-        drafts = self._split_section(document.root)
+        drafts = self._split_section(self._root_for_splitting(document))
         drafts = self._post_process_drafts(drafts)
         return self._finalize_chunks(drafts, document)
 

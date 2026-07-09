@@ -1,11 +1,15 @@
-"""Tests for max_heading_level parameter."""
+"""Tests for ``SplitOptions.max_heading_level``."""
+
+import pytest
 
 from lumberjack import lumber
+from lumberjack.core.models import SplitOptions
 from lumberjack.core.parsers.markdown.parser import MarkdownItParser
+from lumberjack.core.splitters import create_splitter
 
 
-def test_max_heading_level_limits_section_depth():
-    """Test that max_heading_level correctly limits heading parsing."""
+def test_parser_preserves_full_heading_depth():
+    """Parsers keep full structure; heading-depth limiting belongs to splitters."""
     markdown = """
 # H1 Section
 
@@ -22,7 +26,6 @@ def test_max_heading_level_limits_section_depth():
 Content in H6 section.
 """
 
-    # Without max_heading_level, all headings are parsed
     doc = MarkdownItParser().parse(markdown)
     assert len(doc.root.children) == 1  # H1
     h1_section = doc.root.children[0]
@@ -38,30 +41,9 @@ Content in H6 section.
     assert h5_section.children[0].level == 6
     assert len(h5_section.children[0].blocks) == 1  # Content in H6
 
-    # With max_heading_level=3, H4-H6 should be treated as paragraphs
-    doc = MarkdownItParser().parse(markdown, max_heading_level=3)
-    assert len(doc.root.children) == 1  # H1
-    h1_section = doc.root.children[0]
-    assert len(h1_section.children) == 1  # H2
-    h2_section = h1_section.children[0]
-    assert len(h2_section.children) == 1  # H3
-    h3_section = h2_section.children[0]
-    assert h3_section.level == 3
-
-    # H4, H5, H6 should be blocks, not sections
-    assert len(h3_section.blocks) == 4  # H4, H5, H6, and content paragraphs
-    block_kinds = [block.kind for block in h3_section.blocks]
-    assert block_kinds.count("paragraph") == 4  # All treated as paragraphs
-
-    # Check that H4-H6 text is preserved
-    texts = [block.text for block in h3_section.blocks]
-    assert any("H4 Section" in text for text in texts)
-    assert any("H5 Section" in text for text in texts)
-    assert any("H6 Section" in text for text in texts)
-
 
 def test_max_heading_level_with_lumber():
-    """Test that max_heading_level works through the lumber API."""
+    """``lumber()`` threads max_heading_level into splitter options."""
     markdown = """
 # Main Section
 
@@ -84,7 +66,7 @@ Content here.
     assert len(chunk.headings) == 3  # H1, H2, H3 ancestors
     assert chunk.section_level == 4
 
-    # With max_heading_level=2, only H1 and H2 create sections
+    # With max_heading_level=2, only H1 and H2 remain chunk section context.
     chunks = lumber(markdown, splitter="recursive", max_heading_level=2)
     chunk = chunks[0]
     # H2 is the chunk's own section title, so only H1 is ancestor metadata.
@@ -97,8 +79,12 @@ Content here.
     assert "#### More Detail" in chunk.body
 
 
-def test_max_heading_level_instance_vs_parse_parameter():
-    """Test that parse parameter overrides instance setting."""
+@pytest.mark.parametrize(
+    "splitter_name",
+    ("recursive", "incremental-recursive", "subtree", "section"),
+)
+def test_max_heading_level_manual_splitter_pipeline(splitter_name: str):
+    """Manual parse -> split users configure heading depth on SplitOptions."""
     markdown = """
 # H1
 
@@ -107,36 +93,42 @@ def test_max_heading_level_instance_vs_parse_parameter():
 ### H3
 """
 
-    # Instance setting
-    parser = MarkdownItParser(max_heading_level=2)
-    doc = parser.parse(markdown)
+    doc = MarkdownItParser().parse(markdown)
     h1 = doc.root.children[0]
     assert len(h1.children) == 1  # H2
-    assert len(h1.children[0].blocks) == 1  # H3 as paragraph
+    assert len(h1.children[0].children) == 1  # H3 remains in parsed AST
 
-    # Parse parameter overrides instance setting
-    doc = parser.parse(markdown, max_heading_level=1)
-    h1 = doc.root.children[0]
-    assert len(h1.children) == 0  # No H2 section
-    assert len(h1.blocks) == 2  # H2 and H3 as paragraphs
+    splitter = create_splitter(
+        splitter_name,
+        options=SplitOptions(max_tokens=500, max_heading_level=2),
+    )
+    chunks = splitter.split(doc)
+
+    assert len(chunks) == 1
+    chunk = chunks[0]
+    assert chunk.headings == ((1, "H1"),)
+    assert chunk.section_level == 2
+    assert "### H3" in chunk.body
 
 
 def test_max_heading_level_none_means_all():
-    """Test that None means all headings are parsed."""
+    """None means all parsed headings remain section context."""
     markdown = """
 # H1
 
 ###### H6
+
+Body.
 """
 
-    doc = MarkdownItParser().parse(markdown, max_heading_level=None)
-    assert len(doc.root.children) == 1  # H1
-    h1 = doc.root.children[0]
-    assert len(h1.children) == 1  # H6 (nested under H1)
+    chunks = lumber(markdown, splitter="recursive", max_heading_level=None)
+    chunk = chunks[0]
+    assert chunk.headings == ((1, "H1"),)
+    assert chunk.section_level == 6
 
 
 def test_max_heading_level_zero_disables_all_headings():
-    """Test that max_heading_level=0 treats all headings as paragraphs."""
+    """A zero max heading level treats every heading as body text."""
     markdown = """
 # H1
 
@@ -145,15 +137,25 @@ def test_max_heading_level_zero_disables_all_headings():
 ### H3
 """
 
-    doc = MarkdownItParser().parse(markdown, max_heading_level=0)
-    assert len(doc.root.children) == 0  # No sections
-    assert len(doc.root.blocks) == 3  # All three headings as paragraphs
+    chunks = lumber(markdown, splitter="recursive", max_heading_level=0)
+
+    assert len(chunks) == 1
+    chunk = chunks[0]
+    assert chunk.headings == ()
+    assert chunk.section_level == 0
+    assert chunk.body == "# H1\n\n## H2\n\n### H3"
 
 
 if __name__ == "__main__":
-    test_max_heading_level_limits_section_depth()
+    test_parser_preserves_full_heading_depth()
     test_max_heading_level_with_lumber()
-    test_max_heading_level_instance_vs_parse_parameter()
+    for _splitter_name in (
+        "recursive",
+        "incremental-recursive",
+        "subtree",
+        "section",
+    ):
+        test_max_heading_level_manual_splitter_pipeline(_splitter_name)
     test_max_heading_level_none_means_all()
     test_max_heading_level_zero_disables_all_headings()
     print("All tests passed!")

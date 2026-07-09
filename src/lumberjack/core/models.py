@@ -208,6 +208,10 @@ class SplitOptions:
             body content, so ``token_count`` measures the final rendered body;
             ``estimated_token_count`` stays close but may differ slightly due
             to join approximations.
+        max_heading_level: Maximum heading level to keep as chunk section
+            context. Headings deeper than this level are rendered as body text.
+            ``None`` keeps all parsed headings; ``0`` treats all headings as body
+            text.
         block_options: Per-block-kind configuration. Keys are lowercase block
             kind strings matching :attr:`MarkdownBlock.kind` values; values are
             :class:`BaseParams` instances. Callers that need parser-specific
@@ -221,6 +225,7 @@ class SplitOptions:
     merge_below_ratio: float = 0.125
     skip_empty_sections: bool = True
     render_headings: bool = True
+    max_heading_level: int | None = None
     block_options: dict[str, BaseParams] = field(default_factory=dict)
 
     # Cached derived fields — computed in __post_init__.
@@ -231,6 +236,11 @@ class SplitOptions:
         if not (0.0 <= self.merge_below_ratio < 1.0):
             raise ValueError(
                 f"merge_below_ratio must be in [0.0, 1.0), got {self.merge_below_ratio}"
+            )
+        if self.max_heading_level is not None and self.max_heading_level < 0:
+            raise ValueError(
+                f"max_heading_level must be greater than or equal to 0, "
+                f"got {self.max_heading_level}"
             )
         object.__setattr__(
             self,

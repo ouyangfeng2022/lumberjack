@@ -93,6 +93,38 @@ def test_split_file_accepts_render_headings_false(client: TestClient) -> None:
     assert chunk["body"] == "# Parent\n\nIntro."
 
 
+def test_split_text_accepts_max_heading_level(client: TestClient) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={
+            "text": "# Parent\n\n## Child\n\n### Detail\n\nBody.",
+            "max_tokens": 500,
+            "max_heading_level": 2,
+        },
+    )
+
+    assert response.status_code == 200
+    chunk = response.json()["chunks"][0]
+    assert chunk["headings"] == [[1, "Parent"]]
+    assert chunk["section_level"] == 2
+    assert "### Detail" in chunk["body"]
+
+
+def test_split_file_accepts_max_heading_level(client: TestClient) -> None:
+    md_file = io.BytesIO(b"# Parent\n\n## Child\n\n### Detail\n\nBody.")
+    response = client.post(
+        "/lumber/api/split/file",
+        files={"file": ("guide.md", md_file, "text/markdown")},
+        data={"max_tokens": "500", "max_heading_level": "2"},
+    )
+
+    assert response.status_code == 200
+    chunk = response.json()["chunks"][0]
+    assert chunk["headings"] == [[1, "Parent"]]
+    assert chunk["section_level"] == 2
+    assert "### Detail" in chunk["body"]
+
+
 def test_split_with_html_file_auto_detects_format(client: TestClient) -> None:
     html_file = io.BytesIO(b"<html><body><h1>Guide</h1><p>Intro</p></body></html>")
     response = client.post(

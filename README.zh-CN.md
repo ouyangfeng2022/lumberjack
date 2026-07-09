@@ -346,6 +346,7 @@ lumber <input> [options]
 | `--tokenizer` | `approx` | `approx`、`tiktoken` 或 `transformers` |
 | `--splitter` | `recursive` | `recursive`、`subtree`、`section`、`exact-recursive`、`incremental-recursive`、`exact-subtree`、`incremental-subtree`、`exact-section`、`incremental-section` |
 | `--no-render-headings` | off | 从 `body` 中省略祖先标题面包屑（参见[是否渲染标题](#是否渲染标题render_headings)） |
+| `--max-heading-level` | — | 保留为分块章节上下文的最大标题层级；更深标题会渲染为正文 |
 | `--block-config` | — | 按块类型配置（可重复指定） |
 | `--block-config-json` | — | 结构化的按块类型 JSON 配置 |
 
@@ -405,6 +406,7 @@ curl -X POST http://localhost:9612/lumber/api/split/file \
 | `merge_below_ratio` | float | `0.125` | 尾部碎片合并阈值，max-tokens 的比例（0 禁用） |
 | `skip_empty_sections` | bool | `true` | 丢弃仅有标题无正文的分块 |
 | `render_headings` | bool | `true` | 为 `false` 时从 `body` 中省略祖先标题面包屑（参见[是否渲染标题](#是否渲染标题render_headings)） |
+| `max_heading_level` | int 或 null | `null` | 保留为分块章节上下文的最大标题层级；更深标题会渲染为正文 |
 | `block_configs` | object | `null` | 按块类型配置 |
 | `tokenizer` | string | `"approx"` | `approx`、`tiktoken` 或 `transformers` |
 | `splitter` | string | `"recursive"` | `recursive`、`subtree`、`section`、`exact-recursive`、`incremental-recursive`、`exact-subtree`、`incremental-subtree`、`exact-section`、`incremental-section` |

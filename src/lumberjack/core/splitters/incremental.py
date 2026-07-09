@@ -41,7 +41,7 @@ class IncrementalCountingMixin(BaseSplitter):
 
     def split(self, document: DocumentAST) -> list[Chunk]:
         """Measure the tree once, then split via the topology's _split_section."""
-        measured_root = self._measure_section(document.root)
+        measured_root = self._measure_section(self._root_for_splitting(document))
         drafts = self._split_section(measured_root)
         drafts = self._post_process_drafts(drafts)
         return self._finalize_chunks(drafts, document)
