@@ -47,16 +47,22 @@ DOCX 二进制   → DocxParser ────────────────
 ### 作为库使用
 
 ```bash
-pip install lumberjack
+pip install git+https://github.com/ouyangfeng2022/lumberjack.git
 ```
 
-可选扩展：
+可选扩展（使用 `lumberjack[...] @ git+...` 的形式，使扩展项作用于 git 源码）：
 
 ```bash
-pip install "lumberjack[tokenizers]"   # 基于 tiktoken / transformers 的模型 token 计数
-pip install "lumberjack[docx]"         # DOCX 文档支持
-pip install "lumberjack[web]"          # FastAPI Web 服务器 + UI
-pip install "lumberjack[all]"          # 包含全部功能
+pip install "lumberjack[tokenizers] @ git+https://github.com/ouyangfeng2022/lumberjack.git"   # 基于 tiktoken / transformers 的模型 token 计数
+pip install "lumberjack[docx] @ git+https://github.com/ouyangfeng2022/lumberjack.git"         # DOCX 文档支持
+pip install "lumberjack[web] @ git+https://github.com/ouyangfeng2022/lumberjack.git"          # FastAPI Web 服务器 + UI
+pip install "lumberjack[all] @ git+https://github.com/ouyangfeng2022/lumberjack.git"          # 包含全部功能
+```
+
+如需锁定特定版本，在 URL 后追加 `@<tag>` 或 `@<commit>`：
+
+```bash
+pip install "lumberjack @ git+https://github.com/ouyangfeng2022/lumberjack.git@v0.1.0"
 ```
 
 > [!NOTE]
@@ -99,7 +105,7 @@ lumber document.md --max-tokens 1200
 ### Web UI
 
 ```bash
-pip install "lumberjack[web]"
+pip install "lumberjack[web] @ git+https://github.com/ouyangfeng2022/lumberjack.git"
 lumberjack-serve
 ```
 
