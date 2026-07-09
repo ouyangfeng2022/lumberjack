@@ -64,16 +64,26 @@ def test_html_parser_block_kinds_match_default_block_kinds() -> None:
     assert isinstance(parser.block_kinds, frozenset)
 
 
-def test_html_parser_respects_max_heading_level():
-    """Headings deeper than max_heading_level should become regular paragraph blocks."""
+def test_html_splitter_respects_max_heading_level():
+    """Heading-depth limiting is applied by the splitter, not the HTML parser."""
     parser = HTMLParser()
-    document = parser.parse("<h1>Top</h1><h3>Deep</h3><p>Body</p>", max_heading_level=2)
+    document = parser.parse("<h1>Top</h1><h3>Deep</h3><p>Body</p>")
 
     top = document.root.children[0]
     assert top.title == "Top"
-    assert top.children == []
-    assert [block.kind for block in top.blocks] == ["paragraph", "paragraph"]
-    assert top.blocks[0].text == "Deep"
+    assert top.children[0].title == "Deep"
+
+    splitter = create_splitter(
+        "recursive",
+        CharacterTokenizer(),
+        options=SplitOptions(max_tokens=500, max_heading_level=2),
+    )
+    chunks = splitter.split(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].headings == ()
+    assert chunks[0].section_level == 1
+    assert "### Deep" in chunks[0].body
 
 
 def test_html_parser_preserves_preformatted_text() -> None:

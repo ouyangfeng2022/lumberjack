@@ -80,8 +80,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-heading-level",
         type=int,
         default=None,
-        help="Maximum heading level to parse as sections (Markdown only). "
-        "Headings deeper than this are treated as regular paragraphs.",
+        help="Maximum heading level to keep as chunk section context. "
+        "Deeper headings are rendered as body text.",
     )
     parser.add_argument(
         "--block-config",

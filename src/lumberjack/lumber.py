@@ -67,10 +67,10 @@ def lumber(
         chunk, with tail-fragment merging); ``section`` is per-heading, with
         no subtree-collapse and no tail-fragment merging.
         document_metadata: Extra metadata merged into the document.
-        max_heading_level: Maximum heading level to parse as sections.
-            Headings deeper than this level are treated as regular paragraphs.
-            Applies to Markdown and HTML formats. If None, all headings are
-            parsed.
+        max_heading_level: Maximum heading level to keep as chunk section
+            context. Headings deeper than this level are rendered as regular
+            body text by the splitter. If None, all headings remain section
+            context.
 
     Returns:
         A list of :class:`Chunk` objects ready for downstream use.
@@ -99,7 +99,6 @@ def lumber(
             raw,
             document_title=document_title,
             document_metadata=document_metadata,
-            max_heading_level=max_heading_level,
         )
     elif input_format == "html":
         parser_impl = create_parser("html")
@@ -108,7 +107,6 @@ def lumber(
             raw,
             document_title=document_title,
             document_metadata=document_metadata,
-            max_heading_level=max_heading_level,
         )
     else:
         parser_impl = create_parser("markdown")
@@ -117,7 +115,6 @@ def lumber(
             raw,
             document_title=document_title,
             document_metadata=document_metadata,
-            max_heading_level=max_heading_level,
         )
 
     resolved_block_options = resolve_block_options(
@@ -129,6 +126,7 @@ def lumber(
         merge_below_ratio=merge_below_ratio,
         skip_empty_sections=skip_empty_sections,
         render_headings=render_headings,
+        max_heading_level=max_heading_level,
         block_options=resolved_block_options,
     )
 

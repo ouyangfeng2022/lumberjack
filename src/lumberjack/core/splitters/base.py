@@ -8,6 +8,7 @@ from ..models import (
     Entry,
     HeadingPath,
     MarkdownBlock,
+    SectionNode,
     SplitOptions,
     ancestor_heading_path,
     common_heading_path,
@@ -124,6 +125,66 @@ class BaseSplitter(SplitterProtocol):
     def _heading_budget_token_count(self, path: HeadingPath) -> int:
         """Full heading token count for a draft's internal common prefix."""
         return self._heading_path_token_count(path)
+
+    def _root_for_splitting(self, document: DocumentAST) -> SectionNode:
+        """Return the section tree used by splitters after option-level shaping."""
+        if self.options.max_heading_level is None:
+            return document.root
+        return self._limit_heading_depth(document.root, self.options.max_heading_level)
+
+    def _limit_heading_depth(
+        self,
+        root: SectionNode,
+        max_heading_level: int,
+    ) -> SectionNode:
+        """Clone *root*, demoting deeper sections into paragraph blocks."""
+        limited_root = SectionNode(
+            level=root.level,
+            title=root.title,
+            path=root.path,
+            blocks=list(root.blocks),
+            index=root.index,
+            start_line=root.start_line,
+            title_inlines=root.title_inlines,
+        )
+
+        def demote_section(target: SectionNode, section: SectionNode) -> None:
+            target.blocks.append(
+                MarkdownBlock(
+                    kind="paragraph",
+                    text=render_heading_path((section.heading_key,)),
+                    start_line=section.start_line,
+                    end_line=section.start_line,
+                    inlines=section.title_inlines,
+                    attrs={"demoted_heading_level": section.level},
+                )
+            )
+            target.blocks.extend(section.blocks)
+            for child in section.children:
+                demote_section(target, child)
+
+        def clone_allowed(parent: SectionNode, section: SectionNode) -> None:
+            if section.level > max_heading_level:
+                demote_section(parent, section)
+                return
+
+            cloned = SectionNode(
+                level=section.level,
+                title=section.title,
+                path=(*parent.path, section.heading_key),
+                blocks=list(section.blocks),
+                index=len(parent.children),
+                start_line=section.start_line,
+                title_inlines=section.title_inlines,
+            )
+            parent.add_child(cloned)
+            for child in section.children:
+                clone_allowed(cloned, child)
+
+        for child in root.children:
+            clone_allowed(limited_root, child)
+
+        return limited_root
 
     # ------------------------------------------------------------------
     # Strategy hooks (provided by the counting-strategy mixin)

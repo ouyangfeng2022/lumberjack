@@ -481,7 +481,6 @@ class MarkdownItParser(ParserProtocol[str]):
         block_specs: Iterable[MarkdownBlockSpec] = (),
         options_update: dict[str, Any] | None = None,
         disable_lheading: bool = False,
-        max_heading_level: int | None = None,
     ) -> None:
         (
             self._token_type_to_kind,
@@ -497,7 +496,6 @@ class MarkdownItParser(ParserProtocol[str]):
         if disable_lheading:
             self._parser.disable("lheading")
         self._block_kinds = self._compute_block_kinds()
-        self._max_heading_level = max_heading_level
 
     def parse(
         self,
@@ -505,7 +503,6 @@ class MarkdownItParser(ParserProtocol[str]):
         *,
         document_title: str | None = None,
         document_metadata: dict[str, object] | None = None,
-        max_heading_level: int | None = None,
     ) -> DocumentAST:
         """Parse raw Markdown text into a ``DocumentAST`` with section tree and reference definitions.
 
@@ -513,9 +510,6 @@ class MarkdownItParser(ParserProtocol[str]):
             text: Raw Markdown text to parse.
             document_title: Optional override for the document title.
             document_metadata: Optional metadata dict to merge into the document.
-            max_heading_level: Maximum heading level to parse as sections. Headings deeper
-                than this level are treated as regular paragraphs. If None, all headings are
-                parsed as sections.
 
         Raises:
             TypeError: If ``text`` is not a ``str``.
@@ -526,13 +520,6 @@ class MarkdownItParser(ParserProtocol[str]):
 
         if document_metadata is None:
             document_metadata = {}
-
-        # Use instance max_heading_level if not overridden
-        effective_max_level = (
-            max_heading_level
-            if max_heading_level is not None
-            else self._max_heading_level
-        )
 
         env: dict[str, Any] = {}
         tokens = self._parser.parse(data, env)
@@ -556,14 +543,6 @@ class MarkdownItParser(ParserProtocol[str]):
                 index += 1
                 continue
             if token.type == "heading_open":
-                # Check if this heading level exceeds the max
-                level = int(token.tag[1:]) if token.tag.startswith("h") else 1
-                if effective_max_level is not None and level > effective_max_level:
-                    # Treat as paragraph instead of section
-                    block, index = self._build_block(tokens, index, source_lines)
-                    if block is not None:
-                        section_stack[-1].add_block(block)
-                    continue
                 section, index = self._build_section(tokens, index, section_stack)
                 section_stack[-1].add_child(section)
                 section_stack.append(section)

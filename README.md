@@ -377,6 +377,7 @@ lumber <input> [options]
 | `--tokenizer`              | `approx`    | `approx`, `tiktoken`, or `transformers` |
 | `--splitter`               | `recursive` | `recursive`, `subtree`, `section`, `exact-recursive`, `incremental-recursive`, `exact-subtree`, `incremental-subtree`, `exact-section`, `incremental-section` |
 | `--no-render-headings`     | off         | Omit ancestor heading breadcrumb from `body` (see [render_headings](#rendering-headings-render_headings)) |
+| `--max-heading-level`      | —           | Maximum heading level to keep as chunk section context; deeper headings render as body text |
 | `--block-config`           | —           | Per-block-kind config (repeatable)               |
 | `--block-config-json`      | —           | Structured per-block-kind JSON config            |
 
@@ -436,6 +437,7 @@ Both endpoints accept the same options:
 | `merge_below_ratio` | float | `0.125` | Tail-fragment merge threshold as fraction of max_tokens (0 disables) |
 | `skip_empty_sections` | bool | `true` | Discard heading-only chunks |
 | `render_headings` | bool | `true` | Omit ancestor heading breadcrumb from `body` when `false` (see [render_headings](#rendering-headings-render_headings)) |
+| `max_heading_level` | int or null | `null` | Maximum heading level to keep as chunk section context; deeper headings render as body text |
 | `block_configs` | object | `null` | Per-block-kind config |
 | `tokenizer` | string | `"approx"` | `approx`, `tiktoken`, or `transformers` |
 | `splitter` | string | `"recursive"` | `recursive`, `subtree`, `section`, `exact-recursive`, `incremental-recursive`, `exact-subtree`, `incremental-subtree`, `exact-section`, `incremental-section` |

@@ -41,7 +41,6 @@ class ParserProtocol(Protocol[ParserInput]):
         *,
         document_title: str | None = None,
         document_metadata: dict[str, object] | None = None,
-        max_heading_level: int | None = None,
     ) -> DocumentAST: ...
 
 
