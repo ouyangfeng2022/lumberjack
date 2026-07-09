@@ -132,14 +132,14 @@ chunks = lumber(
     skip_empty_sections=True,
     render_headings=True,      # False：从 body 中去掉祖先标题面包屑
     tokenizer="approx",        # "approx" | "tiktoken" | "transformers"
-    splitter="recursive",      # "recursive" | "section" | "section-flat"
+    splitter="recursive",      # "recursive" | "subtree" | "section"
 )
 ```
 
-计数策略是 splitter 类的固有属性，与 tokenizer 无关。默认的 `recursive`
-和 `section` splitter 是**精确法**：每次预算决策都完整重计渲染候选文本
-（`token_count == estimated_token_count`）。`incremental-recursive` 和
-`incremental-section` 变体则一次性预测量整棵树，使用累加估算值 + 8 字符
+计数策略是 splitter 类的固有属性，与 tokenizer 无关。默认的 `recursive`、
+`subtree` 和 `section` splitter 是**精确法**：每次预算决策都完整重计渲染候选文本
+（`token_count == estimated_token_count`）。`incremental-recursive`、
+`incremental-subtree` 和 `incremental-section` 变体则一次性预测量整棵树，使用累加估算值 + 8 字符
 尾窗近似 entry 之间的 separator——对重型 tokenizer 更快，代价是
 `estimated_token_count` 会与权威的 `token_count`（finalization 时的完整
 重计）略有偏差。任何 tokenizer 都可以配合任何 splitter 使用。
@@ -344,7 +344,7 @@ lumber <input> [options]
 | `--ideal-max-tokens-ratio` | `0.8` | 优先切分预算比例 |
 | `--merge-below-ratio` | `0.125` | 尾部碎片合并阈值，max-tokens 的比例（0 禁用） |
 | `--tokenizer` | `approx` | `approx`、`tiktoken` 或 `transformers` |
-| `--splitter` | `recursive` | `recursive`、`section`、`section-flat`、`exact-recursive`、`incremental-recursive`、`exact-section`、`incremental-section`、`exact-section-flat`、`incremental-section-flat` |
+| `--splitter` | `recursive` | `recursive`、`subtree`、`section`、`exact-recursive`、`incremental-recursive`、`exact-subtree`、`incremental-subtree`、`exact-section`、`incremental-section` |
 | `--no-render-headings` | off | 从 `body` 中省略祖先标题面包屑（参见[是否渲染标题](#是否渲染标题render_headings)） |
 | `--block-config` | — | 按块类型配置（可重复指定） |
 | `--block-config-json` | — | 结构化的按块类型 JSON 配置 |
@@ -407,7 +407,7 @@ curl -X POST http://localhost:9612/lumber/api/split/file \
 | `render_headings` | bool | `true` | 为 `false` 时从 `body` 中省略祖先标题面包屑（参见[是否渲染标题](#是否渲染标题render_headings)） |
 | `block_configs` | object | `null` | 按块类型配置 |
 | `tokenizer` | string | `"approx"` | `approx`、`tiktoken` 或 `transformers` |
-| `splitter` | string | `"recursive"` | `recursive`、`section`、`section-flat`、`exact-recursive`、`incremental-recursive`、`exact-section`、`incremental-section`、`exact-section-flat`、`incremental-section-flat` |
+| `splitter` | string | `"recursive"` | `recursive`、`subtree`、`section`、`exact-recursive`、`incremental-recursive`、`exact-subtree`、`incremental-subtree`、`exact-section`、`incremental-section` |
 
 `block_configs` 示例：
 
@@ -462,10 +462,10 @@ docker compose up --build
 | 策略 | 注册名 | 行为 |
 | --- | --- | --- |
 | **Recursive** | `recursive`（默认） | 结构优先、预算感知；相邻同级章节会在预算允许时合并进同一个分块。 |
-| **Section** | `section` | 子树优先：整棵子树（含后代）在预算内且不含独立块时合并为单分块；否则每个标题章节的直接正文一个分块（含尾部碎片合并）。 |
-| **Section Flat** | `section-flat` | 每个标题章节的直接正文独立成块、递归子节点；不做子树合并、不做尾部碎片合并。 |
+| **Subtree** | `subtree` | 子树优先：整棵子树（含后代）在预算内且不含独立块时合并为单分块；否则每个标题章节的直接正文一个分块（含尾部碎片合并）。 |
+| **Section** | `section` | 每个标题章节的直接正文独立成块、递归子节点；不做子树合并、不做尾部碎片合并。 |
+| **Incremental Subtree** | `incremental-subtree` | 同 Subtree 的拓扑结构，使用累加估算路径。 |
 | **Incremental Section** | `incremental-section` | 同 Section 的拓扑结构，使用累加估算路径。 |
-| **Incremental Section Flat** | `incremental-section-flat` | 同 Section Flat 的拓扑结构，使用累加估算路径。 |
 
 递归切分顺序：
 
@@ -529,11 +529,11 @@ src/lumberjack/
 │   ├── options.py           # 切分选项和块配置辅助函数
 │   ├── utils.py             # Markdown 渲染辅助函数
 │   ├── visitor.py           # AST 遍历访问器
-│   ├── splitters/           # 递归 & 章节切分器
+│   ├── splitters/           # 递归、子树 & 章节切分器
 │   │   ├── base.py          # 共享切分器辅助逻辑
 │   │   ├── recursive.py     # RecursiveSplitter
-│   │   ├── section.py       # SectionSplitter
-│   │   └── registry.py      # 切分器注册表/工厂
+│   │   ├── section.py       # SubtreeSplitter & SectionSplitter
+│   │   └── __init__.py      # 切分器注册表/工厂
 │   └── parsers/             # 格式解析器：原始输入 -> DocumentAST
 │       ├── markdown/
 │       │   ├── parser.py    # MarkdownItParser（markdown-it-py 后端）
