@@ -301,5 +301,34 @@ class ExactCountingMixin(BaseSplitter):
             )
         ]
 
+    def _single_subtree_draft(self, section: SectionNode) -> ChunkDraft | None:
+        if self._section_has_standalone(section):
+            return None
+        entries = self._entries_from_section(section)
+        return self._draft_from_entries(
+            entries,
+            common_heading_path(entry.headings for entry in entries),
+            origin="section",
+        )
+
+    def _packable_body_draft(self, section: SectionNode) -> ChunkDraft | None:
+        if not section.blocks or any(
+            block.kind in self.options.standalone_kinds for block in section.blocks
+        ):
+            return None
+        entry = self._entry_from_blocks(
+            section.path,
+            section.blocks,
+            body_token_count=self.tokenizer.count(
+                join_markdown([block.text for block in section.blocks]), cache=True
+            ),
+        )
+        draft = self._draft_from_entries([entry], section.path, origin="section")
+        return (
+            draft
+            if self._draft_budget_tokens(draft) <= self.options.ideal_max_tokens
+            else None
+        )
+
 
 __all__ = ["ExactCountingMixin"]

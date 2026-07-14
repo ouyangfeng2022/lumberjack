@@ -496,5 +496,48 @@ class IncrementalCountingMixin(BaseSplitter):
             )
         ]
 
+    def _single_subtree_draft(self, section: MeasuredSection) -> ChunkDraft | None:
+        if not section.can_emit_as_single_chunk:
+            return None
+        entries = self._entries_from_section(section)
+        headings = common_heading_path(entry.headings for entry in entries)
+        headings_tokens = self._heading_path_token_count(headings)
+        token_count = (
+            self._heading_path_token_count(section.node.path[:-1])
+            + section.counts.subtree
+        )
+        return ChunkDraft(
+            entries=entries,
+            headings=headings,
+            headings_token_count=headings_tokens,
+            body_token_count=token_count - headings_tokens,
+            token_count=token_count,
+            split_origin="section",
+        )
+
+    def _packable_body_draft(self, section: MeasuredSection) -> ChunkDraft | None:
+        node = section.node
+        if not node.blocks or any(
+            block.kind in self.options.standalone_kinds for block in node.blocks
+        ):
+            return None
+        headings_tokens = self._heading_budget_token_count(node.path)
+        draft = ChunkDraft(
+            entries=[
+                self._entry_from_blocks(
+                    node.path, node.blocks, body_token_count=section.counts.body
+                )
+            ],
+            headings=node.path,
+            headings_token_count=headings_tokens,
+            body_token_count=section.counts.body,
+            token_count=headings_tokens + section.counts.body,
+        )
+        return (
+            draft
+            if self._draft_budget_tokens(draft) <= self.options.ideal_max_tokens
+            else None
+        )
+
 
 __all__ = ["IncrementalCountingMixin"]

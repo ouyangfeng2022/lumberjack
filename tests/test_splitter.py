@@ -2450,6 +2450,37 @@ def test_section_splitters_share_one_topology_implementation() -> None:
     )
 
 
+def test_subtree_splitters_share_one_topology_implementation() -> None:
+    """Counting mode must not duplicate subtree collapse and recursion."""
+    from lumberjack.core.splitter import (
+        ExactSubtreeSplitter,
+        IncrementalSubtreeSplitter,
+    )
+    from lumberjack.core.splitter.topology.subtree import SubtreeTopologyMixin
+
+    assert ExactSubtreeSplitter._split_section is SubtreeTopologyMixin._split_section
+    assert (
+        IncrementalSubtreeSplitter._split_section is SubtreeTopologyMixin._split_section
+    )
+
+
+def test_recursive_splitters_share_one_topology_implementation() -> None:
+    """Counting mode must not duplicate sibling packing and recursion order."""
+    from lumberjack.core.splitter import (
+        ExactRecursiveSplitter,
+        IncrementalRecursiveSplitter,
+    )
+    from lumberjack.core.splitter.topology.recursive import RecursiveTopologyMixin
+
+    assert (
+        ExactRecursiveSplitter._split_section is RecursiveTopologyMixin._split_section
+    )
+    assert (
+        IncrementalRecursiveSplitter._split_section
+        is RecursiveTopologyMixin._split_section
+    )
+
+
 def test_section_splitter_does_not_subtree_collapse() -> None:
     """section 永远不合并整棵子树, 即使它很小."""
     from lumberjack.core.splitter import ExactSectionSplitter

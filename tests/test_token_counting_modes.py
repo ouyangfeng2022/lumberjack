@@ -25,8 +25,13 @@ def test_exact_and_incremental_splitters_expose_distinct_counting_contexts() -> 
     )
 
     document = MarkdownItParser().parse("# A\n\nbody")
-    exact = create_splitter("exact-section")
-    incremental = create_splitter("incremental-section")
+    from lumberjack.core.splitter import (
+        ExactSectionSplitter,
+        IncrementalSectionSplitter,
+    )
+
+    exact = ExactSectionSplitter()
+    incremental = IncrementalSectionSplitter()
 
     exact_view = ExactCountingContext(exact).prepare(document.root)
     incremental_view = IncrementalCountingContext(incremental).prepare(document.root)
