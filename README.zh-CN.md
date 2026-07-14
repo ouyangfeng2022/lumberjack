@@ -214,8 +214,8 @@ chunks = lumber(
 from mdit_py_plugins.tasklists import tasklists_plugin
 from lumberjack.core.models import SplitOptions
 from lumberjack.core.options import resolve_block_options
-from lumberjack.core.parsers.markdown.parser import MarkdownItParser
-from lumberjack.core.splitters import RecursiveSplitter
+from lumberjack.core.parser.markdown.parser import MarkdownItParser
+from lumberjack.core.splitter import RecursiveSplitter
 from lumberjack.core.tokenizers import TiktokenTokenizer
 
 parser = MarkdownItParser(plugins=(tasklists_plugin,))
@@ -240,7 +240,7 @@ chunks = splitter.split(document)
 
 ```python
 from mdit_py_plugins.tasklists import tasklists_plugin
-from lumberjack.core.parsers.markdown import MarkdownItParser
+from lumberjack.core.parser.markdown import MarkdownItParser
 
 parser = MarkdownItParser(plugins=(tasklists_plugin,))
 document = parser.parse("- [x] done", document_title="tasks.md")
@@ -255,8 +255,8 @@ from mdit_py_plugins.container import container_plugin
 
 from lumberjack.core.models import BaseParams, MarkdownBlock, SplitOptions
 from lumberjack.core.options import resolve_block_options
-from lumberjack.core.parsers.markdown import MarkdownBlockContext, MarkdownBlockSpec
-from lumberjack.core.parsers.markdown import MarkdownItParser
+from lumberjack.core.parser.markdown import MarkdownBlockContext, MarkdownBlockSpec
+from lumberjack.core.parser.markdown import MarkdownItParser
 from lumberjack.core.splitters import RecursiveSplitter
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 
@@ -531,13 +531,13 @@ src/lumberjack/
 │   ├── options.py           # 切分选项和块配置辅助函数
 │   ├── utils.py             # Markdown 渲染辅助函数
 │   ├── visitor.py           # AST 遍历访问器
-│   ├── splitters/           # 递归、子树 & 章节切分器
+│   ├── splitter/           # 递归、子树 & 章节切分器
 │   │   ├── base.py          # 共享切分器辅助逻辑
 │   │   ├── recursive.py     # RecursiveSplitter
 │   │   ├── subtree.py       # SubtreeSplitter
 │   │   ├── section.py       # SectionSplitter
 │   │   └── __init__.py      # 切分器注册表/工厂
-│   └── parsers/             # 格式解析器：原始输入 -> DocumentAST
+│   └── parser/             # 格式解析器：原始输入 -> DocumentAST
 │       ├── markdown/
 │       │   ├── parser.py    # MarkdownItParser（markdown-it-py 后端）
 │       │   └── plugins/     # 自定义 markdown-it 插件（方括号数学）

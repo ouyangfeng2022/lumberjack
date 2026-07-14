@@ -7,7 +7,7 @@ from pathlib import Path
 
 from . import lumber
 from .core.options import parse_cli_block_configs
-from .core.parsers import create_parser
+from .core.parser import create_parser
 from .formats import detect_format
 
 

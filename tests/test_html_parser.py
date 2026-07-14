@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from lumberjack.core.block import BlockSplitter
 from lumberjack.core.models import SplitOptions, TableBlockParams
-from lumberjack.core.parsers.html import HTMLParser
-from lumberjack.core.parsers.html.table_parser import HTMLTableParser
-from lumberjack.core.parsers.markdown.parser import MarkdownParser
-from lumberjack.core.splitters import create_splitter
+from lumberjack.core.parser.html import HTMLParser
+from lumberjack.core.parser.html.table_parser import HTMLTableParser
+from lumberjack.core.parser.markdown.parser import MarkdownParser
+from lumberjack.core.splitter import create_splitter
 from tests.helpers import CharacterTokenizer
 
 

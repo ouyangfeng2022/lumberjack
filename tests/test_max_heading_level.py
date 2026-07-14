@@ -4,8 +4,8 @@ import pytest
 
 from lumberjack import lumber
 from lumberjack.core.models import SplitOptions
-from lumberjack.core.parsers.markdown.parser import MarkdownItParser
-from lumberjack.core.splitters import create_splitter
+from lumberjack.core.parser.markdown.parser import MarkdownItParser
+from lumberjack.core.splitter import create_splitter
 
 
 def test_parser_preserves_full_heading_depth():

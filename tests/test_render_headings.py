@@ -20,9 +20,9 @@ from __future__ import annotations
 import pytest
 
 from lumberjack.core.models import SplitOptions
-from lumberjack.core.parsers.markdown.parser import MarkdownParser
-from lumberjack.core.splitters.recursive import RecursiveSplitter
-from lumberjack.core.splitters.subtree import (
+from lumberjack.core.parser.markdown.parser import MarkdownParser
+from lumberjack.core.splitter.recursive import RecursiveSplitter
+from lumberjack.core.splitter.subtree import (
     IncrementalSubtreeSplitter,
     SubtreeSplitter,
 )

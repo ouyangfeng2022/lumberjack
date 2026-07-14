@@ -5,8 +5,8 @@ from pathlib import Path
 
 from .core.models import BaseParams, Chunk, SplitOptions
 from .core.options import resolve_block_options
-from .core.parsers import create_parser
-from .core.splitters import create_splitter
+from .core.parser import create_parser
+from .core.splitter import create_splitter
 from .core.tokenizers import create_tokenizer
 from .formats import detect_format, read_docx_input, read_text_input
 

@@ -8,7 +8,7 @@ from mdit_py_plugins.footnote import footnote_plugin
 from mdit_py_plugins.tasklists import tasklists_plugin
 
 from lumberjack.core.models import MarkdownBlock
-from lumberjack.core.parsers.markdown.parser import (
+from lumberjack.core.parser.markdown.parser import (
     MarkdownBlockContext,
     MarkdownBlockSpec,
     MarkdownItParser,

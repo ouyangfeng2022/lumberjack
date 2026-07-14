@@ -60,7 +60,7 @@ from lumberjack.core.models import BaseParams, MarkdownBlock, SplitOptions
 from lumberjack.core.options import resolve_block_options
 from lumberjack.core.parsers.markdown import MarkdownBlockContext, MarkdownBlockSpec
 from lumberjack.core.parsers.markdown import MarkdownItParser
-from lumberjack.core.splitters import RecursiveSplitter
+from lumberjack.core.splitter import RecursiveSplitter
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 
 

@@ -14,9 +14,9 @@ import lumberjack
 from lumberjack import lumber
 from lumberjack.core.models import Chunk, SplitOptions, TableBlockParams
 from lumberjack.core.options import parse_cli_block_configs, resolve_block_options
-from lumberjack.core.parsers.html import HTMLParser
-from lumberjack.core.parsers.markdown.parser import MarkdownBlockSpec, MarkdownItParser
-from lumberjack.core.splitters import RecursiveSplitter
+from lumberjack.core.parser.html import HTMLParser
+from lumberjack.core.parser.markdown.parser import MarkdownBlockSpec, MarkdownItParser
+from lumberjack.core.splitter import RecursiveSplitter
 from lumberjack.lumber import lumber as module_lumber
 from tests.helpers import CharacterTokenizer
 

@@ -12,8 +12,8 @@ from lumberjack.core.models import (
     TableBlockParams,
 )
 from lumberjack.core.options import resolve_block_options
-from lumberjack.core.parsers.markdown.parser import MarkdownParser
-from lumberjack.core.splitters import (
+from lumberjack.core.parser.markdown.parser import MarkdownParser
+from lumberjack.core.splitter import (
     IncrementalRecursiveSplitter,
     IncrementalSubtreeSplitter,
     RecursiveSplitter,
@@ -2265,7 +2265,7 @@ Two body.
     assert "## One" in merged[0].body
     assert "## Two" in merged[0].body
 
-    from lumberjack.core.splitters import ExactSectionSplitter
+    from lumberjack.core.splitter import ExactSectionSplitter
 
     per_section = ExactSectionSplitter(
         tokenizer=CharacterTokenizer(),
@@ -2306,7 +2306,7 @@ Two body.
     assert len(merged) == 1
     assert merged[0].headings == ((1, "Parent"),)
 
-    from lumberjack.core.splitters import IncrementalSectionSplitter
+    from lumberjack.core.splitter import IncrementalSectionSplitter
 
     per_section = IncrementalSectionSplitter(
         tokenizer=CharacterTokenizer(),
@@ -2331,7 +2331,7 @@ def test_section_splitter_still_splits_standalone_blocks() -> None:
 One body.
 """
     document = MarkdownParser().parse(fixture, document_title="t.md")
-    from lumberjack.core.splitters import ExactSectionSplitter
+    from lumberjack.core.splitter import ExactSectionSplitter
 
     splitter = ExactSectionSplitter(
         tokenizer=CharacterTokenizer(),
@@ -2423,7 +2423,7 @@ def test_merge_below_ratio_threshold_derived_from_max_tokens() -> None:
 
 
 def test_section_splitter_registry_lookup() -> None:
-    from lumberjack.core.splitters import (
+    from lumberjack.core.splitter import (
         ExactSectionSplitter,
         IncrementalSectionSplitter,
         create_splitter,
@@ -2438,7 +2438,7 @@ def test_section_splitter_registry_lookup() -> None:
 
 def test_section_splitter_does_not_subtree_collapse() -> None:
     """section 永远不合并整棵子树, 即使它很小."""
-    from lumberjack.core.splitters import ExactSectionSplitter
+    from lumberjack.core.splitter import ExactSectionSplitter
 
     fixture = """# Parent
 
@@ -2466,7 +2466,7 @@ Two body.
 
 def test_section_splitter_does_not_merge_tail_fragments() -> None:
     """section 不调用 _merge_small_chunks, 尾部碎片保留."""
-    from lumberjack.core.splitters import ExactSectionSplitter
+    from lumberjack.core.splitter import ExactSectionSplitter
 
     # 构造一个 body 超过 ideal_max_tokens 的 section, 强制 _split_section_body
     # 切出多块; 尾部碎片(小于 merge 阈值)在 section 模式下会被合并,
@@ -2506,7 +2506,7 @@ def test_section_splitter_does_not_merge_tail_fragments() -> None:
 
 def test_incremental_section_splitter_does_not_subtree_collapse() -> None:
     """incremental-section 同样不做 subtree-collapse 与尾部合并."""
-    from lumberjack.core.splitters import IncrementalSectionSplitter
+    from lumberjack.core.splitter import IncrementalSectionSplitter
 
     fixture = """# Parent
 

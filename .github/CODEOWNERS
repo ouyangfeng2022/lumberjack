@@ -11,6 +11,6 @@
 # Core splitting pipeline
 # /src/lumberjack/core/        @expert-on-splitters
 # Markdown parser
-# /src/lumberjack/core/parsers/markdown/ @expert-on-markdown
+# /src/lumberjack/core/parser/markdown/ @expert-on-markdown
 # Web UI
 # /lumberjack_webui/           @expert-on-frontend

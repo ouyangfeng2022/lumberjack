@@ -4,8 +4,8 @@ from pathlib import Path
 
 from lumberjack import lumber
 from lumberjack.core.models import SplitOptions
-from lumberjack.core.parsers.docx import DocxParser
-from lumberjack.core.splitters import RecursiveSplitter
+from lumberjack.core.parser.docx import DocxParser
+from lumberjack.core.splitter import RecursiveSplitter
 from tests.helpers import CharacterTokenizer
 
 FIXTURES_ROOT = Path(__file__).resolve().parent / "fixtures" / "docx"

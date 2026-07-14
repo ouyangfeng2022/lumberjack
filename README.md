@@ -227,8 +227,8 @@ once, then split once.
 from mdit_py_plugins.tasklists import tasklists_plugin
 from lumberjack.core.models import SplitOptions
 from lumberjack.core.options import resolve_block_options
-from lumberjack.core.parsers.markdown.parser import MarkdownItParser
-from lumberjack.core.splitters import RecursiveSplitter
+from lumberjack.core.parser.markdown.parser import MarkdownItParser
+from lumberjack.core.splitter import RecursiveSplitter
 from lumberjack.core.tokenizers import TiktokenTokenizer
 
 parser = MarkdownItParser(plugins=(tasklists_plugin,))
@@ -257,7 +257,7 @@ needed:
 
 ```python
 from mdit_py_plugins.tasklists import tasklists_plugin
-from lumberjack.core.parsers.markdown import MarkdownItParser
+from lumberjack.core.parser.markdown import MarkdownItParser
 
 parser = MarkdownItParser(plugins=(tasklists_plugin,))
 document = parser.parse("- [x] done", document_title="tasks.md")
@@ -277,9 +277,9 @@ from mdit_py_plugins.container import container_plugin
 
 from lumberjack.core.models import BaseParams, MarkdownBlock, SplitOptions
 from lumberjack.core.options import resolve_block_options
-from lumberjack.core.parsers.markdown import MarkdownBlockContext, MarkdownBlockSpec
-from lumberjack.core.parsers.markdown import MarkdownItParser
-from lumberjack.core.splitters import RecursiveSplitter
+from lumberjack.core.parser.markdown import MarkdownBlockContext, MarkdownBlockSpec
+from lumberjack.core.parser.markdown import MarkdownItParser
+from lumberjack.core.splitter import RecursiveSplitter
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 
 
@@ -573,13 +573,13 @@ src/lumberjack/
 │   ├── options.py           # Split option and block config helpers
 │   ├── utils.py             # Markdown rendering helpers
 │   ├── visitor.py           # AstVisitor for AST traversal
-│   ├── splitters/           # Recursive, subtree & section splitters
+│   ├── splitter/           # Recursive, subtree & section splitters
 │   │   ├── base.py          # Shared splitter helpers
 │   │   ├── recursive.py     # RecursiveSplitter
 │   │   ├── subtree.py       # SubtreeSplitter
 │   │   ├── section.py       # SectionSplitter
 │   │   └── __init__.py      # Splitter registry/factory
-│   └── parsers/             # Format-specific parsers: raw input -> DocumentAST
+│   └── parser/             # Format-specific parsers: raw input -> DocumentAST
 │       ├── markdown/
 │       │   ├── parser.py    # MarkdownItParser (markdown-it-py backend)
 │       │   └── plugins/     # Custom markdown-it plugins (bracket math)

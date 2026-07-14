@@ -1,4 +1,4 @@
-"""Format-specific parsers: raw input (Markdown / DOCX / HTML) -> DocumentAST.
+"""Format-specific parser: raw input (Markdown / DOCX / HTML) -> DocumentAST.
 
 Each subpackage wraps one input format and produces the shared
 :class:`lumberjack.core.models.DocumentAST`, so every splitter works with

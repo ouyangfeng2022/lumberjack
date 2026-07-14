@@ -7,8 +7,8 @@ import pytest
 
 import lumberjack.core.tokenizers as tokenizers
 from lumberjack.core.models import SplitOptions
-from lumberjack.core.parsers.markdown.parser import MarkdownItParser
-from lumberjack.core.splitters import create_splitter
+from lumberjack.core.parser.markdown.parser import MarkdownItParser
+from lumberjack.core.splitter import create_splitter
 from lumberjack.core.tokenizers import (
     ApproxCharTokenizer,
     TiktokenTokenizer,
@@ -309,7 +309,7 @@ class TestSplitterStrategyIsClassProperty:
     """Exact vs incremental is a property of the splitter class, not the tokenizer."""
 
     def test_recursive_aliases_to_exact(self) -> None:
-        from lumberjack.core.splitters import (
+        from lumberjack.core.splitter import (
             ExactRecursiveSplitter,
             RecursiveSplitter,
         )
@@ -319,7 +319,7 @@ class TestSplitterStrategyIsClassProperty:
         assert isinstance(create_splitter("exact-recursive"), ExactRecursiveSplitter)
 
     def test_section_aliases_to_exact(self) -> None:
-        from lumberjack.core.splitters import (
+        from lumberjack.core.splitter import (
             ExactSubtreeSplitter,
             SubtreeSplitter,
         )
@@ -329,7 +329,7 @@ class TestSplitterStrategyIsClassProperty:
         assert isinstance(create_splitter("exact-subtree"), ExactSubtreeSplitter)
 
     def test_incremental_variants_route_correctly(self) -> None:
-        from lumberjack.core.splitters import (
+        from lumberjack.core.splitter import (
             IncrementalRecursiveSplitter,
             IncrementalSubtreeSplitter,
         )
