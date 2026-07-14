@@ -272,5 +272,34 @@ class ExactCountingMixin(BaseSplitter):
             return True
         return any(self._section_has_standalone(c) for c in section.children)
 
+    def _direct_body_drafts(self, section: SectionNode) -> list[ChunkDraft]:
+        """Emit this section's direct body, without topology recursion."""
+        if not (section.blocks or section.level > 0):
+            return []
+        body = join_markdown([block.text for block in section.blocks])
+        body_tokens = self.tokenizer.count(body, cache=True)
+        has_standalone = any(
+            block.kind in self.options.standalone_kinds for block in section.blocks
+        )
+        if has_standalone or body_tokens > self._exact_body_budget(section.path):
+            return self._split_section_body(section)
+        entry = Entry(
+            headings=section.path,
+            body=body,
+            start_line=self._min_start_lines(section.blocks),
+            end_line=self._max_end_lines(section.blocks),
+            body_token_count=body_tokens,
+        )
+        headings_token_count = self._heading_budget_token_count(section.path)
+        return [
+            ChunkDraft(
+                entries=[entry],
+                headings=section.path,
+                headings_token_count=headings_token_count,
+                body_token_count=body_tokens,
+                token_count=headings_token_count + body_tokens,
+            )
+        ]
+
 
 __all__ = ["ExactCountingMixin"]

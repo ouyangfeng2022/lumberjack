@@ -16,6 +16,26 @@ from lumberjack.core.tokenizers import (
 )
 
 
+def test_exact_and_incremental_splitters_expose_distinct_counting_contexts() -> None:
+    """Topology code can depend on one normalized counting-context contract."""
+    from lumberjack.core.splitter.context import (
+        ExactCountingContext,
+        IncrementalCountingContext,
+        SectionView,
+    )
+
+    document = MarkdownItParser().parse("# A\n\nbody")
+    exact = create_splitter("exact-section")
+    incremental = create_splitter("incremental-section")
+
+    exact_view = ExactCountingContext(exact).prepare(document.root)
+    incremental_view = IncrementalCountingContext(incremental).prepare(document.root)
+
+    assert isinstance(exact_view, SectionView)
+    assert exact_view.body_tokens is None
+    assert incremental_view.body_tokens is not None
+
+
 class TestApproxCharTokenizer:
     def test_count_is_chars_div_4(self) -> None:
         tok = ApproxCharTokenizer()

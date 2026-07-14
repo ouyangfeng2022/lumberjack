@@ -472,5 +472,29 @@ class IncrementalCountingMixin(BaseSplitter):
 
         return chunks
 
+    def _direct_body_drafts(self, section: MeasuredSection) -> list[ChunkDraft]:
+        """Emit this section's direct body, without topology recursion."""
+        node = section.node
+        if not (node.blocks or node.level > 0):
+            return []
+        has_standalone = any(
+            block.kind in self.options.standalone_kinds for block in node.blocks
+        )
+        if has_standalone or section.counts.body > self.options.ideal_max_tokens:
+            return self._split_section_body(section)
+        entry = self._entry_from_blocks(
+            node.path, node.blocks, body_token_count=section.counts.body
+        )
+        headings_token_count = self._heading_budget_token_count(node.path)
+        return [
+            ChunkDraft(
+                entries=[entry],
+                headings=node.path,
+                headings_token_count=headings_token_count,
+                body_token_count=section.counts.body,
+                token_count=headings_token_count + section.counts.body,
+            )
+        ]
+
 
 __all__ = ["IncrementalCountingMixin"]

@@ -2436,6 +2436,20 @@ def test_section_splitter_registry_lookup() -> None:
     )
 
 
+def test_section_splitters_share_one_topology_implementation() -> None:
+    """Counting mode must not duplicate the per-section traversal algorithm."""
+    from lumberjack.core.splitter import (
+        ExactSectionSplitter,
+        IncrementalSectionSplitter,
+    )
+    from lumberjack.core.splitter.topology.section import SectionTopologyMixin
+
+    assert ExactSectionSplitter._split_section is SectionTopologyMixin._split_section
+    assert (
+        IncrementalSectionSplitter._split_section is SectionTopologyMixin._split_section
+    )
+
+
 def test_section_splitter_does_not_subtree_collapse() -> None:
     """section 永远不合并整棵子树, 即使它很小."""
     from lumberjack.core.splitter import ExactSectionSplitter
