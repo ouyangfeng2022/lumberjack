@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Constrained the web dependency set to Starlette versions before 1.0 so FastAPI test clients continue to process requests.
 - Renamed the section-family splitters so class and registry names describe their actual behavior. The subtree-first splitter (formerly `SectionSplitter`, registry `section`/`exact-section`/`incremental-section`) is now `SubtreeSplitter` with registry `subtree`/`exact-subtree`/`incremental-subtree`. The per-heading splitter (formerly `SectionFlatSplitter`, registry `section-flat`/`exact-section-flat`/`incremental-section-flat`) is now `SectionSplitter` with registry `section`/`exact-section`/`incremental-section`.
 - `max_heading_level` is now applied by splitters, so parsers preserve the full heading tree while deeper headings render as chunk body text.
 
