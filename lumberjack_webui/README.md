@@ -60,7 +60,7 @@ from lumberjack.core.models import BaseParams, MarkdownBlock, SplitOptions
 from lumberjack.core.options import resolve_block_options
 from lumberjack.core.parsers.markdown import MarkdownBlockContext, MarkdownBlockSpec
 from lumberjack.core.parsers.markdown import MarkdownItParser
-from lumberjack.core.splitter import RecursiveSplitter
+from lumberjack.core.splitter import SiblingSplitter
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 
 
@@ -115,7 +115,7 @@ options = SplitOptions(
         {"callout": BaseParams(isolated=True, max_tokens=400)},
     ),
 )
-chunks = RecursiveSplitter(
+chunks = SiblingSplitter(
     tokenizer=SimpleCharTokenizer(),
     options=options,
 ).split(document)

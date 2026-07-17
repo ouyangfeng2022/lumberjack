@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The default structure-aware splitter is now named `sibling` (with `exact-sibling` and `incremental-sibling` variants), describing its greedy sibling-packing behavior.
+
 ## [0.2.0] - 2026-07-16
 
 ### Added

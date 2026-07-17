@@ -14,22 +14,30 @@ from .section import (
     IncrementalSectionSplitter,
     SectionSplitter,
 )
+from .sibling import (
+    ExactSiblingSplitter,
+    IncrementalSiblingSplitter,
+    SiblingSplitter,
+)
 from .subtree import (
     ExactSubtreeSplitter,
     IncrementalSubtreeSplitter,
     SubtreeSplitter,
 )
 
-# Splitter topology + counting strategy, keyed by name.  ``recursive``,
+# Splitter topology + counting strategy, keyed by name.  ``sibling``,
 # ``subtree``, and ``section`` default to the exact (full-recount) variants;
-# pass ``incremental-recursive`` / ``incremental-subtree`` /
+# pass ``incremental-sibling`` / ``incremental-subtree`` /
 # ``incremental-section`` to opt into the additive-estimate path.  The
 # ``section`` family is per-heading — it emits one chunk per heading section's
 # direct body with no subtree-collapse and no tail-fragment merging.
 SPLITTER_REGISTRY: dict[str, type[BaseSplitter]] = {
-    "recursive": ExactRecursiveSplitter,
-    "exact-recursive": ExactRecursiveSplitter,
-    "incremental-recursive": IncrementalRecursiveSplitter,
+    "sibling": ExactSiblingSplitter,
+    "exact-sibling": ExactSiblingSplitter,
+    "incremental-sibling": IncrementalSiblingSplitter,
+    "recursive": ExactSiblingSplitter,
+    "exact-recursive": ExactSiblingSplitter,
+    "incremental-recursive": IncrementalSiblingSplitter,
     "subtree": ExactSubtreeSplitter,
     "exact-subtree": ExactSubtreeSplitter,
     "incremental-subtree": IncrementalSubtreeSplitter,
@@ -47,11 +55,11 @@ def create_splitter(
     """Instantiate a splitter by name.
 
     Args:
-        name: Splitter name.  One of ``"recursive"`` (alias for
-            ``"exact-recursive"``, the default), ``"subtree"`` (alias for
+        name: Splitter name.  One of ``"sibling"`` (alias for
+            ``"exact-sibling"``, the default), ``"subtree"`` (alias for
             ``"exact-subtree"``), ``"section"`` (alias for
-            ``"exact-section"``), ``"exact-recursive"``,
-            ``"incremental-recursive"``, ``"exact-subtree"``,
+            ``"exact-section"``), ``"exact-sibling"``,
+            ``"incremental-sibling"``, ``"exact-subtree"``,
             ``"incremental-subtree"``, ``"exact-section"``, or
             ``"incremental-section"``.  Exact splitters fully recount
             rendered text at every budget decision; incremental splitters
@@ -77,12 +85,15 @@ __all__ = [
     "BaseSplitter",
     "ExactRecursiveSplitter",
     "ExactSectionSplitter",
+    "ExactSiblingSplitter",
     "ExactSubtreeSplitter",
     "IncrementalRecursiveSplitter",
     "IncrementalSectionSplitter",
+    "IncrementalSiblingSplitter",
     "IncrementalSubtreeSplitter",
     "RecursiveSplitter",
     "SectionSplitter",
+    "SiblingSplitter",
     "SubtreeSplitter",
     "create_splitter",
 ]

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 from ...models import ChunkDraft
 from ..base import BaseSplitter
 
 
-class SubtreeTopologyMixin:
+class SubtreeTopologyMixin(BaseSplitter):
     """Collapse a fitting subtree, otherwise split direct bodies then recurse."""
 
     options: Any
@@ -19,13 +19,6 @@ class SubtreeTopologyMixin:
 
     def _draft_budget_tokens(self, draft: ChunkDraft) -> int:
         raise NotImplementedError
-
-    def _merge_small_chunks(
-        self, chunks: list[ChunkDraft], *, parent_headings: Any
-    ) -> list[ChunkDraft]:
-        return BaseSplitter._merge_small_chunks(
-            cast(BaseSplitter, self), chunks, parent_headings=parent_headings
-        )
 
     def _split_section(self, section: Any) -> list[ChunkDraft]:
         node = getattr(section, "node", section)

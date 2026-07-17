@@ -17,7 +17,7 @@ const DEFAULT_OPTIONS: Options = {
   render_headings: true,
   block_configs: null,
   tokenizer: 'approx',
-  splitter: 'recursive',
+  splitter: 'sibling',
   document_title: 'document.md',
 };
 

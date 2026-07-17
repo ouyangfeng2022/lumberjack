@@ -222,20 +222,20 @@ def test_lumber_body_always_renders_full_ancestor_heading_path() -> None:
     )
 
 
-def test_lumber_recursive_splitter_matches_default() -> None:
+def test_lumber_sibling_splitter_matches_default() -> None:
     default_chunks = lumber(
         MERGED_SECTION_FIXTURE,
         document_title="development.md",
         max_tokens=1000,
     )
-    recursive_chunks = lumber(
+    sibling_chunks = lumber(
         MERGED_SECTION_FIXTURE,
         document_title="development.md",
-        splitter="recursive",
+        splitter="sibling",
         max_tokens=1000,
     )
 
-    assert [asdict(chunk) for chunk in recursive_chunks] == [
+    assert [asdict(chunk) for chunk in sibling_chunks] == [
         asdict(chunk) for chunk in default_chunks
     ]
 

@@ -383,22 +383,22 @@ class TestSplitterStrategyIsClassProperty:
 
 
 class TestCliSplitterChoices:
-    def test_default_splitter_is_recursive(self) -> None:
+    def test_default_splitter_is_sibling(self) -> None:
         from lumberjack.cli import build_parser
 
         args = build_parser().parse_args(["input.md"])
-        assert args.splitter == "recursive"
+        assert args.splitter == "sibling"
 
     def test_accepts_all_strategy_names(self) -> None:
         from lumberjack.cli import build_parser
 
         parser = build_parser()
         for name in (
-            "recursive",
+            "sibling",
             "subtree",
             "section",
-            "exact-recursive",
-            "incremental-recursive",
+            "exact-sibling",
+            "incremental-sibling",
             "exact-subtree",
             "incremental-subtree",
             "exact-section",

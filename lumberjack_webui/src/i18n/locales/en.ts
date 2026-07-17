@@ -30,7 +30,7 @@ const en = {
   opts_skip_empty_sections: 'Skip empty sections',
   opts_render_headings: 'Include ancestor headings in each chunk',
   opts_splitter: 'Splitter',
-  opts_splitter_recursive: 'Recursive',
+  opts_splitter_sibling: 'Sibling packing',
   opts_splitter_subtree: 'Subtree',
   opts_splitter_section: 'Section',
   opts_tokenizer: 'Tokenizer',

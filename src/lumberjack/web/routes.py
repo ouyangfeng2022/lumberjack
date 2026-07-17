@@ -24,7 +24,7 @@ class TextSplitRequest(BaseModel):
     render_headings: bool = True
     block_configs: dict[str, Any] | None = None
     tokenizer: str = "approx"
-    splitter: str = "recursive"
+    splitter: str = "sibling"
     max_heading_level: int | None = None
 
 
@@ -106,7 +106,7 @@ async def split_file(
     render_headings: bool = Form(True),
     block_configs: str = Form(""),
     tokenizer: str = Form("approx"),
-    splitter: str = Form("recursive"),
+    splitter: str = Form("sibling"),
     max_heading_level: int | None = Form(None),
 ) -> SplitResponse:
     """Split an uploaded file (Markdown, HTML, or DOCX) into chunks.

@@ -37,19 +37,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--splitter",
         choices=(
-            "recursive",
+            "sibling",
             "subtree",
             "section",
-            "exact-recursive",
-            "incremental-recursive",
+            "exact-sibling",
+            "incremental-sibling",
             "exact-subtree",
             "incremental-subtree",
             "exact-section",
             "incremental-section",
         ),
-        default="recursive",
+        default="sibling",
         help=(
-            "Splitter implementation. 'recursive'/'subtree'/'section' default "
+            "Splitter implementation. 'sibling'/'subtree'/'section' default "
             "to the exact (full-recount) variants; 'incremental-*' use an "
             "additive estimate + 8-char separator-delta window."
         ),

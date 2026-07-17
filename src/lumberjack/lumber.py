@@ -23,11 +23,11 @@ def lumber(
     render_headings: bool = True,
     block_options: Mapping[str, BaseParams | dict] | None = None,
     tokenizer: str = "approx",
-    splitter: str = "recursive",
+    splitter: str = "sibling",
     document_metadata: dict[str, object] | None = None,
     max_heading_level: int | None = None,
 ) -> list[Chunk]:
-    """Split a Markdown, HTML, or DOCX document into chunks recursively.
+    """Split a Markdown, HTML, or DOCX document into structure-aware chunks.
 
     Args:
         text: Document content as plain Markdown text, raw DOCX bytes,
@@ -57,10 +57,10 @@ def lumber(
         tokenizer: Built-in tokenizer engine name (``"approx"``, ``"tiktoken"``,
             or ``"transformers"``). Independent of the splitter choice; any
             tokenizer works with any splitter.
-        splitter: Built-in splitter name. ``"recursive"`` (default),
+        splitter: Built-in splitter name. ``"sibling"`` (default),
         ``"subtree"``, and ``"section"`` alias the exact (full-recount)
-        variants; the explicit names ``"exact-recursive"``,
-        ``"incremental-recursive"``, ``"exact-subtree"``,
+        variants; the explicit names ``"exact-sibling"``,
+        ``"incremental-sibling"``, ``"exact-subtree"``,
         ``"incremental-subtree"``, ``"exact-section"``, and
         ``"incremental-section"`` select the counting strategy directly.
         ``subtree`` is subtree-first (collapses a fitting subtree into one

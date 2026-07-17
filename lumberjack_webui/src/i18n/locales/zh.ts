@@ -30,7 +30,7 @@ const zh = {
   opts_skip_empty_sections: '跳过空白章节',
   opts_render_headings: '在每个块中包含祖先标题',
   opts_splitter: '切分器',
-  opts_splitter_recursive: '递归切分',
+  opts_splitter_sibling: '同级合并',
   opts_splitter_subtree: '子树切分',
   opts_splitter_section: '章节切分',
   opts_tokenizer: '分词器',

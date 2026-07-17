@@ -142,14 +142,14 @@ chunks = lumber(
     skip_empty_sections=True,
     render_headings=True,      # False: drop ancestor heading breadcrumb from body
     tokenizer="approx",        # "approx" | "tiktoken" | "transformers"
-    splitter="recursive",      # "recursive" | "subtree" | "section"
+    splitter="sibling",        # "sibling" | "subtree" | "section"
 )
 ```
 
 Counting strategy is a property of the splitter class, not the tokenizer.
-The default `recursive`, `subtree`, and `section` splitters are **exact**: every budget
+The default `sibling`, `subtree`, and `section` splitters are **exact**: every budget
 decision fully recounts the rendered candidate text (`token_count ==
-estimated_token_count`). The `incremental-recursive`,
+estimated_token_count`). The `incremental-sibling`,
 `incremental-subtree`, and `incremental-section` variants pre-measure the tree once and use a running
 additive estimate with an 8-char separator-delta window for joins — faster
 for heavy tokenizers, at the cost of `estimated_token_count` diverging
@@ -228,7 +228,7 @@ from mdit_py_plugins.tasklists import tasklists_plugin
 from lumberjack.core.models import SplitOptions
 from lumberjack.core.options import resolve_block_options
 from lumberjack.core.parser.markdown.parser import MarkdownItParser
-from lumberjack.core.splitter import RecursiveSplitter
+from lumberjack.core.splitter import SiblingSplitter
 from lumberjack.core.tokenizers import TiktokenTokenizer
 
 parser = MarkdownItParser(plugins=(tasklists_plugin,))
@@ -239,7 +239,7 @@ options = SplitOptions(
     max_tokens=1200,
     block_options=resolve_block_options(parser.block_kinds, None),
 )
-splitter = RecursiveSplitter(tokenizer=tokenizer, options=options)
+splitter = SiblingSplitter(tokenizer=tokenizer, options=options)
 
 chunks = splitter.split(document)
 ```
@@ -279,7 +279,7 @@ from lumberjack.core.models import BaseParams, MarkdownBlock, SplitOptions
 from lumberjack.core.options import resolve_block_options
 from lumberjack.core.parser.markdown import MarkdownBlockContext, MarkdownBlockSpec
 from lumberjack.core.parser.markdown import MarkdownItParser
-from lumberjack.core.splitter import RecursiveSplitter
+from lumberjack.core.splitter import SiblingSplitter
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 
 
@@ -334,7 +334,7 @@ options = SplitOptions(
         {"callout": BaseParams(isolated=True, max_tokens=400)},
     ),
 )
-chunks = RecursiveSplitter(
+chunks = SiblingSplitter(
     tokenizer=SimpleCharTokenizer(),
     options=options,
 ).split(document)
@@ -375,7 +375,7 @@ lumber <input> [options]
 | `--ideal-max-tokens-ratio` | `0.8`       | Preferred split budget ratio                     |
 | `--merge-below-ratio`      | `0.125`     | Tail-fragment merge threshold as fraction of max-tokens (0 disables) |
 | `--tokenizer`              | `approx`    | `approx`, `tiktoken`, or `transformers` |
-| `--splitter`               | `recursive` | `recursive`, `subtree`, `section`, `exact-recursive`, `incremental-recursive`, `exact-subtree`, `incremental-subtree`, `exact-section`, `incremental-section` |
+| `--splitter`               | `sibling` | `sibling`, `subtree`, `section`, `exact-sibling`, `incremental-sibling`, `exact-subtree`, `incremental-subtree`, `exact-section`, `incremental-section` |
 | `--no-render-headings`     | off         | Omit ancestor heading breadcrumb from `body` (see [render_headings](#rendering-headings-render_headings)) |
 | `--max-heading-level`      | —           | Maximum heading level to keep as chunk section context; deeper headings render as body text |
 | `--block-config`           | —           | Per-block-kind config (repeatable)               |
@@ -440,7 +440,7 @@ Both endpoints accept the same options:
 | `max_heading_level` | int or null | `null` | Maximum heading level to keep as chunk section context; deeper headings render as body text |
 | `block_configs` | object | `null` | Per-block-kind config |
 | `tokenizer` | string | `"approx"` | `approx`, `tiktoken`, or `transformers` |
-| `splitter` | string | `"recursive"` | `recursive`, `subtree`, `section`, `exact-recursive`, `incremental-recursive`, `exact-subtree`, `incremental-subtree`, `exact-section`, `incremental-section` |
+| `splitter` | string | `"sibling"` | `sibling`, `subtree`, `section`, `exact-sibling`, `incremental-sibling`, `exact-subtree`, `incremental-subtree`, `exact-section`, `incremental-section` |
 
 Example `block_configs` payload:
 
@@ -494,13 +494,13 @@ Open <http://localhost:9612>.
 
 | Strategy | Registry Name | Behavior |
 | --- | --- | --- |
-| **Recursive** | `recursive` (default) | Structure-first, budget-aware. Merges adjacent sibling sections when they fit. |
+| **Sibling** | `sibling` (default) | Greedily packs a section body and fitting sibling subtrees within the budget. |
 | **Subtree** | `subtree` | Subtree-first: collapses an entire subtree into one chunk when it fits the budget and has no standalone block; otherwise one chunk per heading section (with tail-fragment merging). |
 | **Section** | `section` | Per-heading section splitter: always one chunk per heading section's direct body, no subtree-collapse, no tail-fragment merging. |
 | **Incremental Subtree** | `incremental-subtree` | Same topology as `Subtree` with the additive incremental estimate path. |
 | **Incremental Section** | `incremental-section` | Same as `Section` with the additive incremental estimate path. |
 
-Recursive splitting order:
+Sibling-packing split order:
 
 1. Keep the whole document as one chunk if it fits
 2. Split by heading sections
@@ -522,7 +522,7 @@ still render. Both splitters are render-aware:
 | Splitter | Body behavior | Budget behavior |
 | --- | --- | --- |
 | **Section** | Ancestor heading breadcrumb omitted; the section's own title still renders | **Render-aware**: the budget previously reserved for ancestor headings is reclaimed for rendered content, so `max_tokens` faithfully bounds the rendered body (`token_count` measures the rendered body tokens). |
-| **Recursive** (default) | Ancestor heading breadcrumb omitted; the chunk's own title and *internal* relative headings (e.g. sibling `###` titles inside a merged chunk) still render | **Render-aware**: the split budget grows only by hidden ancestor headings. The split plan (chunk count, boundaries) may differ from `render_headings=True` when chunks have ancestors. |
+| **Sibling** (default) | Ancestor heading breadcrumb omitted; the chunk's own title and *internal* relative headings (e.g. sibling `###` titles inside a merged chunk) still render | **Render-aware**: the split budget grows only by hidden ancestor headings. The split plan (chunk count, boundaries) may differ from `render_headings=True` when chunks have ancestors. |
 
 > [!NOTE]
 > Both splitters keep heading tokens in the draft-level accounting so that
@@ -536,7 +536,7 @@ still render. Both splitters are render-aware:
 ```python
 # Both splitters: render-aware budget (body fills max_tokens)
 lumber(doc, splitter="subtree", render_headings=False, max_tokens=1000)
-lumber(doc, splitter="recursive", render_headings=False, max_tokens=1000)
+lumber(doc, splitter="sibling", render_headings=False, max_tokens=1000)
 ```
 
 ## Parsing Coverage
@@ -573,9 +573,9 @@ src/lumberjack/
 │   ├── options.py           # Split option and block config helpers
 │   ├── utils.py             # Markdown rendering helpers
 │   ├── visitor.py           # AstVisitor for AST traversal
-│   ├── splitter/           # Recursive, subtree & section splitters
+│   ├── splitter/           # Sibling, subtree & section splitters
 │   │   ├── base.py          # Shared splitter helpers
-│   │   ├── recursive.py     # RecursiveSplitter
+│   │   ├── sibling.py       # SiblingSplitter
 │   │   ├── subtree.py       # SubtreeSplitter
 │   │   ├── section.py       # SectionSplitter
 │   │   └── __init__.py      # Splitter registry/factory

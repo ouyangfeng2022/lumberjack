@@ -132,13 +132,13 @@ chunks = lumber(
     skip_empty_sections=True,
     render_headings=True,      # False：从 body 中去掉祖先标题面包屑
     tokenizer="approx",        # "approx" | "tiktoken" | "transformers"
-    splitter="recursive",      # "recursive" | "subtree" | "section"
+    splitter="sibling",        # "sibling" | "subtree" | "section"
 )
 ```
 
-计数策略是 splitter 类的固有属性，与 tokenizer 无关。默认的 `recursive`、
+计数策略是 splitter 类的固有属性，与 tokenizer 无关。默认的 `sibling`、
 `subtree` 和 `section` splitter 是**精确法**：每次预算决策都完整重计渲染候选文本
-（`token_count == estimated_token_count`）。`incremental-recursive`、
+（`token_count == estimated_token_count`）。`incremental-sibling`、
 `incremental-subtree` 和 `incremental-section` 变体则一次性预测量整棵树，使用累加估算值 + 8 字符
 尾窗近似 entry 之间的 separator——对重型 tokenizer 更快，代价是
 `estimated_token_count` 会与权威的 `token_count`（finalization 时的完整
@@ -215,7 +215,7 @@ from mdit_py_plugins.tasklists import tasklists_plugin
 from lumberjack.core.models import SplitOptions
 from lumberjack.core.options import resolve_block_options
 from lumberjack.core.parser.markdown.parser import MarkdownItParser
-from lumberjack.core.splitter import RecursiveSplitter
+from lumberjack.core.splitter import SiblingSplitter
 from lumberjack.core.tokenizers import TiktokenTokenizer
 
 parser = MarkdownItParser(plugins=(tasklists_plugin,))
@@ -226,7 +226,7 @@ options = SplitOptions(
     max_tokens=1200,
     block_options=resolve_block_options(parser.block_kinds, None),
 )
-splitter = RecursiveSplitter(tokenizer=tokenizer, options=options)
+splitter = SiblingSplitter(tokenizer=tokenizer, options=options)
 
 chunks = splitter.split(document)
 ```
@@ -257,7 +257,7 @@ from lumberjack.core.models import BaseParams, MarkdownBlock, SplitOptions
 from lumberjack.core.options import resolve_block_options
 from lumberjack.core.parser.markdown import MarkdownBlockContext, MarkdownBlockSpec
 from lumberjack.core.parser.markdown import MarkdownItParser
-from lumberjack.core.splitters import RecursiveSplitter
+from lumberjack.core.splitter import SiblingSplitter
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 
 
@@ -312,7 +312,7 @@ options = SplitOptions(
         {"callout": BaseParams(isolated=True, max_tokens=400)},
     ),
 )
-chunks = RecursiveSplitter(
+chunks = SiblingSplitter(
     tokenizer=SimpleCharTokenizer(),
     options=options,
 ).split(document)
@@ -344,7 +344,7 @@ lumber <input> [options]
 | `--ideal-max-tokens-ratio` | `0.8` | 优先切分预算比例 |
 | `--merge-below-ratio` | `0.125` | 尾部碎片合并阈值，max-tokens 的比例（0 禁用） |
 | `--tokenizer` | `approx` | `approx`、`tiktoken` 或 `transformers` |
-| `--splitter` | `recursive` | `recursive`、`subtree`、`section`、`exact-recursive`、`incremental-recursive`、`exact-subtree`、`incremental-subtree`、`exact-section`、`incremental-section` |
+| `--splitter` | `sibling` | `sibling`、`subtree`、`section`、`exact-sibling`、`incremental-sibling`、`exact-subtree`、`incremental-subtree`、`exact-section`、`incremental-section` |
 | `--no-render-headings` | off | 从 `body` 中省略祖先标题面包屑（参见[是否渲染标题](#是否渲染标题render_headings)） |
 | `--max-heading-level` | — | 保留为分块章节上下文的最大标题层级；更深标题会渲染为正文 |
 | `--block-config` | — | 按块类型配置（可重复指定） |
@@ -409,7 +409,7 @@ curl -X POST http://localhost:9612/lumber/api/split/file \
 | `max_heading_level` | int 或 null | `null` | 保留为分块章节上下文的最大标题层级；更深标题会渲染为正文 |
 | `block_configs` | object | `null` | 按块类型配置 |
 | `tokenizer` | string | `"approx"` | `approx`、`tiktoken` 或 `transformers` |
-| `splitter` | string | `"recursive"` | `recursive`、`subtree`、`section`、`exact-recursive`、`incremental-recursive`、`exact-subtree`、`incremental-subtree`、`exact-section`、`incremental-section` |
+| `splitter` | string | `"sibling"` | `sibling`、`subtree`、`section`、`exact-sibling`、`incremental-sibling`、`exact-subtree`、`incremental-subtree`、`exact-section`、`incremental-section` |
 
 `block_configs` 示例：
 
@@ -463,13 +463,13 @@ docker compose up --build
 
 | 策略 | 注册名 | 行为 |
 | --- | --- | --- |
-| **Recursive** | `recursive`（默认） | 结构优先、预算感知；相邻同级章节会在预算允许时合并进同一个分块。 |
+| **Sibling** | `sibling`（默认） | 在预算内贪心合并章节正文与可容纳的同级子树。 |
 | **Subtree** | `subtree` | 子树优先：整棵子树（含后代）在预算内且不含独立块时合并为单分块；否则每个标题章节的直接正文一个分块（含尾部碎片合并）。 |
 | **Section** | `section` | 每个标题章节的直接正文独立成块、递归子节点；不做子树合并、不做尾部碎片合并。 |
 | **Incremental Subtree** | `incremental-subtree` | 同 Subtree 的拓扑结构，使用累加估算路径。 |
 | **Incremental Section** | `incremental-section` | 同 Section 的拓扑结构，使用累加估算路径。 |
 
-递归切分顺序：
+同级合并切分顺序：
 
 1. 如果整篇文档已经在预算内，则保持为一个分块
 2. 先按标题章节切分
@@ -494,7 +494,7 @@ docker compose up --build
 ```python
 # 两个切分器：按渲染口径预算（body 能填满 max_tokens）
 lumber(doc, splitter="section", render_headings=False, max_tokens=1000)
-lumber(doc, splitter="recursive", render_headings=False, max_tokens=1000)
+lumber(doc, splitter="sibling", render_headings=False, max_tokens=1000)
 ```
 
 ## 解析覆盖范围
@@ -531,9 +531,9 @@ src/lumberjack/
 │   ├── options.py           # 切分选项和块配置辅助函数
 │   ├── utils.py             # Markdown 渲染辅助函数
 │   ├── visitor.py           # AST 遍历访问器
-│   ├── splitter/           # 递归、子树 & 章节切分器
+│   ├── splitter/           # 同级合并、子树 & 章节切分器
 │   │   ├── base.py          # 共享切分器辅助逻辑
-│   │   ├── recursive.py     # RecursiveSplitter
+│   │   ├── sibling.py       # SiblingSplitter
 │   │   ├── subtree.py       # SubtreeSplitter
 │   │   ├── section.py       # SectionSplitter
 │   │   └── __init__.py      # 切分器注册表/工厂

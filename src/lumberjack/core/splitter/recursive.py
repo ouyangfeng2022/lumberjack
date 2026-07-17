@@ -1,22 +1,15 @@
-from __future__ import annotations
+"""Compatibility aliases for the renamed sibling-packing splitter."""
 
-from .base import BaseSplitter
-from .exact import ExactCountingMixin
-from .incremental import IncrementalCountingMixin
-from .topology.recursive import RecursiveTopologyMixin
+from .sibling import (
+    ExactSiblingSplitter,
+    IncrementalSiblingSplitter,
+    SiblingSplitter,
+)
 
+ExactRecursiveSplitter = ExactSiblingSplitter
+IncrementalRecursiveSplitter = IncrementalSiblingSplitter
+RecursiveSplitter = SiblingSplitter
 
-class ExactRecursiveSplitter(ExactCountingMixin, RecursiveTopologyMixin, BaseSplitter):
-    pass
-
-
-class IncrementalRecursiveSplitter(
-    IncrementalCountingMixin, RecursiveTopologyMixin, BaseSplitter
-):
-    pass
-
-
-RecursiveSplitter = ExactRecursiveSplitter
 __all__ = [
     "ExactRecursiveSplitter",
     "IncrementalRecursiveSplitter",
