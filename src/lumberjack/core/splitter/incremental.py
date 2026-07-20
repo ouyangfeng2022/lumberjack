@@ -35,20 +35,12 @@ class IncrementalCountingMixin(BaseSplitter):
 
     _DELTA_WINDOW = 8
 
-    # ------------------------------------------------------------------
-    # Entry point
-    # ------------------------------------------------------------------
-
     def split(self, document: DocumentAST) -> list[Chunk]:
         """Measure the tree once, then split via the topology's _split_section."""
         measured_root = self._measure_section(self._root_for_splitting(document))
         drafts = self._split_section(measured_root)
         drafts = self._post_process_drafts(drafts)
         return self._finalize_chunks(drafts, document)
-
-    # ------------------------------------------------------------------
-    # Strategy primitives used by topology classes
-    # ------------------------------------------------------------------
 
     def _draft_running_estimate(self, draft: ChunkDraft) -> int:
         if self.options.render_headings:
@@ -129,10 +121,6 @@ class IncrementalCountingMixin(BaseSplitter):
                     estimated_count -= self._separator_delta_after(ht)
         return estimated_count
 
-    # ------------------------------------------------------------------
-    # Separator delta (8-char tail window)
-    # ------------------------------------------------------------------
-
     def _separator_delta_after(self, text: str) -> int:
         """Estimate the token delta of appending the Markdown separator.
 
@@ -145,10 +133,6 @@ class IncrementalCountingMixin(BaseSplitter):
         return self.tokenizer.count(tail + SEPARATOR, cache=True) - (
             self.tokenizer.count(tail, cache=True)
         )
-
-    # ------------------------------------------------------------------
-    # Pre-measure
-    # ------------------------------------------------------------------
 
     def _measure_section(self, section: SectionNode) -> MeasuredSection:
         """Return a measured wrapper for *section* and all descendants."""
@@ -217,10 +201,6 @@ class IncrementalCountingMixin(BaseSplitter):
             can_emit_as_single_chunk=can_emit_as_single_chunk,
             children=children,
         )
-
-    # ------------------------------------------------------------------
-    # Body splitting + entry rendering on MeasuredSection
-    # ------------------------------------------------------------------
 
     def _entries_from_section(self, section: MeasuredSection) -> list[Entry]:
         """Render-ready entries for a section selected as a chunk."""

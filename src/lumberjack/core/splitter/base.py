@@ -55,10 +55,6 @@ class BaseSplitter(SplitterProtocol):
             "(ExactCountingMixin or IncrementalCountingMixin)"
         )
 
-    # ------------------------------------------------------------------
-    # Rendering helpers (strategy-agnostic)
-    # ------------------------------------------------------------------
-
     def _heading_path_token_count(self, path: HeadingPath) -> int:
         if not path:
             return 0
@@ -117,10 +113,6 @@ class BaseSplitter(SplitterProtocol):
         return self.tokenizer.count(
             self._render_body(entries, ancestor_headings=ancestor_headings), cache=True
         )
-
-    # ------------------------------------------------------------------
-    # Budget hooks (overridden by topology classes if needed)
-    # ------------------------------------------------------------------
 
     def _heading_budget_token_count(self, path: HeadingPath) -> int:
         """Full heading token count for a draft's internal common prefix."""
@@ -186,11 +178,7 @@ class BaseSplitter(SplitterProtocol):
 
         return limited_root
 
-    # ------------------------------------------------------------------
-    # Strategy hooks (provided by the counting-strategy mixin)
-    # ------------------------------------------------------------------
-
-    def _draft_budget_tokens(self, draft: ChunkDraft) -> int:
+    def _draft_budget_tokens(self, draft: ChunkDraft) -> int:  # pragma: no cover
         """Rendered footprint of a draft, used for budget decisions.
 
         Provided by :class:`ExactCountingMixin` (full recount) or
@@ -217,11 +205,7 @@ class BaseSplitter(SplitterProtocol):
         """Estimated token count carried onto the final Chunk; mixin-provided."""
         raise NotImplementedError
 
-    # ------------------------------------------------------------------
-    # Topology hook (overridden by concrete splitters)
-    # ------------------------------------------------------------------
-
-    def _split_section(self, section) -> list[ChunkDraft]:
+    def _split_section(self, section) -> list[ChunkDraft]:  # pragma: no cover
         """Topology + counting-strategy specific section splitter."""
         raise NotImplementedError
 
@@ -245,10 +229,6 @@ class BaseSplitter(SplitterProtocol):
                 raise ValueError(
                     f"block_options[{kind!r}].max_tokens must be positive, got {cfg.max_tokens}"
                 )
-
-    # ------------------------------------------------------------------
-    # Finalize (shared shell; estimate delegated to the strategy mixin)
-    # ------------------------------------------------------------------
 
     def _finalize_chunks(
         self,

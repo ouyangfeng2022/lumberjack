@@ -28,19 +28,11 @@ class ExactCountingMixin(BaseSplitter):
     ``SectionNode`` tree is walked directly.
     """
 
-    # ------------------------------------------------------------------
-    # Entry point
-    # ------------------------------------------------------------------
-
     def split(self, document: DocumentAST) -> list[Chunk]:
         """Split by walking the raw ``SectionNode`` tree (no pre-measure)."""
         drafts = self._split_section(self._root_for_splitting(document))
         drafts = self._post_process_drafts(drafts)
         return self._finalize_chunks(drafts, document)
-
-    # ------------------------------------------------------------------
-    # Strategy primitives used by topology classes
-    # ------------------------------------------------------------------
 
     def _draft_budget_tokens(self, draft: ChunkDraft) -> int:
         """Rendered footprint a draft occupies — full recount of the body."""
@@ -76,10 +68,6 @@ class ExactCountingMixin(BaseSplitter):
     ) -> int:
         """Exact path: the split-time estimate already equals the full recount."""
         return token_count
-
-    # ------------------------------------------------------------------
-    # Exact-path helpers
-    # ------------------------------------------------------------------
 
     def _exact_body_budget(self, headings: HeadingPath) -> int:
         """Body-only token budget for exact-path body splitting."""
