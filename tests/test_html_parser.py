@@ -288,8 +288,8 @@ def test_table_splitter_reads_table_params_from_options() -> None:
     pieces = splitter.split_table_block(block)
 
     assert len(pieces) == 3
-    assert "| Name | Value |" in pieces[0]
-    assert all("| Name | Value |" not in piece for piece in pieces[1:])
+    assert "| Name | Value |" in pieces[0][0]
+    assert all("| Name | Value |" not in piece[0] for piece in pieces[1:])
 
 
 def test_markdown_parser_with_html_table():

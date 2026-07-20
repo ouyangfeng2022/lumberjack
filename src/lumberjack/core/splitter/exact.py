@@ -180,10 +180,8 @@ class ExactCountingMixin(BaseSplitter):
                     default_budget=budget,
                 )
                 if block_pieces is not None:
-                    for piece in block_pieces:
-                        entry = make_entry(
-                            block, piece, self.tokenizer.count(piece, cache=True)
-                        )
+                    for piece, piece_tokens in block_pieces:
+                        entry = make_entry(block, piece, piece_tokens)
                         chunks.append(
                             self._draft_from_entries(
                                 [entry],
@@ -226,10 +224,8 @@ class ExactCountingMixin(BaseSplitter):
                         )
                     )
                 else:
-                    for piece in block_pieces:
-                        pe = make_entry(
-                            block, piece, self.tokenizer.count(piece, cache=True)
-                        )
+                    for piece, piece_tokens in block_pieces:
+                        pe = make_entry(block, piece, piece_tokens)
                         chunks.append(
                             self._draft_from_entries(
                                 [pe],

@@ -302,8 +302,7 @@ class IncrementalCountingMixin(BaseSplitter):
                     default_budget=budget,
                 )
                 if block_pieces is not None:
-                    for piece in block_pieces:
-                        piece_tokens = self.tokenizer.count(piece, cache=True)
+                    for piece, piece_tokens in block_pieces:
                         entry = Entry(
                             headings=headings,
                             body=piece,
@@ -424,8 +423,7 @@ class IncrementalCountingMixin(BaseSplitter):
                 current_end_line = None
                 continue
 
-            for piece in block_pieces:
-                piece_tokens = self.tokenizer.count(piece, cache=True)
+            for piece, piece_tokens in block_pieces:
                 entry = Entry(
                     headings=headings,
                     body=piece,
