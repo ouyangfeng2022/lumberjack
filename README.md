@@ -43,6 +43,13 @@ HTML text     → HTMLParser ─────────────────
 DOCX binary   → DocxParser ─────────────────────┘
 ```
 
+The shared AST is format-neutral: `DocumentInline`, `DocumentBlock`, and
+`SectionNode` hold canonical Markdown-like rendered text for splitting.
+Markdown/HTML keep their original text in `DocumentAST.source`; binary formats
+may leave it empty or provide normalized source text. A block's rendered text is not guaranteed
+to be a byte-for-byte source slice. See the
+[public contract](docs/reference/public-contract.md) for the precise semantics.
+
 ### Why not plain text splitting?
 
 Plain text splitters are fine for unstructured notes, but they tend to cut
@@ -56,22 +63,22 @@ paragraph/line/sentence/word fallback when a block or section is too large.
 ### As a library
 
 ```bash
-pip install git+https://github.com/ouyangfeng2022/lumberjack.git
+pip install lumberjack
 ```
 
-Optional extras (use the `lumberjack[...] @ git+...` form so the extras apply to the git source):
+Optional extras:
 
 ```bash
-pip install "lumberjack[tokenizers] @ git+https://github.com/ouyangfeng2022/lumberjack.git"   # tiktoken / transformers token counting
-pip install "lumberjack[docx] @ git+https://github.com/ouyangfeng2022/lumberjack.git"         # DOCX document support
-pip install "lumberjack[web] @ git+https://github.com/ouyangfeng2022/lumberjack.git"          # FastAPI web server + UI
-pip install "lumberjack[all] @ git+https://github.com/ouyangfeng2022/lumberjack.git"          # everything
+pip install "lumberjack[tokenizers]"   # tiktoken / transformers token counting
+pip install "lumberjack[docx]"         # DOCX document support
+pip install "lumberjack[web]"          # FastAPI web server + UI
+pip install "lumberjack[all]"          # everything
 ```
 
-To pin a specific version, append `@<tag>` or `@<commit>`:
+To pin a stable release:
 
 ```bash
-pip install "lumberjack @ git+https://github.com/ouyangfeng2022/lumberjack.git@v0.1.0"
+pip install "lumberjack==<version>"
 ```
 
 > [!NOTE]
@@ -114,7 +121,7 @@ lumber document.md --max-tokens 1200
 ### Web UI
 
 ```bash
-pip install "lumberjack[web] @ git+https://github.com/ouyangfeng2022/lumberjack.git"
+pip install "lumberjack[web]"
 lumberjack-serve
 ```
 
@@ -275,7 +282,7 @@ that block kind during splitting:
 ```python
 from mdit_py_plugins.container import container_plugin
 
-from lumberjack.core.models import BaseParams, MarkdownBlock, SplitOptions
+from lumberjack.core.models import BaseParams, DocumentBlock, SplitOptions
 from lumberjack.core.options import resolve_block_options
 from lumberjack.core.parser.markdown import MarkdownBlockContext, MarkdownBlockSpec
 from lumberjack.core.parser.markdown import MarkdownItParser
@@ -283,7 +290,7 @@ from lumberjack.core.splitter import SiblingSplitter
 from lumberjack.core.tokenizers import SimpleCharTokenizer
 
 
-def callout_block(context: MarkdownBlockContext) -> tuple[MarkdownBlock | None, int]:
+def callout_block(context: MarkdownBlockContext) -> tuple[DocumentBlock | None, int]:
     close_index = context.parser.find_matching_close(context.tokens, context.index)
     children = context.parser.parse_child_blocks(
         context.tokens,
@@ -293,7 +300,7 @@ def callout_block(context: MarkdownBlockContext) -> tuple[MarkdownBlock | None, 
     )
     body = "\n\n".join(child.text for child in children if child.text)
     return (
-        MarkdownBlock(
+        DocumentBlock(
             kind="callout",
             text=body,
             start_line=context.token.map[0] + 1 if context.token.map else None,
@@ -342,7 +349,7 @@ chunks = SiblingSplitter(
 
 `MarkdownBlockSpec` rules:
 
-- `kind` is normalized to lowercase and becomes the `MarkdownBlock.kind`.
+- `kind` is normalized to lowercase and becomes the `DocumentBlock.kind`.
 - `token_types` must be an iterable of custom markdown-it token type strings,
   for example `("container_callout_open",)`.
 - `handler` is optional. Without one, lumberjack captures the source slice and
@@ -495,6 +502,7 @@ Open <http://localhost:9612>.
 | Strategy | Registry Name | Behavior |
 | --- | --- | --- |
 | **Sibling** | `sibling` (default) | Greedily packs a section body and fitting sibling subtrees within the budget. |
+| **Incremental Sibling** | `incremental-sibling` | Same topology as `Sibling` with the additive incremental estimate path. |
 | **Subtree** | `subtree` | Subtree-first: collapses an entire subtree into one chunk when it fits the budget and has no standalone block; otherwise one chunk per heading section (with tail-fragment merging). |
 | **Section** | `section` | Per-heading section splitter: always one chunk per heading section's direct body, no subtree-collapse, no tail-fragment merging. |
 | **Incremental Subtree** | `incremental-subtree` | Same topology as `Subtree` with the additive incremental estimate path. |
@@ -517,15 +525,16 @@ breadcrumb, followed by the chunk's own heading when it has one (for example,
 an H2 leaf renders `# Title\n\n## Section`). `Chunk.headings` stores only the
 ancestor breadcrumb. Set `render_headings=False` to omit the ancestor
 breadcrumb from `body`; the chunk's own heading and internal relative headings
-still render. Both splitters are render-aware:
+still render. All splitter topologies are render-aware:
 
 | Splitter | Body behavior | Budget behavior |
 | --- | --- | --- |
 | **Section** | Ancestor heading breadcrumb omitted; the section's own title still renders | **Render-aware**: the budget previously reserved for ancestor headings is reclaimed for rendered content, so `max_tokens` faithfully bounds the rendered body (`token_count` measures the rendered body tokens). |
+| **Subtree** | Ancestor heading breadcrumb omitted; the selected subtree's own and internal relative headings still render | **Render-aware**: subtree-fit decisions count only headings that remain in the rendered body. |
 | **Sibling** (default) | Ancestor heading breadcrumb omitted; the chunk's own title and *internal* relative headings (e.g. sibling `###` titles inside a merged chunk) still render | **Render-aware**: the split budget grows only by hidden ancestor headings. The split plan (chunk count, boundaries) may differ from `render_headings=True` when chunks have ancestors. |
 
 > [!NOTE]
-> Both splitters keep heading tokens in the draft-level accounting so that
+> All splitter topologies keep heading tokens in the draft-level accounting so that
 > merge arithmetic stays self-consistent — when merging two chunks changes
 > their shared ancestor prefix, displaced heading tokens fall back into the body
 > as own or internal relative headings that still render. The split-budget decision and
@@ -534,7 +543,8 @@ still render. Both splitters are render-aware:
 > two due to the separator approximation).
 
 ```python
-# Both splitters: render-aware budget (body fills max_tokens)
+# All splitter topologies use render-aware budgets
+lumber(doc, splitter="section", render_headings=False, max_tokens=1000)
 lumber(doc, splitter="subtree", render_headings=False, max_tokens=1000)
 lumber(doc, splitter="sibling", render_headings=False, max_tokens=1000)
 ```
@@ -602,7 +612,7 @@ This project uses [uv](https://docs.astral.sh/uv/) for dependency management.
 # Clone and install all dependencies
 git clone https://github.com/ouyangfeng2022/lumberjack.git
 cd lumberjack
-uv sync --group dev --group test --extra tokenizers --extra docx
+uv sync --group dev --group test --extra tokenizers --extra docx --extra web
 
 # Run tests
 uv run pytest
@@ -624,7 +634,7 @@ Contributions are welcome! Whether it's a bug report, a feature idea, or a pull 
 
 - **Bugs & features**: open an [issue](https://github.com/ouyangfeng2022/lumberjack/issues/new/choose) using the bug report or feature request template.
 - **Code**: read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, coding standards, and the pull request workflow. Every PR needs to pass CI and get one approval before merging.
-- **Questions & discussion**: use [GitHub Discussions](https://github.com/ouyangfeng2022/lumberjack/discussions).
+- **Questions & discussion**: open an [issue](https://github.com/ouyangfeng2022/lumberjack/issues/new/choose) while Discussions are not enabled.
 
 Please follow our [Code of Conduct](CODE_OF_CONDUCT.md) in all interactions.
 

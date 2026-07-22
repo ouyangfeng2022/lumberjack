@@ -4,15 +4,15 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Literal, TypeAlias
 
-from .utils import join_markdown
+from .utils import join_rendered_blocks
 
 HeadingKey: TypeAlias = tuple[int, str]
 HeadingPath: TypeAlias = tuple[HeadingKey, ...]
 
 
 @dataclass(slots=True, frozen=True)
-class MarkdownInline:
-    """Normalized inline node (text, link, code, emphasis, etc.).
+class DocumentInline:
+    """Format-neutral inline node normalized by an input parser.
 
     Attributes:
         kind: Inline node type (e.g. ``"text"``, ``"link"``, ``"code_inline"``,
@@ -24,19 +24,22 @@ class MarkdownInline:
 
     kind: str
     text: str = ""
-    children: tuple[MarkdownInline, ...] = ()
+    children: tuple[DocumentInline, ...] = ()
     attrs: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True, frozen=True)
-class MarkdownBlock:
-    """Block-level node with rendered text, line range, inline children, and nested blocks.
+class DocumentBlock:
+    """Format-neutral block node in the canonical rendered representation.
 
     Attributes:
         kind: Block type (e.g. ``"paragraph"``, ``"heading"``, ``"code_fence"``,
             ``"blockquote"``, ``"list"``, ``"list_item"``, ``"table"``,
             ``"html_block"``, ``"math_block"``).
-        text: Rendered source text of this block.
+        text: Canonical rendered text consumed by splitters. Markdown input is
+            normalized Markdown; HTML and DOCX input is converted to the same
+            Markdown-like representation. It is not guaranteed to be a source
+            slice.
         start_line: 1-based line number where the block begins.
         end_line: 1-based line number where the block ends.
         children: Nested child blocks for container types (``"blockquote"``,
@@ -50,8 +53,8 @@ class MarkdownBlock:
     text: str
     start_line: int | None = None
     end_line: int | None = None
-    children: tuple[MarkdownBlock, ...] = ()
-    inlines: tuple[MarkdownInline, ...] = ()
+    children: tuple[DocumentBlock, ...] = ()
+    inlines: tuple[DocumentInline, ...] = ()
     attrs: dict[str, Any] = field(default_factory=dict)
 
 
@@ -73,17 +76,17 @@ class SectionNode:
     level: int
     title: str
     path: HeadingPath = ()
-    blocks: list[MarkdownBlock] = field(default_factory=list)
+    blocks: list[DocumentBlock] = field(default_factory=list)
     children: list[SectionNode] = field(default_factory=list)
     index: int = 0
     start_line: int | None = None
-    title_inlines: tuple[MarkdownInline, ...] = ()
+    title_inlines: tuple[DocumentInline, ...] = ()
 
     @property
     def heading_key(self) -> HeadingKey:
         return (self.level, self.title)
 
-    def add_block(self, block: MarkdownBlock) -> None:
+    def add_block(self, block: DocumentBlock) -> None:
         """Append a block (roughly one paragraph) to this section."""
         self.blocks.append(block)
 
@@ -93,13 +96,14 @@ class SectionNode:
 
 @dataclass(slots=True, frozen=True)
 class DocumentAST:
-    """Parsed document with root section tree, raw source, and metadata.
+    """Parsed document with a normalized section tree, source, and metadata.
 
     Attributes:
         title: Document title.  Priority: user-provided ``document_title``,
             then front matter ``title`` field, then first level-1 heading,
             then ``"Anonymous"``.
-        source: Raw Markdown source text.
+        source: Original text for Markdown and HTML inputs. Binary parsers may
+            leave this empty or provide a normalized textual representation.
         root: Root section node of the heading tree.
         metadata: Front matter key-value pairs parsed from YAML front matter,
             or externally provided metadata as fallback.
@@ -203,7 +207,7 @@ class SplitOptions:
             regardless of this setting.
         render_headings: When False, omit only the chunk's ancestor heading
             breadcrumb from the rendered ``Chunk.body`` while keeping the chunk's
-            own heading and internal relative headings. Both splitters are
+            own heading and internal relative headings. All splitter topologies are
             render-aware: hidden ancestor heading tokens are reclaimed for rendered
             body content, so ``token_count`` measures the final rendered body;
             ``estimated_token_count`` stays close but may differ slightly due
@@ -213,7 +217,7 @@ class SplitOptions:
             ``None`` keeps all parsed headings; ``0`` treats all headings as body
             text.
         block_options: Per-block-kind configuration. Keys are lowercase block
-            kind strings matching :attr:`MarkdownBlock.kind` values; values are
+            kind strings matching :attr:`DocumentBlock.kind` values; values are
             :class:`BaseParams` instances. Callers that need parser-specific
             defaults should resolve them before constructing
             :class:`SplitOptions`.
@@ -308,7 +312,9 @@ def render_heading_path(path: HeadingPath) -> str:
             return title.strip()
         return f"{'#' * level} {title.strip()}"
 
-    return join_markdown([_render_heading(level, title) for level, title in path])
+    return join_rendered_blocks(
+        [_render_heading(level, title) for level, title in path]
+    )
 
 
 def common_heading_path(paths: Iterable[HeadingPath]) -> HeadingPath:

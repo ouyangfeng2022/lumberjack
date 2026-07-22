@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { BlockHandlingState, SplitOptions as Options } from '../types/chunk';
+import type { SplitterName, TokenizerName } from '../types/chunk';
 import styles from './SplitOptions.module.css';
 
 interface Props {
@@ -146,15 +147,15 @@ export default function SplitOptions({ options, onChange }: Props) {
               />
             </label>
             <label className={styles.field}>
-              <span className={styles.fieldLabel}>{t('opts_merge_below_tokens')}</span>
+              <span className={styles.fieldLabel}>{t('opts_merge_below_ratio')}</span>
               <input
                 type="number"
+                min="0"
+                max="0.999"
+                step="0.025"
                 className={styles.numberInput}
-                value={options.merge_below_tokens ?? ''}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  update('merge_below_tokens', raw === '' ? null : Number(raw));
-                }}
+                value={options.merge_below_ratio}
+                onChange={(e) => update('merge_below_ratio', Number(e.target.value))}
               />
             </label>
           </div>
@@ -183,12 +184,19 @@ export default function SplitOptions({ options, onChange }: Props) {
             <select
               className={styles.select}
               value={options.splitter}
-              onChange={(e) => update('splitter', e.target.value)}
+              onChange={(e) => update('splitter', e.target.value as SplitterName)}
             >
               <option value="sibling">{t('opts_splitter_sibling')}</option>
+              <option value="exact-sibling">{t('opts_splitter_exact_sibling')}</option>
+              <option value="incremental-sibling">{t('opts_splitter_incremental_sibling')}</option>
               <option value="subtree">{t('opts_splitter_subtree')}</option>
+              <option value="exact-subtree">{t('opts_splitter_exact_subtree')}</option>
+              <option value="incremental-subtree">{t('opts_splitter_incremental_subtree')}</option>
               <option value="section">{t('opts_splitter_section')}</option>
+              <option value="exact-section">{t('opts_splitter_exact_section')}</option>
+              <option value="incremental-section">{t('opts_splitter_incremental_section')}</option>
             </select>
+            <small>{t('opts_counting_help')}</small>
           </div>
 
           <div className={styles.field}>
@@ -196,7 +204,7 @@ export default function SplitOptions({ options, onChange }: Props) {
             <select
               className={styles.select}
               value={options.tokenizer}
-              onChange={(e) => onChange({ ...options, tokenizer: e.target.value })}
+              onChange={(e) => update('tokenizer', e.target.value as TokenizerName)}
             >
               <option value="approx">{t('opts_tokenizer_approx')}</option>
               <option value="tiktoken">{t('opts_tokenizer_tiktoken')}</option>

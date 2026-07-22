@@ -4,13 +4,13 @@ from typing import TYPE_CHECKING, Literal
 
 from ..models import (
     ChunkDraft,
+    DocumentBlock,
     Entry,
     HeadingPath,
-    MarkdownBlock,
     SectionNode,
     common_heading_path,
 )
-from ..utils import join_markdown
+from ..utils import join_rendered_blocks
 from .base import BaseSplitter
 
 if TYPE_CHECKING:
@@ -103,7 +103,7 @@ class ExactCountingMixin(BaseSplitter):
         """Render-ready entries for a section selected as a chunk."""
         entries: list[Entry] = []
         if section.blocks or (not section.children and section.level > 0):
-            body = join_markdown([b.text for b in section.blocks])
+            body = join_rendered_blocks([b.text for b in section.blocks])
             entries.append(
                 Entry(
                     headings=section.path,
@@ -163,7 +163,7 @@ class ExactCountingMixin(BaseSplitter):
             )
             current_entries.clear()
 
-        def make_entry(block: MarkdownBlock, body: str, body_tokens: int) -> Entry:
+        def make_entry(block: DocumentBlock, body: str, body_tokens: int) -> Entry:
             return Entry(
                 headings=headings,
                 body=body,
@@ -260,7 +260,7 @@ class ExactCountingMixin(BaseSplitter):
         """Emit this section's direct body, without topology recursion."""
         if not (section.blocks or section.level > 0):
             return []
-        body = join_markdown([block.text for block in section.blocks])
+        body = join_rendered_blocks([block.text for block in section.blocks])
         body_tokens = self.tokenizer.count(body, cache=True)
         has_standalone = any(
             block.kind in self.options.standalone_kinds for block in section.blocks
@@ -304,7 +304,8 @@ class ExactCountingMixin(BaseSplitter):
             section.path,
             section.blocks,
             body_token_count=self.tokenizer.count(
-                join_markdown([block.text for block in section.blocks]), cache=True
+                join_rendered_blocks([block.text for block in section.blocks]),
+                cache=True,
             ),
         )
         draft = self._draft_from_entries([entry], section.path, origin="section")

@@ -57,8 +57,8 @@ body:
     id: lumberjack-version
     attributes:
       label: lumberjack version
-      description: Run `uv run lumber --version` or check `pip show lumberjack`.
-      placeholder: "e.g. 0.1.0"
+      description: Run `uv pip show lumberjack` or check your lockfile.
+      placeholder: "e.g. 0.2.0"
     validations:
       required: true
 

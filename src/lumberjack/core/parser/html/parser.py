@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser as _StdlibHTMLParser
 from typing import Any, ClassVar
 
-from ...models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
+from ...models import DocumentAST, DocumentBlock, DocumentInline, SectionNode
 from ...protocols import ParserProtocol
 
 
@@ -34,14 +34,14 @@ class _TextCollector:
     kind: str
     start_line: int | None
     text_parts: list[str] = field(default_factory=list)
-    inlines: list[MarkdownInline] = field(default_factory=list)
+    inlines: list[DocumentInline] = field(default_factory=list)
     attrs: dict[str, Any] = field(default_factory=dict)
 
     def add_text(self, text: str, inline_kind: str = "text") -> None:
         if not text:
             return
         self.text_parts.append(text)
-        self.inlines.append(MarkdownInline(kind=inline_kind, text=text))
+        self.inlines.append(DocumentInline(kind=inline_kind, text=text))
 
     def rendered_text(self) -> str:
         return _clean_text("".join(self.text_parts))
@@ -55,7 +55,7 @@ class _ListItem:
     text: str
     start_line: int | None
     end_line: int | None
-    inlines: tuple[MarkdownInline, ...]
+    inlines: tuple[DocumentInline, ...]
 
 
 @dataclass(slots=True)
@@ -311,7 +311,7 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
                 text = f"```\n{literal}\n```"
                 self._block.attrs["literal"] = literal
             self._section_stack[-1].add_block(
-                MarkdownBlock(
+                DocumentBlock(
                     kind=kind,
                     text=text,
                     start_line=self._block.start_line,
@@ -344,7 +344,7 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         if not list_block.items:
             return
         children = tuple(
-            MarkdownBlock(
+            DocumentBlock(
                 kind="list_item",
                 text=item.text,
                 start_line=item.start_line,
@@ -356,7 +356,7 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         marker = "1." if list_block.ordered else "-"
         text = "\n".join(f"{marker} {item.text}" for item in list_block.items)
         self._section_stack[-1].add_block(
-            MarkdownBlock(
+            DocumentBlock(
                 kind="list",
                 text=text,
                 start_line=list_block.start_line,
@@ -371,7 +371,7 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         if not table_html:
             return
         self._section_stack[-1].add_block(
-            MarkdownBlock(
+            DocumentBlock(
                 kind="html_table",
                 text=table_html,
                 start_line=table.start_line,

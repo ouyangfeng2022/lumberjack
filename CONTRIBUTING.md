@@ -40,7 +40,7 @@ Contributions of all sizes are welcome — bug reports, bug fixes, new features,
 3. **Install Python dependencies** (dev tools, tests, tokenizers, and DOCX support):
 
    ```bash
-   uv sync --group dev --group test --extra tokenizers --extra docx
+   uv sync --group dev --group test --extra tokenizers --extra docx --extra web
    ```
 
 4. **(Optional) Install web dependencies** if you'll touch the frontend:
@@ -100,6 +100,13 @@ npm run build   # tsc -b type check + vite build
 - `tests/conftest.py` puts `src/` on `sys.path`, so no extra setup is needed to import `lumberjack`.
 - If your change needs fixture documents, add them under `tests/fixtures/markdown/` or `tests/fixtures/docx/`.
 - Tests should be deterministic and not depend on network access.
+- Web tests use HTTPX's in-process `ASGITransport`. Starlette's synchronous
+  `TestClient` relies on an AnyIO thread portal that can deadlock in some local
+  Python/plugin environments.
+- If a reused or moved `.venv` leaves a stale `pytest` script shebang, run
+  `uv run python -m pytest` (or recreate the environment) so pytest uses the
+  project interpreter. A 30-second faulthandler dump is enabled to diagnose
+  blocked tests.
 
 ## Coding Standards
 

@@ -4,11 +4,6 @@ from ..models import SplitOptions
 from ..protocols import SplitterProtocol, TokenizerProtocol
 from ..tokenizers import ApproxCharTokenizer
 from .base import BaseSplitter
-from .recursive import (
-    ExactRecursiveSplitter,
-    IncrementalRecursiveSplitter,
-    RecursiveSplitter,
-)
 from .section import (
     ExactSectionSplitter,
     IncrementalSectionSplitter,
@@ -35,9 +30,6 @@ SPLITTER_REGISTRY: dict[str, type[BaseSplitter]] = {
     "sibling": ExactSiblingSplitter,
     "exact-sibling": ExactSiblingSplitter,
     "incremental-sibling": IncrementalSiblingSplitter,
-    "recursive": ExactSiblingSplitter,
-    "exact-recursive": ExactSiblingSplitter,
-    "incremental-recursive": IncrementalSiblingSplitter,
     "subtree": ExactSubtreeSplitter,
     "exact-subtree": ExactSubtreeSplitter,
     "incremental-subtree": IncrementalSubtreeSplitter,
@@ -83,15 +75,12 @@ def create_splitter(
 __all__ = [
     "SPLITTER_REGISTRY",
     "BaseSplitter",
-    "ExactRecursiveSplitter",
     "ExactSectionSplitter",
     "ExactSiblingSplitter",
     "ExactSubtreeSplitter",
-    "IncrementalRecursiveSplitter",
     "IncrementalSectionSplitter",
     "IncrementalSiblingSplitter",
     "IncrementalSubtreeSplitter",
-    "RecursiveSplitter",
     "SectionSplitter",
     "SiblingSplitter",
     "SubtreeSplitter",

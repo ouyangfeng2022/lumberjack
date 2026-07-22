@@ -115,7 +115,7 @@ class TestSeparatorDeltaAfter:
 
     def _splitter(self):
         return create_splitter(
-            "incremental-recursive",
+            "incremental-sibling",
             TiktokenTokenizer(),
             SplitOptions(max_tokens=1200),
         )
@@ -186,7 +186,7 @@ class TestCreateTokenizer:
 
 class TestCreateSplitterTokenizerEngine:
     def test_default_tokenizer_is_approx_char(self) -> None:
-        splitter = create_splitter("recursive")
+        splitter = create_splitter("sibling")
         assert isinstance(splitter.tokenizer, ApproxCharTokenizer)  # ty: ignore[unresolved-attribute]
 
     def test_splitter_runs_with_custom_tokenizer(self) -> None:
@@ -194,7 +194,7 @@ class TestCreateSplitterTokenizerEngine:
         document = MarkdownItParser().parse(source)
         options = SplitOptions(max_tokens=20, merge_below_ratio=0.5)
         splitter = create_splitter(
-            "recursive",
+            "sibling",
             _RecordingCountTokenizer(),
             options=options,
         )
@@ -212,7 +212,7 @@ def _split_with(
     document = MarkdownItParser().parse(source)
     engine = create_tokenizer(tokenizer)
     options = SplitOptions(max_tokens=max_tokens)
-    splitter = create_splitter("recursive", engine, options=options)
+    splitter = create_splitter("sibling", engine, options=options)
     return splitter.split(document), engine
 
 
@@ -255,7 +255,7 @@ class TestSplitterUsesTailWindow:
         document = MarkdownItParser().parse(self.SOURCE)
         tok = _RecordingCountTokenizer()
         splitter = create_splitter(
-            "incremental-recursive",
+            "incremental-sibling",
             tok,
             SplitOptions(max_tokens=40, merge_below_ratio=0.25),
         )
@@ -333,15 +333,15 @@ class TestCliTokenizer:
 class TestSplitterStrategyIsClassProperty:
     """Exact vs incremental is a property of the splitter class, not the tokenizer."""
 
-    def test_recursive_aliases_to_exact(self) -> None:
+    def test_sibling_aliases_to_exact(self) -> None:
         from lumberjack.core.splitter import (
-            ExactRecursiveSplitter,
-            RecursiveSplitter,
+            ExactSiblingSplitter,
+            SiblingSplitter,
         )
 
-        assert RecursiveSplitter is ExactRecursiveSplitter
-        assert isinstance(create_splitter("recursive"), ExactRecursiveSplitter)
-        assert isinstance(create_splitter("exact-recursive"), ExactRecursiveSplitter)
+        assert SiblingSplitter is ExactSiblingSplitter
+        assert isinstance(create_splitter("sibling"), ExactSiblingSplitter)
+        assert isinstance(create_splitter("exact-sibling"), ExactSiblingSplitter)
 
     def test_section_aliases_to_exact(self) -> None:
         from lumberjack.core.splitter import (
@@ -355,12 +355,12 @@ class TestSplitterStrategyIsClassProperty:
 
     def test_incremental_variants_route_correctly(self) -> None:
         from lumberjack.core.splitter import (
-            IncrementalRecursiveSplitter,
+            IncrementalSiblingSplitter,
             IncrementalSubtreeSplitter,
         )
 
         assert isinstance(
-            create_splitter("incremental-recursive"), IncrementalRecursiveSplitter
+            create_splitter("incremental-sibling"), IncrementalSiblingSplitter
         )
         assert isinstance(
             create_splitter("incremental-subtree"), IncrementalSubtreeSplitter
@@ -368,15 +368,15 @@ class TestSplitterStrategyIsClassProperty:
 
     def test_exact_splitter_has_no_separator_delta(self) -> None:
         """Exact splitter must not carry the incremental delta-window machinery."""
-        splitter = create_splitter("exact-recursive", _RecordingCountTokenizer())
+        splitter = create_splitter("exact-sibling", _RecordingCountTokenizer())
         assert not hasattr(splitter, "_separator_delta_after")
         assert not hasattr(splitter, "_measure_section")
 
     def test_tokenizer_does_not_drive_strategy(self) -> None:
         """The same tokenizer yields different strategies on different splitter classes."""
         tok = _RecordingCountTokenizer()
-        exact = create_splitter("exact-recursive", tok)
-        incr = create_splitter("incremental-recursive", tok)
+        exact = create_splitter("exact-sibling", tok)
+        incr = create_splitter("incremental-sibling", tok)
         # Same tokenizer instance, different counting machinery on the splitter.
         assert hasattr(incr, "_separator_delta_after")
         assert not hasattr(exact, "_separator_delta_after")

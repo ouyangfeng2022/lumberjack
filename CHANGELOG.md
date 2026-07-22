@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The default structure-aware splitter is now named `sibling` (with `exact-sibling` and `incremental-sibling` variants), describing its greedy sibling-packing behavior.
+- **Breaking:** The public AST node types are now format-neutral: `MarkdownInline` and `MarkdownBlock` were renamed to `DocumentInline` and `DocumentBlock`. Their text is defined as canonical Markdown-like rendered content rather than a guaranteed source slice.
+- The Web UI now sends `merge_below_ratio`, exposes every supported exact/incremental splitter name, and mirrors the complete serialized `Chunk` schema.
+
+### Removed
+
+- **Breaking:** Removed the legacy `recursive`, `exact-recursive`, and `incremental-recursive` registry names and the `RecursiveSplitter` class aliases. Use the corresponding `sibling` names and classes.
+
+### Fixed
+
+- Tokenizer and splitter descriptions now consistently state that tokenizers encode/count text while splitters select exact or incremental measurement.
 
 ## [0.2.0] - 2026-07-16
 
@@ -18,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HTML document parsing via `HTMLParser`; `lumber()` and the CLI/web API now accept HTML text and `.html` files (`format="html"`).
 - DOCX document parsing via `DocxParser`; `lumber()` now accepts DOCX bytes and `.docx` files (`format="docx"`), preserving paragraph/table/list order and extracting core properties as metadata.
 - Token counting strategies: exact (full recount) and incremental (additive estimate) splitter variants, selectable through the `exact-*` / `incremental-*` registry names. Any tokenizer works with any splitter.
-- Tokenizer engines `approx` (chars ÷ 4), `tiktoken`, and `transformers`, exposed via the `--token-counter` CLI option and the `token_counter` web/API parameter.
+- Tokenizer engines `approx` (chars ÷ 4), `tiktoken`, and `transformers`, exposed via the `--tokenizer` CLI option and the `tokenizer` web/API parameter.
 - `render_headings` split option to omit a chunk's ancestor heading breadcrumb from `Chunk.body` while keeping its own heading; both splitters are budget-aware around it.
 - `max_heading_level` split option to cap how deep headings are retained as section context; deeper headings render as body text.
 - `merge_below_ratio`, a tail-fragment merge threshold expressed as a fraction of `max_tokens` (default `0.125`).
@@ -32,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Breaking:** `lumber()` signature reworked. `text` now accepts `str | bytes | Path`; a `format` parameter (`"auto"`/`"markdown"`/`"html"`/`"docx"`) selects the parser. The `parser`, custom `tokenizer`, and custom `splitter` instance parameters were removed — only built-in name strings are accepted. Pass a custom parser/tokenizer/splitter by parsing manually and calling `splitter.split()`.
-- **Breaking:** Removed the `merge_below_tokens`, `overlap_tokens`, `merge_small_chunks`, `recursive_split`, and `disable_lheading` parameters. Tail merging is now controlled by `merge_below_ratio`; oversized section-body fallback is controlled by `--recursive-split` / `render_headings`.
+- **Breaking:** Removed the `merge_below_tokens`, `overlap_tokens`, `merge_small_chunks`, `recursive_split`, and `disable_lheading` parameters. Tail merging is now controlled by `merge_below_ratio`; oversized blocks are controlled by per-kind block options.
 - **Breaking:** `BlockConfig` was renamed to `BaseParams` (with `TableBlockParams` for tables). The `--block-config` CLI strings use `KIND[:isolated][:nosplit][:TOKENS]`.
 - **Breaking:** The section-family splitters were renamed so class and registry names describe their behavior. The subtree-first splitter (formerly `SectionSplitter`, registry `section`) is now `SubtreeSplitter` (registry `subtree`). The per-heading splitter (formerly `SectionFlatSplitter`, registry `section-flat`) is now `SectionSplitter` (registry `section`).
 - `max_heading_level` is now applied by splitters, so parsers preserve the full heading tree while deeper headings render as chunk body text.

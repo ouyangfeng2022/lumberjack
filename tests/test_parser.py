@@ -7,7 +7,7 @@ from markdown_it.token import Token
 from mdit_py_plugins.footnote import footnote_plugin
 from mdit_py_plugins.tasklists import tasklists_plugin
 
-from lumberjack.core.models import MarkdownBlock
+from lumberjack.core.models import DocumentBlock
 from lumberjack.core.parser.markdown.parser import (
     MarkdownBlockContext,
     MarkdownBlockSpec,
@@ -403,10 +403,10 @@ def test_markdown_block_spec_handler_builds_custom_block() -> None:
 
     def build_block(
         context: MarkdownBlockContext,
-    ) -> tuple[MarkdownBlock | None, int]:
+    ) -> tuple[DocumentBlock | None, int]:
         seen_contexts.append(context)
         return (
-            MarkdownBlock(
+            DocumentBlock(
                 kind="callout",
                 text=f"handled:{context.token.content}",
                 start_line=1,
@@ -441,9 +441,9 @@ def test_markdown_block_spec_handler_builds_custom_block() -> None:
 def test_markdown_block_spec_handler_must_return_declared_kind() -> None:
     def build_block(
         _context: MarkdownBlockContext,
-    ) -> tuple[MarkdownBlock | None, int]:
+    ) -> tuple[DocumentBlock | None, int]:
         return (
-            MarkdownBlock(
+            DocumentBlock(
                 kind="aside",
                 text="handled",
                 start_line=1,
@@ -472,7 +472,7 @@ def test_markdown_block_spec_handler_must_return_declared_kind() -> None:
 def test_markdown_block_spec_handler_can_parse_container_children() -> None:
     def build_container(
         context: MarkdownBlockContext,
-    ) -> tuple[MarkdownBlock | None, int]:
+    ) -> tuple[DocumentBlock | None, int]:
         close_index = context.parser.find_matching_close(
             context.tokens,
             context.index,
@@ -484,7 +484,7 @@ def test_markdown_block_spec_handler_can_parse_container_children() -> None:
             context.source_lines,
         )
         return (
-            MarkdownBlock(
+            DocumentBlock(
                 kind="callout",
                 text="\n\n".join(child.text for child in children),
                 start_line=1,
