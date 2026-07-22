@@ -66,75 +66,74 @@ DOCX binary  ----> DocxParser --------------------------------------------------
 HTML text    ----> HTMLParser ----------------------------------------------------> Chunk[]
 ```
 
-All three formats produce the same `DocumentAST` (with `SectionNode` tree and `DocumentBlock` children), so all splitters work with any format. The parsers live under `src/lumberjack/core/parser/`; everything else in `core/` operates on the shared `DocumentAST`.
+All three formats produce the same `DocumentAST` (with `SectionNode` tree and `DocumentBlock` children), so all splitters work with any format. Public component namespaces own their implementations directly; there is no `lumberjack.core` compatibility package.
 
 Main components:
 
-### Shared (`src/lumberjack/core/`)
+### Shared public modules
 
-- **Models**: `src/lumberjack/core/models.py`
+- **Models**: `src/lumberjack/models.py`
   - `DocumentInline`, `DocumentBlock`, `SectionNode`, `DocumentAST` — shared across formats
-  - `BaseParams`, `TableBlockParams`, `SplitOptions`, `Chunk` — configuration and output types
-- **Protocols**: `src/lumberjack/core/protocols.py`
+  - `Chunk` — shared output type; `DocumentAST.source_path` stores source provenance independently from semantic metadata
+- **Protocols**: `src/lumberjack/protocols.py`
   - `TokenizerProtocol`, `ParserProtocol`, `SplitterProtocol`
-- **Tokenizer**: `src/lumberjack/core/tokenizers.py`
+- **Tokenizer**: `src/lumberjack/tokenizer.py`
   - `ApproxCharTokenizer` (default), `TiktokenTokenizer` and `TransformersTokenizer` (optional)
-- **Formats**: `src/lumberjack/formats.py`
-  - Central input format detection and text/DOCX source reading helpers
-- **Block**: `src/lumberjack/core/block.py`
-  - `BlockSplitter` handles oversized block splitting via paragraph/line/sentence/word/hard boundaries
-  - Uses `HTMLTableParser` (from `core/parser/html/table_parser.py`) to split oversized `html_table` blocks
-  - `parse_block_config_entry` parses `KIND[:isolated][:nosplit][:TOKENS]` CLI strings into `BaseParams`
-- **Options**: `src/lumberjack/core/options.py`
-  - Shared block option resolution and CLI/JSON block config parsing helpers
-- **Splitters**: `src/lumberjack/core/splitter/` — operate on `DocumentAST`, format-agnostic
+- **Block configuration**: `src/lumberjack/block.py`
+  - `BlockKind`, `BlockConfig`, `MarkdownTableConfig`, `HTMLTableConfig`, and `CustomBlockConfig`
+  - Python `block_options` accepts a sequence of these objects; CLI/Web adapters convert their external mapping formats at the boundary
+- **Splitters**: `src/lumberjack/splitter/` — public implementations operating on `DocumentAST`, format-agnostic
   - `base.py` provides `BaseSplitter` shared state and helpers
   - `sibling.py` provides `SiblingSplitter` (registry: "sibling"/"exact-sibling") — structure-first, budget-aware sibling packing
   - `subtree.py` provides `SubtreeSplitter` (registry: "subtree"/"exact-subtree") — subtree-first: collapses a fitting subtree into one chunk, otherwise one chunk per heading section (with tail-fragment merging).
   - `section.py` provides `SectionSplitter` (registry: "section"/"exact-section"). It emits one chunk per heading section's direct body and recurses into children, with **no** subtree-collapse and **no** tail-fragment merging (regardless of `merge_below_ratio`). `IncrementalSubtreeSplitter`/`IncrementalSectionSplitter` are the incremental-measure variants.
-  - `__init__.py` provides `SPLITTER_REGISTRY` and `create_splitter()` factory
-- **Visitor**: `src/lumberjack/core/visitor.py`
-  - AST traversal helpers operate on the format-neutral `DocumentAST` nodes.
-- **Utilities**: `src/lumberjack/core/utils.py`
+  - Unprefixed class names use incremental counting and `Exact*Splitter` names use full recounting
+- **Private helpers**: `src/lumberjack/_internal/`
+  - `block_splitter.py` handles oversized blocks, `options.py` converts CLI/Web block configuration, `formats.py` detects integration input formats, `pipeline.py` orchestrates CLI/Web components, and `rendering.py` contains shared rendering helpers
 
-### Parsers (`src/lumberjack/core/parser/`)
+### Parsers (`src/lumberjack/parser/`)
 
 Format-specific parsers — each turns one input format into the shared `DocumentAST`.
 
-#### Markdown (`src/lumberjack/core/parser/markdown/`)
+#### Markdown (`src/lumberjack/parser/markdown/`)
 
-- **Parser**: `src/lumberjack/core/parser/markdown/parser.py`
+- **Parser**: `src/lumberjack/parser/markdown/parser.py`
   - `MarkdownParser` aliases `MarkdownItParser`
   - Uses `MarkdownIt("gfm-like")` with built-in plugins
   - `MarkdownItParser(disable_lheading=True)` to disable Setext heading parsing
   - Parses YAML front matter, preserves heading hierarchy, inlines, reference definitions, line ranges
-- **Plugins**: `src/lumberjack/core/parser/markdown/plugins/`
+- **Plugins**: `src/lumberjack/parser/markdown/plugins/`
   - `brackets_math_plugin`: `\[...\]` block math and `\(...\)` inline math syntax
 
-#### DOCX (`src/lumberjack/core/parser/docx/`)
+#### DOCX (`src/lumberjack/parser/docx/`)
 
-- **Parser**: `src/lumberjack/core/parser/docx/parser.py`
+- **Parser**: `src/lumberjack/parser/docx/parser.py`
   - `DocxParser` — parses DOCX into `DocumentAST`
   - Maps Heading styles -> `SectionNode`, paragraphs -> `paragraph`, tables -> `table`, lists -> `list`, etc.
   - Iterates body elements in document order to preserve paragraph/table sequence
   - Extracts core properties as document metadata
 
-#### HTML (`src/lumberjack/core/parser/html/`)
+#### HTML (`src/lumberjack/parser/html/`)
 
-- **Parser**: `src/lumberjack/core/parser/html/parser.py`
+- **Parser**: `src/lumberjack/parser/html/parser.py`
   - `HTMLParser` — parses HTML into `DocumentAST`, mirroring `MarkdownItParser` and `DocxParser`
   - Built on stdlib `html.parser.HTMLParser` (aliased internally as `_StdlibHTMLParser` to avoid name shadowing)
   - `_HTMLDocumentBuilder` is the event-driven internal builder
   - Maps headings -> `SectionNode`, paragraphs -> `paragraph`, tables -> `html_table`, lists -> `list`, etc.
-- **Table utility**: `src/lumberjack/core/parser/html/table_parser.py`
+- **Table utility**: `src/lumberjack/parser/html/table_parser.py`
   - `HTMLTableParser` + `HTMLTable`/`HTMLTableRow`/`HTMLTableCell` dataclasses
   - Consumed by `parser/markdown/parser.py` (to detect tables inside `html_block`) and `block.py` (to split oversized `html_table` blocks); not used by `HTMLParser` itself
 
 ### Public API
 
-- `src/lumberjack/__init__.py` — `lumber()` function
-  - Accepts `str | bytes | Path` input
-  - Auto-detects format or uses explicit `format` parameter (`"auto"`, `"markdown"`, `"html"`, `"docx"`)
+- `src/lumberjack/__init__.py` — exports only minimal `lumber(source, *, format="auto", max_tokens=1200)`
+- `src/lumberjack/parser/` — `AutoParser`, concrete parsers, and Markdown plugin extensions; no module-level `parse()`
+- `src/lumberjack/splitter/` — default incremental splitters and explicit `Exact*Splitter` classes
+- `src/lumberjack/tokenizer.py` — tokenizer implementations
+- `src/lumberjack/block.py` — typed block configuration
+- `src/lumberjack/models.py` and `src/lumberjack/protocols.py` — shared data and extension contracts
+- `src/lumberjack/_internal/` — private cross-component helpers used by built-ins and integrations
+- `src/lumberjack/core/` does not exist and is not a compatibility import path
 
 ### Web API / UI
 
@@ -143,7 +142,7 @@ Format-specific parsers — each turns one input format into the shared `Documen
 
 ## Data Model
 
-Defined in `src/lumberjack/core/models.py`.
+Defined in `src/lumberjack/models.py`.
 
 ## Web API
 
@@ -164,8 +163,8 @@ Implemented in `src/lumberjack/cli.py`.
 - `--input-format`: `auto` (detect from extension), `markdown`, `html`, or `docx`
 - Output format: JSON only
 - Tokenizers (engine): `approx`, `tiktoken`, `transformers`
-- Exact vs incremental counting is a property of the splitter class, not the tokenizer. Registry names: `sibling`/`exact-sibling` (exact, default), `incremental-sibling`, `subtree`/`exact-subtree` (exact, default), `incremental-subtree`, `section`/`exact-section` (exact, default), `incremental-section`. Exact splitters fully recount rendered text at every budget decision (walk `SectionNode` directly, no pre-measure); incremental splitters pre-measure into `MeasuredSection` and use an additive estimate + 8-char separator-delta window. Any tokenizer works with any splitter.
-- Splitter choices: `sibling` (default, = exact-sibling), `subtree` (= exact-subtree), `section` (= exact-section), `exact-sibling`, `incremental-sibling`, `exact-subtree`, `incremental-subtree`, `exact-section`, `incremental-section`
+- Exact vs incremental counting is a property of the splitter class, not the tokenizer. Unprefixed CLI/Web names (`sibling`, `subtree`, `section`) use incremental counting; `incremental-*` are equivalent aliases and `exact-*` selects full recounting. Any tokenizer works with any splitter.
+- Splitter choices: `sibling` (default, incremental), `subtree` (incremental), `section` (incremental), `exact-sibling`, `incremental-sibling`, `exact-subtree`, `incremental-subtree`, `exact-section`, `incremental-section`
 - `--block-config KIND[:isolated][:nosplit][:TOKENS]` per-block-kind config; repeatable
 - JSON output serializes dataclasses with `dataclasses.asdict`
 
@@ -173,19 +172,19 @@ Implemented in `src/lumberjack/cli.py`.
 
 - Whole document is kept as one chunk when it already fits the budget
 - `SiblingSplitter` (default): merges adjacent sibling sections when they fit within `max_tokens`
-- `SubtreeSplitter` (default `subtree`/`exact-subtree`): subtree-first — collapses a fitting subtree into one chunk, otherwise one chunk per heading section (with tail-fragment merging). `SectionSplitter` (`section`/`exact-section`): always per-heading, no subtree-collapse, no tail-fragment merging.
+- `SubtreeSplitter`: subtree-first — collapses a fitting subtree into one chunk, otherwise one chunk per heading section (with tail-fragment merging). `SectionSplitter`: always per-heading, no subtree-collapse, no tail-fragment merging and no `merge_below_ratio` constructor parameter.
 - Tail-fragment merging (`merge_below_ratio`, default `0.125`): bottom-up, merges same-heading adjacent `paragraph` chunks whose tail is below `int(max_tokens * ratio)` tokens, when the merged result fits `max_tokens`. Disabled when `ratio == 0`. The `section` splitter disables this entirely.
 - Text fallback order is paragraph break -> line break -> sentence -> word -> hard split
 - `Chunk.body` always includes rendered heading context; shared parent headings are deduplicated
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
-- `block_options` maps block kinds to `BaseParams` (per-kind `isolated`, `split`, `max_tokens`)
-- Exact splitters (`sibling`/`subtree`/`section` defaults, and `exact-*`) fully recount rendered text at every budget decision; `Chunk.token_count == Chunk.estimated_token_count` (both full recounts). Incremental splitters (`incremental-sibling`/`incremental-subtree`/`incremental-section`) measure the tree once and use a running additive estimate + 8-char separator-delta window; `Chunk.token_count` is the authoritative full recount at finalization, `Chunk.estimated_token_count` is the split-time running estimate — the two may differ slightly due to the separator approximation.
+- `block_options` is a sequence of typed objects from `lumberjack.block`; duplicate kinds are rejected
+- Exact `Exact*Splitter` classes fully recount rendered text at every budget decision; `Chunk.token_count == Chunk.estimated_token_count`. Default unprefixed splitters measure the tree once and use a running additive estimate + 8-char separator-delta window; `Chunk.token_count` is the authoritative final recount and `Chunk.estimated_token_count` is the split-time estimate.
 
 ## Constraints
 
 - Markdown, HTML, and DOCX are the supported input formats
 - Fenced code blocks are preserved intact even when they exceed `max_tokens` (unless `code_block`/`code_fence` has `split=True`)
-- CLI should stay orchestration-only; parsing/splitting logic belongs in `src/lumberjack/core/`
+- CLI should stay orchestration-only; parsing and splitting logic belongs to the public component implementations, while integration adapters belong in `src/lumberjack/_internal/`
 - There is no LangChain dependency
 
 ## Testing
@@ -259,32 +258,38 @@ When a change warrants a changelog entry, do it in the same commit (or PR) as th
 ```
 src/lumberjack/
     __init__.py                     # Public API: lumber()
-    formats.py                      # Input format detection and source reading helpers
+    lumber.py                       # Minimal convenience pipeline
     cli.py                          # CLI orchestration
+    block.py                        # Public block kinds and typed configuration
+    models.py                       # Public shared data models
+    protocols.py                    # Public extension protocols
+    tokenizer.py                    # Public tokenizer implementations
     web/                            # FastAPI layer
-    core/
-        __init__.py                 # Re-exports
-        models.py                   # Shared data models
-        protocols.py                # Protocol interfaces
-        tokenizers.py               # Tokenizer implementations
-        block.py                    # BlockSplitter + parse_block_config_entry
-        options.py                  # Split option/block config parsing helpers
-        splitter/                   # SiblingSplitter/SubtreeSplitter/SectionSplitter + create_splitter
-        visitor.py                  # AstVisitor
-        utils.py                    # Rendering helpers
-        parser/                    # Format-specific parser: input -> DocumentAST
-            __init__.py
-            markdown/
-                __init__.py
-                parser.py           # MarkdownItParser
-                plugins/            # markdown-it plugins
-            docx/
-                __init__.py
-                parser.py           # DocxParser
-            html/
-                __init__.py
-                parser.py           # HTMLParser + _HTMLDocumentBuilder
-                table_parser.py     # HTMLTableParser + HTMLTable*
+    parser/                         # Public parser implementations
+        __init__.py                 # AutoParser and concrete parser exports
+        auto.py                     # Format inference and parser selection
+        markdown/
+            parser.py               # MarkdownItParser
+            plugins/                # markdown-it plugins
+        docx/
+            parser.py               # DocxParser
+        html/
+            parser.py               # HTMLParser + _HTMLDocumentBuilder
+            table_parser.py         # HTMLTableParser + HTMLTable*
+    splitter/                       # Public splitter implementations
+        base.py
+        exact.py
+        incremental.py
+        sibling.py
+        subtree.py
+        section.py
+        topology/
+    _internal/                      # Private cross-component helpers
+        block_splitter.py
+        formats.py
+        options.py
+        pipeline.py
+        rendering.py
 lumberjack_webui/                   # React + TypeScript frontend
 tests/
     test_api.py

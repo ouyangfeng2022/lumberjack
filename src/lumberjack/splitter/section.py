@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from .base import BaseSplitter
 from .exact import ExactCountingMixin
 from .incremental import IncrementalCountingMixin
 from .topology.section import SectionTopologyMixin
 
 
-class ExactSectionSplitter(ExactCountingMixin, SectionTopologyMixin, BaseSplitter):
+class ExactSectionSplitter(ExactCountingMixin, SectionTopologyMixin):
     """Per-heading section splitter without subtree-collapse or tail merging.
 
     Emits one chunk per heading section's direct body and recurses into
@@ -23,14 +22,12 @@ class ExactSectionSplitter(ExactCountingMixin, SectionTopologyMixin, BaseSplitte
     budgets).  Every budget decision fully recounts the rendered candidate
     text.
 
-    Registered as ``"section"`` (the default) and ``"exact-section"``.
-    Works with any tokenizer.
+    Publicly exposed as ``ExactSectionSplitter`` and selected by the
+    ``exact-section`` CLI/Web integration name. Works with any tokenizer.
     """
 
 
-class IncrementalSectionSplitter(
-    IncrementalCountingMixin, SectionTopologyMixin, BaseSplitter
-):
+class IncrementalSectionSplitter(IncrementalCountingMixin, SectionTopologyMixin):
     """Per-heading section splitter (incremental estimate) without subtree-collapse or tail merging.
 
     Same per-section topology as :class:`ExactSectionSplitter`, but uses
@@ -40,12 +37,13 @@ class IncrementalSectionSplitter(
 
     No subtree-collapse short-circuit and no tail-fragment merging.
 
-    Registered as ``"incremental-section"``.  Works with any tokenizer.
+    This is also the unprefixed public ``SectionSplitter`` default. Works with
+    any tokenizer.
     """
 
 
-# Backward-compatible alias: the default ``section`` splitter is the exact one.
-SectionSplitter = ExactSectionSplitter
+# The unprefixed public splitter uses incremental counting by default.
+SectionSplitter = IncrementalSectionSplitter
 
 __all__ = [
     "ExactSectionSplitter",

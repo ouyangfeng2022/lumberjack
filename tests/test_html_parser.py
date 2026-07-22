@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from lumberjack.core.block import BlockSplitter
-from lumberjack.core.models import SplitOptions, TableBlockParams
-from lumberjack.core.parser.html import HTMLParser
-from lumberjack.core.parser.html.table_parser import HTMLTableParser
-from lumberjack.core.parser.markdown.parser import MarkdownParser
-from lumberjack.core.splitter import create_splitter
-from tests.helpers import CharacterTokenizer
+from lumberjack._internal.block_splitter import BlockSplitter
+from lumberjack.block import normalize_block_options
+from lumberjack.parser.html import HTMLParser
+from lumberjack.parser.html.table_parser import HTMLTableParser
+from lumberjack.parser.markdown.parser import MarkdownParser
+from tests.helpers import (
+    CharacterTokenizer,
+    TableBlockParams,
+    create_splitter,
+    splitter_options,
+)
 
 
 def test_html_parser_builds_document_ast_with_sections_and_blocks():
@@ -76,7 +80,7 @@ def test_html_splitter_respects_max_heading_level():
     splitter = create_splitter(
         "sibling",
         CharacterTokenizer(),
-        options=SplitOptions(max_tokens=500, max_heading_level=2),
+        **splitter_options(max_tokens=500, max_heading_level=2),
     )
     chunks = splitter.split(document)
 
@@ -237,12 +241,14 @@ def test_html_table_to_markdown_with_caption():
 def test_text_splitter_handles_html_table_block():
     """Test that TextSplitter can split HTML blocks containing tables."""
     tokenizer = CharacterTokenizer()
+    options = splitter_options(block_options={"html_table": TableBlockParams()})
     splitter = BlockSplitter(
         tokenizer,
-        options=SplitOptions(block_options={"html_table": TableBlockParams()}),
+        max_tokens=options["max_tokens"],
+        block_options=normalize_block_options(options["block_options"]),
     )
 
-    from lumberjack.core.models import DocumentBlock
+    from lumberjack.models import DocumentBlock
 
     # Create an HTML table block
     html_table_block = DocumentBlock(
@@ -264,16 +270,16 @@ def test_text_splitter_handles_html_table_block():
 
 def test_table_splitter_reads_table_params_from_options() -> None:
     tokenizer = CharacterTokenizer()
+    options = splitter_options(
+        block_options={"table": TableBlockParams(max_tokens=28, repeat_header=False)},
+    )
     splitter = BlockSplitter(
         tokenizer,
-        options=SplitOptions(
-            block_options={
-                "table": TableBlockParams(max_tokens=28, repeat_header=False)
-            },
-        ),
+        max_tokens=options["max_tokens"],
+        block_options=normalize_block_options(options["block_options"]),
     )
 
-    from lumberjack.core.models import DocumentBlock
+    from lumberjack.models import DocumentBlock
 
     block = DocumentBlock(
         kind="table",

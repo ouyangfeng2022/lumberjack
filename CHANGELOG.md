@@ -7,14 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added component-oriented public modules and packages: `lumberjack.parser`, `lumberjack.splitter`, `lumberjack.tokenizer`, `lumberjack.block`, `lumberjack.models`, and `lumberjack.protocols`.
+- Added `AutoParser` with suffix, DOCX structure, and HTML content detection; all parser objects now share `metadata_overrides` and `source_path` document arguments.
+- Added typed block configuration with `BlockKind`, `BlockConfig`, table-specific configs, and `CustomBlockConfig`.
+
 ### Changed
 
-- The default structure-aware splitter is now named `sibling` (with `exact-sibling` and `incremental-sibling` variants), describing its greedy sibling-packing behavior.
+- **Breaking:** `lumber()` is now a minimal convenience API accepting only `source`, `format`, and `max_tokens`; advanced use is composed explicitly from parser, tokenizer, and splitter objects.
+- **Breaking:** Unprefixed `SiblingSplitter`, `SubtreeSplitter`, and `SectionSplitter` classes and CLI/Web names now use incremental measurement. Full recounting is selected through explicit `Exact*Splitter` classes or `exact-*` integration names.
+- **Breaking:** Splitters accept validated constructor arguments directly. `SectionSplitter` no longer exposes the inapplicable `merge_below_ratio` argument.
+- **Breaking:** `MarkdownParser` now disables Setext headings by default; pass `disable_lheading=False` to enable them.
+- `DocumentAST.source_path` now records source provenance independently, and `Chunk.document_path` is generated from that field rather than semantic metadata.
+- Public parser, splitter, tokenizer, block, model, and protocol namespaces now own their implementations directly instead of forwarding to a parallel `core` tree.
 - **Breaking:** The public AST node types are now format-neutral: `MarkdownInline` and `MarkdownBlock` were renamed to `DocumentInline` and `DocumentBlock`. Their text is defined as canonical Markdown-like rendered content rather than a guaranteed source slice.
 - The Web UI now sends `merge_below_ratio`, exposes every supported exact/incremental splitter name, and mirrors the complete serialized `Chunk` schema.
 
 ### Removed
 
+- **Breaking:** Removed `SplitOptions`, dict-based Python `block_options`, `document_metadata`, public registry/factory helpers, and the `lumberjack.core` package. Public parsing is performed by parser objects; there is no module-level `parse()` function.
 - **Breaking:** Removed the legacy `recursive`, `exact-recursive`, and `incremental-recursive` registry names and the `RecursiveSplitter` class aliases. Use the corresponding `sibling` names and classes.
 
 ### Fixed

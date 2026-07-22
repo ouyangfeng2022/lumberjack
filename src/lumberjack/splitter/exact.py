@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
+from .._internal.rendering import join_rendered_blocks
 from ..models import (
     ChunkDraft,
     DocumentBlock,
@@ -10,7 +11,6 @@ from ..models import (
     SectionNode,
     common_heading_path,
 )
-from ..utils import join_rendered_blocks
 from .base import BaseSplitter
 
 if TYPE_CHECKING:
@@ -71,8 +71,8 @@ class ExactCountingMixin(BaseSplitter):
 
     def _exact_body_budget(self, headings: HeadingPath) -> int:
         """Body-only token budget for exact-path body splitting."""
-        max_tokens = self.options.ideal_max_tokens
-        if self.options.render_headings:
+        max_tokens = self.ideal_max_tokens
+        if self.render_headings:
             prefix_tokens = self._heading_path_token_count(headings)
         else:
             prefix_tokens = self._heading_path_token_count(headings[-1:])
@@ -148,7 +148,7 @@ class ExactCountingMixin(BaseSplitter):
 
         chunks: list[ChunkDraft] = []
         current_entries: list[Entry] = []
-        standalone_kinds = self.options.standalone_kinds
+        standalone_kinds = self.standalone_kinds
 
         def flush_current() -> None:
             if not current_entries:
@@ -240,7 +240,7 @@ class ExactCountingMixin(BaseSplitter):
             if (
                 current_entries
                 and self._rendered_token_count(candidate_entries)
-                > self.options.ideal_max_tokens
+                > self.ideal_max_tokens
             ):
                 flush_current()
 
@@ -251,7 +251,7 @@ class ExactCountingMixin(BaseSplitter):
 
     def _section_has_standalone(self, section: SectionNode) -> bool:
         """Whether this section's subtree contains any standalone block."""
-        standalone_kinds = self.options.standalone_kinds
+        standalone_kinds = self.standalone_kinds
         if any(b.kind in standalone_kinds for b in section.blocks):
             return True
         return any(self._section_has_standalone(c) for c in section.children)
@@ -263,7 +263,7 @@ class ExactCountingMixin(BaseSplitter):
         body = join_rendered_blocks([block.text for block in section.blocks])
         body_tokens = self.tokenizer.count(body, cache=True)
         has_standalone = any(
-            block.kind in self.options.standalone_kinds for block in section.blocks
+            block.kind in self.standalone_kinds for block in section.blocks
         )
         if has_standalone or body_tokens > self._exact_body_budget(section.path):
             return self._split_section_body(section)
@@ -297,7 +297,7 @@ class ExactCountingMixin(BaseSplitter):
 
     def _packable_body_draft(self, section: SectionNode) -> ChunkDraft | None:
         if not section.blocks or any(
-            block.kind in self.options.standalone_kinds for block in section.blocks
+            block.kind in self.standalone_kinds for block in section.blocks
         ):
             return None
         entry = self._entry_from_blocks(
@@ -310,9 +310,7 @@ class ExactCountingMixin(BaseSplitter):
         )
         draft = self._draft_from_entries([entry], section.path, origin="section")
         return (
-            draft
-            if self._draft_budget_tokens(draft) <= self.options.ideal_max_tokens
-            else None
+            draft if self._draft_budget_tokens(draft) <= self.ideal_max_tokens else None
         )
 
 

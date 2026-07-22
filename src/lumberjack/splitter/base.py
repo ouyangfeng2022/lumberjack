@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from ..block import BlockSplitter
+from collections.abc import Iterable
+
+from lumberjack.block import BlockKind, BlockOption, normalize_block_options
+
+from .._internal.block_splitter import BlockSplitter
+from .._internal.rendering import join_rendered_blocks
 from ..models import (
     Chunk,
     ChunkDraft,
@@ -9,14 +14,11 @@ from ..models import (
     Entry,
     HeadingPath,
     SectionNode,
-    SplitOptions,
     ancestor_heading_path,
     common_heading_path,
     render_heading_path,
 )
 from ..protocols import SplitterProtocol, TokenizerProtocol
-from ..tokenizers import ApproxCharTokenizer
-from ..utils import join_rendered_blocks
 
 SEPARATOR = "\n\n"
 
@@ -41,13 +43,34 @@ class BaseSplitter(SplitterProtocol):
 
     def __init__(
         self,
-        tokenizer: TokenizerProtocol | None = None,
-        options: SplitOptions | None = None,
-    ):
-        self.tokenizer = tokenizer or ApproxCharTokenizer()
-        self.options = options or SplitOptions()
+        tokenizer: TokenizerProtocol,
+        *,
+        max_tokens: int = 1200,
+        ideal_max_tokens_ratio: float = 0.8,
+        skip_empty_sections: bool = True,
+        render_headings: bool = True,
+        max_heading_level: int | None = None,
+        block_options: Iterable[BlockOption] | None = None,
+        _merge_below_ratio: float = 0.0,
+    ) -> None:
+        self.tokenizer = tokenizer
+        self.max_tokens = max_tokens
+        self.ideal_max_tokens_ratio = ideal_max_tokens_ratio
+        self.ideal_max_tokens = max(1, int(max_tokens * ideal_max_tokens_ratio))
+        self.merge_below_ratio = _merge_below_ratio
+        self.skip_empty_sections = skip_empty_sections
+        self.render_headings = render_headings
+        self.max_heading_level = max_heading_level
+        self.block_options = normalize_block_options(block_options)
+        self.standalone_kinds = frozenset(
+            kind for kind, config in self.block_options.items() if config.isolated
+        )
         self._validate_options()
-        self._block_splitter = BlockSplitter(self.tokenizer, self.options)
+        self._block_splitter = BlockSplitter(
+            self.tokenizer,
+            max_tokens=self.max_tokens,
+            block_options=self.block_options,
+        )
 
     def split(self, document: DocumentAST) -> list[Chunk]:  # pragma: no cover
         raise NotImplementedError(
@@ -77,7 +100,7 @@ class BaseSplitter(SplitterProtocol):
             return ""
 
         parts: list[str] = []
-        if ancestor_headings and self.options.render_headings:
+        if ancestor_headings and self.render_headings:
             parts.append(render_heading_path(ancestor_headings))
 
         previous_headings = ancestor_headings
@@ -120,9 +143,9 @@ class BaseSplitter(SplitterProtocol):
 
     def _root_for_splitting(self, document: DocumentAST) -> SectionNode:
         """Return the section tree used by splitters after option-level shaping."""
-        if self.options.max_heading_level is None:
+        if self.max_heading_level is None:
             return document.root
-        return self._limit_heading_depth(document.root, self.options.max_heading_level)
+        return self._limit_heading_depth(document.root, self.max_heading_level)
 
     def _limit_heading_depth(
         self,
@@ -143,7 +166,7 @@ class BaseSplitter(SplitterProtocol):
         def demote_section(target: SectionNode, section: SectionNode) -> None:
             target.blocks.append(
                 DocumentBlock(
-                    kind="paragraph",
+                    kind=BlockKind.PARAGRAPH,
                     text=render_heading_path((section.heading_key,)),
                     start_line=section.start_line,
                     end_line=section.start_line,
@@ -213,22 +236,18 @@ class BaseSplitter(SplitterProtocol):
         return drafts
 
     def _validate_options(self) -> None:
-        if self.options.max_tokens <= 0:
+        if self.max_tokens <= 0:
             raise ValueError("max_tokens must be greater than 0")
-        if not 0 < self.options.ideal_max_tokens_ratio <= 1:
+        if not 0 < self.ideal_max_tokens_ratio <= 1:
             raise ValueError(
                 "ideal_max_tokens_ratio must be greater than 0 and at most 1"
             )
-        if not (0.0 <= self.options.merge_below_ratio < 1.0):
+        if not (0.0 <= self.merge_below_ratio < 1.0):
             raise ValueError(
-                f"merge_below_ratio must be in [0.0, 1.0), "
-                f"got {self.options.merge_below_ratio}"
+                f"merge_below_ratio must be in [0.0, 1.0), got {self.merge_below_ratio}"
             )
-        for kind, cfg in self.options.block_options.items():
-            if cfg.max_tokens is not None and cfg.max_tokens <= 0:
-                raise ValueError(
-                    f"block_options[{kind!r}].max_tokens must be positive, got {cfg.max_tokens}"
-                )
+        if self.max_heading_level is not None and self.max_heading_level < 0:
+            raise ValueError("max_heading_level must be greater than or equal to 0")
 
     def _finalize_chunks(
         self,
@@ -237,15 +256,14 @@ class BaseSplitter(SplitterProtocol):
     ) -> list[Chunk]:
         """Convert chunk drafts into final ``Chunk`` objects with rendered body and metadata."""
         finalized: list[Chunk] = []
-        doc_path = document.metadata.get("path")
-        document_path = str(doc_path) if doc_path is not None else None
+        document_path = document.source_path
         index = 0
         for chunk in chunks:
             headings = ancestor_heading_path(entry.headings for entry in chunk.entries)
             body = self._render_body(chunk.entries, ancestor_headings=headings)
             if not body:
                 continue
-            if self.options.skip_empty_sections and not any(
+            if self.skip_empty_sections and not any(
                 entry.body.strip() for entry in chunk.entries
             ):
                 continue
@@ -329,7 +347,7 @@ class BaseSplitter(SplitterProtocol):
         Threshold = ``int(max_tokens * merge_below_ratio)``;
         ``merge_below_ratio == 0`` disables merging entirely.
         """
-        merge_below = int(self.options.max_tokens * self.options.merge_below_ratio)
+        merge_below = int(self.max_tokens * self.merge_below_ratio)
         if merge_below <= 0:
             return chunks
         if not chunks:
@@ -355,7 +373,7 @@ class BaseSplitter(SplitterProtocol):
                 # Compare the rendered footprint against max_tokens.  Because
                 # can_merge guarantees previous.headings == current.headings,
                 # the merged common prefix is that shared path.
-                if self._draft_budget_tokens(merged_draft) <= self.options.max_tokens:
+                if self._draft_budget_tokens(merged_draft) <= self.max_tokens:
                     merged[i - 1] = merged_draft
                     del merged[i]
             i -= 1

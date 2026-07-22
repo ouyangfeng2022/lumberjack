@@ -4,11 +4,13 @@ import argparse
 import json
 from dataclasses import asdict
 from pathlib import Path
+from typing import cast
 
-from . import lumber
-from .core.options import parse_cli_block_configs
-from .core.parser import create_parser
-from .formats import detect_format
+from ._internal.formats import detect_format
+from ._internal.options import parse_cli_block_configs
+from ._internal.pipeline import BUILTIN_SPLITTER_NAMES, split_source
+from .block import BlockKind
+from .parser import InputFormat
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -31,27 +33,16 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("approx", "tiktoken", "transformers"),
         default="approx",
         help="Tokenizer engine used to encode and count text. Counting mode is "
-        "selected by --splitter; any tokenizer works with exact or incremental "
-        "splitters.",
+        "selected by --splitter; unprefixed names use incremental counting and "
+        "exact-* selects full recounting.",
     )
     parser.add_argument(
         "--splitter",
-        choices=(
-            "sibling",
-            "subtree",
-            "section",
-            "exact-sibling",
-            "incremental-sibling",
-            "exact-subtree",
-            "incremental-subtree",
-            "exact-section",
-            "incremental-section",
-        ),
+        choices=BUILTIN_SPLITTER_NAMES,
         default="sibling",
         help=(
             "Splitter implementation. 'sibling'/'subtree'/'section' default "
-            "to the exact (full-recount) variants; 'incremental-*' use an "
-            "additive estimate + 8-char separator-delta window."
+            "to incremental counting; use 'exact-*' for full recounting."
         ),
     )
     parser.add_argument(
@@ -108,16 +99,15 @@ def main() -> None:
     input_path = Path(args.input)
 
     input_format = detect_format(input_path, args.input_format)
-    parser_impl = create_parser(input_format)
     block_options = parse_cli_block_configs(
         args.block_config,
-        block_kinds=parser_impl.block_kinds,
+        block_kinds=frozenset(kind.value for kind in BlockKind),
         json_config=args.block_config_json,
     )
 
-    chunks = lumber(
+    chunks = split_source(
         input_path,
-        format=input_format,
+        format=cast(InputFormat, input_format),
         max_tokens=args.max_tokens,
         ideal_max_tokens_ratio=args.ideal_max_tokens_ratio,
         merge_below_ratio=args.merge_below_ratio,
@@ -126,7 +116,6 @@ def main() -> None:
         splitter=args.splitter,
         render_headings=not args.no_render_headings,
         max_heading_level=args.max_heading_level,
-        document_metadata={"path": str(input_path.resolve())},
     )
 
     payload = json.dumps(

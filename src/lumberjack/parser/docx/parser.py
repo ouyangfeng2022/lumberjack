@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from io import BytesIO
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
+
+from lumberjack.block import BlockKind
 
 from ...models import (
     DocumentAST,
@@ -187,14 +191,16 @@ class DocxParser(ParserProtocol[bytes]):
         data: bytes,
         *,
         document_title: str | None = None,
-        document_metadata: dict[str, object] | None = None,
+        metadata_overrides: Mapping[str, object] | None = None,
+        source_path: str | Path | None = None,
     ) -> DocumentAST:
         """Parse DOCX binary data into a DocumentAST.
 
         Args:
             data: Raw DOCX file content.
             document_title: Optional override for the document title.
-            document_metadata: Optional metadata dict merged into the result.
+            metadata_overrides: Semantic metadata that overrides DOCX core properties.
+            source_path: Optional source provenance stored separately from metadata.
         """
         from docx import Document
 
@@ -202,17 +208,16 @@ class DocxParser(ParserProtocol[bytes]):
             msg = f"DocxParser.parse expects bytes, got {type(data).__name__}"
             raise TypeError(msg)
 
-        if document_metadata is None:
-            document_metadata = {}
+        metadata = dict(metadata_overrides or {})
 
         doc = Document(BytesIO(data))
 
         # Extract core properties as metadata
         core_props = doc.core_properties
-        if core_props.title and "title" not in document_metadata:
-            document_metadata.setdefault("title", core_props.title)
+        if core_props.title and "title" not in metadata:
+            metadata.setdefault("title", core_props.title)
         if core_props.author:
-            document_metadata.setdefault("author", core_props.author)
+            metadata.setdefault("author", core_props.author)
 
         root = SectionNode(level=0, title="")
         section_stack: list[SectionNode] = [root]
@@ -262,7 +267,7 @@ class DocxParser(ParserProtocol[bytes]):
                     element_counter += 1
                     list_children.append(
                         DocumentBlock(
-                            kind="list_item",
+                            kind=BlockKind.LIST_ITEM,
                             text=item_text,
                             start_line=element_counter,
                             end_line=element_counter,
@@ -276,7 +281,7 @@ class DocxParser(ParserProtocol[bytes]):
                     list_text = "\n".join(list_text_parts)
                     section_stack[-1].add_block(
                         DocumentBlock(
-                            kind="list",
+                            kind=BlockKind.LIST,
                             text=list_text,
                             start_line=element_counter,
                             end_line=element_counter,
@@ -292,7 +297,7 @@ class DocxParser(ParserProtocol[bytes]):
                     rendered = f"> {text}" if text else ""
                     section_stack[-1].add_block(
                         DocumentBlock(
-                            kind="blockquote",
+                            kind=BlockKind.BLOCKQUOTE,
                             text=rendered,
                             start_line=element_counter,
                             end_line=element_counter,
@@ -305,7 +310,7 @@ class DocxParser(ParserProtocol[bytes]):
                     code_text = para.text
                     section_stack[-1].add_block(
                         DocumentBlock(
-                            kind="code_block",
+                            kind=BlockKind.CODE_BLOCK,
                             text=f"```\n{code_text}\n```",
                             start_line=element_counter,
                             end_line=element_counter,
@@ -322,7 +327,7 @@ class DocxParser(ParserProtocol[bytes]):
                     inlines = _runs_to_inlines(para)
                     section_stack[-1].add_block(
                         DocumentBlock(
-                            kind="paragraph",
+                            kind=BlockKind.PARAGRAPH,
                             text=text,
                             start_line=element_counter,
                             end_line=element_counter,
@@ -339,7 +344,7 @@ class DocxParser(ParserProtocol[bytes]):
                 if rendered:
                     section_stack[-1].add_block(
                         DocumentBlock(
-                            kind="table",
+                            kind=BlockKind.TABLE,
                             text=rendered,
                             start_line=element_counter,
                             end_line=element_counter,
@@ -353,7 +358,8 @@ class DocxParser(ParserProtocol[bytes]):
             title=final_title,
             source="",
             root=root,
-            metadata=document_metadata,
+            source_path=str(source_path) if source_path is not None else None,
+            metadata=metadata,
         )
 
     def _paragraph_from_element(self, doc: DocxDocument, element: Any) -> Any | None:

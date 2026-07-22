@@ -1,11 +1,9 @@
-"""Tests for ``SplitOptions.max_heading_level``."""
+"""Tests for splitter ``max_heading_level`` constructor arguments."""
 
 import pytest
 
-from lumberjack import lumber
-from lumberjack.core.models import SplitOptions
-from lumberjack.core.parser.markdown.parser import MarkdownItParser
-from lumberjack.core.splitter import create_splitter
+from lumberjack.parser.markdown.parser import MarkdownItParser
+from tests.helpers import create_splitter, splitter_options
 
 
 def test_parser_preserves_full_heading_depth():
@@ -42,8 +40,20 @@ Content in H6 section.
     assert len(h5_section.children[0].blocks) == 1  # Content in H6
 
 
-def test_max_heading_level_with_lumber():
-    """``lumber()`` threads max_heading_level into splitter options."""
+def _split(markdown: str, *, max_heading_level: int | None):
+    document = MarkdownItParser().parse(markdown)
+    splitter = create_splitter(
+        "sibling",
+        **splitter_options(
+            max_tokens=1200,
+            max_heading_level=max_heading_level,
+        ),
+    )
+    return splitter.split(document)
+
+
+def test_max_heading_level_on_splitter():
+    """Heading-depth limiting is configured directly on a splitter."""
     markdown = """
 # Main Section
 
@@ -57,7 +67,7 @@ Content here.
 """
 
     # Default behavior - all headings create sections
-    chunks = lumber(markdown, splitter="sibling")
+    chunks = _split(markdown, max_heading_level=None)
     assert len(chunks) >= 1  # At least one chunk
 
     # Ancestor metadata excludes the chunk's own H4 title, while section_level
@@ -67,7 +77,7 @@ Content here.
     assert chunk.section_level == 4
 
     # With max_heading_level=2, only H1 and H2 remain chunk section context.
-    chunks = lumber(markdown, splitter="sibling", max_heading_level=2)
+    chunks = _split(markdown, max_heading_level=2)
     chunk = chunks[0]
     # H2 is the chunk's own section title, so only H1 is ancestor metadata.
     assert len(chunk.headings) == 1
@@ -84,7 +94,7 @@ Content here.
     ("sibling", "incremental-sibling", "subtree", "section"),
 )
 def test_max_heading_level_manual_splitter_pipeline(splitter_name: str):
-    """Manual parse -> split users configure heading depth on SplitOptions."""
+    """Manual parse -> split users configure heading depth on the splitter."""
     markdown = """
 # H1
 
@@ -100,7 +110,7 @@ def test_max_heading_level_manual_splitter_pipeline(splitter_name: str):
 
     splitter = create_splitter(
         splitter_name,
-        options=SplitOptions(max_tokens=500, max_heading_level=2),
+        **splitter_options(max_tokens=500, max_heading_level=2),
     )
     chunks = splitter.split(doc)
 
@@ -121,7 +131,7 @@ def test_max_heading_level_none_means_all():
 Body.
 """
 
-    chunks = lumber(markdown, splitter="sibling", max_heading_level=None)
+    chunks = _split(markdown, max_heading_level=None)
     chunk = chunks[0]
     assert chunk.headings == ((1, "H1"),)
     assert chunk.section_level == 6
@@ -137,7 +147,7 @@ def test_max_heading_level_zero_disables_all_headings():
 ### H3
 """
 
-    chunks = lumber(markdown, splitter="sibling", max_heading_level=0)
+    chunks = _split(markdown, max_heading_level=0)
 
     assert len(chunks) == 1
     chunk = chunks[0]
@@ -148,7 +158,7 @@ def test_max_heading_level_zero_disables_all_headings():
 
 if __name__ == "__main__":
     test_parser_preserves_full_heading_depth()
-    test_max_heading_level_with_lumber()
+    test_max_heading_level_on_splitter()
     for _splitter_name in (
         "sibling",
         "incremental-sibling",

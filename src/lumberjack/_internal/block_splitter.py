@@ -1,22 +1,22 @@
-"""Block splitting and block-config parsing helpers.
-
-- :class:`BlockSplitter` splits oversized text/code/table/list blocks into
-  token-bounded pieces.
-- :func:`parse_block_config_entry` parses ``KIND[:isolated][:nosplit][:TOKENS]``
-  strings into ``(kind, BaseParams)`` pairs for the CLI.
-"""
+"""Internal oversized-block splitting helpers."""
 
 from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING
 
-from .models import BaseParams, BlockKindRegistry, SplitOptions, TableBlockParams
-from .parser.html.table_parser import HTMLTableParser, HTMLTableRow
+from lumberjack.block import (
+    BlockOption,
+    HTMLTableConfig,
+    MarkdownTableConfig,
+    default_block_config,
+)
+
+from ..parser.html.table_parser import HTMLTableParser, HTMLTableRow
 
 if TYPE_CHECKING:
-    from .models import DocumentBlock
-    from .protocols import TokenizerProtocol
+    from ..models import DocumentBlock
+    from ..protocols import TokenizerProtocol
 
 SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?\u3002\uff01\uff1f])\s+")
 PROTECTED_SPAN_RE = re.compile(r"<https?://[^\s>]+>|https?://[^\s)>\]]+")
@@ -29,10 +29,13 @@ class BlockSplitter:
     def __init__(
         self,
         tokenizer: TokenizerProtocol,
-        options: SplitOptions | None = None,
+        *,
+        max_tokens: int,
+        block_options: dict[str, BlockOption],
     ) -> None:
         self.tokenizer = tokenizer
-        self.options = options or SplitOptions()
+        self.max_tokens = max_tokens
+        self.block_options = block_options
         self._html_table_parser = HTMLTableParser()
 
     def split_oversized_block(
@@ -64,8 +67,8 @@ class BlockSplitter:
 
         return self.split_text(block.text, max_tokens=budget)
 
-    def _block_config(self, kind: str) -> BaseParams | None:
-        return self.options.block_options.get(kind.lower())
+    def _block_config(self, kind: str) -> BlockOption:
+        return self.block_options.get(kind.lower(), default_block_config(kind))
 
     def _block_budget(self, kind: str, default_budget: int | None = None) -> int:
         config = self._block_config(kind)
@@ -73,11 +76,14 @@ class BlockSplitter:
             return config.max_tokens
         if default_budget is not None:
             return default_budget
-        return self.options.max_tokens
+        return self.max_tokens
 
     def _repeat_header(self, kind: str) -> bool:
         config = self._block_config(kind)
-        return not isinstance(config, TableBlockParams) or config.repeat_header
+        return (
+            not isinstance(config, MarkdownTableConfig | HTMLTableConfig)
+            or config.repeat_header
+        )
 
     def split_code_block(
         self,
@@ -438,51 +444,3 @@ class BlockSplitter:
                 continue
             result.append((stripped, self.tokenizer.count(stripped, cache=True)))
         return result
-
-
-def parse_block_config_entry(
-    entry: str, registry: BlockKindRegistry
-) -> tuple[str, BaseParams]:
-    """Parse a ``KIND[:isolated][:nosplit][:TOKENS]`` string into ``(kind, BaseParams)``.
-
-    The colon-separated parts after the kind name are classified by content:
-
-    - ``isolated`` → ``isolated=True``
-    - ``nosplit`` → ``split=False``
-    - positive integer → ``max_tokens``
-
-    Raises :class:`ValueError` on unknown kind or bad tokens.
-    """
-    parts = entry.split(":")
-    kind = parts[0].strip().lower()
-    if not kind:
-        raise ValueError(f"Empty block kind in: {entry!r}")
-    registry.validate_kind(kind)
-
-    isolated = False
-    split = True
-    max_tokens: int | None = None
-
-    for part in parts[1:]:
-        part = part.strip()
-        if not part:
-            continue
-        lower = part.lower()
-        if lower == "isolated":
-            isolated = True
-        elif lower == "nosplit":
-            split = False
-        else:
-            try:
-                tokens = int(part)
-            except ValueError:
-                raise ValueError(
-                    f"Invalid spec in: {entry!r} "
-                    f"(expected 'isolated', 'nosplit', or integer, got {part!r})"
-                ) from None
-            if tokens <= 0:
-                raise ValueError(f"Token count must be positive in: {entry!r}")
-            max_tokens = tokens
-
-    params_cls = TableBlockParams if kind in {"table", "html_table"} else BaseParams
-    return kind, params_cls(isolated=isolated, split=split, max_tokens=max_tokens)

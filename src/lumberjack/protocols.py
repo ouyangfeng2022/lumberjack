@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, TypeVar
 
 if TYPE_CHECKING:
@@ -39,7 +41,8 @@ class ParserProtocol(Protocol[ParserInput]):
         data: ParserInput,
         *,
         document_title: str | None = None,
-        document_metadata: dict[str, object] | None = None,
+        metadata_overrides: Mapping[str, object] | None = None,
+        source_path: str | Path | None = None,
     ) -> DocumentAST: ...
 
 

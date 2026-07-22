@@ -7,8 +7,8 @@ from markdown_it.token import Token
 from mdit_py_plugins.footnote import footnote_plugin
 from mdit_py_plugins.tasklists import tasklists_plugin
 
-from lumberjack.core.models import DocumentBlock
-from lumberjack.core.parser.markdown.parser import (
+from lumberjack.models import DocumentBlock
+from lumberjack.parser.markdown.parser import (
     MarkdownBlockContext,
     MarkdownBlockSpec,
     MarkdownItParser,
@@ -167,7 +167,7 @@ def test_parser_captures_commonmark_blocks_and_inlines() -> None:
 
 
 def test_markdown_it_parser_supports_setext_tables_and_extended_inlines() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownParser(disable_lheading=False).parse(
         MARKDOWN_IT_FIXTURE, document_title="markdown-it.md"
     )
     heading = document.root.children[0]
@@ -672,12 +672,12 @@ def test_front_matter_populates_metadata() -> None:
 
 
 def test_no_front_matter_uses_external_values() -> None:
-    """Without front matter, external document_title and document_metadata are used."""
+    """Without front matter, external title and metadata overrides are used."""
     md = "# Hello\n\nWorld."
     document = MarkdownParser().parse(
         md,
         document_title="hello.md",
-        document_metadata={"path": "/tmp/hello.md"},
+        metadata_overrides={"path": "/tmp/hello.md"},
     )
 
     assert document.title == "hello.md"
@@ -707,7 +707,7 @@ def test_front_matter_and_external_metadata_merge() -> None:
     document = MarkdownParser().parse(
         md,
         document_title="fallback.md",
-        document_metadata={"path": "/tmp/guide.md", "author": "Override"},
+        metadata_overrides={"path": "/tmp/guide.md", "author": "Override"},
     )
 
     assert document.title == "fallback.md"

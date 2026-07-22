@@ -2,8 +2,29 @@
 
 from __future__ import annotations
 
-from lumberjack import lumber
-from lumberjack.core.models import BaseParams, TableBlockParams
+from collections.abc import Iterable
+
+from lumberjack.block import BlockOption, HTMLTableConfig
+from lumberjack.parser import MarkdownParser
+from lumberjack.splitter import SiblingSplitter
+from lumberjack.tokenizer import ApproxCharTokenizer
+
+
+def _split(
+    markdown: str,
+    *,
+    max_tokens: int = 500,
+    merge_below_ratio: float = 0.125,
+    block_options: Iterable[BlockOption] | None = None,
+):
+    document = MarkdownParser().parse(markdown)
+    splitter = SiblingSplitter(
+        ApproxCharTokenizer(),
+        max_tokens=max_tokens,
+        merge_below_ratio=merge_below_ratio,
+        block_options=block_options,
+    )
+    return splitter.split(document)
 
 
 def test_html_table_with_table_isolation():
@@ -22,10 +43,10 @@ Some text after the table.
 """
 
     # Set html_table isolation
-    chunks = lumber(
+    chunks = _split(
         markdown,
         max_tokens=500,
-        block_options={"html_table": BaseParams(isolated=True)},
+        block_options=[HTMLTableConfig(isolated=True)],
     )
 
     # Should have at least 2 chunks: table chunk and text chunk
@@ -53,7 +74,7 @@ def test_html_table_preserves_original_format():
 </table>
 """
 
-    chunks = lumber(markdown, max_tokens=500)
+    chunks = _split(markdown, max_tokens=500)
 
     # Find chunk with table content
     table_chunks = [c for c in chunks if "<table" in c.body and "</table>" in c.body]
@@ -87,7 +108,7 @@ def test_large_html_table_splitting():
 """
 
     # Set small token budget to force splitting
-    chunks = lumber(markdown, max_tokens=200, merge_below_ratio=0.0)
+    chunks = _split(markdown, max_tokens=200, merge_below_ratio=0.0)
 
     # Should be split into multiple chunks
     assert len(chunks) > 1
@@ -117,11 +138,11 @@ def test_large_html_table_can_omit_repeated_header_rows():
 </table>
 """
 
-    chunks = lumber(
+    chunks = _split(
         markdown,
         max_tokens=200,
         merge_below_ratio=0.0,
-        block_options={"html_table": TableBlockParams(repeat_header=False)},
+        block_options=[HTMLTableConfig(repeat_header=False)],
     )
 
     table_chunks = [c for c in chunks if "<table" in c.body and "</table>" in c.body]
@@ -147,7 +168,7 @@ def test_html_table_vs_markdown_table_distinction():
 | 3 | 4 |
 """
 
-    chunks = lumber(markdown, max_tokens=500)
+    chunks = _split(markdown, max_tokens=500)
 
     # Both types of tables should be preserved in the chunks
     has_html_table = any("<table" in c.body and "<tr>" in c.body for c in chunks)
@@ -169,7 +190,7 @@ def test_html_table_with_caption_preserved():
 </table>
 """
 
-    chunks = lumber(markdown, max_tokens=500)
+    chunks = _split(markdown, max_tokens=500)
 
     # Find table chunk
     table_chunks = [c for c in chunks if "<table" in c.body and "</table>" in c.body]
@@ -191,7 +212,7 @@ def test_html_table_attributes_preserved():
 </table>
 """
 
-    chunks = lumber(markdown, max_tokens=500)
+    chunks = _split(markdown, max_tokens=500)
 
     # Find table chunk
     table_chunks = [c for c in chunks if "<table" in c.body and "</table>" in c.body]
@@ -213,7 +234,7 @@ def test_non_table_html_not_affected():
 </div>
 """
 
-    chunks = lumber(markdown, max_tokens=500)
+    chunks = _split(markdown, max_tokens=500)
 
     # Should work normally
     assert len(chunks) > 0

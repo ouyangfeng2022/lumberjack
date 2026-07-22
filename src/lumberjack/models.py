@@ -4,7 +4,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Literal, TypeAlias
 
-from .utils import join_rendered_blocks
+from lumberjack.block import BlockKind
+
+from ._internal.rendering import join_rendered_blocks
 
 HeadingKey: TypeAlias = tuple[int, str]
 HeadingPath: TypeAlias = tuple[HeadingKey, ...]
@@ -49,7 +51,7 @@ class DocumentBlock:
         attrs: Additional attributes (e.g. heading level, list style, code language).
     """
 
-    kind: str
+    kind: BlockKind | str
     text: str
     start_line: int | None = None
     end_line: int | None = None
@@ -105,157 +107,18 @@ class DocumentAST:
         source: Original text for Markdown and HTML inputs. Binary parsers may
             leave this empty or provide a normalized textual representation.
         root: Root section node of the heading tree.
-        metadata: Front matter key-value pairs parsed from YAML front matter,
-            or externally provided metadata as fallback.
+        source_path: Original file path or caller-supplied source provenance.
+        metadata: Semantic document metadata parsed from the source and merged
+            with caller-provided overrides.
         reference_definitions: Link/image reference definitions (``[label]: url``).
     """
 
     title: str
     source: str
     root: SectionNode
+    source_path: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     reference_definitions: dict[str, dict[str, str]] = field(default_factory=dict)
-
-
-@dataclass(slots=True, frozen=True)
-class BaseParams:
-    """Common parameters for all block kinds.
-
-    Attributes:
-        isolated: When ``True``, the block is always emitted as its own
-            chunk (no merge with adjacent content).
-        split: Whether to allow splitting this block kind when oversized.
-            When ``False``, oversized blocks are kept intact even if they
-            exceed ``max_tokens``.
-        max_tokens: Per-block-kind token budget override.  When ``None``
-            (the default), the current splitter budget is used.
-    """
-
-    isolated: bool = False
-    split: bool = True
-    max_tokens: int | None = None
-
-
-@dataclass(slots=True, frozen=True)
-class TableBlockParams(BaseParams):
-    """Table-specific oversized block splitting options.
-
-    Attributes:
-        isolated: Common block isolation flag inherited from :class:`BaseParams`.
-        split: Common oversized-block splitting flag inherited from :class:`BaseParams`.
-        max_tokens: Common per-kind budget override inherited from :class:`BaseParams`.
-        repeat_header: When ``True``, each split table piece repeats the table
-            header.  When ``False``, only the first split piece includes the
-            header rows.
-    """
-
-    repeat_header: bool = True
-
-
-class BlockKindRegistry:
-    """Registry of block kinds the splitter handles for merge/split decisions.
-
-    Create an instance by passing the known block kinds from a parser:
-        registry = BlockKindRegistry(parser.block_kinds)
-    """
-
-    def __init__(self, kinds: frozenset[str]) -> None:
-        self._kinds = kinds
-
-    @property
-    def kinds(self) -> frozenset[str]:
-        """All registered block kind names."""
-        return self._kinds
-
-    def default_handling(self) -> dict[str, BaseParams]:
-        """Return all registered kinds mapped to default block params."""
-        return {
-            kind: TableBlockParams()
-            if kind in {"table", "html_table"}
-            else BaseParams()
-            for kind in sorted(self._kinds)
-        }
-
-    def validate_kind(self, kind: str) -> str:
-        """Validate and return *kind*, raising :class:`ValueError` if unknown."""
-        if kind not in self._kinds:
-            valid = ", ".join(sorted(self._kinds))
-            raise ValueError(f"Unknown block kind: {kind!r} (valid: {valid})")
-        return kind
-
-
-@dataclass(slots=True, frozen=True)
-class SplitOptions:
-    """Parameters controlling how documents are split into chunks.
-
-    Attributes:
-        max_tokens: Target maximum token count per chunk.
-        ideal_max_tokens_ratio: Ratio of ``max_tokens`` used as the preferred
-            split budget before post-processing merge passes. Must be greater
-            than 0 and at most 1.
-        ideal_max_tokens: Computed as ``max(1, int(max_tokens *
-            ideal_max_tokens_ratio))``.  This is the effective split budget
-            used during chunking.
-        merge_below_ratio: Tail-fragment merge threshold as a fraction of
-            ``max_tokens`` in ``[0.0, 1.0)``.  Tail chunks below
-            ``int(max_tokens * merge_below_ratio)`` tokens are merged into
-            their same-heading predecessor when the result fits
-            ``max_tokens``.  ``0.0`` disables merging entirely.  Default
-            ``0.125`` (i.e. 12.5% of ``max_tokens``).
-        skip_empty_sections: When True, discard chunks that contain only a heading
-            with no body content. Chunks with zero rendered tokens are always discarded
-            regardless of this setting.
-        render_headings: When False, omit only the chunk's ancestor heading
-            breadcrumb from the rendered ``Chunk.body`` while keeping the chunk's
-            own heading and internal relative headings. All splitter topologies are
-            render-aware: hidden ancestor heading tokens are reclaimed for rendered
-            body content, so ``token_count`` measures the final rendered body;
-            ``estimated_token_count`` stays close but may differ slightly due
-            to join approximations.
-        max_heading_level: Maximum heading level to keep as chunk section
-            context. Headings deeper than this level are rendered as body text.
-            ``None`` keeps all parsed headings; ``0`` treats all headings as body
-            text.
-        block_options: Per-block-kind configuration. Keys are lowercase block
-            kind strings matching :attr:`DocumentBlock.kind` values; values are
-            :class:`BaseParams` instances. Callers that need parser-specific
-            defaults should resolve them before constructing
-            :class:`SplitOptions`.
-        standalone_kinds: Block kinds marked as isolated (cached).
-    """
-
-    max_tokens: int = 1200
-    ideal_max_tokens_ratio: float = 0.8
-    merge_below_ratio: float = 0.125
-    skip_empty_sections: bool = True
-    render_headings: bool = True
-    max_heading_level: int | None = None
-    block_options: dict[str, BaseParams] = field(default_factory=dict)
-
-    # Cached derived fields — computed in __post_init__.
-    ideal_max_tokens: int = field(init=False, repr=False)
-    standalone_kinds: frozenset[str] = field(init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        if not (0.0 <= self.merge_below_ratio < 1.0):
-            raise ValueError(
-                f"merge_below_ratio must be in [0.0, 1.0), got {self.merge_below_ratio}"
-            )
-        if self.max_heading_level is not None and self.max_heading_level < 0:
-            raise ValueError(
-                f"max_heading_level must be greater than or equal to 0, "
-                f"got {self.max_heading_level}"
-            )
-        object.__setattr__(
-            self,
-            "ideal_max_tokens",
-            max(1, int(self.max_tokens * self.ideal_max_tokens_ratio)),
-        )
-        object.__setattr__(
-            self,
-            "standalone_kinds",
-            frozenset(kind for kind, cfg in self.block_options.items() if cfg.isolated),
-        )
 
 
 @dataclass(slots=True, frozen=True)

@@ -1,22 +1,19 @@
 from __future__ import annotations
 
-from .base import BaseSplitter
 from .exact import ExactCountingMixin
 from .incremental import IncrementalCountingMixin
 from .topology.subtree import SubtreeTopologyMixin
 
 
-class ExactSubtreeSplitter(ExactCountingMixin, SubtreeTopologyMixin, BaseSplitter):
+class ExactSubtreeSplitter(ExactCountingMixin, SubtreeTopologyMixin):
     """Subtree-first splitter using exact rendered-text budget decisions."""
 
 
-class IncrementalSubtreeSplitter(
-    IncrementalCountingMixin, SubtreeTopologyMixin, BaseSplitter
-):
+class IncrementalSubtreeSplitter(IncrementalCountingMixin, SubtreeTopologyMixin):
     """Subtree-first splitter using additive incremental estimates."""
 
 
-SubtreeSplitter = ExactSubtreeSplitter
+SubtreeSplitter = IncrementalSubtreeSplitter
 
 __all__ = [
     "ExactSubtreeSplitter",

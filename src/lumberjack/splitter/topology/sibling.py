@@ -1,15 +1,40 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
+from lumberjack.block import BlockOption
+
 from ...models import ChunkDraft, HeadingPath
+from ...protocols import TokenizerProtocol
 from ..base import BaseSplitter
 
 
 class SiblingTopologyMixin(BaseSplitter):
     """Greedily pack a section body and fitting sibling subtrees."""
 
-    options: Any
+    def __init__(
+        self,
+        tokenizer: TokenizerProtocol,
+        *,
+        max_tokens: int = 1200,
+        ideal_max_tokens_ratio: float = 0.8,
+        merge_below_ratio: float = 0.125,
+        skip_empty_sections: bool = True,
+        render_headings: bool = True,
+        max_heading_level: int | None = None,
+        block_options: Iterable[BlockOption] | None = None,
+    ) -> None:
+        super().__init__(
+            tokenizer,
+            max_tokens=max_tokens,
+            ideal_max_tokens_ratio=ideal_max_tokens_ratio,
+            skip_empty_sections=skip_empty_sections,
+            render_headings=render_headings,
+            max_heading_level=max_heading_level,
+            block_options=block_options,
+            _merge_below_ratio=merge_below_ratio,
+        )
 
     def _single_subtree_draft(self, section: Any) -> ChunkDraft | None:
         raise NotImplementedError
@@ -40,7 +65,7 @@ class SiblingTopologyMixin(BaseSplitter):
         single = self._single_subtree_draft(section)
         if (
             single is not None
-            and self._draft_budget_tokens(single) <= self.options.ideal_max_tokens
+            and self._draft_budget_tokens(single) <= self.ideal_max_tokens
         ):
             return [single]
         if not children:
@@ -63,7 +88,7 @@ class SiblingTopologyMixin(BaseSplitter):
                 current = draft
                 return
             merged = self._merge_drafts(current, draft, expected_common=node.path)
-            if self._draft_budget_tokens(merged) <= self.options.ideal_max_tokens:
+            if self._draft_budget_tokens(merged) <= self.ideal_max_tokens:
                 current = merged
             else:
                 chunks.append(current)
@@ -79,7 +104,7 @@ class SiblingTopologyMixin(BaseSplitter):
             draft = self._single_subtree_draft(child)
             if (
                 draft is not None
-                and self._draft_budget_tokens(draft) <= self.options.ideal_max_tokens
+                and self._draft_budget_tokens(draft) <= self.ideal_max_tokens
             ):
                 add(draft)
             else:

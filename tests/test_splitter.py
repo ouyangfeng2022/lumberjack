@@ -1,26 +1,30 @@
 from __future__ import annotations
 
-from dataclasses import fields
 from pathlib import Path
 
-from lumberjack import lumber
-from lumberjack.core.models import (
-    BaseParams,
-    ChunkDraft,
-    Entry,
-    SplitOptions,
-    TableBlockParams,
+from lumberjack.block import BlockConfig, BlockKind
+from lumberjack.models import ChunkDraft, Entry
+from lumberjack.parser.markdown.parser import MarkdownParser
+from lumberjack.splitter import (
+    ExactSiblingSplitter as SiblingSplitter,
 )
-from lumberjack.core.options import resolve_block_options
-from lumberjack.core.parser.markdown.parser import MarkdownParser
-from lumberjack.core.splitter import (
+from lumberjack.splitter import (
+    ExactSubtreeSplitter as SubtreeSplitter,
+)
+from lumberjack.splitter import (
     IncrementalSiblingSplitter,
     IncrementalSubtreeSplitter,
-    SiblingSplitter,
-    SubtreeSplitter,
-    create_splitter,
 )
-from tests.helpers import CharacterTokenizer
+from lumberjack.tokenizer import ApproxCharTokenizer
+from tests.helpers import (
+    BaseParams,
+    CharacterTokenizer,
+    TableBlockParams,
+    create_splitter,
+    resolve_block_options,
+    section_options,
+    splitter_options,
+)
 
 FIXTURE = (
     Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md"
@@ -153,7 +157,7 @@ def test_splitter_preserves_heading_context() -> None:
     document = MarkdownParser().parse(FIXTURE, document_title="sample.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=140, merge_below_ratio=0.143),
+        **splitter_options(max_tokens=140, merge_below_ratio=0.143),
     )
     chunks = splitter.split(document)
 
@@ -163,15 +167,15 @@ def test_splitter_preserves_heading_context() -> None:
 
 
 def test_create_splitter_routes_sibling_and_subtree() -> None:
-    options = SplitOptions(max_tokens=100, merge_below_ratio=0.0)
+    options = splitter_options(max_tokens=100, merge_below_ratio=0.0)
 
     assert isinstance(
         create_splitter("sibling", CharacterTokenizer(), options),
-        SiblingSplitter,
+        IncrementalSiblingSplitter,
     )
     assert isinstance(
         create_splitter("subtree", CharacterTokenizer(), options),
-        SubtreeSplitter,
+        IncrementalSubtreeSplitter,
     )
     assert not issubclass(SubtreeSplitter, SiblingSplitter)
 
@@ -183,7 +187,7 @@ def test_heading_splitter_merges_small_subtree_into_one_chunk() -> None:
     )
     splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=1000, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=1000, merge_below_ratio=0.0),
     )
 
     chunks = splitter.split(document)
@@ -205,7 +209,7 @@ def test_heading_splitter_splits_oversized_section_body() -> None:
     )
     splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=35,
             merge_below_ratio=0.0,
             block_options={"paragraph": BaseParams()},
@@ -231,7 +235,7 @@ def test_heading_splitter_splits_oversized_body_with_nosplit_blocks_kept_intact(
     )
     splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=35,
             merge_below_ratio=0.0,
             block_options={"paragraph": BaseParams(split=False)},
@@ -244,7 +248,7 @@ def test_heading_splitter_splits_oversized_body_with_nosplit_blocks_kept_intact(
     assert len(chunks) == 1
     assert chunks[0].headings == ()
     assert chunks[0].section_level == 1
-    assert chunks[0].estimated_token_count > splitter.options.max_tokens
+    assert chunks[0].estimated_token_count > splitter.max_tokens
     assert "Alpha bravo charlie" in chunks[0].body
 
 
@@ -253,11 +257,11 @@ def test_heading_splitter_respects_empty_section_options() -> None:
 
     default_chunks = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=1000, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=1000, merge_below_ratio=0.0),
     ).split(document)
     kept_chunks = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=1000,
             merge_below_ratio=0.0,
             skip_empty_sections=False,
@@ -279,7 +283,7 @@ def test_splitter_respects_budget_except_unsplittable_code_fence() -> None:
     document = MarkdownParser().parse(FIXTURE, document_title="sample.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=180, merge_below_ratio=0.112),
+        **splitter_options(max_tokens=180, merge_below_ratio=0.112),
     )
     chunks = splitter.split(document)
 
@@ -294,7 +298,7 @@ def test_splitter_deduplicates_shared_parent_heading_in_merged_chunk() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=1000, merge_below_ratio=0.02),
+        **splitter_options(max_tokens=1000, merge_below_ratio=0.02),
     )
     chunks = splitter.split(document)
 
@@ -309,16 +313,15 @@ def test_splitter_deduplicates_shared_parent_heading_in_merged_chunk() -> None:
     assert chunks[0].section_level == 3
 
 
-def test_split_options_no_longer_exposes_render_common_headings() -> None:
-    option_names = {field.name for field in fields(SplitOptions)}
+def test_splitter_no_longer_holds_options_aggregate() -> None:
+    splitter = SiblingSplitter(CharacterTokenizer())
+    assert not hasattr(splitter, "options")
 
-    assert "render_common_headings" not in option_names
 
+def test_splitter_has_no_legacy_isolate_front_matter_argument() -> None:
+    import inspect
 
-def test_split_options_no_longer_exposes_isolate_front_matter() -> None:
-    option_names = {field.name for field in fields(SplitOptions)}
-
-    assert "isolate_front_matter" not in option_names
+    assert "isolate_front_matter" not in inspect.signature(SiblingSplitter).parameters
 
 
 def test_splitter_recursively_descends_heading_levels_when_section_is_oversized() -> (
@@ -329,7 +332,7 @@ def test_splitter_recursively_descends_heading_levels_when_section_is_oversized(
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=90, ideal_max_tokens_ratio=1, merge_below_ratio=0.889
         ),
     )
@@ -357,7 +360,7 @@ def test_splitter_checks_whole_document_before_splitting_by_top_level_headings()
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=200, merge_below_ratio=0.1),
+        **splitter_options(max_tokens=200, merge_below_ratio=0.1),
     )
 
     chunks = splitter.split(document)
@@ -372,7 +375,7 @@ def test_splitter_greedily_merges_same_level_siblings_before_descending() -> Non
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=62, ideal_max_tokens_ratio=1, merge_below_ratio=0.323
         ),
     )
@@ -391,7 +394,7 @@ def test_splitter_exposes_ancestor_headings_for_single_leaf_chunk() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=40, ideal_max_tokens_ratio=1, merge_below_ratio=0.0
         ),
     )
@@ -409,7 +412,7 @@ def test_splitter_exposes_common_ancestor_headings_for_multi_entry_chunk() -> No
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=110, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=110, merge_below_ratio=0.0),
     )
 
     chunks = splitter.split(document)
@@ -428,8 +431,8 @@ def test_splitter_fragment_uses_ancestor_headings_and_keeps_own_title() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
-            max_tokens=30,
+        **splitter_options(
+            max_tokens=50,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
         ),
@@ -448,7 +451,7 @@ def test_splitter_render_headings_false_keeps_self_title_only() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=30,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -469,7 +472,7 @@ def test_splitter_body_includes_headings_by_default() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=200, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=200, merge_below_ratio=0.0),
     )
 
     chunks = splitter.split(document)
@@ -484,7 +487,7 @@ def test_splitter_body_includes_nested_headings_by_default() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=60,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -503,7 +506,7 @@ def test_splitter_measures_section_token_counts_bottom_up() -> None:
     document = MarkdownParser().parse("# A\n\nBody", document_title="tokens.md")
     splitter = IncrementalSiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=7,
             merge_below_ratio=0.0,
             block_options={},
@@ -528,11 +531,11 @@ def test_splitter_measures_section_token_counts_bottom_up() -> None:
     assert chunks[0].token_count == len("# A\n\nBody")
 
 
-def test_splitter_uses_estimated_tokens_for_budget_decisions() -> None:
+def test_splitter_splits_when_rendered_heading_budget_is_tight() -> None:
     document = MarkdownParser().parse("# A\n\nBody", document_title="estimated.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=7,
             merge_below_ratio=0.0,
             block_options={},
@@ -541,10 +544,9 @@ def test_splitter_uses_estimated_tokens_for_budget_decisions() -> None:
 
     chunks = splitter.split(document)
 
-    assert len(chunks) == 1
-    assert chunks[0].estimated_token_count == 9
-    assert chunks[0].token_count == 9
-    assert chunks[0].estimated_token_count > splitter.options.max_tokens
+    assert len(chunks) == 4
+    assert "".join(chunk.body.removeprefix("# A\n\n") for chunk in chunks) == "Body"
+    assert all(chunk.token_count <= splitter.max_tokens for chunk in chunks)
 
 
 def test_estimated_tokens_do_not_include_trailing_separator_for_last_block() -> None:
@@ -554,7 +556,7 @@ def test_estimated_tokens_do_not_include_trailing_separator_for_last_block() -> 
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=100, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=100, merge_below_ratio=0.0),
     )
 
     chunks = splitter.split(document)
@@ -574,7 +576,7 @@ def test_estimated_tokens_do_not_use_tail_window_between_blocks() -> None:
     tokenizer = RecordingTokenizer()
     splitter = IncrementalSiblingSplitter(
         tokenizer=tokenizer,
-        options=SplitOptions(max_tokens=500, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=500, merge_below_ratio=0.0),
     )
 
     chunks = splitter.split(document)
@@ -590,7 +592,7 @@ def test_entry_merge_uses_tail_window_only_between_entry_groups() -> None:
     tokenizer = RecordingTokenizer()
     splitter = IncrementalSiblingSplitter(
         tokenizer=tokenizer,
-        options=SplitOptions(max_tokens=500, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=500, merge_below_ratio=0.0),
     )
     heading_path = ((1, "A"),)
     heading_tc = len("# A\n\n")
@@ -639,7 +641,7 @@ def test_heading_estimate_counts_title_once_and_marker_as_one_token() -> None:
     tokenizer = RecordingTokenizer()
     splitter = IncrementalSiblingSplitter(
         tokenizer=tokenizer,
-        options=SplitOptions(max_tokens=100, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=100, merge_below_ratio=0.0),
     )
 
     measured_root = splitter._measure_section(document.root)
@@ -656,7 +658,7 @@ def test_estimated_tokens_include_rendered_heading_path() -> None:
 
     chunks = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=100, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=100, merge_below_ratio=0.0),
     ).split(document)
 
     assert chunks[0].body.startswith("# Root\n\n## Scope\n\n")
@@ -684,7 +686,7 @@ Three body.
     tokenizer = RecordingTokenizer()
     splitter = IncrementalSiblingSplitter(
         tokenizer=tokenizer,
-        options=SplitOptions(max_tokens=35, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=35, merge_below_ratio=0.0),
     )
 
     chunks = splitter.split(document)
@@ -700,7 +702,7 @@ def test_section_chunk_estimate_includes_heading_tokens_without_entries() -> Non
     )
     splitter = IncrementalSiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=100, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=100, merge_below_ratio=0.0),
     )
     measured_root = splitter._measure_section(document.root)
     measured_scope = measured_root.children[0].children[0]
@@ -730,7 +732,7 @@ Plain body.
     )
     splitter = IncrementalSiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=500,
             merge_below_ratio=0.0,
             block_options={"table": BaseParams(isolated=True)},
@@ -749,7 +751,7 @@ Plain body.
 
     disabled_splitter = IncrementalSiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=500,
             merge_below_ratio=0.0,
             block_options={},
@@ -768,7 +770,7 @@ def test_splitter_rejects_invalid_ideal_max_tokens_ratio() -> None:
     try:
         SiblingSplitter(
             tokenizer=CharacterTokenizer(),
-            options=SplitOptions(max_tokens=10, ideal_max_tokens_ratio=0),
+            **splitter_options(max_tokens=10, ideal_max_tokens_ratio=0),
         )
     except ValueError as exc:
         assert str(exc) == "ideal_max_tokens_ratio must be greater than 0 and at most 1"
@@ -783,7 +785,7 @@ def test_sibling_splitter_uses_ideal_budget_for_initial_splitting() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=30,
             ideal_max_tokens_ratio=0.5,
             merge_below_ratio=0.0,
@@ -806,7 +808,7 @@ def test_merge_small_chunks_can_exceed_ideal_budget_up_to_max_tokens() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=30,
             ideal_max_tokens_ratio=0.5,
             merge_below_ratio=0.967,
@@ -826,7 +828,7 @@ def test_merge_small_chunks_combines_sibling_sections_with_same_parent() -> None
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=40,
             ideal_max_tokens_ratio=0.8,
             merge_below_ratio=0.975,
@@ -849,7 +851,7 @@ def test_merge_below_ratio_does_not_merge_past_rendered_budget() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=60,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.167,
@@ -871,7 +873,7 @@ def test_merge_below_ratio_zero_disables_merging() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=30,
             ideal_max_tokens_ratio=0.5,
             merge_below_ratio=0.0,
@@ -890,7 +892,7 @@ def test_merge_below_ratio_zero_disables_merging() -> None:
 def test_merge_below_ratio_absorbs_same_parent_paragraph_tails() -> None:
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=100, merge_below_ratio=0.25),
+        **splitter_options(max_tokens=100, merge_below_ratio=0.25),
     )
     heading_path = ((1, "A"),)
     heading_tc = len("# A\n\n")
@@ -968,7 +970,7 @@ def test_splitter_keeps_oversized_lists_intact_when_in_nosplit_kinds() -> None:
     document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=20,
             merge_below_ratio=0.0,
             block_options={"list": BaseParams(split=False)},
@@ -986,7 +988,7 @@ def test_splitter_can_split_oversized_lists_by_default() -> None:
     document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=20,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1020,7 +1022,7 @@ def test_splitter_splits_oversized_tables_by_rows_with_repeated_header() -> None
     document = MarkdownParser().parse(md, document_title="table.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=28,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1055,7 +1057,7 @@ def test_splitter_can_omit_repeated_header_for_split_table_pieces() -> None:
     document = MarkdownParser().parse(md, document_title="table.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=28,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1094,7 +1096,7 @@ def test_splitter_keeps_oversized_tables_intact_when_in_nosplit_kinds() -> None:
     document = MarkdownParser().parse(md, document_title="table.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=58,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1119,7 +1121,7 @@ def test_splitter_uses_block_max_tokens_for_table_row_packing() -> None:
     document = MarkdownParser().parse(md, document_title="table.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=79,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1147,7 +1149,7 @@ def test_splitter_preserves_oversized_single_table_rows() -> None:
     document = MarkdownParser().parse(md, document_title="table.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=58,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1168,7 +1170,7 @@ def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
     document = MarkdownParser().parse(CODE_FENCE_FIXTURE, document_title="code.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=28,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1190,7 +1192,7 @@ def test_splitter_never_splits_oversized_urls() -> None:
     document = MarkdownParser().parse(LONG_URL_FIXTURE, document_title="url.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=30,
             merge_below_ratio=0.0,
         ),
@@ -1223,7 +1225,7 @@ def test_front_matter_is_handled_as_normal_block_by_default() -> None:
     document = MarkdownParser().parse(FRONT_MATTER_FIXTURE, document_title="doc.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=500,
             merge_below_ratio=0.0,
         ),
@@ -1248,7 +1250,7 @@ def test_subtree_splitter_handles_front_matter_as_root_body_chunk() -> None:
     document = MarkdownParser().parse(FRONT_MATTER_FIXTURE, document_title="doc.md")
     splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=100, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=100, merge_below_ratio=0.0),
     )
 
     chunks = splitter.split(document)
@@ -1266,7 +1268,7 @@ def test_front_matter_can_be_isolated_with_block_params() -> None:
     document = MarkdownParser().parse(FRONT_MATTER_FIXTURE, document_title="doc.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=500,
             merge_below_ratio=0.0,
             block_options={"front_matter": BaseParams(isolated=True)},
@@ -1290,7 +1292,7 @@ def test_no_front_matter_works_normally() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=500,
             merge_below_ratio=0.0,
         ),
@@ -1316,7 +1318,7 @@ def test_thematic_break_is_ignored_in_chunk_body() -> None:
     document = MarkdownParser().parse(THEMATIC_BREAK_FIXTURE, document_title="hr.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=500, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=500, merge_below_ratio=0.0),
     )
 
     chunks = splitter.split(document)
@@ -1331,7 +1333,7 @@ def test_thematic_break_is_ignored_at_chunk_boundary() -> None:
     document = MarkdownParser().parse(THEMATIC_BREAK_FIXTURE, document_title="hr.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=40,
             merge_below_ratio=0.0,
         ),
@@ -1348,7 +1350,7 @@ def test_thematic_break_at_document_start_is_ignored() -> None:
     document = MarkdownParser().parse(md, document_title="hr-first.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=500, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=500, merge_below_ratio=0.0),
     )
 
     chunks = splitter.split(document)
@@ -1359,7 +1361,10 @@ def test_thematic_break_at_document_start_is_ignored() -> None:
 
 def test_thematic_break_after_front_matter_is_ignored_in_body_content() -> None:
     md = "---\ntitle: T\n---\n\n---\n\nBody"
-    chunks = lumber(md, max_tokens=100, merge_below_ratio=0.0)
+    document = MarkdownParser().parse(md)
+    chunks = SiblingSplitter(
+        CharacterTokenizer(), max_tokens=100, merge_below_ratio=0.0
+    ).split(document)
 
     assert len(chunks) == 1
     assert chunks[0].chunk_type == "paragraph"
@@ -1370,15 +1375,18 @@ def test_thematic_break_after_front_matter_is_ignored_in_body_content() -> None:
 
 def test_thematic_break_after_split_list_is_ignored() -> None:
     md = f"- {'a' * 40}\n- {'b' * 40}\n\n---\n\nAfter"
-    chunks = lumber(
-        md,
-        max_tokens=50,
-        merge_below_ratio=0.0,
-        block_options={
-            "list": BaseParams(),
-            "paragraph": BaseParams(),
-        },
-    )
+    document = MarkdownParser().parse(md)
+    chunks = SiblingSplitter(
+        CharacterTokenizer(),
+        **splitter_options(
+            max_tokens=50,
+            merge_below_ratio=0.0,
+            block_options={
+                "list": BaseParams(),
+                "paragraph": BaseParams(),
+            },
+        ),
+    ).split(document)
 
     assert not any("---" in chunk.body for chunk in chunks)
     assert all(chunk.body.strip() != "---" for chunk in chunks)
@@ -1403,7 +1411,7 @@ def test_empty_section_discarded_by_default() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=500, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=500, merge_below_ratio=0.0),
     )
 
     chunks = splitter.split(document)
@@ -1420,7 +1428,7 @@ def test_empty_section_discarded_by_default_with_headings() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=50,
             merge_below_ratio=0.0,
             skip_empty_sections=True,
@@ -1443,7 +1451,7 @@ def test_empty_section_kept_when_skip_empty_sections_false() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=500,
             merge_below_ratio=0.0,
             skip_empty_sections=False,
@@ -1462,7 +1470,7 @@ def test_empty_section_kept_with_skip_false() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=500,
             merge_below_ratio=0.0,
             skip_empty_sections=False,
@@ -1481,7 +1489,7 @@ def test_empty_section_between_non_empty_sections_is_skipped() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=50,
             merge_below_ratio=0.0,
         ),
@@ -1527,7 +1535,7 @@ def test_standalone_table_is_isolated_even_when_budget_allows_merge() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=1000,
             merge_below_ratio=0.0,
             block_options={"table": BaseParams(isolated=True)},
@@ -1554,7 +1562,7 @@ def test_standalone_blocks_empty_frozenset_restores_merge_behavior() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=1000,
             merge_below_ratio=0.0,
             block_options={},
@@ -1577,7 +1585,7 @@ def test_standalone_chunk_not_merged_by_merge_small_chunks() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=1000,
             merge_below_ratio=0.1,
             block_options={"code_fence": BaseParams(isolated=True)},
@@ -1600,7 +1608,7 @@ def test_oversized_standalone_code_fence_with_split_oversized() -> None:
     document = MarkdownParser().parse(md, document_title="code.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=50,
             merge_below_ratio=0.0,
             block_options={"code_fence": BaseParams(isolated=True)},
@@ -1622,7 +1630,7 @@ def test_oversized_standalone_code_fence_without_split_stays_intact() -> None:
     document = MarkdownParser().parse(md, document_title="code.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=50,
             merge_below_ratio=0.0,
             block_options={"code_fence": BaseParams(isolated=True, split=False)},
@@ -1655,7 +1663,7 @@ Child body.
     document = MarkdownParser().parse(md, document_title="section.md")
     splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=1000,
             merge_below_ratio=0.0,
             block_options={"table": BaseParams(isolated=True)},
@@ -1678,7 +1686,7 @@ def test_standalone_block_preserves_heading_context() -> None:
     )
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=1000,
             merge_below_ratio=0.0,
             block_options={"code_fence": BaseParams(isolated=True)},
@@ -1711,7 +1719,7 @@ Parent intro.
     document = MarkdownParser().parse(md, document_title="nested.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=500,
             merge_below_ratio=0.0,
             block_options={"table": BaseParams(isolated=True)},
@@ -1731,10 +1739,8 @@ Parent intro.
 
 
 def test_block_max_tokens_defaults_to_none() -> None:
-    """Default BaseParams.max_tokens is None."""
-    options = SplitOptions()
-    for cfg in options.block_options.values():
-        assert cfg.max_tokens is None
+    """Public block configs default max_tokens to None."""
+    assert BlockConfig(BlockKind.PARAGRAPH).max_tokens is None
 
 
 def test_per_block_max_tokens_overrides_budget_for_paragraph() -> None:
@@ -1744,7 +1750,7 @@ def test_per_block_max_tokens_overrides_budget_for_paragraph() -> None:
     document = MarkdownParser().parse(long_para, document_title="override.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=500,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1767,7 +1773,7 @@ def test_per_block_max_tokens_falls_back_to_unified_max_tokens() -> None:
     document = MarkdownParser().parse(md, document_title="fallback.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=500,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1791,7 +1797,7 @@ def test_per_block_max_tokens_for_code_fence() -> None:
     document = MarkdownParser().parse(md, document_title="code-override.md")
     splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=500,
             merge_below_ratio=0.0,
             block_options={"code_fence": BaseParams(isolated=True, max_tokens=25)},
@@ -1810,7 +1816,7 @@ def test_per_block_max_tokens_validation_rejects_non_positive() -> None:
     try:
         SiblingSplitter(
             tokenizer=CharacterTokenizer(),
-            options=SplitOptions(
+            **splitter_options(
                 block_options={"paragraph": BaseParams(max_tokens=0)},
             ),
         )
@@ -1822,7 +1828,7 @@ def test_per_block_max_tokens_validation_rejects_non_positive() -> None:
     try:
         SiblingSplitter(
             tokenizer=CharacterTokenizer(),
-            options=SplitOptions(
+            **splitter_options(
                 block_options={"paragraph": BaseParams(max_tokens=-10)},
             ),
         )
@@ -1832,19 +1838,20 @@ def test_per_block_max_tokens_validation_rejects_non_positive() -> None:
         raise AssertionError("Expected negative override validation to fail")
 
 
-def test_lumber_api_accepts_block_max_tokens() -> None:
-    """lumber() accepts and respects per-block max_tokens via BaseParams."""
+def test_manual_pipeline_accepts_block_max_tokens() -> None:
+    """Direct splitter configuration respects per-block max_tokens."""
     # Large enough that, under the default ``chars // 4`` counting, the block
     # exceeds ``max_tokens`` and triggers the block-split path where the
     # per-kind ``paragraph`` budget applies.
     long_para = " ".join(f"word{i}" for i in range(400))
-    chunks = lumber(
-        long_para,
+    document = MarkdownParser().parse(long_para)
+    chunks = SiblingSplitter(
+        ApproxCharTokenizer(),
         max_tokens=500,
         ideal_max_tokens_ratio=1,
         merge_below_ratio=0.0,
-        block_options={"paragraph": {"max_tokens": 30}},
-    )
+        block_options=[BlockConfig(BlockKind.PARAGRAPH, max_tokens=30)],
+    ).split(document)
     assert len(chunks) > 1
     assert all(c.token_count <= 30 for c in chunks)
 
@@ -1859,7 +1866,7 @@ def test_subtree_splitter_keeps_oversized_lists_intact_when_nosplit() -> None:
     document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
     splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=20,
             merge_below_ratio=0.0,
             block_options={"list": BaseParams(split=False)},
@@ -1878,7 +1885,7 @@ def test_subtree_splitter_can_split_oversized_lists_by_default() -> None:
     document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
     splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=20,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1906,7 +1913,7 @@ def test_subtree_splitter_splits_oversized_tables_when_isolated() -> None:
     document = MarkdownParser().parse(md, document_title="table.md")
     splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=58,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1936,7 +1943,7 @@ def test_subtree_splitter_can_omit_repeated_header_for_split_tables() -> None:
     document = MarkdownParser().parse(md, document_title="table.md")
     splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=58,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1971,7 +1978,7 @@ def test_subtree_splitter_keeps_oversized_tables_intact_when_nosplit() -> None:
     document = MarkdownParser().parse(md, document_title="table.md")
     splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=58,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1991,7 +1998,7 @@ def test_subtree_splitter_uses_per_block_max_tokens() -> None:
     document = MarkdownParser().parse(long_para, document_title="override.md")
     splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=500,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -2013,7 +2020,7 @@ def test_subtree_splitter_merges_small_fragments() -> None:
     )
     splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=30,
             ideal_max_tokens_ratio=0.5,
             merge_below_ratio=0.967,
@@ -2041,7 +2048,7 @@ Small body.
     document = MarkdownParser().parse(md, document_title="body-vs-subtree.md")
     splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=50,
             merge_below_ratio=0.0,
             block_options=markdown_block_options(),
@@ -2065,10 +2072,10 @@ Small body.
 
 
 def test_splitter_default_uses_approx_char_tokenizer() -> None:
-    from lumberjack.core.tokenizers import ApproxCharTokenizer
+    from lumberjack.tokenizer import ApproxCharTokenizer
 
     splitter = create_splitter("sibling")
-    assert isinstance(splitter.tokenizer, ApproxCharTokenizer)  # ty: ignore[unresolved-attribute]
+    assert isinstance(splitter.tokenizer, ApproxCharTokenizer)
 
 
 def test_subtree_splitter_merges_subtree_when_within_budget() -> None:
@@ -2088,7 +2095,7 @@ Two body.
     document = MarkdownParser().parse(fixture, document_title="t.md")
     splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=1000, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=1000, merge_below_ratio=0.0),
     )
 
     chunks = splitter.split(document)
@@ -2118,7 +2125,7 @@ One body.
     document = MarkdownParser().parse(fixture, document_title="t.md")
     splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=10000,  # well above subtree size
             merge_below_ratio=0.0,
             block_options=markdown_block_options(
@@ -2153,7 +2160,7 @@ Two body.
     document = MarkdownParser().parse(fixture, document_title="t.md")
     splitter = IncrementalSubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=1000, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=1000, merge_below_ratio=0.0),
     )
 
     chunks = splitter.split(document)
@@ -2187,7 +2194,7 @@ One body.
     document = MarkdownParser().parse(fixture, document_title="t.md")
     splitter = IncrementalSubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=10000,
             merge_below_ratio=0.0,
             block_options=markdown_block_options(
@@ -2223,7 +2230,7 @@ def test_subtree_splitter_does_not_cross_top_level_sections() -> None:
     document = MarkdownParser().parse(fixture, document_title="t.md")
     splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=200, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=200, merge_below_ratio=0.0),
     )
 
     chunks = splitter.split(document)
@@ -2258,18 +2265,18 @@ Two body.
 
     merged = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=1000, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=1000, merge_below_ratio=0.0),
     ).split(document)
     assert len(merged) == 1
     assert merged[0].headings == ((1, "Parent"),)
     assert "## One" in merged[0].body
     assert "## Two" in merged[0].body
 
-    from lumberjack.core.splitter import ExactSectionSplitter
+    from lumberjack.splitter import ExactSectionSplitter
 
     per_section = ExactSectionSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=1000, merge_below_ratio=0.0),
+        **section_options(max_tokens=1000, merge_below_ratio=0.0),
     ).split(document)
     # section: three chunks, one per section.  The "# Parent" body
     # lives under the document root (level 0), so its headings tuple is
@@ -2301,16 +2308,16 @@ Two body.
 
     merged = IncrementalSubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=1000, merge_below_ratio=0.0),
+        **splitter_options(max_tokens=1000, merge_below_ratio=0.0),
     ).split(document)
     assert len(merged) == 1
     assert merged[0].headings == ((1, "Parent"),)
 
-    from lumberjack.core.splitter import IncrementalSectionSplitter
+    from lumberjack.splitter.section import IncrementalSectionSplitter
 
     per_section = IncrementalSectionSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=1000, merge_below_ratio=0.0),
+        **section_options(max_tokens=1000, merge_below_ratio=0.0),
     ).split(document)
     assert len(per_section) == 3
     assert per_section[0].headings == ()
@@ -2331,11 +2338,11 @@ def test_section_splitter_still_splits_standalone_blocks() -> None:
 One body.
 """
     document = MarkdownParser().parse(fixture, document_title="t.md")
-    from lumberjack.core.splitter import ExactSectionSplitter
+    from lumberjack.splitter import ExactSectionSplitter
 
     splitter = ExactSectionSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **section_options(
             max_tokens=10000,
             merge_below_ratio=0.0,
             block_options=markdown_block_options(
@@ -2351,35 +2358,35 @@ One body.
     assert any("| A |" in c.body for c in chunks)
 
 
-def test_split_options_merge_below_ratio_defaults_to_0_125() -> None:
-    assert SplitOptions().merge_below_ratio == 0.125
+def test_splitter_merge_below_ratio_defaults_to_0_125() -> None:
+    splitter = SiblingSplitter(CharacterTokenizer())
+    assert splitter.merge_below_ratio == 0.125
 
 
-def test_split_options_merge_below_ratio_rejects_negative() -> None:
+def test_splitter_merge_below_ratio_rejects_negative() -> None:
     import pytest
 
     with pytest.raises(ValueError, match="merge_below_ratio"):
-        SplitOptions(merge_below_ratio=-0.1)
+        SiblingSplitter(CharacterTokenizer(), merge_below_ratio=-0.1)
 
 
-def test_split_options_merge_below_ratio_rejects_one_or_above() -> None:
+def test_splitter_merge_below_ratio_rejects_one_or_above() -> None:
     import pytest
 
     with pytest.raises(ValueError, match="merge_below_ratio"):
-        SplitOptions(merge_below_ratio=1.0)
+        SiblingSplitter(CharacterTokenizer(), merge_below_ratio=1.0)
     with pytest.raises(ValueError, match="merge_below_ratio"):
-        SplitOptions(merge_below_ratio=1.5)
+        SiblingSplitter(CharacterTokenizer(), merge_below_ratio=1.5)
 
 
-def test_split_options_has_no_merge_below_tokens_field() -> None:
-    field_names = {f.name for f in fields(SplitOptions)}
-    assert "merge_below_tokens" not in field_names
-    assert "merge_below_ratio" in field_names
+def test_splitter_has_no_merge_below_tokens_attribute() -> None:
+    splitter = SiblingSplitter(CharacterTokenizer())
+    assert not hasattr(splitter, "merge_below_tokens")
+    assert splitter.merge_below_ratio == 0.125
 
 
-def test_split_options_has_no_subtree_merge_field() -> None:
-    field_names = {f.name for f in fields(SplitOptions)}
-    assert "subtree_merge" not in field_names
+def test_splitter_has_no_subtree_merge_attribute() -> None:
+    assert not hasattr(SubtreeSplitter(CharacterTokenizer()), "subtree_merge")
 
 
 def test_merge_below_ratio_threshold_derived_from_max_tokens() -> None:
@@ -2396,7 +2403,7 @@ def test_merge_below_ratio_threshold_derived_from_max_tokens() -> None:
     # ratio=0.0 -> 禁用合并
     no_merge = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=30,
             ideal_max_tokens_ratio=0.5,
             merge_below_ratio=0.0,
@@ -2410,7 +2417,7 @@ def test_merge_below_ratio_threshold_derived_from_max_tokens() -> None:
     # ratio=0.967 -> 阈值=29; 尾部 "# A\n\nbravo2" (7 tokens) < 29 -> 合并
     merge = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=30,
             ideal_max_tokens_ratio=0.5,
             merge_below_ratio=0.967,
@@ -2423,14 +2430,13 @@ def test_merge_below_ratio_threshold_derived_from_max_tokens() -> None:
 
 
 def test_section_splitter_registry_lookup() -> None:
-    from lumberjack.core.splitter import (
+    from lumberjack.splitter import (
         ExactSectionSplitter,
         IncrementalSectionSplitter,
-        create_splitter,
     )
 
-    assert create_splitter("section").__class__ is ExactSectionSplitter
-    assert create_splitter("exact-section").__class__ is ExactSectionSplitter
+    assert isinstance(create_splitter("section"), IncrementalSectionSplitter)
+    assert isinstance(create_splitter("exact-section"), ExactSectionSplitter)
     assert (
         create_splitter("incremental-section").__class__ is IncrementalSectionSplitter
     )
@@ -2438,11 +2444,11 @@ def test_section_splitter_registry_lookup() -> None:
 
 def test_section_splitters_share_one_topology_implementation() -> None:
     """Counting mode must not duplicate the per-section traversal algorithm."""
-    from lumberjack.core.splitter import (
+    from lumberjack.splitter import (
         ExactSectionSplitter,
         IncrementalSectionSplitter,
     )
-    from lumberjack.core.splitter.topology.section import SectionTopologyMixin
+    from lumberjack.splitter.topology.section import SectionTopologyMixin
 
     assert ExactSectionSplitter._split_section is SectionTopologyMixin._split_section
     assert (
@@ -2452,11 +2458,11 @@ def test_section_splitters_share_one_topology_implementation() -> None:
 
 def test_subtree_splitters_share_one_topology_implementation() -> None:
     """Counting mode must not duplicate subtree collapse and recursion."""
-    from lumberjack.core.splitter import (
+    from lumberjack.splitter import (
         ExactSubtreeSplitter,
         IncrementalSubtreeSplitter,
     )
-    from lumberjack.core.splitter.topology.subtree import SubtreeTopologyMixin
+    from lumberjack.splitter.topology.subtree import SubtreeTopologyMixin
 
     assert ExactSubtreeSplitter._split_section is SubtreeTopologyMixin._split_section
     assert (
@@ -2466,11 +2472,11 @@ def test_subtree_splitters_share_one_topology_implementation() -> None:
 
 def test_sibling_splitters_share_one_topology_implementation() -> None:
     """Counting mode must not duplicate sibling packing and recursion order."""
-    from lumberjack.core.splitter import (
+    from lumberjack.splitter import (
         ExactSiblingSplitter,
         IncrementalSiblingSplitter,
     )
-    from lumberjack.core.splitter.topology.sibling import SiblingTopologyMixin
+    from lumberjack.splitter.topology.sibling import SiblingTopologyMixin
 
     assert ExactSiblingSplitter._split_section is SiblingTopologyMixin._split_section
     assert (
@@ -2480,7 +2486,7 @@ def test_sibling_splitters_share_one_topology_implementation() -> None:
 
 def test_section_splitter_does_not_subtree_collapse() -> None:
     """section 永远不合并整棵子树, 即使它很小."""
-    from lumberjack.core.splitter import ExactSectionSplitter
+    from lumberjack.splitter import ExactSectionSplitter
 
     fixture = """# Parent
 
@@ -2497,7 +2503,7 @@ Two body.
     document = MarkdownParser().parse(fixture, document_title="t.md")
     splitter = ExactSectionSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=10000, merge_below_ratio=0.0),
+        **section_options(max_tokens=10000, merge_below_ratio=0.0),
     )
 
     chunks = splitter.split(document)
@@ -2508,7 +2514,7 @@ Two body.
 
 def test_section_splitter_does_not_merge_tail_fragments() -> None:
     """section 不调用 _merge_small_chunks, 尾部碎片保留."""
-    from lumberjack.core.splitter import ExactSectionSplitter
+    from lumberjack.splitter import ExactSectionSplitter
 
     # 构造一个 body 超过 ideal_max_tokens 的 section, 强制 _split_section_body
     # 切出多块; 尾部碎片(小于 merge 阈值)在 section 模式下会被合并,
@@ -2518,7 +2524,7 @@ def test_section_splitter_does_not_merge_tail_fragments() -> None:
 
     flat_splitter = ExactSectionSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **section_options(
             max_tokens=100,
             ideal_max_tokens_ratio=0.5,
             merge_below_ratio=0.5,  # 阈值 = 50, flat 模式下不生效
@@ -2529,7 +2535,7 @@ def test_section_splitter_does_not_merge_tail_fragments() -> None:
 
     section_splitter = SubtreeSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(
+        **splitter_options(
             max_tokens=100,
             ideal_max_tokens_ratio=0.5,
             merge_below_ratio=0.5,
@@ -2548,7 +2554,7 @@ def test_section_splitter_does_not_merge_tail_fragments() -> None:
 
 def test_incremental_section_splitter_does_not_subtree_collapse() -> None:
     """incremental-section 同样不做 subtree-collapse 与尾部合并."""
-    from lumberjack.core.splitter import IncrementalSectionSplitter
+    from lumberjack.splitter.section import IncrementalSectionSplitter
 
     fixture = """# Parent
 
@@ -2565,7 +2571,7 @@ Two body.
     document = MarkdownParser().parse(fixture, document_title="t.md")
     splitter = IncrementalSectionSplitter(
         tokenizer=CharacterTokenizer(),
-        options=SplitOptions(max_tokens=10000, merge_below_ratio=0.0),
+        **section_options(max_tokens=10000, merge_below_ratio=0.0),
     )
 
     chunks = splitter.split(document)

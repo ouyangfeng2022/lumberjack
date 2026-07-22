@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from html.parser import HTMLParser as _StdlibHTMLParser
+from pathlib import Path
 from typing import Any, ClassVar
+
+from lumberjack.block import BlockKind
 
 from ...models import DocumentAST, DocumentBlock, DocumentInline, SectionNode
 from ...protocols import ParserProtocol
@@ -31,7 +35,7 @@ def _attrs_dict(attrs: list[tuple[str, str | None]]) -> dict[str, str]:
 
 @dataclass(slots=True)
 class _TextCollector:
-    kind: str
+    kind: BlockKind | str
     start_line: int | None
     text_parts: list[str] = field(default_factory=list)
     inlines: list[DocumentInline] = field(default_factory=list)
@@ -93,13 +97,15 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         *,
         source: str,
         document_title: str | None,
-        document_metadata: dict[str, object],
+        metadata_overrides: Mapping[str, object],
+        source_path: str | None,
     ) -> None:
         super().__init__(convert_charrefs=True)
         self._source = source
         self._line_offsets = _line_offsets(source)
         self._document_title = document_title
-        self._metadata = dict(document_metadata)
+        self._metadata = dict(metadata_overrides)
+        self._source_path = source_path
         self._root = SectionNode(level=0, title="")
         self._section_stack: list[SectionNode] = [self._root]
         self._heading: _TextCollector | None = None
@@ -124,6 +130,7 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
             title=final_title,
             source=self._source,
             root=self._root,
+            source_path=self._source_path,
             metadata=self._metadata,
         )
 
@@ -179,14 +186,14 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
             )
             return
         if tag == "li":
-            self._list_item = _TextCollector(kind="list_item", start_line=line)
+            self._list_item = _TextCollector(kind=BlockKind.LIST_ITEM, start_line=line)
             return
         if tag in self._BLOCK_TAGS and self._list_item is None:
             self._close_block(line)
             kind_by_tag = {
-                "blockquote": "blockquote",
-                "p": "paragraph",
-                "pre": "code_block",
+                "blockquote": BlockKind.BLOCKQUOTE,
+                "p": BlockKind.PARAGRAPH,
+                "pre": BlockKind.CODE_BLOCK,
             }
             kind = kind_by_tag[tag]
             self._block = _TextCollector(kind=kind, start_line=line)
@@ -271,7 +278,7 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
             self._block.add_text(text, kind)
         elif text.strip() and self._body_seen:
             line = self.getpos()[0]
-            self._block = _TextCollector(kind="paragraph", start_line=line)
+            self._block = _TextCollector(kind=BlockKind.PARAGRAPH, start_line=line)
             self._block.add_text(text, kind)
 
     def _add_heading_or_paragraph(self) -> None:
@@ -345,7 +352,7 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
             return
         children = tuple(
             DocumentBlock(
-                kind="list_item",
+                kind=BlockKind.LIST_ITEM,
                 text=item.text,
                 start_line=item.start_line,
                 end_line=item.end_line,
@@ -357,7 +364,7 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         text = "\n".join(f"{marker} {item.text}" for item in list_block.items)
         self._section_stack[-1].add_block(
             DocumentBlock(
-                kind="list",
+                kind=BlockKind.LIST,
                 text=text,
                 start_line=list_block.start_line,
                 end_line=end_line,
@@ -372,7 +379,7 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
             return
         self._section_stack[-1].add_block(
             DocumentBlock(
-                kind="html_table",
+                kind=BlockKind.HTML_TABLE,
                 text=table_html,
                 start_line=table.start_line,
                 end_line=self.getpos()[0],
@@ -433,25 +440,29 @@ class HTMLParser(ParserProtocol[str]):
         data: str,
         *,
         document_title: str | None = None,
-        document_metadata: dict[str, object] | None = None,
+        metadata_overrides: Mapping[str, object] | None = None,
+        source_path: str | Path | None = None,
     ) -> DocumentAST:
         """Parse raw HTML text into a ``DocumentAST``.
 
         Args:
-            text: Raw HTML source.
+            data: Raw HTML source.
             document_title: Optional override for the document title.
-            document_metadata: Optional metadata dict merged into the result.
+            metadata_overrides: Semantic metadata that overrides values parsed
+                from HTML metadata tags.
+            source_path: Optional source provenance stored separately from metadata.
 
         Raises:
-            TypeError: If ``text`` is not a ``str``.
+            TypeError: If ``data`` is not a ``str``.
         """
         if not isinstance(data, str):
-            msg = f"DocxParser.parse expects bytes, got {type(data).__name__}"
+            msg = f"HTMLParser.parse expects str, got {type(data).__name__}"
             raise TypeError(msg)
 
         builder = _HTMLDocumentBuilder(
             source=data,
             document_title=document_title,
-            document_metadata=document_metadata or {},
+            metadata_overrides=metadata_overrides or {},
+            source_path=str(source_path) if source_path is not None else None,
         )
         return builder.build()

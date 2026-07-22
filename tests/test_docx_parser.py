@@ -3,10 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from lumberjack import lumber
-from lumberjack.core.models import SplitOptions
-from lumberjack.core.parser.docx import DocxParser
-from lumberjack.core.splitter import SiblingSplitter
-from tests.helpers import CharacterTokenizer
+from lumberjack.parser.docx import DocxParser
+from lumberjack.splitter import SiblingSplitter
+from tests.helpers import CharacterTokenizer, splitter_options
 
 FIXTURES_ROOT = Path(__file__).resolve().parent / "fixtures" / "docx"
 SAMPLE_DOCX = (FIXTURES_ROOT / "sample.docx").read_bytes()
@@ -102,8 +101,8 @@ def test_docx_through_splitter() -> None:
     doc = parser.parse(SAMPLE_DOCX)
 
     tokenizer = CharacterTokenizer()
-    options = SplitOptions(max_tokens=200, merge_below_ratio=0.1)
-    splitter = SiblingSplitter(tokenizer=tokenizer, options=options)
+    options = splitter_options(max_tokens=200, merge_below_ratio=0.1)
+    splitter = SiblingSplitter(tokenizer=tokenizer, **options)
     chunks = splitter.split(doc)
 
     assert len(chunks) >= 1

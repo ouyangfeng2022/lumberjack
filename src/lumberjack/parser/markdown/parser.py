@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import yaml
@@ -10,7 +11,9 @@ from markdown_it import MarkdownIt
 from mdit_py_plugins.dollarmath import dollarmath_plugin
 from mdit_py_plugins.front_matter import front_matter_plugin
 
-from ...utils import join_rendered_blocks
+from lumberjack.block import BlockKind
+
+from ..._internal.rendering import join_rendered_blocks
 from .plugins import brackets_math_plugin
 
 if TYPE_CHECKING:
@@ -480,7 +483,7 @@ class MarkdownItParser(ParserProtocol[str]):
         plugins: Iterable[Callable[..., None]] = (),
         block_specs: Iterable[MarkdownBlockSpec] = (),
         options_update: dict[str, Any] | None = None,
-        disable_lheading: bool = False,
+        disable_lheading: bool = True,
     ) -> None:
         (
             self._token_type_to_kind,
@@ -502,24 +505,26 @@ class MarkdownItParser(ParserProtocol[str]):
         data: str,
         *,
         document_title: str | None = None,
-        document_metadata: dict[str, object] | None = None,
+        metadata_overrides: Mapping[str, object] | None = None,
+        source_path: str | Path | None = None,
     ) -> DocumentAST:
         """Parse raw Markdown text into a ``DocumentAST`` with section tree and reference definitions.
 
         Args:
-            text: Raw Markdown text to parse.
+            data: Raw Markdown text to parse.
             document_title: Optional override for the document title.
-            document_metadata: Optional metadata dict to merge into the document.
+            metadata_overrides: Semantic metadata that overrides values parsed
+                from front matter.
+            source_path: Optional source provenance stored separately from metadata.
 
         Raises:
-            TypeError: If ``text`` is not a ``str``.
+            TypeError: If ``data`` is not a ``str``.
         """
         if not isinstance(data, str):
-            msg = f"DocxParser.parse expects bytes, got {type(data).__name__}"
+            msg = f"MarkdownParser.parse expects str, got {type(data).__name__}"
             raise TypeError(msg)
 
-        if document_metadata is None:
-            document_metadata = {}
+        metadata = dict(metadata_overrides or {})
 
         env: dict[str, Any] = {}
         tokens = self._parser.parse(data, env)
@@ -534,7 +539,7 @@ class MarkdownItParser(ParserProtocol[str]):
             if token.type == "front_matter":
                 section_stack[-1].add_block(
                     DocumentBlock(
-                        kind="front_matter",
+                        kind=BlockKind.FRONT_MATTER,
                         text=slice_source(source_lines, token.map),
                         start_line=start_line(token),
                         end_line=end_line(token),
@@ -555,7 +560,7 @@ class MarkdownItParser(ParserProtocol[str]):
         fm_metadata = self._parse_front_matter(tokens)
         if fm_metadata is not None:
             for key, value in fm_metadata.items():
-                document_metadata.setdefault(key, value)
+                metadata.setdefault(key, value)
 
         final_title = self._resolve_document_title(document_title, fm_metadata, root)
         root.title = final_title
@@ -564,7 +569,8 @@ class MarkdownItParser(ParserProtocol[str]):
             title=final_title,
             source=data,
             root=root,
-            metadata=document_metadata,
+            source_path=str(source_path) if source_path is not None else None,
+            metadata=metadata,
             reference_definitions=self._extract_reference_definitions(
                 env, source_lines
             ),
@@ -618,7 +624,7 @@ class MarkdownItParser(ParserProtocol[str]):
                 inlines = self._inline.token_to_inlines(inline_token)
                 return (
                     DocumentBlock(
-                        kind="paragraph",
+                        kind=BlockKind.PARAGRAPH,
                         text=slice_source(source_lines, token.map),
                         start_line=start_line(token),
                         end_line=end_line(token),
@@ -634,7 +640,7 @@ class MarkdownItParser(ParserProtocol[str]):
             inlines = self._inline.token_to_inlines(inline_token)
             return (
                 DocumentBlock(
-                    kind="paragraph",
+                    kind=BlockKind.PARAGRAPH,
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
                     end_line=end_line(token),
@@ -648,7 +654,7 @@ class MarkdownItParser(ParserProtocol[str]):
             children = self._parse_blocks(tokens, index + 1, close_index, source_lines)
             return (
                 DocumentBlock(
-                    kind="blockquote",
+                    kind=BlockKind.BLOCKQUOTE,
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
                     end_line=end_line(token),
@@ -668,7 +674,7 @@ class MarkdownItParser(ParserProtocol[str]):
             }
             return (
                 DocumentBlock(
-                    kind="list",
+                    kind=BlockKind.LIST,
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
                     end_line=end_line(token),
@@ -683,7 +689,7 @@ class MarkdownItParser(ParserProtocol[str]):
             children = self._parse_blocks(tokens, index + 1, close_index, source_lines)
             return (
                 DocumentBlock(
-                    kind="list_item",
+                    kind=BlockKind.LIST_ITEM,
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
                     end_line=end_line(token),
@@ -697,7 +703,7 @@ class MarkdownItParser(ParserProtocol[str]):
             language = info.split(maxsplit=1)[0] if info else ""
             return (
                 DocumentBlock(
-                    kind="code_fence",
+                    kind=BlockKind.CODE_FENCE,
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
                     end_line=end_line(token),
@@ -713,7 +719,7 @@ class MarkdownItParser(ParserProtocol[str]):
         if token.type == "math_block":
             return (
                 DocumentBlock(
-                    kind="math_block",
+                    kind=BlockKind.MATH_BLOCK,
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
                     end_line=end_line(token),
@@ -725,7 +731,7 @@ class MarkdownItParser(ParserProtocol[str]):
         if token.type == "math_block_eqno":
             return (
                 DocumentBlock(
-                    kind="math_block_eqno",
+                    kind=BlockKind.MATH_BLOCK_EQNO,
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
                     end_line=end_line(token),
@@ -740,7 +746,7 @@ class MarkdownItParser(ParserProtocol[str]):
         if token.type == "code_block":
             return (
                 DocumentBlock(
-                    kind="code_block",
+                    kind=BlockKind.CODE_BLOCK,
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
                     end_line=end_line(token),
@@ -760,7 +766,7 @@ class MarkdownItParser(ParserProtocol[str]):
                 # Treat HTML tables as html_table blocks for independent handling
                 return (
                     DocumentBlock(
-                        kind="html_table",
+                        kind=BlockKind.HTML_TABLE,
                         text=html_content,
                         start_line=start_line(token),
                         end_line=end_line(token),
@@ -773,7 +779,7 @@ class MarkdownItParser(ParserProtocol[str]):
 
             return (
                 DocumentBlock(
-                    kind="html_block",
+                    kind=BlockKind.HTML_BLOCK,
                     text=html_content,
                     start_line=start_line(token),
                     end_line=end_line(token),
@@ -789,7 +795,7 @@ class MarkdownItParser(ParserProtocol[str]):
             close_index = self._find_matching_close(tokens, index)
             return (
                 DocumentBlock(
-                    kind="table",
+                    kind=BlockKind.TABLE,
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
                     end_line=end_line(token),

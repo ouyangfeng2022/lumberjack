@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .._internal.rendering import join_rendered_blocks
 from ..models import (
     ChunkDraft,
     Entry,
@@ -13,7 +14,6 @@ from ..models import (
     common_heading_path,
     render_heading_path,
 )
-from ..utils import join_rendered_blocks
 from .base import BaseSplitter
 
 if TYPE_CHECKING:
@@ -43,7 +43,7 @@ class IncrementalCountingMixin(BaseSplitter):
         return self._finalize_chunks(drafts, document)
 
     def _draft_running_estimate(self, draft: ChunkDraft) -> int:
-        if self.options.render_headings:
+        if self.render_headings:
             return draft.token_count
         hidden_headings = ancestor_heading_path(
             entry.headings for entry in draft.entries
@@ -185,7 +185,7 @@ class IncrementalCountingMixin(BaseSplitter):
             tail_text = ""
 
         body_has_standalone = any(
-            block.kind in self.options.standalone_kinds for block in section.blocks
+            block.kind in self.standalone_kinds for block in section.blocks
         )
         can_emit_as_single_chunk = not body_has_standalone and all(
             child.can_emit_as_single_chunk for child in children
@@ -228,8 +228,8 @@ class IncrementalCountingMixin(BaseSplitter):
         node = section.node
         headings = node.path
         blocks = node.blocks
-        max_tokens = self.options.ideal_max_tokens
-        standalone_kinds = self.options.standalone_kinds
+        max_tokens = self.ideal_max_tokens
+        standalone_kinds = self.standalone_kinds
 
         # Full heading token count — kept on every draft so merge arithmetic
         # stays self-consistent (displaced heading tokens fall back into the
@@ -237,7 +237,7 @@ class IncrementalCountingMixin(BaseSplitter):
         prefix_tokens = (
             self._heading_path_token_count(headings) if node.level > 0 else 0
         )
-        if self.options.render_headings:
+        if self.render_headings:
             rendered_heading_tokens = prefix_tokens
         else:
             rendered_heading_tokens = self._heading_path_token_count(headings[-1:])
@@ -456,9 +456,9 @@ class IncrementalCountingMixin(BaseSplitter):
         if not (node.blocks or node.level > 0):
             return []
         has_standalone = any(
-            block.kind in self.options.standalone_kinds for block in node.blocks
+            block.kind in self.standalone_kinds for block in node.blocks
         )
-        if has_standalone or section.counts.body > self.options.ideal_max_tokens:
+        if has_standalone or section.counts.body > self.ideal_max_tokens:
             return self._split_section_body(section)
         entry = self._entry_from_blocks(
             node.path, node.blocks, body_token_count=section.counts.body
@@ -496,7 +496,7 @@ class IncrementalCountingMixin(BaseSplitter):
     def _packable_body_draft(self, section: MeasuredSection) -> ChunkDraft | None:
         node = section.node
         if not node.blocks or any(
-            block.kind in self.options.standalone_kinds for block in node.blocks
+            block.kind in self.standalone_kinds for block in node.blocks
         ):
             return None
         headings_tokens = self._heading_budget_token_count(node.path)
@@ -512,9 +512,7 @@ class IncrementalCountingMixin(BaseSplitter):
             token_count=headings_tokens + section.counts.body,
         )
         return (
-            draft
-            if self._draft_budget_tokens(draft) <= self.options.ideal_max_tokens
-            else None
+            draft if self._draft_budget_tokens(draft) <= self.ideal_max_tokens else None
         )
 
 

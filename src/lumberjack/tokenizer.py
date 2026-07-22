@@ -152,15 +152,3 @@ class TransformersTokenizer(TokenizerProtocol):
     def clear_cache(self) -> None:
         with self._lock:
             self._cache.clear()
-
-
-def create_tokenizer(name: str) -> TokenizerProtocol:
-    """Instantiate a tokenizer by name."""
-    normalized = name.strip().lower()
-    if normalized == "approx":
-        return ApproxCharTokenizer()
-    if normalized == "tiktoken":
-        return TiktokenTokenizer()
-    if normalized == "transformers":
-        return TransformersTokenizer()
-    raise ValueError(f"Unsupported tokenizer: {name}")

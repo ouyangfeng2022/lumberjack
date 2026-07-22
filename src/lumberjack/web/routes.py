@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from pydantic import Field as PydanticField
 
-from lumberjack import lumber
-from lumberjack.core.models import BaseParams
-from lumberjack.core.options import parse_block_config_json, parse_block_config_mapping
-from lumberjack.formats import detect_format_from_filename
+from lumberjack._internal.formats import detect_format_from_filename
+from lumberjack._internal.options import (
+    parse_block_config_json,
+    parse_block_config_mapping,
+)
+from lumberjack._internal.pipeline import split_source
+from lumberjack.block import BlockOption
+from lumberjack.parser import InputFormat
 
 router = APIRouter()
 
@@ -44,8 +48,8 @@ class TextSplitRequest(BaseModel):
     splitter: SplitterName = PydanticField(
         "sibling",
         description=(
-            "Splitter topology and counting mode. Unprefixed names are exact; "
-            "incremental-* names use additive measurement."
+            "Splitter topology and counting mode. Unprefixed names use "
+            "incremental measurement; exact-* names fully recount candidates."
         ),
     )
     max_heading_level: int | None = None
@@ -73,14 +77,14 @@ class SplitResponse(BaseModel):
 
 def _parse_block_configs(
     raw: dict[str, Any] | None,
-) -> dict[str, BaseParams] | None:
+) -> list[BlockOption] | None:
     try:
         return parse_block_config_mapping(raw)
     except (TypeError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
-def _parse_form_block_configs(raw: str) -> dict[str, BaseParams] | None:
+def _parse_form_block_configs(raw: str) -> list[BlockOption] | None:
     if not raw or not raw.strip():
         return None
     try:
@@ -95,7 +99,7 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
     block_options = _parse_block_configs(payload.block_configs)
 
     try:
-        chunks = lumber(
+        chunks = split_source(
             payload.text,
             format=payload.input_format,
             max_tokens=payload.max_tokens,
@@ -134,8 +138,8 @@ async def split_file(
     splitter: SplitterName = Form(  # noqa: B008
         "sibling",
         description=(
-            "Splitter topology and counting mode. Unprefixed names are exact; "
-            "incremental-* names use additive measurement."
+            "Splitter topology and counting mode. Unprefixed names use "
+            "incremental measurement; exact-* names fully recount candidates."
         ),
     ),
     max_heading_level: int | None = Form(None),
@@ -161,10 +165,11 @@ async def split_file(
     block_options = _parse_form_block_configs(block_configs)
 
     try:
-        chunks = lumber(
+        chunks = split_source(
             content,
-            format=fmt,
+            format=cast(InputFormat, fmt),
             document_title=file.filename,
+            source_path=file.filename,
             max_tokens=max_tokens,
             ideal_max_tokens_ratio=ideal_max_tokens_ratio,
             merge_below_ratio=merge_below_ratio,

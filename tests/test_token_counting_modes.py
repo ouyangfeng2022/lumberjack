@@ -5,33 +5,32 @@ from types import SimpleNamespace
 
 import pytest
 
-import lumberjack.core.tokenizers as tokenizers
-from lumberjack.core.models import SplitOptions
-from lumberjack.core.parser.markdown.parser import MarkdownItParser
-from lumberjack.core.splitter import create_splitter
-from lumberjack.core.tokenizers import (
+import lumberjack.tokenizer as tokenizers
+from lumberjack.parser.markdown.parser import MarkdownItParser
+from lumberjack.tokenizer import (
     ApproxCharTokenizer,
     TiktokenTokenizer,
-    create_tokenizer,
 )
+from tests.helpers import create_splitter, create_tokenizer, splitter_options
 
 
 def test_exact_and_incremental_splitters_expose_distinct_counting_contexts() -> None:
     """Topology code can depend on one normalized counting-context contract."""
-    from lumberjack.core.splitter.context import (
+    from lumberjack.splitter.context import (
         ExactCountingContext,
         IncrementalCountingContext,
         SectionView,
     )
 
     document = MarkdownItParser().parse("# A\n\nbody")
-    from lumberjack.core.splitter import (
+    from lumberjack.splitter import (
         ExactSectionSplitter,
         IncrementalSectionSplitter,
     )
 
-    exact = ExactSectionSplitter()
-    incremental = IncrementalSectionSplitter()
+    tokenizer = ApproxCharTokenizer()
+    exact = ExactSectionSplitter(tokenizer)
+    incremental = IncrementalSectionSplitter(tokenizer)
 
     exact_view = ExactCountingContext(exact).prepare(document.root)
     incremental_view = IncrementalCountingContext(incremental).prepare(document.root)
@@ -117,7 +116,7 @@ class TestSeparatorDeltaAfter:
         return create_splitter(
             "incremental-sibling",
             TiktokenTokenizer(),
-            SplitOptions(max_tokens=1200),
+            splitter_options(max_tokens=1200),
         )
 
     def test_uses_8char_tail_window(self) -> None:
@@ -187,12 +186,12 @@ class TestCreateTokenizer:
 class TestCreateSplitterTokenizerEngine:
     def test_default_tokenizer_is_approx_char(self) -> None:
         splitter = create_splitter("sibling")
-        assert isinstance(splitter.tokenizer, ApproxCharTokenizer)  # ty: ignore[unresolved-attribute]
+        assert isinstance(splitter.tokenizer, ApproxCharTokenizer)
 
     def test_splitter_runs_with_custom_tokenizer(self) -> None:
         source = "# Root\n\n## Alpha\n\nAlpha body\n\n## Beta\n\nBeta body\n"
         document = MarkdownItParser().parse(source)
-        options = SplitOptions(max_tokens=20, merge_below_ratio=0.5)
+        options = splitter_options(max_tokens=20, merge_below_ratio=0.5)
         splitter = create_splitter(
             "sibling",
             _RecordingCountTokenizer(),
@@ -211,7 +210,7 @@ def _split_with(
 ):
     document = MarkdownItParser().parse(source)
     engine = create_tokenizer(tokenizer)
-    options = SplitOptions(max_tokens=max_tokens)
+    options = splitter_options(max_tokens=max_tokens)
     splitter = create_splitter("sibling", engine, options=options)
     return splitter.split(document), engine
 
@@ -257,7 +256,7 @@ class TestSplitterUsesTailWindow:
         splitter = create_splitter(
             "incremental-sibling",
             tok,
-            SplitOptions(max_tokens=40, merge_below_ratio=0.25),
+            splitter_options(max_tokens=40, merge_below_ratio=0.25),
         )
         splitter.split(document)
         # The splitter estimates separators by counting the last 8 chars of a
@@ -268,23 +267,21 @@ class TestSplitterUsesTailWindow:
         )
 
 
-class TestLumberTokenizer:
-    def test_lumber_accepts_approx(self) -> None:
+class TestComponentTokenizerSelection:
+    def test_minimal_lumber_uses_approx(self) -> None:
         from lumberjack import lumber
 
-        chunks = lumber("# T\n\nbody\n", tokenizer="approx")
+        chunks = lumber("# T\n\nbody\n")
         assert chunks
         assert chunks[0].token_count == len(chunks[0].body) // 4
 
-    def test_lumber_accepts_tiktoken(self) -> None:
-        from lumberjack import lumber
-
-        chunks = lumber("# T\n\nbody text here\n", tokenizer="tiktoken")
+    def test_manual_pipeline_accepts_tiktoken(self) -> None:
+        chunks, _ = _split_with("# T\n\nbody text here\n", "tiktoken")
         assert chunks
 
-    def test_lumber_accepts_transformers(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from lumberjack import lumber
-
+    def test_manual_pipeline_accepts_transformers(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         fake = SimpleNamespace(
             AutoTokenizer=SimpleNamespace(
                 from_pretrained=lambda *_a, **_k: SimpleNamespace(
@@ -293,14 +290,12 @@ class TestLumberTokenizer:
             )
         )
         monkeypatch.setitem(sys.modules, "transformers", fake)
-        chunks = lumber("# T\n\nbody text here\n", tokenizer="transformers")
+        chunks, _ = _split_with("# T\n\nbody text here\n", "transformers")
         assert chunks
 
-    def test_lumber_unknown_tokenizer_raises(self) -> None:
-        from lumberjack import lumber
-
+    def test_internal_boundary_rejects_unknown_tokenizer(self) -> None:
         with pytest.raises(ValueError, match="Unsupported tokenizer"):
-            lumber("# T\n\nbody\n", tokenizer="bogus")
+            create_tokenizer("bogus")
 
 
 class TestCliTokenizer:
@@ -333,28 +328,30 @@ class TestCliTokenizer:
 class TestSplitterStrategyIsClassProperty:
     """Exact vs incremental is a property of the splitter class, not the tokenizer."""
 
-    def test_sibling_aliases_to_exact(self) -> None:
-        from lumberjack.core.splitter import (
+    def test_sibling_aliases_to_incremental(self) -> None:
+        from lumberjack.splitter import (
             ExactSiblingSplitter,
+            IncrementalSiblingSplitter,
             SiblingSplitter,
         )
 
-        assert SiblingSplitter is ExactSiblingSplitter
-        assert isinstance(create_splitter("sibling"), ExactSiblingSplitter)
+        assert SiblingSplitter is IncrementalSiblingSplitter
+        assert isinstance(create_splitter("sibling"), IncrementalSiblingSplitter)
         assert isinstance(create_splitter("exact-sibling"), ExactSiblingSplitter)
 
-    def test_section_aliases_to_exact(self) -> None:
-        from lumberjack.core.splitter import (
+    def test_subtree_aliases_to_incremental(self) -> None:
+        from lumberjack.splitter import (
             ExactSubtreeSplitter,
+            IncrementalSubtreeSplitter,
             SubtreeSplitter,
         )
 
-        assert SubtreeSplitter is ExactSubtreeSplitter
-        assert isinstance(create_splitter("subtree"), ExactSubtreeSplitter)
+        assert SubtreeSplitter is IncrementalSubtreeSplitter
+        assert isinstance(create_splitter("subtree"), IncrementalSubtreeSplitter)
         assert isinstance(create_splitter("exact-subtree"), ExactSubtreeSplitter)
 
     def test_incremental_variants_route_correctly(self) -> None:
-        from lumberjack.core.splitter import (
+        from lumberjack.splitter import (
             IncrementalSiblingSplitter,
             IncrementalSubtreeSplitter,
         )

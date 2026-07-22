@@ -1,4 +1,4 @@
-"""Tests for ``SplitOptions.render_headings``.
+"""Tests for the splitter ``render_headings`` constructor argument.
 
 All splitter topologies are render-aware. When ``render_headings`` is False the ancestor
 heading breadcrumb is excluded from the split budget *and* omitted from the
@@ -19,14 +19,15 @@ from __future__ import annotations
 
 import pytest
 
-from lumberjack.core.models import SplitOptions
-from lumberjack.core.parser.markdown.parser import MarkdownParser
-from lumberjack.core.splitter.sibling import SiblingSplitter
-from lumberjack.core.splitter.subtree import (
-    IncrementalSubtreeSplitter,
-    SubtreeSplitter,
+from lumberjack.parser.markdown.parser import MarkdownParser
+from lumberjack.splitter.sibling import ExactSiblingSplitter as SiblingSplitter
+from lumberjack.splitter.subtree import (
+    ExactSubtreeSplitter as SubtreeSplitter,
 )
-from tests.helpers import CharacterTokenizer
+from lumberjack.splitter.subtree import (
+    IncrementalSubtreeSplitter,
+)
+from tests.helpers import CharacterTokenizer, splitter_options
 
 # A document with multiple paragraphs per section so bodies are splittable.
 SPLITTABLE_FIXTURE = """# Big Heading Title Here
@@ -80,7 +81,7 @@ class TestSubtreeSplitterRenderAware:
     ) -> list:
         splitter = SubtreeSplitter(
             tokenizer=CharacterTokenizer(),
-            options=SplitOptions(
+            **splitter_options(
                 max_tokens=max_tokens,
                 ideal_max_tokens_ratio=1,
                 merge_below_ratio=0.0,
@@ -155,7 +156,7 @@ class TestSubtreeSplitterRenderAware:
     ) -> None:
         splitter = SubtreeSplitter(
             tokenizer=CharacterTokenizer(),
-            options=SplitOptions(
+            **splitter_options(
                 max_tokens=60,
                 ideal_max_tokens_ratio=1,
                 merge_below_ratio=0.0,
@@ -201,7 +202,7 @@ beta beta beta beta beta beta
         )
         splitter = IncrementalSubtreeSplitter(
             tokenizer=CharacterTokenizer(),
-            options=SplitOptions(
+            **splitter_options(
                 max_tokens=40,
                 ideal_max_tokens_ratio=1,
                 merge_below_ratio=0.0,
@@ -233,7 +234,7 @@ class TestSiblingSplitterRenderAware:
     ) -> list:
         splitter = SiblingSplitter(
             tokenizer=CharacterTokenizer(),
-            options=SplitOptions(
+            **splitter_options(
                 max_tokens=max_tokens,
                 ideal_max_tokens_ratio=1,
                 merge_below_ratio=0.0,
@@ -331,7 +332,7 @@ class TestSiblingSplitterRenderAware:
         tok = CharacterTokenizer()
         splitter = SiblingSplitter(
             tokenizer=tok,
-            options=SplitOptions(
+            **splitter_options(
                 max_tokens=400,
                 ideal_max_tokens_ratio=1,
                 merge_below_ratio=0.0,
@@ -359,40 +360,40 @@ class TestSiblingSplitterRenderAware:
 
 class TestRenderHeadingsOption:
     def test_default_is_true(self) -> None:
-        opts = SplitOptions()
-        assert opts.render_headings is True
+        opts = splitter_options()
+        assert opts["render_headings"] is True
 
     def test_can_be_disabled(self) -> None:
-        opts = SplitOptions(render_headings=False)
-        assert opts.render_headings is False
+        opts = splitter_options(render_headings=False)
+        assert opts["render_headings"] is False
 
-    def test_lumber_threads_option_section(self) -> None:
-        from lumberjack import lumber
-
-        chunks = lumber(
-            NESTED_FIXTURE,
-            splitter="subtree",
-            max_tokens=60,
-            ideal_max_tokens_ratio=1,
-            merge_below_ratio=0.0,
-            render_headings=False,
-        )
+    def test_subtree_splitter_accepts_option(self) -> None:
+        document = MarkdownParser().parse(NESTED_FIXTURE)
+        chunks = SubtreeSplitter(
+            CharacterTokenizer(),
+            **splitter_options(
+                max_tokens=60,
+                ideal_max_tokens_ratio=1,
+                merge_below_ratio=0.0,
+                render_headings=False,
+            ),
+        ).split(document)
         assert chunks
         for chunk in chunks:
             assert "Root" not in chunk.body
             assert chunk.headings  # metadata preserved
 
-    def test_lumber_threads_option_to_sibling_splitter(self) -> None:
-        from lumberjack import lumber
-
-        chunks = lumber(
-            NESTED_FIXTURE,
-            splitter="sibling",
-            max_tokens=60,
-            ideal_max_tokens_ratio=1,
-            merge_below_ratio=0.0,
-            render_headings=False,
-        )
+    def test_sibling_splitter_accepts_option(self) -> None:
+        document = MarkdownParser().parse(NESTED_FIXTURE)
+        chunks = SiblingSplitter(
+            CharacterTokenizer(),
+            **splitter_options(
+                max_tokens=60,
+                ideal_max_tokens_ratio=1,
+                merge_below_ratio=0.0,
+                render_headings=False,
+            ),
+        ).split(document)
         assert chunks
         for chunk in chunks:
             assert chunk.headings  # metadata always preserved

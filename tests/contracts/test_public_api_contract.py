@@ -2,26 +2,78 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import fields
+from importlib.util import find_spec
 
-import pytest
-
+import lumberjack
+import lumberjack.parser as parser_package
 from lumberjack import lumber
-from lumberjack.core.models import Chunk, DocumentBlock, DocumentInline
-from lumberjack.core.splitter import SPLITTER_REGISTRY, create_splitter
+from lumberjack.block import (
+    BlockConfig,
+    BlockKind,
+    CustomBlockConfig,
+    HTMLTableConfig,
+    MarkdownTableConfig,
+)
+from lumberjack.models import Chunk, DocumentAST, DocumentBlock, DocumentInline
+from lumberjack.parser import AutoParser, DocxParser, HTMLParser, MarkdownParser
+from lumberjack.protocols import ParserProtocol, SplitterProtocol, TokenizerProtocol
+from lumberjack.splitter import (
+    ExactSectionSplitter,
+    ExactSiblingSplitter,
+    ExactSubtreeSplitter,
+    SectionSplitter,
+    SiblingSplitter,
+    SubtreeSplitter,
+)
+from lumberjack.tokenizer import (
+    ApproxCharTokenizer,
+    TiktokenTokenizer,
+    TransformersTokenizer,
+)
 
 
-def test_lumber_public_defaults() -> None:
+def test_top_level_only_exports_lumber() -> None:
+    assert lumberjack.__all__ == ["lumber"]
+
+
+def test_lumber_is_deliberately_minimal() -> None:
     parameters = inspect.signature(lumber).parameters
-
+    assert list(parameters) == ["source", "format", "max_tokens"]
     assert parameters["format"].default == "auto"
-    assert parameters["tokenizer"].default == "approx"
-    assert parameters["splitter"].default == "sibling"
     assert parameters["max_tokens"].default == 1200
-    assert parameters["ideal_max_tokens_ratio"].default == 0.8
-    assert parameters["merge_below_ratio"].default == 0.125
-    assert parameters["skip_empty_sections"].default is True
-    assert parameters["render_headings"].default is True
-    assert parameters["max_heading_level"].default is None
+
+
+def test_public_components_own_their_implementations() -> None:
+    assert AutoParser and MarkdownParser and HTMLParser and DocxParser
+    assert SiblingSplitter and SubtreeSplitter and SectionSplitter
+    assert ExactSiblingSplitter and ExactSubtreeSplitter and ExactSectionSplitter
+    assert ApproxCharTokenizer and TiktokenTokenizer and TransformersTokenizer
+    assert BlockConfig and BlockKind and MarkdownTableConfig and HTMLTableConfig
+    assert CustomBlockConfig
+    assert DocumentAST and DocumentBlock and DocumentInline
+    assert ParserProtocol and SplitterProtocol and TokenizerProtocol
+    assert AutoParser.__module__ == "lumberjack.parser.auto"
+    assert SiblingSplitter.__module__ == "lumberjack.splitter.sibling"
+    assert ApproxCharTokenizer.__module__ == "lumberjack.tokenizer"
+    assert BlockConfig.__module__ == "lumberjack.block"
+    assert DocumentAST.__module__ == "lumberjack.models"
+
+
+def test_core_package_does_not_exist() -> None:
+    assert find_spec("lumberjack.core") is None
+
+
+def test_parser_package_has_no_module_level_parse_function() -> None:
+    assert not hasattr(parser_package, "parse")
+
+
+def test_default_splitter_names_are_incremental() -> None:
+    assert SiblingSplitter.__name__ == "IncrementalSiblingSplitter"
+    assert SubtreeSplitter.__name__ == "IncrementalSubtreeSplitter"
+    assert SectionSplitter.__name__ == "IncrementalSectionSplitter"
+    assert ExactSiblingSplitter is not SiblingSplitter
+    assert ExactSubtreeSplitter is not SubtreeSplitter
+    assert ExactSectionSplitter is not SectionSplitter
 
 
 def test_chunk_serialization_fields() -> None:
@@ -38,26 +90,3 @@ def test_chunk_serialization_fields() -> None:
         "start_line",
         "end_line",
     ]
-
-
-def test_format_neutral_ast_node_names_are_public() -> None:
-    assert DocumentInline.__name__ == "DocumentInline"
-    assert DocumentBlock.__name__ == "DocumentBlock"
-
-
-def test_splitter_registry_public_names() -> None:
-    assert set(SPLITTER_REGISTRY) == {
-        "sibling",
-        "exact-sibling",
-        "incremental-sibling",
-        "subtree",
-        "exact-subtree",
-        "incremental-subtree",
-        "section",
-        "exact-section",
-        "incremental-section",
-    }
-
-    for removed_name in ("recursive", "exact-recursive", "incremental-recursive"):
-        with pytest.raises(ValueError, match="Unsupported splitter"):
-            create_splitter(removed_name)
