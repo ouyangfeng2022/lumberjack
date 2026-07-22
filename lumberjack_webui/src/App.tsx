@@ -12,13 +12,12 @@ import styles from './App.module.css';
 const DEFAULT_OPTIONS: Options = {
   max_tokens: 1200,
   ideal_max_tokens_ratio: 0.8,
-  merge_below_tokens: 50,
+  merge_below_ratio: 0.125,
   skip_empty_sections: true,
   render_headings: true,
   block_configs: null,
   tokenizer: 'approx',
   splitter: 'sibling',
-  document_title: 'document.md',
 };
 
 const SAMPLE_MD = `# Getting Started
@@ -108,9 +107,9 @@ export default function App() {
     return {
       lines: sourceText ? sourceText.split(/\r\n|\r|\n/).length : 0,
       characters: sourceText.length,
-      name: file?.name ?? options.document_title,
+      name: file?.name ?? 'document.md',
     };
-  }, [file, fileContent, options.document_title, text]);
+  }, [file, fileContent, text]);
 
   const resultStats = useMemo(() => {
     if (!result) return null;
@@ -132,9 +131,8 @@ export default function App() {
     setLoading(true);
 
     try {
-      const opts = { ...options, document_title: file?.name ?? options.document_title };
       const startedAt = performance.now();
-      const data = await splitMarkdown(text, file, opts);
+      const data = await splitMarkdown(text, file, options);
       const elapsedMs = Math.max(0, performance.now() - startedAt);
       if ('error' in data) {
         setError((data as { error: string }).error);

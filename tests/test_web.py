@@ -1,22 +1,51 @@
 from __future__ import annotations
 
 import io
+from typing import Any
 
+import anyio
 import pytest
-from fastapi.testclient import TestClient
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient, Response
 
 from lumberjack.web import create_app
 
 
+class ASGITestClient:
+    """Small synchronous facade over HTTPX's in-process ASGI transport.
+
+    Starlette's synchronous ``TestClient`` uses an AnyIO blocking portal and can
+    deadlock in otherwise supported local environments. Exercising the ASGI
+    app directly keeps these tests on a single event loop while preserving the
+    existing request/response assertions.
+    """
+
+    def __init__(self, app: FastAPI) -> None:
+        self.app = app
+
+    def post(self, path: str, **kwargs: Any) -> Response:
+        async def request() -> Response:
+            transport = ASGITransport(app=self.app)
+            async with AsyncClient(
+                transport=transport,
+                base_url="http://testserver",
+                timeout=10.0,
+            ) as client:
+                with anyio.fail_after(10):
+                    return await client.post(path, **kwargs)
+
+        return anyio.run(request)
+
+
 @pytest.fixture
-def client() -> TestClient:
-    return TestClient(create_app())
+def client() -> ASGITestClient:
+    return ASGITestClient(create_app(serve_static=False))
 
 
 SIMPLE_MD = "# Hello\n\nThis is a test paragraph.\n\n## Section\n\nAnother paragraph."
 
 
-def test_split_with_text(client: TestClient) -> None:
+def test_split_with_text(client: ASGITestClient) -> None:
     response = client.post(
         "/lumber/api/split/text",
         json={"text": SIMPLE_MD, "max_tokens": 500},
@@ -34,7 +63,7 @@ def test_split_with_text(client: TestClient) -> None:
     assert "headings" in chunk
 
 
-def test_split_text_accepts_html_format(client: TestClient) -> None:
+def test_split_text_accepts_html_format(client: ASGITestClient) -> None:
     response = client.post(
         "/lumber/api/split/text",
         json={
@@ -50,7 +79,7 @@ def test_split_text_accepts_html_format(client: TestClient) -> None:
     assert body["chunks"][0]["body"] == "# Guide\n\nIntro"
 
 
-def test_split_with_file(client: TestClient) -> None:
+def test_split_with_file(client: ASGITestClient) -> None:
     md_file = io.BytesIO(SIMPLE_MD.encode("utf-8"))
     response = client.post(
         "/lumber/api/split/file",
@@ -63,7 +92,7 @@ def test_split_with_file(client: TestClient) -> None:
     assert body["chunk_count"] >= 1
 
 
-def test_split_text_accepts_render_headings_false(client: TestClient) -> None:
+def test_split_text_accepts_render_headings_false(client: ASGITestClient) -> None:
     response = client.post(
         "/lumber/api/split/text",
         json={
@@ -79,7 +108,7 @@ def test_split_text_accepts_render_headings_false(client: TestClient) -> None:
     assert chunk["body"] == "# Parent\n\nIntro."
 
 
-def test_split_file_accepts_render_headings_false(client: TestClient) -> None:
+def test_split_file_accepts_render_headings_false(client: ASGITestClient) -> None:
     md_file = io.BytesIO(b"# Parent\n\nIntro.")
     response = client.post(
         "/lumber/api/split/file",
@@ -93,7 +122,7 @@ def test_split_file_accepts_render_headings_false(client: TestClient) -> None:
     assert chunk["body"] == "# Parent\n\nIntro."
 
 
-def test_split_text_accepts_max_heading_level(client: TestClient) -> None:
+def test_split_text_accepts_max_heading_level(client: ASGITestClient) -> None:
     response = client.post(
         "/lumber/api/split/text",
         json={
@@ -110,7 +139,7 @@ def test_split_text_accepts_max_heading_level(client: TestClient) -> None:
     assert "### Detail" in chunk["body"]
 
 
-def test_split_file_accepts_max_heading_level(client: TestClient) -> None:
+def test_split_file_accepts_max_heading_level(client: ASGITestClient) -> None:
     md_file = io.BytesIO(b"# Parent\n\n## Child\n\n### Detail\n\nBody.")
     response = client.post(
         "/lumber/api/split/file",
@@ -125,7 +154,7 @@ def test_split_file_accepts_max_heading_level(client: TestClient) -> None:
     assert "### Detail" in chunk["body"]
 
 
-def test_split_with_html_file_auto_detects_format(client: TestClient) -> None:
+def test_split_with_html_file_auto_detects_format(client: ASGITestClient) -> None:
     html_file = io.BytesIO(b"<html><body><h1>Guide</h1><p>Intro</p></body></html>")
     response = client.post(
         "/lumber/api/split/file",
@@ -139,14 +168,14 @@ def test_split_with_html_file_auto_detects_format(client: TestClient) -> None:
     assert body["chunks"][0]["body"] == "# Guide\n\nIntro"
 
 
-def test_split_no_input(client: TestClient) -> None:
+def test_split_no_input(client: ASGITestClient) -> None:
     response = client.post("/lumber/api/split/text", json={})
     assert response.status_code == 422
     body = response.json()
     assert "detail" in body
 
 
-def test_split_with_options(client: TestClient) -> None:
+def test_split_with_options(client: ASGITestClient) -> None:
     response = client.post(
         "/lumber/api/split/text",
         json={
@@ -164,7 +193,7 @@ def test_split_with_options(client: TestClient) -> None:
 
 
 def test_split_ignores_legacy_render_common_headings_form_field(
-    client: TestClient,
+    client: ASGITestClient,
 ) -> None:
     response = client.post(
         "/lumber/api/split/text",
@@ -181,21 +210,21 @@ def test_split_ignores_legacy_render_common_headings_form_field(
     assert chunk["body"] == "# Parent\n\n## Child\n\nChild body."
 
 
-def test_unprefixed_api_path_is_not_registered(client: TestClient) -> None:
+def test_unprefixed_api_path_is_not_registered(client: ASGITestClient) -> None:
     response = client.post("/api/split/text", json={"text": SIMPLE_MD})
     # 405 when the static SPA catch-all is mounted, 404 in API-only mode.
     # Both confirm the route itself is not registered as a valid endpoint.
     assert response.status_code in (404, 405)
 
 
-def test_legacy_combined_split_path_is_not_registered(client: TestClient) -> None:
+def test_legacy_combined_split_path_is_not_registered(client: ASGITestClient) -> None:
     response = client.post("/lumber/api/split", data={"text": SIMPLE_MD})
     # 405 when the static SPA catch-all is mounted, 404 in API-only mode.
     # Both confirm the route itself is not registered as a valid endpoint.
     assert response.status_code in (404, 405)
 
 
-def test_split_with_block_configs(client: TestClient) -> None:
+def test_split_with_block_configs(client: ASGITestClient) -> None:
     md = "# Doc\n\nIntro.\n\n| A |\n|---|\n| 1 |\n\nOutro."
     response = client.post(
         "/lumber/api/split/text",
@@ -213,7 +242,7 @@ def test_split_with_block_configs(client: TestClient) -> None:
     assert "Intro." not in table_chunks[0]["body"]
 
 
-def test_split_rejects_invalid_block_params_field(client: TestClient) -> None:
+def test_split_rejects_invalid_block_params_field(client: ASGITestClient) -> None:
     response = client.post(
         "/lumber/api/split/text",
         json={
@@ -228,7 +257,7 @@ def test_split_rejects_invalid_block_params_field(client: TestClient) -> None:
     assert "isolated" in response.json()["detail"]
 
 
-def test_split_with_table_block_params(client: TestClient) -> None:
+def test_split_with_table_block_params(client: ASGITestClient) -> None:
     md = """| Name | Value |
 | ---- | ----- |
 | Alpha | 100 |
@@ -254,7 +283,7 @@ def test_split_with_table_block_params(client: TestClient) -> None:
     assert all("| Name | Value |" not in chunk["body"] for chunk in chunks[1:])
 
 
-def test_split_rejects_unknown_table_params_field(client: TestClient) -> None:
+def test_split_rejects_unknown_table_params_field(client: ASGITestClient) -> None:
     response = client.post(
         "/lumber/api/split/text",
         json={
@@ -268,7 +297,7 @@ def test_split_rejects_unknown_table_params_field(client: TestClient) -> None:
 
 
 def test_split_rejects_table_specific_field_for_non_table_kind(
-    client: TestClient,
+    client: ASGITestClient,
 ) -> None:
     response = client.post(
         "/lumber/api/split/text",
@@ -283,7 +312,7 @@ def test_split_rejects_table_specific_field_for_non_table_kind(
 
 
 def test_split_block_configs_default_applies_when_field_not_sent(
-    client: TestClient,
+    client: ASGITestClient,
 ) -> None:
     """Default block_configs (all DEFAULT, allow merge) applies when field is absent."""
     md = "# Doc\n\nIntro.\n\n| A |\n|---|\n| 1 |\n\nOutro."
@@ -301,7 +330,7 @@ def test_split_block_configs_default_applies_when_field_not_sent(
     assert body["chunk_count"] == 1
 
 
-def test_split_text_with_approx(client: TestClient) -> None:
+def test_split_text_with_approx(client: ASGITestClient) -> None:
     """The /split/text endpoint works with the approx (exact) tokenizer."""
     payload = {
         "text": "# T\n\nbody text here\n",
@@ -316,7 +345,7 @@ def test_split_text_with_approx(client: TestClient) -> None:
     assert chunk["token_count"] == len(chunk["body"]) // 4
 
 
-def test_split_text_with_tiktoken(client: TestClient) -> None:
+def test_split_text_with_tiktoken(client: ASGITestClient) -> None:
     payload = {
         "text": "# T\n\nThe quick brown fox.\n",
         "input_format": "markdown",
@@ -331,7 +360,7 @@ def test_split_text_with_tiktoken(client: TestClient) -> None:
     assert chunk["token_count"] != len(chunk["body"]) // 4
 
 
-def test_split_file_with_approx(client: TestClient) -> None:
+def test_split_file_with_approx(client: ASGITestClient) -> None:
     response = client.post(
         "/lumber/api/split/file",
         data={

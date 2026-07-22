@@ -1,6 +1,6 @@
 """Tests for ``SplitOptions.render_headings``.
 
-Both splitters are render-aware. When ``render_headings`` is False the ancestor
+All splitter topologies are render-aware. When ``render_headings`` is False the ancestor
 heading breadcrumb is excluded from the split budget *and* omitted from the
 rendered body, while the chunk's own heading and internal headings still render.
 So:
@@ -21,7 +21,7 @@ import pytest
 
 from lumberjack.core.models import SplitOptions
 from lumberjack.core.parser.markdown.parser import MarkdownParser
-from lumberjack.core.splitter.recursive import RecursiveSplitter
+from lumberjack.core.splitter.sibling import SiblingSplitter
 from lumberjack.core.splitter.subtree import (
     IncrementalSubtreeSplitter,
     SubtreeSplitter,
@@ -217,12 +217,12 @@ beta beta beta beta beta beta
 
 
 # ---------------------------------------------------------------------------
-# RecursiveSplitter — render-aware budgeting
+# SiblingSplitter — render-aware budgeting
 # ---------------------------------------------------------------------------
 
 
-class TestRecursiveSplitterRenderAware:
-    """RecursiveSplitter excludes the ancestor breadcrumb from budget and body."""
+class TestSiblingSplitterRenderAware:
+    """SiblingSplitter excludes the ancestor breadcrumb from budget and body."""
 
     @staticmethod
     def _split(
@@ -231,7 +231,7 @@ class TestRecursiveSplitterRenderAware:
         render_headings: bool,
         max_tokens: int = 60,  # type: ignore[no-untyped-def]
     ) -> list:
-        splitter = RecursiveSplitter(
+        splitter = SiblingSplitter(
             tokenizer=CharacterTokenizer(),
             options=SplitOptions(
                 max_tokens=max_tokens,
@@ -311,7 +311,7 @@ class TestRecursiveSplitterRenderAware:
         self,
         nested_ast,  # type: ignore[no-untyped-def]
     ) -> None:
-        """RecursiveSplitter only drops the ancestor prefix; internal headings stay."""
+        """SiblingSplitter only drops the ancestor prefix; internal headings stay."""
         chunks = self._split(nested_ast, render_headings=False, max_tokens=120)
         # When siblings merge into one chunk, ### A and ### B are internal
         # relative headings and must still appear in the body.
@@ -329,7 +329,7 @@ class TestRecursiveSplitterRenderAware:
         )
         ast = MarkdownParser().parse(fixture, document_title="t.md")
         tok = CharacterTokenizer()
-        splitter = RecursiveSplitter(
+        splitter = SiblingSplitter(
             tokenizer=tok,
             options=SplitOptions(
                 max_tokens=400,
@@ -382,12 +382,12 @@ class TestRenderHeadingsOption:
             assert "Root" not in chunk.body
             assert chunk.headings  # metadata preserved
 
-    def test_lumber_threads_option_recursive(self) -> None:
+    def test_lumber_threads_option_to_sibling_splitter(self) -> None:
         from lumberjack import lumber
 
         chunks = lumber(
             NESTED_FIXTURE,
-            splitter="recursive",
+            splitter="sibling",
             max_tokens=60,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,

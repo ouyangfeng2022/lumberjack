@@ -4,7 +4,7 @@
 
 The project is in the **development stage** and compatibility does not need to be considered. Allow all disruptive changes.
 
-Markdown / DOCX document splitter for RAG preprocessing. Python 3.10+, `src/` layout, built with `hatchling` + `hatch-vcs`.
+Markdown / HTML / DOCX document splitter for RAG preprocessing. Python 3.10+, `src/` layout, built with `hatchling` + `hatch-vcs`.
 
 Current runtime dependencies:
 
@@ -15,24 +15,21 @@ Optional dependencies:
 
 - `tiktoken>=0.9.0`, `cachetools>=7.1.1` for model-based token counting (install via `--extra tokenizers`)
 - `python-docx>=1.1.0` for DOCX document support (install via `--extra docx`)
-- `fastapi>=0.115.0`, `uvicorn>=0.34.0`, `python-multipart>=0.0.18` for the web server (install via `--group web`)
+- `fastapi>=0.115.0`, `uvicorn>=0.34.0`, `python-multipart>=0.0.18` for the web server (install via `--extra web`)
 
 ## Commands
 
 ```bash
 # Install dev, test, tokenizer, and DOCX dependencies
-uv sync --group dev --group test --extra tokenizers --extra docx
-
-# Install with web server support
-uv sync --group web
+uv sync --group dev --group test --extra tokenizers --extra docx --extra web
 
 # Run CLI (Markdown)
-uv run lumber path/to/file.md --max-tokens 1200 --merge-below-ratio 0.125 -f json
+uv run lumber path/to/file.md --max-tokens 1200 --merge-below-ratio 0.125
 # Run CLI with tiktoken on the incremental splitter
-uv run lumber path/to/file.md --tokenizer tiktoken --splitter incremental-recursive --max-tokens 1200 -f json
+uv run lumber path/to/file.md --tokenizer tiktoken --splitter incremental-sibling --max-tokens 1200
 
 # Run CLI (DOCX)
-uv run lumber path/to/file.docx --input-format docx --max-tokens 1200 -f json
+uv run lumber path/to/file.docx --input-format docx --max-tokens 1200
 
 # Show CLI help
 uv run lumber --help
@@ -69,35 +66,35 @@ DOCX binary  ----> DocxParser --------------------------------------------------
 HTML text    ----> HTMLParser ----------------------------------------------------> Chunk[]
 ```
 
-All three formats produce the same `DocumentAST` (with `SectionNode` tree and `MarkdownBlock` children), so all splitters work with any format. The parsers live under `src/lumberjack/core/parser/`; everything else in `core/` operates on the shared `DocumentAST`.
+All three formats produce the same `DocumentAST` (with `SectionNode` tree and `DocumentBlock` children), so all splitters work with any format. The parsers live under `src/lumberjack/core/parser/`; everything else in `core/` operates on the shared `DocumentAST`.
 
 Main components:
 
 ### Shared (`src/lumberjack/core/`)
 
 - **Models**: `src/lumberjack/core/models.py`
-  - `MarkdownInline`, `MarkdownBlock`, `SectionNode`, `DocumentAST` — shared across formats
-  - `BlockConfig`, `SplitOptions`, `Chunk` — configuration and output types
+  - `DocumentInline`, `DocumentBlock`, `SectionNode`, `DocumentAST` — shared across formats
+  - `BaseParams`, `TableBlockParams`, `SplitOptions`, `Chunk` — configuration and output types
 - **Protocols**: `src/lumberjack/core/protocols.py`
-  - `TokenizerProtocol`, `MarkdownParserProtocol`, `SplitterProtocol`
+  - `TokenizerProtocol`, `ParserProtocol`, `SplitterProtocol`
 - **Tokenizer**: `src/lumberjack/core/tokenizers.py`
-  - `SimpleCharTokenizer` (default), `TiktokenTokenizer` (optional)
+  - `ApproxCharTokenizer` (default), `TiktokenTokenizer` and `TransformersTokenizer` (optional)
 - **Formats**: `src/lumberjack/formats.py`
   - Central input format detection and text/DOCX source reading helpers
 - **Block**: `src/lumberjack/core/block.py`
   - `BlockSplitter` handles oversized block splitting via paragraph/line/sentence/word/hard boundaries
   - Uses `HTMLTableParser` (from `core/parser/html/table_parser.py`) to split oversized `html_table` blocks
-  - `parse_block_config_entry` parses `KIND[:isolated][:nosplit][:TOKENS]` CLI strings into `BlockConfig`
+  - `parse_block_config_entry` parses `KIND[:isolated][:nosplit][:TOKENS]` CLI strings into `BaseParams`
 - **Options**: `src/lumberjack/core/options.py`
   - Shared block option resolution and CLI/JSON block config parsing helpers
 - **Splitters**: `src/lumberjack/core/splitter/` — operate on `DocumentAST`, format-agnostic
   - `base.py` provides `BaseSplitter` shared state and helpers
-  - `recursive.py` provides `RecursiveSplitter` (registry: "recursive") — structure-first, budget-aware
+  - `sibling.py` provides `SiblingSplitter` (registry: "sibling"/"exact-sibling") — structure-first, budget-aware sibling packing
   - `subtree.py` provides `SubtreeSplitter` (registry: "subtree"/"exact-subtree") — subtree-first: collapses a fitting subtree into one chunk, otherwise one chunk per heading section (with tail-fragment merging).
   - `section.py` provides `SectionSplitter` (registry: "section"/"exact-section"). It emits one chunk per heading section's direct body and recurses into children, with **no** subtree-collapse and **no** tail-fragment merging (regardless of `merge_below_ratio`). `IncrementalSubtreeSplitter`/`IncrementalSectionSplitter` are the incremental-measure variants.
   - `__init__.py` provides `SPLITTER_REGISTRY` and `create_splitter()` factory
 - **Visitor**: `src/lumberjack/core/visitor.py`
-  - `AstVisitor` — lightweight AST visitor with enter/depart hooks for section/block/inline and structured content (table cells, code, math); works with any `DocumentAST`
+  - AST traversal helpers operate on the format-neutral `DocumentAST` nodes.
 - **Utilities**: `src/lumberjack/core/utils.py`
 
 ### Parsers (`src/lumberjack/core/parser/`)
@@ -137,7 +134,7 @@ Format-specific parsers — each turns one input format into the shared `Documen
 
 - `src/lumberjack/__init__.py` — `lumber()` function
   - Accepts `str | bytes | Path` input
-  - Auto-detects format or uses explicit `format` parameter (`"auto"`, `"markdown"`, `"docx"`)
+  - Auto-detects format or uses explicit `format` parameter (`"auto"`, `"markdown"`, `"html"`, `"docx"`)
 
 ### Web API / UI
 
@@ -154,7 +151,7 @@ Implemented in `src/lumberjack/web/`.
 
 - `POST /lumber/api/split/text` — JSON body with `text` and split options
 - `POST /lumber/api/split/file` — multipart form with `file` upload and split options
-  - Supports `input_format` form field (`"auto"`, `"markdown"`, `"docx"`)
+  - Supports `input_format` form field (`"auto"`, `"markdown"`, `"html"`, `"docx"`)
   - Auto-detects format from file extension when `"auto"`
 - Response: JSON with `document`, `chunk_count`, and `chunks` array
 - Server CLI: `lumberjack-serve` with `--host`, `--port`, `--reload`
@@ -163,31 +160,30 @@ Implemented in `src/lumberjack/web/`.
 
 Implemented in `src/lumberjack/cli.py`.
 
-- Input is a Markdown (`.md`) or DOCX (`.docx`) file path
-- `--input-format`: `auto` (detect from extension), `markdown`, or `docx`
+- Input is a Markdown (`.md`), HTML (`.html`), or DOCX (`.docx`) file path
+- `--input-format`: `auto` (detect from extension), `markdown`, `html`, or `docx`
 - Output format: JSON only
 - Tokenizers (engine): `approx`, `tiktoken`, `transformers`
-- Exact vs incremental counting is a property of the splitter class, not the tokenizer. Registry names: `recursive`/`exact-recursive` (exact, default), `incremental-recursive`, `subtree`/`exact-subtree` (exact, default), `incremental-subtree`, `section`/`exact-section` (exact, default), `incremental-section`. Exact splitters fully recount rendered text at every budget decision (walk `SectionNode` directly, no pre-measure); incremental splitters pre-measure into `MeasuredSection` and use an additive estimate + 8-char separator-delta window. There is no separate `--token-counter` flag; any tokenizer works with any splitter.
-- Splitter choices: `recursive` (default, = exact-recursive), `subtree` (= exact-subtree), `section` (= exact-section), `exact-recursive`, `incremental-recursive`, `exact-subtree`, `incremental-subtree`, `exact-section`, `incremental-section`
-- `--recursive-split` enables block/text fallback for oversized section bodies
+- Exact vs incremental counting is a property of the splitter class, not the tokenizer. Registry names: `sibling`/`exact-sibling` (exact, default), `incremental-sibling`, `subtree`/`exact-subtree` (exact, default), `incremental-subtree`, `section`/`exact-section` (exact, default), `incremental-section`. Exact splitters fully recount rendered text at every budget decision (walk `SectionNode` directly, no pre-measure); incremental splitters pre-measure into `MeasuredSection` and use an additive estimate + 8-char separator-delta window. Any tokenizer works with any splitter.
+- Splitter choices: `sibling` (default, = exact-sibling), `subtree` (= exact-subtree), `section` (= exact-section), `exact-sibling`, `incremental-sibling`, `exact-subtree`, `incremental-subtree`, `exact-section`, `incremental-section`
 - `--block-config KIND[:isolated][:nosplit][:TOKENS]` per-block-kind config; repeatable
 - JSON output serializes dataclasses with `dataclasses.asdict`
 
 ## Splitting Rules
 
 - Whole document is kept as one chunk when it already fits the budget
-- `RecursiveSplitter` (default): merges adjacent sibling sections when they fit within `max_tokens`
+- `SiblingSplitter` (default): merges adjacent sibling sections when they fit within `max_tokens`
 - `SubtreeSplitter` (default `subtree`/`exact-subtree`): subtree-first — collapses a fitting subtree into one chunk, otherwise one chunk per heading section (with tail-fragment merging). `SectionSplitter` (`section`/`exact-section`): always per-heading, no subtree-collapse, no tail-fragment merging.
 - Tail-fragment merging (`merge_below_ratio`, default `0.125`): bottom-up, merges same-heading adjacent `paragraph` chunks whose tail is below `int(max_tokens * ratio)` tokens, when the merged result fits `max_tokens`. Disabled when `ratio == 0`. The `section` splitter disables this entirely.
 - Text fallback order is paragraph break -> line break -> sentence -> word -> hard split
 - `Chunk.body` always includes rendered heading context; shared parent headings are deduplicated
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
-- `block_options` maps block kinds to `BlockConfig` (per-kind `isolated`, `split`, `max_tokens`)
-- Exact splitters (`recursive`/`subtree`/`section` defaults, and `exact-*`) fully recount rendered text at every budget decision; `Chunk.token_count == Chunk.estimated_token_count` (both full recounts). Incremental splitters (`incremental-recursive`/`incremental-subtree`/`incremental-section`) measure the tree once and use a running additive estimate + 8-char separator-delta window; `Chunk.token_count` is the authoritative full recount at finalization, `Chunk.estimated_token_count` is the split-time running estimate — the two may differ slightly due to the separator approximation.
+- `block_options` maps block kinds to `BaseParams` (per-kind `isolated`, `split`, `max_tokens`)
+- Exact splitters (`sibling`/`subtree`/`section` defaults, and `exact-*`) fully recount rendered text at every budget decision; `Chunk.token_count == Chunk.estimated_token_count` (both full recounts). Incremental splitters (`incremental-sibling`/`incremental-subtree`/`incremental-section`) measure the tree once and use a running additive estimate + 8-char separator-delta window; `Chunk.token_count` is the authoritative full recount at finalization, `Chunk.estimated_token_count` is the split-time running estimate — the two may differ slightly due to the separator approximation.
 
 ## Constraints
 
-- Markdown and DOCX are the supported input formats
+- Markdown, HTML, and DOCX are the supported input formats
 - Fenced code blocks are preserved intact even when they exceed `max_tokens` (unless `code_block`/`code_fence` has `split=True`)
 - CLI should stay orchestration-only; parsing/splitting logic belongs in `src/lumberjack/core/`
 - There is no LangChain dependency
@@ -273,7 +269,7 @@ src/lumberjack/
         tokenizers.py               # Tokenizer implementations
         block.py                    # BlockSplitter + parse_block_config_entry
         options.py                  # Split option/block config parsing helpers
-        splitters/                  # RecursiveSplitter/SubtreeSplitter/SectionSplitter + create_splitter
+        splitter/                   # SiblingSplitter/SubtreeSplitter/SectionSplitter + create_splitter
         visitor.py                  # AstVisitor
         utils.py                    # Rendering helpers
         parser/                    # Format-specific parser: input -> DocumentAST

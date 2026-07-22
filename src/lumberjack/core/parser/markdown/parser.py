@@ -10,13 +10,13 @@ from markdown_it import MarkdownIt
 from mdit_py_plugins.dollarmath import dollarmath_plugin
 from mdit_py_plugins.front_matter import front_matter_plugin
 
-from ...utils import join_markdown
+from ...utils import join_rendered_blocks
 from .plugins import brackets_math_plugin
 
 if TYPE_CHECKING:
     from markdown_it.token import Token
 
-from ...models import DocumentAST, MarkdownBlock, MarkdownInline, SectionNode
+from ...models import DocumentAST, DocumentBlock, DocumentInline, SectionNode
 from ...protocols import ParserProtocol
 
 LINK_REFERENCE_DEFINITION_RE = re.compile(r"^[ ]{0,3}\[([^\]]+)\]:")
@@ -64,7 +64,7 @@ class MarkdownBlockContext:
 
 MarkdownBlockHandler = Callable[
     [MarkdownBlockContext],
-    tuple[MarkdownBlock | None, int],
+    tuple[DocumentBlock | None, int],
 ]
 
 
@@ -78,14 +78,14 @@ class MarkdownBlockSpec:
 
 
 class InlineNormalizer:
-    """Converts markdown-it inline tokens into lumberjack MarkdownInline nodes and renders them back."""
+    """Converts markdown-it inline tokens into lumberjack DocumentInline nodes and renders them back."""
 
-    def token_to_inlines(self, token: Token | None) -> tuple[MarkdownInline, ...]:
+    def token_to_inlines(self, token: Token | None) -> tuple[DocumentInline, ...]:
         if token is None:
             return ()
         return self.normalize_tokens(token.children or [])
 
-    def normalize_tokens(self, tokens: list[Token]) -> tuple[MarkdownInline, ...]:
+    def normalize_tokens(self, tokens: list[Token]) -> tuple[DocumentInline, ...]:
         result, _ = self.collect_tokens(tokens, 0)
         return result
 
@@ -95,8 +95,8 @@ class InlineNormalizer:
         index: int,
         *,
         stop_types: set[str] | None = None,
-    ) -> tuple[tuple[MarkdownInline, ...], int]:
-        normalized: list[MarkdownInline] = []
+    ) -> tuple[tuple[DocumentInline, ...], int]:
+        normalized: list[DocumentInline] = []
         while index < len(tokens):
             token = tokens[index]
             if stop_types is not None and token.type in stop_types:
@@ -107,13 +107,13 @@ class InlineNormalizer:
                 continue
 
             if token.type == "text":
-                normalized.append(MarkdownInline(kind="text", text=token.content))
+                normalized.append(DocumentInline(kind="text", text=token.content))
                 index += 1
                 continue
 
             if token.type == "code_inline":
                 normalized.append(
-                    MarkdownInline(
+                    DocumentInline(
                         kind="code_span",
                         text=token.content,
                         attrs={"literal": token.content},
@@ -124,7 +124,7 @@ class InlineNormalizer:
 
             if token.type == "math_inline":
                 normalized.append(
-                    MarkdownInline(
+                    DocumentInline(
                         kind="math_inline",
                         text=token.content,
                         attrs={"literal": token.content},
@@ -135,14 +135,14 @@ class InlineNormalizer:
 
             if token.type == "html_inline":
                 normalized.append(
-                    MarkdownInline(kind="inline_html", text=token.content)
+                    DocumentInline(kind="inline_html", text=token.content)
                 )
                 index += 1
                 continue
 
             if token.type in {"softbreak", "hardbreak"}:
                 normalized.append(
-                    MarkdownInline(
+                    DocumentInline(
                         kind="soft_break"
                         if token.type == "softbreak"
                         else "hard_break",
@@ -154,7 +154,7 @@ class InlineNormalizer:
 
             if token.type == "image":
                 normalized.append(
-                    MarkdownInline(
+                    DocumentInline(
                         kind="image",
                         children=self.normalize_tokens(token.children or []),
                         attrs={
@@ -168,7 +168,7 @@ class InlineNormalizer:
 
             if token.type == "footnote_ref":
                 normalized.append(
-                    MarkdownInline(
+                    DocumentInline(
                         kind="footnote_ref",
                         text=f"[^{token.meta.get('label', '')}]",
                         attrs={
@@ -184,7 +184,7 @@ class InlineNormalizer:
 
             if token.type == "footnote_anchor":
                 normalized.append(
-                    MarkdownInline(
+                    DocumentInline(
                         kind="footnote_anchor",
                         text="",
                         attrs={
@@ -232,7 +232,7 @@ class InlineNormalizer:
                     attrs["literal"] = self.render_inlines(children)
                     attrs["syntax"] = str(token.markup or "link")
                 normalized.append(
-                    MarkdownInline(
+                    DocumentInline(
                         kind=kind_map[token.type],
                         children=children,
                         attrs=attrs,
@@ -250,7 +250,7 @@ class InlineNormalizer:
                 if index < len(tokens):
                     index += 1
                 normalized.append(
-                    MarkdownInline(
+                    DocumentInline(
                         kind=token.type.removesuffix("_open"),
                         children=children,
                         attrs={
@@ -269,15 +269,15 @@ class InlineNormalizer:
                 index += 1
                 continue
 
-            normalized.append(MarkdownInline(kind=token.type, text=token.content))
+            normalized.append(DocumentInline(kind=token.type, text=token.content))
             index += 1
 
         return (tuple(normalized), index)
 
-    def render_inlines(self, inlines: Iterable[MarkdownInline]) -> str:
+    def render_inlines(self, inlines: Iterable[DocumentInline]) -> str:
         return "".join(self.render_inline(inline) for inline in inlines)
 
-    def render_inline(self, node: MarkdownInline) -> str:
+    def render_inline(self, node: DocumentInline) -> str:
         if node.kind == "text":
             return node.text
         if node.kind == "code_span":
@@ -323,7 +323,7 @@ class InlineNormalizer:
 class MarkdownItParser(ParserProtocol[str]):
     """Parse Markdown with markdown-it-py and normalize tokens into lumberjack's document model."""
 
-    # Token-type → MarkdownBlock.kind mapping for simple (non-container) blocks.
+    # Token-type → DocumentBlock.kind mapping for simple (non-container) blocks.
     # Used by _build_block to look up block kinds from token types.
     _BLOCK_KIND_MAP: ClassVar[dict[str, str]] = {
         "paragraph_open": "paragraph",
@@ -533,7 +533,7 @@ class MarkdownItParser(ParserProtocol[str]):
             token = tokens[index]
             if token.type == "front_matter":
                 section_stack[-1].add_block(
-                    MarkdownBlock(
+                    DocumentBlock(
                         kind="front_matter",
                         text=slice_source(source_lines, token.map),
                         start_line=start_line(token),
@@ -607,8 +607,8 @@ class MarkdownItParser(ParserProtocol[str]):
         source_lines: list[str],
         *,
         allow_headings: bool = False,
-    ) -> tuple[MarkdownBlock | None, int]:
-        """Normalize the token at *index* into a ``MarkdownBlock``, returning the next token index."""
+    ) -> tuple[DocumentBlock | None, int]:
+        """Normalize the token at *index* into a ``DocumentBlock``, returning the next token index."""
         token = tokens[index]
 
         if token.type == "heading_open":
@@ -617,7 +617,7 @@ class MarkdownItParser(ParserProtocol[str]):
                 inline_token = tokens[index + 1] if index + 1 < len(tokens) else None
                 inlines = self._inline.token_to_inlines(inline_token)
                 return (
-                    MarkdownBlock(
+                    DocumentBlock(
                         kind="paragraph",
                         text=slice_source(source_lines, token.map),
                         start_line=start_line(token),
@@ -633,7 +633,7 @@ class MarkdownItParser(ParserProtocol[str]):
             inline_token = tokens[index + 1] if index + 1 < len(tokens) else None
             inlines = self._inline.token_to_inlines(inline_token)
             return (
-                MarkdownBlock(
+                DocumentBlock(
                     kind="paragraph",
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
@@ -647,7 +647,7 @@ class MarkdownItParser(ParserProtocol[str]):
             close_index = self._find_matching_close(tokens, index)
             children = self._parse_blocks(tokens, index + 1, close_index, source_lines)
             return (
-                MarkdownBlock(
+                DocumentBlock(
                     kind="blockquote",
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
@@ -667,7 +667,7 @@ class MarkdownItParser(ParserProtocol[str]):
                 "bullet": f"{token.markup or '-'}",
             }
             return (
-                MarkdownBlock(
+                DocumentBlock(
                     kind="list",
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
@@ -682,7 +682,7 @@ class MarkdownItParser(ParserProtocol[str]):
             close_index = self._find_matching_close(tokens, index)
             children = self._parse_blocks(tokens, index + 1, close_index, source_lines)
             return (
-                MarkdownBlock(
+                DocumentBlock(
                     kind="list_item",
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
@@ -696,7 +696,7 @@ class MarkdownItParser(ParserProtocol[str]):
             info = token.info.strip()
             language = info.split(maxsplit=1)[0] if info else ""
             return (
-                MarkdownBlock(
+                DocumentBlock(
                     kind="code_fence",
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
@@ -712,7 +712,7 @@ class MarkdownItParser(ParserProtocol[str]):
 
         if token.type == "math_block":
             return (
-                MarkdownBlock(
+                DocumentBlock(
                     kind="math_block",
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
@@ -724,7 +724,7 @@ class MarkdownItParser(ParserProtocol[str]):
 
         if token.type == "math_block_eqno":
             return (
-                MarkdownBlock(
+                DocumentBlock(
                     kind="math_block_eqno",
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
@@ -739,7 +739,7 @@ class MarkdownItParser(ParserProtocol[str]):
 
         if token.type == "code_block":
             return (
-                MarkdownBlock(
+                DocumentBlock(
                     kind="code_block",
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
@@ -759,7 +759,7 @@ class MarkdownItParser(ParserProtocol[str]):
             if html_parser.contains_table(html_content):
                 # Treat HTML tables as html_table blocks for independent handling
                 return (
-                    MarkdownBlock(
+                    DocumentBlock(
                         kind="html_table",
                         text=html_content,
                         start_line=start_line(token),
@@ -772,7 +772,7 @@ class MarkdownItParser(ParserProtocol[str]):
                 )
 
             return (
-                MarkdownBlock(
+                DocumentBlock(
                     kind="html_block",
                     text=html_content,
                     start_line=start_line(token),
@@ -788,7 +788,7 @@ class MarkdownItParser(ParserProtocol[str]):
         if token.type == "table_open":
             close_index = self._find_matching_close(tokens, index)
             return (
-                MarkdownBlock(
+                DocumentBlock(
                     kind="table",
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
@@ -837,9 +837,9 @@ class MarkdownItParser(ParserProtocol[str]):
         start: int,
         end: int,
         source_lines: list[str],
-    ) -> tuple[MarkdownBlock, ...]:
+    ) -> tuple[DocumentBlock, ...]:
         """Parse tokens in the half-open range [start, end) into a tuple of blocks."""
-        blocks: list[MarkdownBlock] = []
+        blocks: list[DocumentBlock] = []
         index = start
         while index < end:
             block, index = self._build_block(
@@ -855,7 +855,7 @@ class MarkdownItParser(ParserProtocol[str]):
         start: int,
         end: int,
         source_lines: list[str],
-    ) -> tuple[MarkdownBlock, ...]:
+    ) -> tuple[DocumentBlock, ...]:
         """Parse child block tokens for custom block handlers."""
         return self._parse_blocks(tokens, start, end, source_lines)
 
@@ -889,7 +889,7 @@ class MarkdownItParser(ParserProtocol[str]):
         source_lines: list[str],
         *,
         kind: str,
-    ) -> tuple[MarkdownBlock | None, int]:
+    ) -> tuple[DocumentBlock | None, int]:
         """Handle unrecognized token types by capturing source text and children."""
         if token.type.endswith("_close") or token.type == "inline":
             return (None, index + 1)
@@ -906,12 +906,14 @@ class MarkdownItParser(ParserProtocol[str]):
         )
         text = slice_source(source_lines, token.map)
         if not text and children:
-            text = join_markdown([child.text for child in children if child.text])
+            text = join_rendered_blocks(
+                [child.text for child in children if child.text]
+            )
         if not text.strip():
             return (None, close_index + 1)
 
         return (
-            MarkdownBlock(
+            DocumentBlock(
                 kind=kind,
                 text=text,
                 start_line=start_line(token),

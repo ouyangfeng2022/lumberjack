@@ -57,7 +57,7 @@ Content here.
 """
 
     # Default behavior - all headings create sections
-    chunks = lumber(markdown, splitter="recursive")
+    chunks = lumber(markdown, splitter="sibling")
     assert len(chunks) >= 1  # At least one chunk
 
     # Ancestor metadata excludes the chunk's own H4 title, while section_level
@@ -67,7 +67,7 @@ Content here.
     assert chunk.section_level == 4
 
     # With max_heading_level=2, only H1 and H2 remain chunk section context.
-    chunks = lumber(markdown, splitter="recursive", max_heading_level=2)
+    chunks = lumber(markdown, splitter="sibling", max_heading_level=2)
     chunk = chunks[0]
     # H2 is the chunk's own section title, so only H1 is ancestor metadata.
     assert len(chunk.headings) == 1
@@ -81,7 +81,7 @@ Content here.
 
 @pytest.mark.parametrize(
     "splitter_name",
-    ("recursive", "incremental-recursive", "subtree", "section"),
+    ("sibling", "incremental-sibling", "subtree", "section"),
 )
 def test_max_heading_level_manual_splitter_pipeline(splitter_name: str):
     """Manual parse -> split users configure heading depth on SplitOptions."""
@@ -121,7 +121,7 @@ def test_max_heading_level_none_means_all():
 Body.
 """
 
-    chunks = lumber(markdown, splitter="recursive", max_heading_level=None)
+    chunks = lumber(markdown, splitter="sibling", max_heading_level=None)
     chunk = chunks[0]
     assert chunk.headings == ((1, "H1"),)
     assert chunk.section_level == 6
@@ -137,7 +137,7 @@ def test_max_heading_level_zero_disables_all_headings():
 ### H3
 """
 
-    chunks = lumber(markdown, splitter="recursive", max_heading_level=0)
+    chunks = lumber(markdown, splitter="sibling", max_heading_level=0)
 
     assert len(chunks) == 1
     chunk = chunks[0]
@@ -150,8 +150,8 @@ if __name__ == "__main__":
     test_parser_preserves_full_heading_depth()
     test_max_heading_level_with_lumber()
     for _splitter_name in (
-        "recursive",
-        "incremental-recursive",
+        "sibling",
+        "incremental-sibling",
         "subtree",
         "section",
     ):

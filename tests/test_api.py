@@ -16,7 +16,7 @@ from lumberjack.core.models import Chunk, SplitOptions, TableBlockParams
 from lumberjack.core.options import parse_cli_block_configs, resolve_block_options
 from lumberjack.core.parser.html import HTMLParser
 from lumberjack.core.parser.markdown.parser import MarkdownBlockSpec, MarkdownItParser
-from lumberjack.core.splitter import RecursiveSplitter
+from lumberjack.core.splitter import SiblingSplitter
 from lumberjack.lumber import lumber as module_lumber
 from tests.helpers import CharacterTokenizer
 
@@ -257,7 +257,7 @@ def test_lumber_rejects_tokenizer_instances() -> None:
 
 
 def test_lumber_rejects_splitter_instances() -> None:
-    splitter: Any = RecursiveSplitter(tokenizer=CharacterTokenizer())
+    splitter: Any = SiblingSplitter(tokenizer=CharacterTokenizer())
 
     with pytest.raises(TypeError, match="splitter must be a string"):
         lumber(FIXTURE, splitter=splitter)
@@ -348,7 +348,7 @@ def test_lumber_does_not_write_debug_document_dump() -> None:
 def test_manual_pipeline_can_disable_setext_headings() -> None:
     parser = MarkdownItParser(disable_lheading=True)
     document = parser.parse("Title\n=====\n\nbody", document_title="setext.md")
-    splitter = RecursiveSplitter(
+    splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=500,
@@ -367,7 +367,7 @@ def test_manual_pipeline_accepts_markdown_it_parser_with_plugins() -> None:
     parser = MarkdownItParser(plugins=(tasklists_plugin,))
     markdown = "- [x] done\n- [ ] todo"
     document = parser.parse(markdown, document_title="tasks.md")
-    splitter = RecursiveSplitter(
+    splitter = SiblingSplitter(
         tokenizer=CharacterTokenizer(),
         options=SplitOptions(
             max_tokens=500,
@@ -394,7 +394,7 @@ class ConstantTokenizer:
 def test_manual_pipeline_accepts_custom_tokenizer_instance() -> None:
     parser = MarkdownItParser()
     document = parser.parse("# Title\n\nBody", document_title="custom.md")
-    splitter = RecursiveSplitter(
+    splitter = SiblingSplitter(
         tokenizer=ConstantTokenizer(),
         options=SplitOptions(
             max_tokens=500,

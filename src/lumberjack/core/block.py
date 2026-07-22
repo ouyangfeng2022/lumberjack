@@ -15,7 +15,7 @@ from .models import BaseParams, BlockKindRegistry, SplitOptions, TableBlockParam
 from .parser.html.table_parser import HTMLTableParser, HTMLTableRow
 
 if TYPE_CHECKING:
-    from .models import MarkdownBlock
+    from .models import DocumentBlock
     from .protocols import TokenizerProtocol
 
 SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?\u3002\uff01\uff1f])\s+")
@@ -37,7 +37,7 @@ class BlockSplitter:
 
     def split_oversized_block(
         self,
-        block: MarkdownBlock,
+        block: DocumentBlock,
         *,
         default_budget: int,
     ) -> list[tuple[str, int]] | None:
@@ -81,7 +81,7 @@ class BlockSplitter:
 
     def split_code_block(
         self,
-        block: MarkdownBlock,
+        block: DocumentBlock,
         *,
         max_tokens: int,
     ) -> list[tuple[str, int]]:
@@ -105,7 +105,7 @@ class BlockSplitter:
 
     def split_table_block(
         self,
-        block: MarkdownBlock,
+        block: DocumentBlock,
         *,
         default_budget: int | None = None,
     ) -> list[tuple[str, int]]:
@@ -165,7 +165,7 @@ class BlockSplitter:
 
     def split_html_table_block(
         self,
-        block: MarkdownBlock,
+        block: DocumentBlock,
         *,
         default_budget: int | None = None,
     ) -> list[tuple[str, int]]:
@@ -301,7 +301,7 @@ class BlockSplitter:
 
     def split_list_block(
         self,
-        block: MarkdownBlock,
+        block: DocumentBlock,
         *,
         max_tokens: int,
     ) -> list[tuple[str, int]]:

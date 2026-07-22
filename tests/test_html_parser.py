@@ -74,7 +74,7 @@ def test_html_splitter_respects_max_heading_level():
     assert top.children[0].title == "Deep"
 
     splitter = create_splitter(
-        "recursive",
+        "sibling",
         CharacterTokenizer(),
         options=SplitOptions(max_tokens=500, max_heading_level=2),
     )
@@ -242,10 +242,10 @@ def test_text_splitter_handles_html_table_block():
         options=SplitOptions(block_options={"html_table": TableBlockParams()}),
     )
 
-    from lumberjack.core.models import MarkdownBlock
+    from lumberjack.core.models import DocumentBlock
 
     # Create an HTML table block
-    html_table_block = MarkdownBlock(
+    html_table_block = DocumentBlock(
         kind="html_table",
         text="<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>",
         start_line=1,
@@ -273,9 +273,9 @@ def test_table_splitter_reads_table_params_from_options() -> None:
         ),
     )
 
-    from lumberjack.core.models import MarkdownBlock
+    from lumberjack.core.models import DocumentBlock
 
-    block = MarkdownBlock(
+    block = DocumentBlock(
         kind="table",
         text=(
             "| Name | Value |\n"
@@ -328,7 +328,7 @@ Some text after the table.
 def test_splitter_with_html_table_in_document():
     """Test splitting a document containing HTML tables."""
     parser = MarkdownParser()
-    splitter = create_splitter("recursive")
+    splitter = create_splitter("sibling")
 
     markdown = """# Document with HTML Table
 

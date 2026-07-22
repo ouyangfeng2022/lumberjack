@@ -30,9 +30,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--tokenizer",
         choices=("approx", "tiktoken", "transformers"),
         default="approx",
-        help="Tokenizer implementation. 'approx' is an exact-count engine "
-        "(len(text) // 4, fully recounts rendered text); 'tiktoken' and "
-        "'transformers' use the additive incremental estimate path.",
+        help="Tokenizer engine used to encode and count text. Counting mode is "
+        "selected by --splitter; any tokenizer works with exact or incremental "
+        "splitters.",
     )
     parser.add_argument(
         "--splitter",

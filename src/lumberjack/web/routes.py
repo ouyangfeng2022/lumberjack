@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
+from pydantic import Field as PydanticField
 
 from lumberjack import lumber
 from lumberjack.core.models import BaseParams
@@ -13,18 +14,40 @@ from lumberjack.formats import detect_format_from_filename
 
 router = APIRouter()
 
+TokenizerName = Literal["approx", "tiktoken", "transformers"]
+SplitterName = Literal[
+    "sibling",
+    "exact-sibling",
+    "incremental-sibling",
+    "subtree",
+    "exact-subtree",
+    "incremental-subtree",
+    "section",
+    "exact-section",
+    "incremental-section",
+]
+
 
 class TextSplitRequest(BaseModel):
     text: str
-    input_format: str = "markdown"
+    input_format: Literal["markdown", "html"] = "markdown"
     max_tokens: int = 1200
     ideal_max_tokens_ratio: float = 0.8
     merge_below_ratio: float = 0.125
     skip_empty_sections: bool = True
     render_headings: bool = True
     block_configs: dict[str, Any] | None = None
-    tokenizer: str = "approx"
-    splitter: str = "sibling"
+    tokenizer: TokenizerName = PydanticField(
+        "approx",
+        description="Tokenizer engine used only to encode and count text.",
+    )
+    splitter: SplitterName = PydanticField(
+        "sibling",
+        description=(
+            "Splitter topology and counting mode. Unprefixed names are exact; "
+            "incremental-* names use additive measurement."
+        ),
+    )
     max_heading_level: int | None = None
 
 
@@ -98,15 +121,23 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
 @router.post("/split/file", response_model=SplitResponse)
 async def split_file(
     file: UploadFile = File(...),  # noqa: B008
-    input_format: str = Form("auto"),
+    input_format: Literal["auto", "markdown", "html", "docx"] = Form("auto"),
     max_tokens: int = Form(1200),
     ideal_max_tokens_ratio: float = Form(0.8),
     merge_below_ratio: float = Form(0.125),
     skip_empty_sections: bool = Form(True),
     render_headings: bool = Form(True),
     block_configs: str = Form(""),
-    tokenizer: str = Form("approx"),
-    splitter: str = Form("sibling"),
+    tokenizer: TokenizerName = Form(  # noqa: B008
+        "approx", description="Tokenizer engine used only to encode and count text."
+    ),
+    splitter: SplitterName = Form(  # noqa: B008
+        "sibling",
+        description=(
+            "Splitter topology and counting mode. Unprefixed names are exact; "
+            "incremental-* names use additive measurement."
+        ),
+    ),
     max_heading_level: int | None = Form(None),
 ) -> SplitResponse:
     """Split an uploaded file (Markdown, HTML, or DOCX) into chunks.

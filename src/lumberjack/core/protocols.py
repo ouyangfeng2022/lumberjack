@@ -9,9 +9,8 @@ if TYPE_CHECKING:
 class TokenizerProtocol(Protocol):
     """Abstraction for counting text units in manual parser/splitter pipelines.
 
-    The splitter uses an additive incremental estimate for budget decisions
-    (pre-measured sections + an 8-char separator delta in the splitter); the
-    tokenizer only needs to encode and count.
+    Tokenizers only encode and count text. Exact or incremental measurement is
+    selected by the splitter implementation; either mode can use any tokenizer.
     """
 
     def encode(self, text: str, *, cache=False) -> tuple[int, ...]: ...

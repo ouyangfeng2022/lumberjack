@@ -13,7 +13,7 @@ from ..models import (
     common_heading_path,
     render_heading_path,
 )
-from ..utils import join_markdown
+from ..utils import join_rendered_blocks
 from .base import BaseSplitter
 
 if TYPE_CHECKING:
@@ -78,7 +78,7 @@ class IncrementalCountingMixin(BaseSplitter):
         body_token_count = left_body_token_count + right_body_token_count
 
         # Account for the \n\n separator between the last left entry and the
-        # first right entry introduced by join_markdown during rendering.
+        # first right entry introduced by join_rendered_blocks during rendering.
         #
         # When the last left entry has empty body, its heading's trailing
         # \n\n (from heading_path_token_count in _measure_section) already
@@ -270,7 +270,7 @@ class IncrementalCountingMixin(BaseSplitter):
         def draft_current() -> ChunkDraft:
             entry = Entry(
                 headings=headings,
-                body=join_markdown(current_parts),
+                body=join_rendered_blocks(current_parts),
                 start_line=current_start_line,
                 end_line=current_end_line,
                 body_token_count=current_body_tokens,
@@ -444,7 +444,7 @@ class IncrementalCountingMixin(BaseSplitter):
                 )
 
         if current_parts:
-            rendered = join_markdown(current_parts)
+            rendered = join_rendered_blocks(current_parts)
             if rendered:
                 chunks.append(draft_current())
 

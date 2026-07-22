@@ -74,3 +74,4 @@ exclude = ["lumberjack_webui/", "script/", "assets/"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+faulthandler_timeout = 30

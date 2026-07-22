@@ -5,9 +5,9 @@ from ..models import (
     Chunk,
     ChunkDraft,
     DocumentAST,
+    DocumentBlock,
     Entry,
     HeadingPath,
-    MarkdownBlock,
     SectionNode,
     SplitOptions,
     ancestor_heading_path,
@@ -16,7 +16,7 @@ from ..models import (
 )
 from ..protocols import SplitterProtocol, TokenizerProtocol
 from ..tokenizers import ApproxCharTokenizer
-from ..utils import join_markdown
+from ..utils import join_rendered_blocks
 
 SEPARATOR = "\n\n"
 
@@ -92,12 +92,12 @@ class BaseSplitter(SplitterProtocol):
                 entry_parts.append(render_heading_path(relative_headings))
             if entry.body:
                 entry_parts.append(entry.body)
-            rendered = join_markdown(entry_parts)
+            rendered = join_rendered_blocks(entry_parts)
             if rendered:
                 parts.append(rendered)
             previous_headings = entry.headings
 
-        return join_markdown(parts)
+        return join_rendered_blocks(parts)
 
     def _rendered_token_count(
         self,
@@ -142,7 +142,7 @@ class BaseSplitter(SplitterProtocol):
 
         def demote_section(target: SectionNode, section: SectionNode) -> None:
             target.blocks.append(
-                MarkdownBlock(
+                DocumentBlock(
                     kind="paragraph",
                     text=render_heading_path((section.heading_key,)),
                     start_line=section.start_line,
@@ -291,11 +291,11 @@ class BaseSplitter(SplitterProtocol):
     def _entry_from_blocks(
         self,
         headings: HeadingPath,
-        blocks: list[MarkdownBlock],
+        blocks: list[DocumentBlock],
         *,
         body_token_count: int,
     ) -> Entry:
-        body = join_markdown([block.text for block in blocks])
+        body = join_rendered_blocks([block.text for block in blocks])
         start_lines = [b.start_line for b in blocks if b.start_line is not None]
         end_lines = [b.end_line for b in blocks if b.end_line is not None]
 
@@ -372,12 +372,12 @@ class BaseSplitter(SplitterProtocol):
         return max(vals) if vals else None
 
     @staticmethod
-    def _min_start_lines(blocks: list[MarkdownBlock]) -> int | None:
+    def _min_start_lines(blocks: list[DocumentBlock]) -> int | None:
         vals = [b.start_line for b in blocks if b.start_line is not None]
         return min(vals) if vals else None
 
     @staticmethod
-    def _max_end_lines(blocks: list[MarkdownBlock]) -> int | None:
+    def _max_end_lines(blocks: list[DocumentBlock]) -> int | None:
         vals = [b.end_line for b in blocks if b.end_line is not None]
         return max(vals) if vals else None
 

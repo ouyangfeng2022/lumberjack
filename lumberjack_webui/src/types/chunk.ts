@@ -3,6 +3,7 @@ export interface ChunkData {
   chunk_type: string;
   body: string;
   token_count: number;
+  estimated_token_count: number;
   headings: [number, string][];
   section_level: number;
   document_title: string;
@@ -24,14 +25,26 @@ export interface BlockHandlingState {
   repeat_header?: boolean;
 }
 
+export type TokenizerName = 'approx' | 'tiktoken' | 'transformers';
+
+export type SplitterName =
+  | 'sibling'
+  | 'exact-sibling'
+  | 'incremental-sibling'
+  | 'subtree'
+  | 'exact-subtree'
+  | 'incremental-subtree'
+  | 'section'
+  | 'exact-section'
+  | 'incremental-section';
+
 export interface SplitOptions {
   max_tokens: number;
   ideal_max_tokens_ratio: number;
-  merge_below_tokens: number | null;
+  merge_below_ratio: number;
   skip_empty_sections: boolean;
   render_headings: boolean;
   block_configs: Record<string, BlockHandlingState> | null;
-  tokenizer: string;
-  splitter: string;
-  document_title: string;
+  tokenizer: TokenizerName;
+  splitter: SplitterName;
 }

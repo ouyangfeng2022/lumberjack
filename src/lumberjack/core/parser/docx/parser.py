@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from ...models import (
     DocumentAST,
-    MarkdownBlock,
-    MarkdownInline,
+    DocumentBlock,
+    DocumentInline,
     SectionNode,
 )
 from ...protocols import ParserProtocol
@@ -88,9 +88,9 @@ def _is_code_paragraph(para: Any) -> bool:
     return True
 
 
-def _runs_to_inlines(para: Any) -> tuple[MarkdownInline, ...]:
-    """Convert paragraph runs to MarkdownInline nodes."""
-    inlines: list[MarkdownInline] = []
+def _runs_to_inlines(para: Any) -> tuple[DocumentInline, ...]:
+    """Convert paragraph runs to DocumentInline nodes."""
+    inlines: list[DocumentInline] = []
     for run in para.runs:
         text = run.text
         if not text:
@@ -98,29 +98,29 @@ def _runs_to_inlines(para: Any) -> tuple[MarkdownInline, ...]:
         font = run.font
         if font.bold and font.italic:
             inlines.append(
-                MarkdownInline(
+                DocumentInline(
                     kind="strong",
-                    children=(MarkdownInline(kind="emphasis", text=text),),
+                    children=(DocumentInline(kind="emphasis", text=text),),
                 )
             )
         elif font.bold:
             inlines.append(
-                MarkdownInline(
-                    kind="strong", children=(MarkdownInline(kind="text", text=text),)
+                DocumentInline(
+                    kind="strong", children=(DocumentInline(kind="text", text=text),)
                 )
             )
         elif font.italic:
-            inlines.append(MarkdownInline(kind="emphasis", text=text))
+            inlines.append(DocumentInline(kind="emphasis", text=text))
         elif run.font.underline:
             inlines.append(
-                MarkdownInline(kind="text", text=text, attrs={"underline": True})
+                DocumentInline(kind="text", text=text, attrs={"underline": True})
             )
         elif font.name and font.name in _MONOSPACE_FAMILIES:
             inlines.append(
-                MarkdownInline(kind="code_span", text=text, attrs={"literal": text})
+                DocumentInline(kind="code_span", text=text, attrs={"literal": text})
             )
         else:
-            inlines.append(MarkdownInline(kind="text", text=text))
+            inlines.append(DocumentInline(kind="text", text=text))
     return tuple(inlines)
 
 
@@ -253,7 +253,7 @@ class DocxParser(ParserProtocol[bytes]):
                 elif _is_list_bullet(style_name) or _is_list_number(style_name):
                     # Accumulate consecutive list paragraphs into a list block
                     element_counter += 1
-                    list_children: list[MarkdownBlock] = []
+                    list_children: list[DocumentBlock] = []
                     list_text_parts: list[str] = []
 
                     list_ordered = _is_list_number(style_name)
@@ -261,7 +261,7 @@ class DocxParser(ParserProtocol[bytes]):
                     item_inlines = _runs_to_inlines(para)
                     element_counter += 1
                     list_children.append(
-                        MarkdownBlock(
+                        DocumentBlock(
                             kind="list_item",
                             text=item_text,
                             start_line=element_counter,
@@ -275,7 +275,7 @@ class DocxParser(ParserProtocol[bytes]):
 
                     list_text = "\n".join(list_text_parts)
                     section_stack[-1].add_block(
-                        MarkdownBlock(
+                        DocumentBlock(
                             kind="list",
                             text=list_text,
                             start_line=element_counter,
@@ -291,7 +291,7 @@ class DocxParser(ParserProtocol[bytes]):
                     inlines = _runs_to_inlines(para)
                     rendered = f"> {text}" if text else ""
                     section_stack[-1].add_block(
-                        MarkdownBlock(
+                        DocumentBlock(
                             kind="blockquote",
                             text=rendered,
                             start_line=element_counter,
@@ -304,7 +304,7 @@ class DocxParser(ParserProtocol[bytes]):
                     element_counter += 1
                     code_text = para.text
                     section_stack[-1].add_block(
-                        MarkdownBlock(
+                        DocumentBlock(
                             kind="code_block",
                             text=f"```\n{code_text}\n```",
                             start_line=element_counter,
@@ -321,7 +321,7 @@ class DocxParser(ParserProtocol[bytes]):
                     element_counter += 1
                     inlines = _runs_to_inlines(para)
                     section_stack[-1].add_block(
-                        MarkdownBlock(
+                        DocumentBlock(
                             kind="paragraph",
                             text=text,
                             start_line=element_counter,
@@ -338,7 +338,7 @@ class DocxParser(ParserProtocol[bytes]):
                 rendered = _render_table(table)
                 if rendered:
                     section_stack[-1].add_block(
-                        MarkdownBlock(
+                        DocumentBlock(
                             kind="table",
                             text=rendered,
                             start_line=element_counter,

@@ -10,9 +10,7 @@ export async function splitMarkdown(
     formData.append('file', file);
     formData.append('max_tokens', String(options.max_tokens));
     formData.append('ideal_max_tokens_ratio', String(options.ideal_max_tokens_ratio));
-    if (options.merge_below_tokens !== null) {
-      formData.append('merge_below_tokens', String(options.merge_below_tokens));
-    }
+    formData.append('merge_below_ratio', String(options.merge_below_ratio));
     formData.append('skip_empty_sections', String(options.skip_empty_sections));
     formData.append('render_headings', String(options.render_headings));
     if (options.block_configs) {
@@ -41,7 +39,7 @@ export async function splitMarkdown(
       text: text ?? '',
       max_tokens: options.max_tokens,
       ideal_max_tokens_ratio: options.ideal_max_tokens_ratio,
-      merge_below_tokens: options.merge_below_tokens,
+      merge_below_ratio: options.merge_below_ratio,
       skip_empty_sections: options.skip_empty_sections,
       render_headings: options.render_headings,
       block_configs: options.block_configs,
