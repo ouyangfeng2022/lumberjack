@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Breaking:** The default `approx` tokenizer now estimates tokens as UTF-8 bytes ÷ 3 (3 bytes per token) instead of characters ÷ 4, producing more accurate estimates for mixed ASCII/CJK text. This shifts chunk boundaries produced with the default tokenizer. The public class was renamed from `ApproxCharTokenizer` to `ApproxByteTokenizer` to reflect the new behavior.
+- **Breaking:** Tokenizers are no longer thread-safe. The `RLock` guarding `TiktokenTokenizer`/`TransformersTokenizer` caches was removed to match the single-threaded contract used by the rest of the library; do not share a single tokenizer instance across threads.
+- `TransformersTokenizer` now mirrors `TiktokenTokenizer`: it gained the `default_cache` constructor parameter and uses `cachetools.LRUCache` for its cache instead of a hand-rolled `OrderedDict` LRU. Both tokenizers now share the same `default_cache`/`cache` semantics.
 
 ### Added
 

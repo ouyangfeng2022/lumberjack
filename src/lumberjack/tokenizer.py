@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from collections import OrderedDict
 from collections.abc import Iterable
-from threading import RLock
 from typing import Protocol, cast
 
 from .protocols import TokenizerProtocol
@@ -37,7 +35,6 @@ class TiktokenTokenizer(TokenizerProtocol):
         self.encoding = tiktoken.encoding_for_model(model)
         self.default_cache = default_cache
         self._cache: LRUCache[str, tuple[int, ...]] = LRUCache(maxsize=max_cache_size)
-        self._lock = RLock()
 
     def encode(
         self,
@@ -50,15 +47,13 @@ class TiktokenTokenizer(TokenizerProtocol):
 
         use_cache = self.default_cache if cache is None else cache
         if use_cache:
-            with self._lock:
-                cached = self._cache.get(text)
-                if cached is not None:
-                    return cached
+            cached = self._cache.get(text)
+            if cached is not None:
+                return cached
         token_ids = tuple(self.encoding.encode(text))
 
         if use_cache:
-            with self._lock:
-                self._cache[text] = token_ids
+            self._cache[text] = token_ids
 
         return token_ids
 
@@ -73,8 +68,7 @@ class TiktokenTokenizer(TokenizerProtocol):
         return len(self.encode(text, cache=cache))
 
     def clear_cache(self) -> None:
-        with self._lock:
-            self._cache.clear()
+        self._cache.clear()
 
 
 class ApproxByteTokenizer(TokenizerProtocol):
@@ -98,8 +92,10 @@ class TransformersTokenizer(TokenizerProtocol):
         self,
         model: str = DEFAULT_TRANSFORMERS_MODEL,
         max_cache_size: int = 1000,
+        default_cache: bool = False,
     ) -> None:
         try:
+            from cachetools import LRUCache
             from transformers import AutoTokenizer
         except ImportError as e:
             raise ImportError(
@@ -112,9 +108,8 @@ class TransformersTokenizer(TokenizerProtocol):
             _TransformersTokenizerProtocol,
             AutoTokenizer.from_pretrained(model, use_fast=True),
         )
-        self.max_cache_size = max_cache_size
-        self._cache: OrderedDict[str, tuple[int, ...]] = OrderedDict()
-        self._lock = RLock()
+        self.default_cache = default_cache
+        self._cache: LRUCache[str, tuple[int, ...]] = LRUCache(maxsize=max_cache_size)
 
     def encode(
         self,
@@ -125,21 +120,16 @@ class TransformersTokenizer(TokenizerProtocol):
         if not text:
             return ()
 
-        if cache:
-            with self._lock:
-                cached = self._cache.get(text)
-                if cached is not None:
-                    self._cache.move_to_end(text)
-                    return cached
+        use_cache = self.default_cache if cache is None else cache
+        if use_cache:
+            cached = self._cache.get(text)
+            if cached is not None:
+                return cached
 
         token_ids = tuple(self.tokenizer.encode(text))
 
-        if cache:
-            with self._lock:
-                self._cache[text] = token_ids
-                self._cache.move_to_end(text)
-                if len(self._cache) > self.max_cache_size:
-                    self._cache.popitem(last=False)
+        if use_cache:
+            self._cache[text] = token_ids
 
         return token_ids
 
@@ -154,5 +144,4 @@ class TransformersTokenizer(TokenizerProtocol):
         return len(self.encode(text, cache=cache))
 
     def clear_cache(self) -> None:
-        with self._lock:
-            self._cache.clear()
+        self._cache.clear()
