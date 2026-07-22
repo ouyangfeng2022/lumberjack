@@ -7,11 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- **Breaking:** The default `approx` tokenizer now estimates tokens as UTF-8 bytes ÷ 3 (3 bytes per token) instead of characters ÷ 4, producing more accurate estimates for mixed ASCII/CJK text. This shifts chunk boundaries produced with the default tokenizer. The public class was renamed from `ApproxCharTokenizer` to `ApproxByteTokenizer` to reflect the new behavior.
-- **Breaking:** Tokenizers are no longer thread-safe. The `RLock` guarding `TiktokenTokenizer`/`TransformersTokenizer` caches was removed to match the single-threaded contract used by the rest of the library; do not share a single tokenizer instance across threads.
-- `TransformersTokenizer` now mirrors `TiktokenTokenizer`: it gained the `default_cache` constructor parameter and uses `cachetools.LRUCache` for its cache instead of a hand-rolled `OrderedDict` LRU. Both tokenizers now share the same `default_cache`/`cache` semantics.
+## [0.3.0] - 2026-07-22
 
 ### Added
 
@@ -25,9 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** Unprefixed `SiblingSplitter`, `SubtreeSplitter`, and `SectionSplitter` classes and CLI/Web names now use incremental measurement. Full recounting is selected through explicit `Exact*Splitter` classes or `exact-*` integration names.
 - **Breaking:** Splitters accept validated constructor arguments directly. `SectionSplitter` no longer exposes the inapplicable `merge_below_ratio` argument.
 - **Breaking:** `MarkdownParser` now disables Setext headings by default; pass `disable_lheading=False` to enable them.
+- **Breaking:** The public AST node types are now format-neutral: `MarkdownInline` and `MarkdownBlock` were renamed to `DocumentInline` and `DocumentBlock`. Their text is defined as canonical Markdown-like rendered content rather than a guaranteed source slice.
+- **Breaking:** The default `approx` tokenizer now estimates tokens as UTF-8 bytes ÷ 3 (3 bytes per token) instead of characters ÷ 4, producing more accurate estimates for mixed ASCII/CJK text. This shifts chunk boundaries produced with the default tokenizer. The public class was renamed from `ApproxCharTokenizer` to `ApproxByteTokenizer` to reflect the new behavior.
+- **Breaking:** Tokenizers are no longer thread-safe. The `RLock` guarding `TiktokenTokenizer`/`TransformersTokenizer` caches was removed to match the single-threaded contract used by the rest of the library; do not share a single tokenizer instance across threads.
+- `TransformersTokenizer` now mirrors `TiktokenTokenizer`: it gained the `default_cache` constructor parameter and uses `cachetools.LRUCache` for its cache instead of a hand-rolled `OrderedDict` LRU. Both tokenizers now share the same `default_cache`/`cache` semantics.
 - `DocumentAST.source_path` now records source provenance independently, and `Chunk.document_path` is generated from that field rather than semantic metadata.
 - Public parser, splitter, tokenizer, block, model, and protocol namespaces now own their implementations directly instead of forwarding to a parallel `core` tree.
-- **Breaking:** The public AST node types are now format-neutral: `MarkdownInline` and `MarkdownBlock` were renamed to `DocumentInline` and `DocumentBlock`. Their text is defined as canonical Markdown-like rendered content rather than a guaranteed source slice.
 - The Web UI now sends `merge_below_ratio`, exposes every supported exact/incremental splitter name, and mirrors the complete serialized `Chunk` schema.
 
 ### Removed
