@@ -23,6 +23,9 @@ src/lumberjack/web/static/
 data/
 output/
 
+# Local documentation
+docs/
+
 # Tool caches
 .ruff_cache/
 .pytest_cache/
