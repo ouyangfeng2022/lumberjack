@@ -20,7 +20,7 @@ from lumberjack.splitter import (
     SubtreeSplitter,
 )
 from lumberjack.tokenizer import (
-    ApproxCharTokenizer,
+    ApproxByteTokenizer,
     TiktokenTokenizer,
     TransformersTokenizer,
 )
@@ -133,7 +133,7 @@ def create_splitter(
 ):
     config = dict(options or {})
     config.update(kwargs)
-    tokenizer = tokenizer or ApproxCharTokenizer()
+    tokenizer = tokenizer or ApproxByteTokenizer()
     normalized = name.strip().lower()
     classes = {
         "sibling": SiblingSplitter,
@@ -157,7 +157,7 @@ def create_splitter(
 def create_tokenizer(name: str):
     normalized = name.strip().lower()
     if normalized == "approx":
-        return ApproxCharTokenizer()
+        return ApproxByteTokenizer()
     if normalized == "tiktoken":
         return TiktokenTokenizer()
     if normalized == "transformers":

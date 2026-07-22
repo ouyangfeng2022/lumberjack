@@ -342,22 +342,24 @@ def test_split_text_with_approx(client: ASGITestClient) -> None:
     data = response.json()
     assert data["chunk_count"] >= 1
     chunk = data["chunks"][0]
-    assert chunk["token_count"] == len(chunk["body"]) // 4
+    assert chunk["token_count"] == len(chunk["body"].encode("utf-8")) // 3
 
 
 def test_split_text_with_tiktoken(client: ASGITestClient) -> None:
     payload = {
-        "text": "# T\n\nThe quick brown fox.\n",
+        "text": "# T\n\nThe quick brown fox jumps over the lazy dog "
+        "repeatedly every single day without fail.\n",
         "input_format": "markdown",
         "tokenizer": "tiktoken",
     }
     response = client.post("/lumber/api/split/text", json=payload)
     assert response.status_code == 200
     chunk = response.json()["chunks"][0]
-    # tiktoken reports a full cached recount; must be > 0 and not equal to
-    # chars//4 on typical English text.
+    # tiktoken reports a full cached recount; on typical English text it maps
+    # to roughly 4 bytes per token and so must be strictly less than the
+    # bytes//3 approx estimate, and > 0.
     assert chunk["token_count"] > 0
-    assert chunk["token_count"] != len(chunk["body"]) // 4
+    assert chunk["token_count"] < len(chunk["body"].encode("utf-8")) // 3
 
 
 def test_split_file_with_approx(client: ASGITestClient) -> None:
@@ -371,4 +373,4 @@ def test_split_file_with_approx(client: ASGITestClient) -> None:
     )
     assert response.status_code == 200
     chunk = response.json()["chunks"][0]
-    assert chunk["token_count"] == len(chunk["body"]) // 4
+    assert chunk["token_count"] == len(chunk["body"].encode("utf-8")) // 3

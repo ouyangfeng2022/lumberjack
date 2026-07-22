@@ -77,14 +77,18 @@ class TiktokenTokenizer(TokenizerProtocol):
             self._cache.clear()
 
 
-class ApproxCharTokenizer(TokenizerProtocol):
-    """Approximate tokenizer that estimates tokens as ``len(text) // 4``."""
+class ApproxByteTokenizer(TokenizerProtocol):
+    """Approximate tokenizer that estimates tokens as ``len(text.encode(\"utf-8\")) // 3``.
+
+    Assumes an average of 3 UTF-8 bytes per token, which is a better fit for
+    mixed ASCII / CJK text than the older ``chars // 4`` heuristic.
+    """
 
     def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
-        return ()
+        return tuple(text.encode("utf-8"))
 
     def count(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
-        return len(text) // 4
+        return len(self.encode(text)) // 3
 
 
 class TransformersTokenizer(TokenizerProtocol):

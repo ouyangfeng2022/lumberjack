@@ -6,7 +6,7 @@ from typing import Literal
 from .models import Chunk
 from .parser import AutoParser
 from .splitter import SiblingSplitter
-from .tokenizer import ApproxCharTokenizer
+from .tokenizer import ApproxByteTokenizer
 
 
 def lumber(
@@ -17,7 +17,7 @@ def lumber(
 ) -> list[Chunk]:
     """Split a document with the default automatic incremental pipeline."""
     parser = AutoParser(format=format)
-    tokenizer = ApproxCharTokenizer()
+    tokenizer = ApproxByteTokenizer()
     splitter = SiblingSplitter(tokenizer, max_tokens=max_tokens)
     return splitter.split(parser.parse(source))
 

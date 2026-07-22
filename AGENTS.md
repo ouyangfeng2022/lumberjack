@@ -78,7 +78,7 @@ Main components:
 - **Protocols**: `src/lumberjack/protocols.py`
   - `TokenizerProtocol`, `ParserProtocol`, `SplitterProtocol`
 - **Tokenizer**: `src/lumberjack/tokenizer.py`
-  - `ApproxCharTokenizer` (default), `TiktokenTokenizer` and `TransformersTokenizer` (optional)
+  - `ApproxByteTokenizer` (default, estimates tokens as UTF-8 bytes ÷ 3), `TiktokenTokenizer` and `TransformersTokenizer` (optional)
 - **Block configuration**: `src/lumberjack/block.py`
   - `BlockKind`, `BlockConfig`, `MarkdownTableConfig`, `HTMLTableConfig`, and `CustomBlockConfig`
   - Python `block_options` accepts a sequence of these objects; CLI/Web adapters convert their external mapping formats at the boundary

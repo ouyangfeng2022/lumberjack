@@ -8,7 +8,7 @@ import pytest
 import lumberjack.tokenizer as tokenizers
 from lumberjack.parser.markdown.parser import MarkdownItParser
 from lumberjack.tokenizer import (
-    ApproxCharTokenizer,
+    ApproxByteTokenizer,
     TiktokenTokenizer,
 )
 from tests.helpers import create_splitter, create_tokenizer, splitter_options
@@ -28,7 +28,7 @@ def test_exact_and_incremental_splitters_expose_distinct_counting_contexts() -> 
         IncrementalSectionSplitter,
     )
 
-    tokenizer = ApproxCharTokenizer()
+    tokenizer = ApproxByteTokenizer()
     exact = ExactSectionSplitter(tokenizer)
     incremental = IncrementalSectionSplitter(tokenizer)
 
@@ -40,27 +40,27 @@ def test_exact_and_incremental_splitters_expose_distinct_counting_contexts() -> 
     assert incremental_view.body_tokens is not None
 
 
-class TestApproxCharTokenizer:
-    def test_count_is_chars_div_4(self) -> None:
-        tok = ApproxCharTokenizer()
-        assert tok.count("hello world") == 11 // 4
+class TestApproxByteTokenizer:
+    def test_count_is_bytes_div_3(self) -> None:
+        tok = ApproxByteTokenizer()
+        # "hello world" is 11 ASCII bytes -> 11 // 3 == 3
+        assert tok.count("hello world") == len(b"hello world") // 3
 
     def test_empty_string(self) -> None:
-        assert ApproxCharTokenizer().count("") == 0
+        assert ApproxByteTokenizer().count("") == 0
 
-    def test_unicode_counted_by_code_point(self) -> None:
-        # "你好" is 2 code points; "//4" floors to 0
-        assert ApproxCharTokenizer().count("你好") == 0
-        assert ApproxCharTokenizer().count("你好世界你好世界") == 8 // 4
+    def test_unicode_counted_by_utf8_bytes(self) -> None:
+        # Each CJK char is 3 UTF-8 bytes.
+        assert ApproxByteTokenizer().count("你好") == 6 // 3
+        assert ApproxByteTokenizer().count("你好世界你好世界") == 24 // 3
 
     def test_count_ignores_cache_kwarg(self) -> None:
-        tok = ApproxCharTokenizer()
-        assert tok.count("hello world", cache=True) == 11 // 4
-        assert tok.count("hello world", cache=False) == 11 // 4
+        tok = ApproxByteTokenizer()
+        assert tok.count("hello world", cache=True) == len(b"hello world") // 3
+        assert tok.count("hello world", cache=False) == len(b"hello world") // 3
 
-    def test_encode_is_placeholder(self) -> None:
-        # encode is not used by the splitter; placeholder returns empty tuple
-        assert ApproxCharTokenizer().encode("anything") == ()
+    def test_encode_returns_utf8_bytes(self) -> None:
+        assert ApproxByteTokenizer().encode("anything") == tuple(b"anything")
 
 
 class TestTiktokenDefaultCache:
@@ -157,7 +157,7 @@ class _RecordingCountTokenizer:
 class TestCreateTokenizer:
     def test_approx_is_supported(self) -> None:
         engine = create_tokenizer("approx")
-        assert isinstance(engine, ApproxCharTokenizer)
+        assert isinstance(engine, ApproxByteTokenizer)
 
     def test_tiktoken_is_supported(self) -> None:
         engine = create_tokenizer("tiktoken")
@@ -184,9 +184,9 @@ class TestCreateTokenizer:
 
 
 class TestCreateSplitterTokenizerEngine:
-    def test_default_tokenizer_is_approx_char(self) -> None:
+    def test_default_tokenizer_is_approx_byte(self) -> None:
         splitter = create_splitter("sibling")
-        assert isinstance(splitter.tokenizer, ApproxCharTokenizer)
+        assert isinstance(splitter.tokenizer, ApproxByteTokenizer)
 
     def test_splitter_runs_with_custom_tokenizer(self) -> None:
         source = "# Root\n\n## Alpha\n\nAlpha body\n\n## Beta\n\nBeta body\n"
@@ -224,11 +224,12 @@ class TestChunkCounts:
         "Subsection body content here.\n"
     )
 
-    def test_approx_token_count_is_chars_div_4(self) -> None:
+    def test_approx_token_count_is_bytes_div_3(self) -> None:
         chunks, _ = _split_with(self.SOURCE, "approx")
         for chunk in chunks:
-            # token_count is always a full recount of the rendered body
-            assert chunk.token_count == len(chunk.body) // 4
+            # token_count is always a full recount of the rendered body, as
+            # UTF-8 bytes // 3.
+            assert chunk.token_count == len(chunk.body.encode("utf-8")) // 3
 
     def test_tiktoken_token_count_matches_full_recount(self) -> None:
         chunks, _ = _split_with(self.SOURCE, "tiktoken")
@@ -273,7 +274,7 @@ class TestComponentTokenizerSelection:
 
         chunks = lumber("# T\n\nbody\n")
         assert chunks
-        assert chunks[0].token_count == len(chunks[0].body) // 4
+        assert chunks[0].token_count == len(chunks[0].body.encode("utf-8")) // 3
 
     def test_manual_pipeline_accepts_tiktoken(self) -> None:
         chunks, _ = _split_with("# T\n\nbody text here\n", "tiktoken")

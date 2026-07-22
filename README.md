@@ -29,7 +29,7 @@ from lumberjack import lumber
 chunks = lumber(Path("guide.md"), max_tokens=1200)
 ```
 
-`lumber()` uses `AutoParser`, `ApproxCharTokenizer`, and the incremental
+`lumber()` uses `AutoParser`, `ApproxByteTokenizer`, and the incremental
 `SiblingSplitter`. Its complete signature is:
 
 ```python
@@ -74,7 +74,7 @@ Public components own their implementations directly:
   and Markdown plugin extension types.
 - `lumberjack.splitter`: incremental `SiblingSplitter`, `SubtreeSplitter`, and
   `SectionSplitter`, plus explicit `Exact*Splitter` implementations.
-- `lumberjack.tokenizer`: `ApproxCharTokenizer`, `TiktokenTokenizer`, and
+- `lumberjack.tokenizer`: `ApproxByteTokenizer`, `TiktokenTokenizer`, and
   `TransformersTokenizer`.
 - `lumberjack.block`: typed block kinds and block configuration objects.
 - `lumberjack.models`: the shared AST and `Chunk` output types.

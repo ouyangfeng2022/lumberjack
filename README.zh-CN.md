@@ -28,7 +28,7 @@ from lumberjack import lumber
 chunks = lumber(Path("guide.md"), max_tokens=1200)
 ```
 
-`lumber()` 固定使用 `AutoParser`、`ApproxCharTokenizer` 和增量式
+`lumber()` 固定使用 `AutoParser`、`ApproxByteTokenizer` 和增量式
 `SiblingSplitter`。完整签名为：
 
 ```python

@@ -13,7 +13,7 @@ from lumberjack.splitter import (
     IncrementalSiblingSplitter,
     IncrementalSubtreeSplitter,
 )
-from lumberjack.tokenizer import ApproxCharTokenizer
+from lumberjack.tokenizer import ApproxByteTokenizer
 from tests.helpers import (
     FIXTURES_DIR,
     BaseParams,
@@ -1837,13 +1837,13 @@ def test_per_block_max_tokens_validation_rejects_non_positive() -> None:
 
 def test_manual_pipeline_accepts_block_max_tokens() -> None:
     """Direct splitter configuration respects per-block max_tokens."""
-    # Large enough that, under the default ``chars // 4`` counting, the block
+    # Large enough that, under the default ``bytes // 3`` counting, the block
     # exceeds ``max_tokens`` and triggers the block-split path where the
     # per-kind ``paragraph`` budget applies.
     long_para = " ".join(f"word{i}" for i in range(400))
     document = MarkdownParser().parse(long_para)
     chunks = SiblingSplitter(
-        ApproxCharTokenizer(),
+        ApproxByteTokenizer(),
         max_tokens=500,
         ideal_max_tokens_ratio=1,
         merge_below_ratio=0.0,
@@ -2068,11 +2068,11 @@ Small body.
     assert "mike." in child_bodies
 
 
-def test_splitter_default_uses_approx_char_tokenizer() -> None:
-    from lumberjack.tokenizer import ApproxCharTokenizer
+def test_splitter_default_uses_approx_byte_tokenizer() -> None:
+    from lumberjack.tokenizer import ApproxByteTokenizer
 
     splitter = create_splitter("sibling")
-    assert isinstance(splitter.tokenizer, ApproxCharTokenizer)
+    assert isinstance(splitter.tokenizer, ApproxByteTokenizer)
 
 
 def test_subtree_splitter_merges_subtree_when_within_budget() -> None:

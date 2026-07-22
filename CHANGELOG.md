@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** The default `approx` tokenizer now estimates tokens as UTF-8 bytes ÷ 3 (3 bytes per token) instead of characters ÷ 4, producing more accurate estimates for mixed ASCII/CJK text. This shifts chunk boundaries produced with the default tokenizer. The public class was renamed from `ApproxCharTokenizer` to `ApproxByteTokenizer` to reflect the new behavior.
+
 ### Added
 
 - Added component-oriented public modules and packages: `lumberjack.parser`, `lumberjack.splitter`, `lumberjack.tokenizer`, `lumberjack.block`, `lumberjack.models`, and `lumberjack.protocols`.

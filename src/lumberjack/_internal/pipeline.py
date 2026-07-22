@@ -17,7 +17,7 @@ from ..splitter import (
     SubtreeSplitter,
 )
 from ..tokenizer import (
-    ApproxCharTokenizer,
+    ApproxByteTokenizer,
     TiktokenTokenizer,
     TransformersTokenizer,
 )
@@ -38,7 +38,7 @@ _SPLITTERS = {
 def _tokenizer(name: str):
     normalized = name.strip().lower()
     if normalized == "approx":
-        return ApproxCharTokenizer()
+        return ApproxByteTokenizer()
     if normalized == "tiktoken":
         return TiktokenTokenizer()
     if normalized == "transformers":

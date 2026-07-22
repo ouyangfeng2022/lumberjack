@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from lumberjack.block import BlockOption, HTMLTableConfig
 from lumberjack.parser import MarkdownParser
 from lumberjack.splitter import SiblingSplitter
-from lumberjack.tokenizer import ApproxCharTokenizer
+from lumberjack.tokenizer import ApproxByteTokenizer
 
 
 def _split(
@@ -19,7 +19,7 @@ def _split(
 ):
     document = MarkdownParser().parse(markdown)
     splitter = SiblingSplitter(
-        ApproxCharTokenizer(),
+        ApproxByteTokenizer(),
         max_tokens=max_tokens,
         merge_below_ratio=merge_below_ratio,
         block_options=block_options,

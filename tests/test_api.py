@@ -16,7 +16,7 @@ from lumberjack.block import (
 )
 from lumberjack.parser import AutoParser, MarkdownParser
 from lumberjack.splitter import ExactSiblingSplitter, SiblingSplitter
-from lumberjack.tokenizer import ApproxCharTokenizer
+from lumberjack.tokenizer import ApproxByteTokenizer
 from tests.helpers import FIXTURES_DIR
 
 FIXTURES = FIXTURES_DIR
@@ -142,7 +142,7 @@ def test_metadata_overrides_parser_metadata_and_source_path_is_independent() -> 
     assert document.metadata["path"] == "semantic-value"
     assert document.source_path == "archive/guide.md"
 
-    chunks = SiblingSplitter(ApproxCharTokenizer()).split(document)
+    chunks = SiblingSplitter(ApproxByteTokenizer()).split(document)
     assert chunks[0].document_path == "archive/guide.md"
 
 
@@ -174,7 +174,7 @@ def test_block_config_objects_are_kind_safe() -> None:
 
 
 def test_splitter_rejects_dict_and_duplicate_block_configs() -> None:
-    tokenizer = ApproxCharTokenizer()
+    tokenizer = ApproxByteTokenizer()
     with pytest.raises(TypeError, match="sequence"):
         SiblingSplitter(tokenizer, block_options={})  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="duplicate"):
@@ -187,7 +187,7 @@ def test_splitter_rejects_dict_and_duplicate_block_configs() -> None:
 def test_explicit_parser_splitter_pipeline() -> None:
     document = MarkdownParser().parse("# Guide\n\nA paragraph")
     chunks = SiblingSplitter(
-        ApproxCharTokenizer(),
+        ApproxByteTokenizer(),
         max_tokens=100,
         block_options=[BlockConfig(BlockKind.CODE_FENCE, split=False)],
     ).split(document)
@@ -196,7 +196,7 @@ def test_explicit_parser_splitter_pipeline() -> None:
 
 def test_default_and_exact_splitters_expose_different_counting_modes() -> None:
     document = MarkdownParser().parse("# Guide\n\nA paragraph")
-    incremental = SiblingSplitter(ApproxCharTokenizer()).split(document)[0]
-    exact = ExactSiblingSplitter(ApproxCharTokenizer()).split(document)[0]
+    incremental = SiblingSplitter(ApproxByteTokenizer()).split(document)[0]
+    exact = ExactSiblingSplitter(ApproxByteTokenizer()).split(document)[0]
     assert incremental.token_count == exact.token_count
     assert exact.estimated_token_count == exact.token_count

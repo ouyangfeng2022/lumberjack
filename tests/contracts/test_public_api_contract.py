@@ -26,7 +26,7 @@ from lumberjack.splitter import (
     SubtreeSplitter,
 )
 from lumberjack.tokenizer import (
-    ApproxCharTokenizer,
+    ApproxByteTokenizer,
     TiktokenTokenizer,
     TransformersTokenizer,
 )
@@ -47,14 +47,14 @@ def test_public_components_own_their_implementations() -> None:
     assert AutoParser and MarkdownParser and HTMLParser and DocxParser
     assert SiblingSplitter and SubtreeSplitter and SectionSplitter
     assert ExactSiblingSplitter and ExactSubtreeSplitter and ExactSectionSplitter
-    assert ApproxCharTokenizer and TiktokenTokenizer and TransformersTokenizer
+    assert ApproxByteTokenizer and TiktokenTokenizer and TransformersTokenizer
     assert BlockConfig and BlockKind and MarkdownTableConfig and HTMLTableConfig
     assert CustomBlockConfig
     assert DocumentAST and DocumentBlock and DocumentInline
     assert ParserProtocol and SplitterProtocol and TokenizerProtocol
     assert AutoParser.__module__ == "lumberjack.parser.auto"
     assert SiblingSplitter.__module__ == "lumberjack.splitter.sibling"
-    assert ApproxCharTokenizer.__module__ == "lumberjack.tokenizer"
+    assert ApproxByteTokenizer.__module__ == "lumberjack.tokenizer"
     assert BlockConfig.__module__ == "lumberjack.block"
     assert DocumentAST.__module__ == "lumberjack.models"
 
