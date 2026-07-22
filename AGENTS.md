@@ -42,10 +42,10 @@ uv run lumberjack-serve --host 0.0.0.0 --port 8000
 
 # Run tests
 uv run pytest
-uv run pytest tests/test_parser.py
-uv run pytest tests/test_splitter.py
-uv run pytest tests/test_docx_parser.py
-uv run pytest tests/test_web.py
+uv run pytest tests/parser/markdown/test_markdown_parser.py
+uv run pytest tests/splitter/test_splitter.py
+uv run pytest tests/parser/docx/test_docx_parser.py
+uv run pytest tests/web/test_web.py
 
 # Type check, lint, and format
 uv run ty check .
@@ -291,13 +291,29 @@ src/lumberjack/
         pipeline.py
         rendering.py
 lumberjack_webui/                   # React + TypeScript frontend
-tests/
-    test_api.py
-    test_parser.py
-    test_splitter.py
-    test_docx_parser.py
-    test_utils.py
-    test_web.py
+tests/                              # mirrors src/lumberjack layout
+    __init__.py
+    conftest.py
+    helpers.py                     # shared test helpers (FIXTURES_DIR, etc.)
+    test_api.py                    # tests src/lumberjack/__init__.py + lumber.py
+    test_cli.py                    # tests src/lumberjack/cli.py
+    test_docker.py                 # tests docker/Dockerfile
+    parser/                        # tests src/lumberjack/parser/
+        markdown/test_markdown_parser.py
+        docx/test_docx_parser.py
+        html/test_html_parser.py
+        html/test_table_integration.py
+    splitter/                      # tests src/lumberjack/splitter/
+        test_splitter.py
+        test_render_headings.py
+        test_max_heading_level.py
+        test_token_counting_modes.py
+    web/test_web.py                # tests src/lumberjack/web/
+    _internal/test_rendering.py    # tests src/lumberjack/_internal/rendering.py
+    contracts/                     # public-API contract tests
+        test_cli_contract.py
+        test_public_api_contract.py
+        test_web_contract.py
     fixtures/
         markdown/
         docx/

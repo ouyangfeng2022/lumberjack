@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from lumberjack import lumber
 from lumberjack.parser.docx import DocxParser
 from lumberjack.splitter import SiblingSplitter
-from tests.helpers import CharacterTokenizer, splitter_options
+from tests.helpers import FIXTURES_DIR, CharacterTokenizer, splitter_options
 
-FIXTURES_ROOT = Path(__file__).resolve().parent / "fixtures" / "docx"
+FIXTURES_ROOT = FIXTURES_DIR / "docx"
 SAMPLE_DOCX = (FIXTURES_ROOT / "sample.docx").read_bytes()
 
 
@@ -82,7 +80,7 @@ def test_docx_parser_block_kinds() -> None:
 
 def test_docx_lumber_integration() -> None:
     chunks = lumber(
-        Path(FIXTURES_ROOT / "sample.docx"),
+        FIXTURES_ROOT / "sample.docx",
         max_tokens=500,
     )
     assert len(chunks) >= 1

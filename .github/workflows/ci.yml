@@ -34,7 +34,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        # `web` is an optional-dependency extra (not a group); tests/test_web.py
+        # `web` is an optional-dependency extra (not a group); tests/web/test_web.py
         # imports fastapi.testclient, so the web server stack must be installed.
         run: uv sync --group dev --group test --extra tokenizers --extra docx --extra web
 

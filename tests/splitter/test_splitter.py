@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from lumberjack.block import BlockConfig, BlockKind
 from lumberjack.models import ChunkDraft, Entry
 from lumberjack.parser.markdown.parser import MarkdownParser
@@ -17,6 +15,7 @@ from lumberjack.splitter import (
 )
 from lumberjack.tokenizer import ApproxCharTokenizer
 from tests.helpers import (
+    FIXTURES_DIR,
     BaseParams,
     CharacterTokenizer,
     TableBlockParams,
@@ -26,9 +25,7 @@ from tests.helpers import (
     splitter_options,
 )
 
-FIXTURE = (
-    Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md"
-).read_text(encoding="utf-8")
+FIXTURE = (FIXTURES_DIR / "markdown" / "sample.md").read_text(encoding="utf-8")
 
 MERGED_SECTION_FIXTURE = """# Development Guide
 

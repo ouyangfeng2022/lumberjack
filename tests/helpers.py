@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from lumberjack.block import (
@@ -23,6 +24,10 @@ from lumberjack.tokenizer import (
     TiktokenTokenizer,
     TransformersTokenizer,
 )
+
+# Root of the shared test fixtures, regardless of which test subpackage imports
+# this helper. Keeps moved tests from recomputing ``__file__``-relative paths.
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 
 class CharacterTokenizer:

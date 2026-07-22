@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from markdown_it.token import Token
 from mdit_py_plugins.footnote import footnote_plugin
@@ -14,10 +12,9 @@ from lumberjack.parser.markdown.parser import (
     MarkdownItParser,
     MarkdownParser,
 )
+from tests.helpers import FIXTURES_DIR
 
-FIXTURE = (
-    Path(__file__).resolve().parent / "fixtures" / "markdown" / "sample.md"
-).read_text(encoding="utf-8")
+FIXTURE = (FIXTURES_DIR / "markdown" / "sample.md").read_text(encoding="utf-8")
 
 COMMONMARK_FIXTURE = """# Heading with [link](https://example.com)
 
@@ -69,9 +66,9 @@ MARKDOWN_IT_FIXTURE = """Title
 [ref]: /target "Title"
 """
 
-COMPREHENSIVE_FIXTURE = (
-    Path(__file__).resolve().parent / "fixtures" / "markdown" / "commonmark-spec.md"
-).read_text(encoding="utf-8")
+COMPREHENSIVE_FIXTURE = (FIXTURES_DIR / "markdown" / "commonmark-spec.md").read_text(
+    encoding="utf-8"
+)
 
 
 def test_parser_builds_heading_tree() -> None:

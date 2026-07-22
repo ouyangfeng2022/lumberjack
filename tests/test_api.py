@@ -17,8 +17,9 @@ from lumberjack.block import (
 from lumberjack.parser import AutoParser, MarkdownParser
 from lumberjack.splitter import ExactSiblingSplitter, SiblingSplitter
 from lumberjack.tokenizer import ApproxCharTokenizer
+from tests.helpers import FIXTURES_DIR
 
-FIXTURES = Path(__file__).parent / "fixtures"
+FIXTURES = FIXTURES_DIR
 MARKDOWN_PATH = FIXTURES / "markdown" / "sample.md"
 DOCX_PATH = FIXTURES / "docx" / "sample.docx"
 
