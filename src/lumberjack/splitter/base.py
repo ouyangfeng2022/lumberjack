@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from lumberjack.block import BlockKind, BlockOption, normalize_block_options
 
 from .._internal.block_splitter import BlockSplitter
-from .._internal.rendering import join_rendered_blocks
+from .._internal.rendering import RENDER_SEPARATOR, join_rendered_blocks
 from ..models import (
     Chunk,
     ChunkDraft,
@@ -19,8 +19,7 @@ from ..models import (
     render_heading_path,
 )
 from ..protocols import SplitterProtocol, TokenizerProtocol
-
-SEPARATOR = "\n\n"
+from .context import SectionView
 
 
 class BaseSplitter(SplitterProtocol):
@@ -32,7 +31,7 @@ class BaseSplitter(SplitterProtocol):
       (walks the raw ``SectionNode`` tree, no pre-measure).
     * :class:`IncrementalCountingMixin` — additive running estimate +
       8-char separator-delta window (walks a pre-measured
-      :class:`MeasuredSection` tree).
+      :class:`SectionView` tree).
 
     Each mixin owns :meth:`split`, :meth:`_draft_budget_tokens`,
     :meth:`_merge_drafts`, :meth:`_finalize_estimate`, body splitting, and
@@ -234,7 +233,9 @@ class BaseSplitter(SplitterProtocol):
         """Estimated token count carried onto the final Chunk; mixin-provided."""
         raise NotImplementedError
 
-    def _split_section(self, section) -> list[ChunkDraft]:  # pragma: no cover
+    def _split_section(
+        self, section: SectionView
+    ) -> list[ChunkDraft]:  # pragma: no cover
         """Topology + counting-strategy specific section splitter."""
         raise NotImplementedError
 
@@ -281,7 +282,7 @@ class BaseSplitter(SplitterProtocol):
             body_token_count = self.tokenizer.count(body, cache=True)
             token_count = (
                 headings_token_count
-                + self.tokenizer.count(SEPARATOR, cache=True)
+                + self.tokenizer.count(RENDER_SEPARATOR, cache=True)
                 + body_token_count
             )
             estimated = self._finalize_estimate(chunk, external_headings, token_count)

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Any
 
 from lumberjack.block import BlockOption
 
 from ...models import ChunkDraft
 from ...protocols import TokenizerProtocol
 from ..base import BaseSplitter
+from ..context import SectionView
 
 
 class SectionTopologyMixin(BaseSplitter):
@@ -35,11 +35,11 @@ class SectionTopologyMixin(BaseSplitter):
             _merge_below_ratio=0.0,
         )
 
-    def _direct_body_drafts(self, section: Any) -> list[ChunkDraft]:
+    def _direct_body_drafts(self, section: SectionView) -> list[ChunkDraft]:
         raise NotImplementedError
 
-    def _split_section(self, section: Any) -> list[ChunkDraft]:
-        node = getattr(section, "node", section)
+    def _split_section(self, section: SectionView) -> list[ChunkDraft]:
+        node = section.node
         children = section.children
         if not (node.blocks or children or node.level > 0):
             return []

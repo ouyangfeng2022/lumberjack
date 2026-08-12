@@ -6,8 +6,9 @@ from types import SimpleNamespace
 import pytest
 
 import lumberjack.tokenizer as tokenizers
-from lumberjack.models import complete_heading_path, render_heading_path
+from lumberjack.models import ChunkDraft, complete_heading_path, render_heading_path
 from lumberjack.parser.markdown.parser import MarkdownItParser
+from lumberjack.splitter.context import SectionView
 from lumberjack.tokenizer import (
     ApproxByteTokenizer,
     TiktokenTokenizer,
@@ -15,30 +16,39 @@ from lumberjack.tokenizer import (
 from tests.helpers import create_splitter, create_tokenizer, splitter_options
 
 
-def test_exact_and_incremental_splitters_expose_distinct_counting_contexts() -> None:
-    """Topology code can depend on one normalized counting-context contract."""
-    from lumberjack.splitter.context import (
-        ExactCountingContext,
-        IncrementalCountingContext,
-        SectionView,
-    )
+def test_split_entrypoints_pass_section_views_to_topology() -> None:
+    """Both counting strategies must normalize sections before topology traversal."""
+    from lumberjack.splitter import ExactSectionSplitter, IncrementalSectionSplitter
 
-    document = MarkdownItParser().parse("# A\n\nbody")
-    from lumberjack.splitter import (
-        ExactSectionSplitter,
-        IncrementalSectionSplitter,
-    )
+    exact_seen: list[SectionView] = []
+    incremental_seen: list[SectionView] = []
 
+    class RecordingExactSectionSplitter(ExactSectionSplitter):
+        def _split_section(self, section: SectionView) -> list[ChunkDraft]:
+            exact_seen.append(section)
+            return super()._split_section(section)
+
+    class RecordingIncrementalSectionSplitter(IncrementalSectionSplitter):
+        def _split_section(self, section: SectionView) -> list[ChunkDraft]:
+            incremental_seen.append(section)
+            return super()._split_section(section)
+
+    document = MarkdownItParser().parse("# A\n\nbody\n\n## B\n\nchild")
     tokenizer = ApproxByteTokenizer()
-    exact = ExactSectionSplitter(tokenizer)
-    incremental = IncrementalSectionSplitter(tokenizer)
 
-    exact_view = ExactCountingContext(exact).prepare(document.root)
-    incremental_view = IncrementalCountingContext(incremental).prepare(document.root)
+    RecordingExactSectionSplitter(tokenizer).split(document)
+    RecordingIncrementalSectionSplitter(tokenizer).split(document)
 
-    assert isinstance(exact_view, SectionView)
-    assert exact_view.body_tokens is None
-    assert incremental_view.body_tokens is not None
+    assert exact_seen
+    assert incremental_seen
+    assert all(section.body_tokens is None for section in exact_seen)
+    assert all(section.body_tokens is not None for section in incremental_seen)
+    assert all(section.title_tokens is not None for section in incremental_seen)
+    assert all(section.subtree_tokens is not None for section in incremental_seen)
+    assert all(section.tail_text is not None for section in incremental_seen)
+    assert all(
+        section.can_emit_as_single_chunk is not None for section in incremental_seen
+    )
 
 
 class TestApproxByteTokenizer:

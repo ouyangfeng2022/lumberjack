@@ -13,6 +13,7 @@ from ..models import (
     common_heading_path,
 )
 from .base import BaseSplitter
+from .context import ExactCountingContext, SectionView
 
 if TYPE_CHECKING:
     from ..models import Chunk, DocumentAST
@@ -29,7 +30,8 @@ class ExactCountingMixin(BaseSplitter):
 
     def split(self, document: DocumentAST) -> list[Chunk]:
         """Split by walking the raw ``SectionNode`` tree (no pre-measure)."""
-        drafts = self._split_section(self._root_for_splitting(document))
+        root = ExactCountingContext().prepare(self._root_for_splitting(document))
+        drafts = self._split_section(root)
         drafts = self._post_process_drafts(drafts)
         return self._finalize_chunks(drafts, document)
 
@@ -281,63 +283,70 @@ class ExactCountingMixin(BaseSplitter):
             return True
         return any(self._section_has_standalone(c) for c in section.children)
 
-    def _direct_body_drafts(self, section: SectionNode) -> list[ChunkDraft]:
+    def _direct_body_drafts(self, section: SectionView) -> list[ChunkDraft]:
         """Emit this section's direct body, without topology recursion."""
-        if not (section.blocks or section.level > 0):
+        node = section.node
+        if not (node.blocks or node.level > 0):
             return []
-        body = join_rendered_blocks([block.text for block in section.blocks])
+        body = join_rendered_blocks([block.text for block in node.blocks])
         body_tokens = self.tokenizer.count(body, cache=True)
         has_standalone = any(
-            block.kind in self.standalone_kinds for block in section.blocks
+            block.kind in self.standalone_kinds for block in node.blocks
         )
         entry = Entry(
-            headings=section.path,
+            headings=node.path,
             body=body,
-            start_line=self._min_start_lines(section.blocks),
-            end_line=self._max_end_lines(section.blocks),
+            start_line=self._min_start_lines(node.blocks),
+            end_line=self._max_end_lines(node.blocks),
             body_token_count=body_tokens,
         )
         draft = self._draft_from_entries(
             [entry],
-            section.path,
-            own_heading=section.path[-1] if section.path else None,
+            node.path,
+            own_heading=node.path[-1] if node.path else None,
             origin="section",
         )
         if has_standalone or self._draft_budget_tokens(draft) > self.ideal_max_tokens:
-            return self._split_section_body(section)
+            return self._split_section_body(node)
         return [draft]
 
-    def _single_subtree_draft(self, section: SectionNode) -> ChunkDraft | None:
-        if self._section_has_standalone(section):
+    def _single_subtree_draft(self, section: SectionView) -> ChunkDraft | None:
+        if self._section_has_standalone(section.node):
             return None
         structural_root = section
-        if section.level == 0 and not section.blocks and len(section.children) == 1:
+        if (
+            section.node.level == 0
+            and not section.node.blocks
+            and len(section.children) == 1
+        ):
             structural_root = section.children[0]
-        entries = self._entries_from_section(structural_root)
+        node = structural_root.node
+        entries = self._entries_from_section(node)
         return self._draft_from_entries(
             entries,
-            structural_root.path,
-            own_heading=(structural_root.path[-1] if structural_root.path else None),
+            node.path,
+            own_heading=(node.path[-1] if node.path else None),
             origin="section",
         )
 
-    def _packable_body_draft(self, section: SectionNode) -> ChunkDraft | None:
-        if not section.blocks or any(
-            block.kind in self.standalone_kinds for block in section.blocks
+    def _packable_body_draft(self, section: SectionView) -> ChunkDraft | None:
+        node = section.node
+        if not node.blocks or any(
+            block.kind in self.standalone_kinds for block in node.blocks
         ):
             return None
         entry = self._entry_from_blocks(
-            section.path,
-            section.blocks,
+            node.path,
+            node.blocks,
             body_token_count=self.tokenizer.count(
-                join_rendered_blocks([block.text for block in section.blocks]),
+                join_rendered_blocks([block.text for block in node.blocks]),
                 cache=True,
             ),
         )
         draft = self._draft_from_entries(
             [entry],
-            section.path,
-            own_heading=section.path[-1] if section.path else None,
+            node.path,
+            own_heading=node.path[-1] if node.path else None,
             origin="section",
         )
         return (

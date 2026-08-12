@@ -13,6 +13,7 @@ from lumberjack.splitter import (
     IncrementalSiblingSplitter,
     IncrementalSubtreeSplitter,
 )
+from lumberjack.splitter.context import IncrementalCountingContext
 from lumberjack.tokenizer import ApproxByteTokenizer
 from tests.helpers import (
     FIXTURES_DIR,
@@ -518,13 +519,13 @@ def test_splitter_measures_section_token_counts_bottom_up() -> None:
         ),
     )
 
-    measured_root = splitter._measure_section(document.root)
+    measured_root = IncrementalCountingContext(splitter).prepare(document.root)
     chunks = splitter.split(document)
 
     measured_section = measured_root.children[0]
-    assert measured_section.counts.body == len("Body")
-    assert measured_section.counts.title == len("# A")
-    assert measured_section.counts.subtree == measured_section.counts.body
+    assert measured_section.body_tokens == len("Body")
+    assert measured_section.title_tokens == len("# A")
+    assert measured_section.subtree_tokens == measured_section.body_tokens
     assert not hasattr(document.root.children[0], "body_token_count")
     assert not hasattr(document.root.children[0], "title_token_count")
     assert not hasattr(document.root.children[0], "subtree_token_count")
@@ -649,10 +650,10 @@ def test_heading_estimate_counts_title_once_and_marker_as_one_token() -> None:
         **splitter_options(max_tokens=100, merge_below_ratio=0.0),
     )
 
-    measured_root = splitter._measure_section(document.root)
+    measured_root = IncrementalCountingContext(splitter).prepare(document.root)
 
     measured_section = measured_root.children[0]
-    assert measured_section.counts.title == len("### Cacheable Title")
+    assert measured_section.title_tokens == len("### Cacheable Title")
     assert "### Cacheable Title" in tokenizer.counted
 
 
@@ -710,15 +711,13 @@ def test_section_chunk_estimate_includes_heading_tokens_without_entries() -> Non
         tokenizer=CharacterTokenizer(),
         **splitter_options(max_tokens=100, merge_below_ratio=0.0),
     )
-    measured_root = splitter._measure_section(document.root)
+    measured_root = IncrementalCountingContext(splitter).prepare(document.root)
     measured_scope = measured_root.children[0].children[0]
 
-    assert measured_scope.counts.subtree == 37
+    assert measured_scope.subtree_tokens == 37
 
 
-def test_measured_section_caches_single_chunk_eligibility_from_standalone_blocks() -> (
-    None
-):
+def test_section_view_caches_single_chunk_eligibility_from_standalone_blocks() -> None:
     document = MarkdownParser().parse(
         """# Root
 
@@ -745,7 +744,7 @@ Plain body.
         ),
     )
 
-    measured_root = splitter._measure_section(document.root)
+    measured_root = IncrementalCountingContext(splitter).prepare(document.root)
     measured_h1 = measured_root.children[0]
     measured_plain = measured_h1.children[0]
     measured_table = measured_h1.children[1]
@@ -764,7 +763,9 @@ Plain body.
         ),
     )
 
-    measured_disabled_root = disabled_splitter._measure_section(document.root)
+    measured_disabled_root = IncrementalCountingContext(disabled_splitter).prepare(
+        document.root
+    )
 
     assert measured_disabled_root.can_emit_as_single_chunk is True
     assert (

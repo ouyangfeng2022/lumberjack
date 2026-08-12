@@ -2,18 +2,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .._internal.rendering import join_rendered_blocks
+from .._internal.rendering import RENDER_SEPARATOR, join_rendered_blocks
 from ..models import (
     ChunkDraft,
     Entry,
     HeadingPath,
-    MeasuredSection,
-    SectionNode,
-    SectionTokenCounts,
     common_heading_path,
     render_heading_path,
 )
-from .base import SEPARATOR, BaseSplitter
+from .base import BaseSplitter
+from .context import IncrementalCountingContext, SectionView
 
 if TYPE_CHECKING:
     from ..models import Chunk, DocumentAST
@@ -22,8 +20,8 @@ if TYPE_CHECKING:
 class IncrementalCountingMixin(BaseSplitter):
     """Incremental counting strategy: additive estimate + 8-char delta window.
 
-    Sections are measured once into :class:`MeasuredSection` (with body /
-    subtree / tail text / single-chunk eligibility).  Budget decisions during
+    Sections are measured once into :class:`SectionView` (with title / body /
+    subtree / tail text / single-chunk eligibility). Budget decisions during
     packing use a running additive estimate carried on each draft; joins
     between entries are approximated by :meth:`_separator_delta_after` (an
     8-char tail window) so the estimate stays cheap.  Full recounts of the
@@ -35,8 +33,10 @@ class IncrementalCountingMixin(BaseSplitter):
     def split(self, document: DocumentAST) -> list[Chunk]:
         """Measure the tree once, then split via the topology's _split_section."""
         self._atomic_token_counts: dict[str, int] = {}
-        measured_root = self._measure_section(self._root_for_splitting(document))
-        drafts = self._split_section(measured_root)
+        root = IncrementalCountingContext(self).prepare(
+            self._root_for_splitting(document)
+        )
+        drafts = self._split_section(root)
         drafts = self._post_process_drafts(drafts)
         return self._finalize_chunks(drafts, document)
 
@@ -148,68 +148,29 @@ class IncrementalCountingMixin(BaseSplitter):
         if not text:
             return 0
         tail = text.rstrip("\n")[-self._DELTA_WINDOW :]
-        return self._count_once(tail + SEPARATOR) - self._count_once(tail)
+        return self._count_once(tail + RENDER_SEPARATOR) - self._count_once(tail)
 
-    def _measure_section(self, section: SectionNode) -> MeasuredSection:
-        """Return a measured wrapper for *section* and all descendants."""
-        children = tuple(self._measure_section(child) for child in section.children)
+    @staticmethod
+    def _view_body_tokens(section: SectionView) -> int:
+        if section.body_tokens is None:
+            raise TypeError("incremental section view is missing body_tokens")
+        return section.body_tokens
 
-        # 1. Count body tokens
-        body_token_count = 0
-        body_texts = [block.text for block in section.blocks if block.text]
-        for index, text in enumerate(body_texts):
-            if index == len(body_texts) - 1:
-                body_token_count += self._count_once(text)
-            else:
-                body_token_count += self._count_once(text + SEPARATOR)
+    @staticmethod
+    def _view_subtree_tokens(section: SectionView) -> int:
+        if section.subtree_tokens is None:
+            raise TypeError("incremental section view is missing subtree_tokens")
+        return section.subtree_tokens
 
-        # 2. Count title tokens
-        if section.level > 0:
-            title_text = render_heading_path((section.heading_key,))
-            title_token_count = self._count_once(title_text)
-        else:
-            title_token_count = 0
+    @staticmethod
+    def _view_can_emit_as_single_chunk(section: SectionView) -> bool:
+        if section.can_emit_as_single_chunk is None:
+            raise TypeError(
+                "incremental section view is missing can_emit_as_single_chunk"
+            )
+        return section.can_emit_as_single_chunk
 
-        # 3. Count the subtree body with this section's own title externalized.
-        subtree_token_count = body_token_count
-        previous_tail = body_texts[-1] if body_texts else ""
-        for child in children:
-            child_title = render_heading_path((child.node.heading_key,))
-            child_count = child.counts.title + child.counts.subtree
-            child_has_body = bool(child.node.blocks or child.children)
-            if child_title and child_has_body:
-                child_count += self._separator_delta_after(child_title)
-            if previous_tail:
-                subtree_token_count += self._separator_delta_after(previous_tail)
-            subtree_token_count += child_count
-            previous_tail = child.tail_text
-
-        if previous_tail:
-            tail_text = previous_tail
-        elif section.level > 0:
-            tail_text = "#" * section.level + " " + section.title
-        else:
-            tail_text = ""
-
-        body_has_standalone = any(
-            block.kind in self.standalone_kinds for block in section.blocks
-        )
-        can_emit_as_single_chunk = not body_has_standalone and all(
-            child.can_emit_as_single_chunk for child in children
-        )
-        return MeasuredSection(
-            node=section,
-            counts=SectionTokenCounts(
-                title=title_token_count,
-                body=body_token_count,
-                subtree=subtree_token_count,
-            ),
-            tail_text=tail_text,
-            can_emit_as_single_chunk=can_emit_as_single_chunk,
-            children=children,
-        )
-
-    def _entries_from_section(self, section: MeasuredSection) -> list[Entry]:
+    def _entries_from_section(self, section: SectionView) -> list[Entry]:
         """Render-ready entries for a section selected as a chunk."""
         node = section.node
         entries: list[Entry] = []
@@ -218,7 +179,7 @@ class IncrementalCountingMixin(BaseSplitter):
                 self._entry_from_blocks(
                     node.path,
                     node.blocks,
-                    body_token_count=section.counts.body,
+                    body_token_count=self._view_body_tokens(section),
                 )
             )
 
@@ -229,7 +190,7 @@ class IncrementalCountingMixin(BaseSplitter):
 
     def _split_section_body(
         self,
-        section: MeasuredSection,
+        section: SectionView,
     ) -> list[ChunkDraft]:
         """Split a section's own blocks into fragments, then into chunk drafts."""
         node = section.node
@@ -237,6 +198,7 @@ class IncrementalCountingMixin(BaseSplitter):
         blocks = node.blocks
         max_tokens = self.ideal_max_tokens
         standalone_kinds = self.standalone_kinds
+        body_tokens = self._view_body_tokens(section)
 
         prefix_tokens = (
             self._heading_path_token_count(headings) if node.level > 0 else 0
@@ -254,7 +216,7 @@ class IncrementalCountingMixin(BaseSplitter):
 
         if budgeted_heading_tokens >= self.max_tokens or not blocks:
             entry = self._entry_from_blocks(
-                headings, blocks, body_token_count=section.counts.body
+                headings, blocks, body_token_count=body_tokens
             )
             return [
                 ChunkDraft(
@@ -366,7 +328,7 @@ class IncrementalCountingMixin(BaseSplitter):
                 candidate_body_tokens = (
                     current_body_tokens
                     - self._count_once(previous_block)
-                    + self._count_once(f"{previous_block}{SEPARATOR}")
+                    + self._count_once(f"{previous_block}{RENDER_SEPARATOR}")
                     + block_tokens
                 )
             else:
@@ -386,7 +348,7 @@ class IncrementalCountingMixin(BaseSplitter):
             if block_tokens <= budget:
                 current_parts.append(block.text)
                 candidate_text = (
-                    current_joined + SEPARATOR + block.text
+                    current_joined + RENDER_SEPARATOR + block.text
                     if current_joined
                     else block.text
                 )
@@ -462,9 +424,10 @@ class IncrementalCountingMixin(BaseSplitter):
 
         return chunks
 
-    def _direct_body_drafts(self, section: MeasuredSection) -> list[ChunkDraft]:
+    def _direct_body_drafts(self, section: SectionView) -> list[ChunkDraft]:
         """Emit this section's direct body, without topology recursion."""
         node = section.node
+        body_tokens = self._view_body_tokens(section)
         if not (node.blocks or node.level > 0):
             return []
         has_standalone = any(
@@ -479,10 +442,10 @@ class IncrementalCountingMixin(BaseSplitter):
                 else 0
             ),
         )
-        if has_standalone or section.counts.body > body_budget:
+        if has_standalone or body_tokens > body_budget:
             return self._split_section_body(section)
         entry = self._entry_from_blocks(
-            node.path, node.blocks, body_token_count=section.counts.body
+            node.path, node.blocks, body_token_count=body_tokens
         )
         headings_token_count = self._heading_budget_token_count(node.path)
         return [
@@ -491,13 +454,13 @@ class IncrementalCountingMixin(BaseSplitter):
                 headings=node.path,
                 own_heading=node.path[-1] if node.path else None,
                 headings_token_count=headings_token_count,
-                body_token_count=section.counts.body,
-                token_count=headings_token_count + section.counts.body,
+                body_token_count=body_tokens,
+                token_count=headings_token_count + body_tokens,
             )
         ]
 
-    def _single_subtree_draft(self, section: MeasuredSection) -> ChunkDraft | None:
-        if not section.can_emit_as_single_chunk:
+    def _single_subtree_draft(self, section: SectionView) -> ChunkDraft | None:
+        if not self._view_can_emit_as_single_chunk(section):
             return None
         structural_root = section
         if (
@@ -509,34 +472,36 @@ class IncrementalCountingMixin(BaseSplitter):
         entries = self._entries_from_section(structural_root)
         headings = structural_root.node.path
         headings_tokens = self._heading_path_token_count(headings)
-        token_count = headings_tokens + structural_root.counts.subtree
+        subtree_tokens = self._view_subtree_tokens(structural_root)
+        token_count = headings_tokens + subtree_tokens
         return ChunkDraft(
             entries=entries,
             headings=headings,
             own_heading=headings[-1] if headings else None,
             headings_token_count=headings_tokens,
-            body_token_count=structural_root.counts.subtree,
+            body_token_count=subtree_tokens,
             token_count=token_count,
             split_origin="section",
         )
 
-    def _packable_body_draft(self, section: MeasuredSection) -> ChunkDraft | None:
+    def _packable_body_draft(self, section: SectionView) -> ChunkDraft | None:
         node = section.node
+        body_tokens = self._view_body_tokens(section)
         if not node.blocks or any(
             block.kind in self.standalone_kinds for block in node.blocks
         ):
             return None
         headings_tokens = self._heading_budget_token_count(node.path)
         entry = self._entry_from_blocks(
-            node.path, node.blocks, body_token_count=section.counts.body
+            node.path, node.blocks, body_token_count=body_tokens
         )
         draft = ChunkDraft(
             entries=[entry],
             headings=node.path,
             own_heading=node.path[-1] if node.path else None,
             headings_token_count=headings_tokens,
-            body_token_count=section.counts.body,
-            token_count=headings_tokens + section.counts.body,
+            body_token_count=body_tokens,
+            token_count=headings_tokens + body_tokens,
         )
         return (
             draft if self._draft_budget_tokens(draft) <= self.ideal_max_tokens else None

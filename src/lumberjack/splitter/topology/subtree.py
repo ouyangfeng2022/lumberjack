@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Any
 
 from lumberjack.block import BlockOption
 
 from ...models import ChunkDraft
 from ...protocols import TokenizerProtocol
 from ..base import BaseSplitter
+from ..context import SectionView
 
 
 class SubtreeTopologyMixin(BaseSplitter):
@@ -36,17 +36,17 @@ class SubtreeTopologyMixin(BaseSplitter):
             _merge_below_ratio=merge_below_ratio,
         )
 
-    def _direct_body_drafts(self, section: Any) -> list[ChunkDraft]:
+    def _direct_body_drafts(self, section: SectionView) -> list[ChunkDraft]:
         raise NotImplementedError
 
-    def _single_subtree_draft(self, section: Any) -> ChunkDraft | None:
+    def _single_subtree_draft(self, section: SectionView) -> ChunkDraft | None:
         raise NotImplementedError
 
     def _draft_budget_tokens(self, draft: ChunkDraft) -> int:
         raise NotImplementedError
 
-    def _split_section(self, section: Any) -> list[ChunkDraft]:
-        node = getattr(section, "node", section)
+    def _split_section(self, section: SectionView) -> list[ChunkDraft]:
+        node = section.node
         children = section.children
         if not (node.blocks or children or node.level > 0):
             return []
