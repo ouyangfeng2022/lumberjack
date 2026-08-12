@@ -1,52 +1,43 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, TypeVar
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from .models import Chunk, DocumentAST
+    from .models import Bundle, Log, Tree
 
 
-class TokenizerProtocol(Protocol):
-    """Abstraction for counting text units in manual parser/splitter pipelines.
-
-    Tokenizers only encode and count text. Exact or incremental measurement is
-    selected by the splitter implementation; either mode can use any tokenizer.
-    """
+class ScalerProtocol(Protocol):
+    """Measure text units used by sawyers and mills."""
 
     def encode(self, text: str, *, cache=False) -> tuple[int, ...]: ...
 
-    def count(self, text: str, *, cache=False) -> int: ...
+    def scale(self, text: str, *, cache=False) -> int: ...
 
 
-ParserInput = TypeVar("ParserInput", str, bytes)
-
-
-class ParserProtocol(Protocol[ParserInput]):
-    """Turn a raw document (Markdown / HTML text or DOCX bytes) into the shared DocumentAST.
-
-    Each format-specific parser (MarkdownItParser, HTMLParser, DocxParser)
-    implements this protocol so splitters can treat them uniformly. The
-    ``data`` argument is ``str`` for text formats and ``bytes`` for binary
-    formats (DOCX); parsers raise :class:`TypeError` at runtime when ``data``
-    does not match the expected type. Custom parsers are used by composing a
-    manual ``parse -> split`` pipeline instead of passing them to ``lumber()``.
-    """
+class FellerProtocol(Protocol):
+    """Fell a raw tree into the shared structured log."""
 
     block_kinds: frozenset[str]
 
-    def parse(
-        self,
-        data: ParserInput,
-        *,
-        document_title: str | None = None,
-        metadata_overrides: Mapping[str, object] | None = None,
-        source_path: str | Path | None = None,
-    ) -> DocumentAST: ...
+    def fell(self, tree: Tree) -> Log: ...
 
 
-class SplitterProtocol(Protocol):
-    """Split a parsed document into chunks in a manual pipeline."""
+class SawyerProtocol(Protocol):
+    """Saw a structured log into unfinished bundles."""
 
-    def split(self, document: DocumentAST) -> list[Chunk]: ...
+    @property
+    def scaler(self) -> ScalerProtocol: ...
+
+    def saw(self, log: Log) -> list[Bundle]: ...
+
+
+class SeasonerProtocol(Protocol):
+    """Stabilize rendered bundle text before planing."""
+
+    def season(self, text: str) -> str: ...
+
+
+class PlanerProtocol(Protocol):
+    """Normalize or simplify seasoned text before final chunk creation."""
+
+    def plane(self, text: str) -> str: ...

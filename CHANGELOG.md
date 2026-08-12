@@ -7,11 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added the real `Mill`, `Seasoner`, and `Planer` stages. Sawyer implementations now return unfinished `Bundle` objects; `Mill` renders and post-processes them, performs authoritative final measurement, and produces `Chunk` objects.
+- Added opt-in `PlainTextPlaner` for removing common Markdown and HTML surface syntax. The default Seasoner and Planer only normalize line endings, BOM/NUL characters, trailing whitespace, and repeated blank separators.
+
 ### Changed
 
-- `SectionSplitter` now applies `merge_below_ratio` bottom-up to adjacent same-heading text tails produced while splitting oversized blocks, without subtree collapse or non-text chunk merging.
+- **Breaking:** Replaced the top-level `lumber()` function with `Lumberjack(...).saw(...)` and the explicit `Tree -> Log -> Bundle -> Chunk` pipeline. The package root now exports only `Lumberjack` and `Tree`.
+- **Breaking:** Replaced public parser/tokenizer/splitter terminology and packages with `Feller.fell()`, `Scaler.scale()`, and `Sawyer.saw()`. The old `lumberjack.parser`, `lumberjack.tokenizer`, and `lumberjack.splitter` paths are removed without compatibility aliases.
+- CLI and Web request fields remain `tokenizer` and `splitter`; their private adapter now maps those integration names to Scaler and Sawyer implementations.
+- `SectionSawyer` applies `merge_below_ratio` bottom-up to adjacent same-heading text tails produced while sawing oversized blocks, without subtree collapse or non-text bundle merging.
 - **Breaking:** Chunk headings are now separated into `ancestor_headings` and an optional singular `own_heading`; external headings are never rendered in `body`, while headings for merged internal sections remain in the body.
-- **Breaking:** Replaced `render_headings` with `heading_sensitive`, which controls whether external heading tokens count toward split budgets. Chunks now report separate `headings_token_count` and `body_token_count`; `token_count` also includes `tokenizer.count("\n\n")` for the separator between them.
+- **Breaking:** Replaced `render_headings` with `heading_sensitive`, which controls whether external heading tokens count toward saw budgets. Chunks now report separate `headings_token_count` and `body_token_count`; `token_count` also includes `scaler.scale("\n\n")` for the separator between them.
 
 ## [0.3.0] - 2026-07-22
 

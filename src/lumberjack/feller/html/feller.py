@@ -1,4 +1,4 @@
-"""HTML document parser producing the shared ``DocumentAST`` model."""
+"""HTML document feller producing the shared ``Log`` model."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from typing import Any, ClassVar
 
 from lumberjack.block import BlockKind
 
-from ...models import DocumentAST, DocumentBlock, DocumentInline, SectionNode
-from ...protocols import ParserProtocol
+from ...models import DocumentBlock, DocumentInline, Log, SectionNode, Tree
+from ...protocols import FellerProtocol
 
 
 def _clean_text(text: str) -> str:
@@ -77,7 +77,7 @@ class _TableCollector:
 
 
 class _HTMLDocumentBuilder(_StdlibHTMLParser):
-    """Event parser that normalizes HTML into the shared DocumentAST model."""
+    """Event-driven builder that normalizes HTML into the shared Log model."""
 
     _BLOCK_TAGS: ClassVar[frozenset[str]] = frozenset({"p", "pre", "blockquote"})
     _HEADING_TAGS: ClassVar[frozenset[str]] = frozenset(
@@ -120,13 +120,13 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         self._body_seen = False
         self._inline_stack: list[str] = []
 
-    def build(self) -> DocumentAST:
+    def build(self) -> Log:
         self.feed(self._source)
         self.close()
         self._close_block(self.getpos()[0])
         final_title = self._resolve_document_title()
         self._root.title = final_title
-        return DocumentAST(
+        return Log(
             title=final_title,
             source=self._source,
             root=self._root,
@@ -411,12 +411,12 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         return len(self._source) if tag_end == -1 else tag_end + 1
 
 
-class HTMLParser(ParserProtocol[str]):
-    """Parse HTML documents into the shared ``DocumentAST`` model.
+class HTMLFeller(FellerProtocol):
+    """Fell HTML documents into the shared ``Log`` model.
 
-    The parser mirrors the public parser shape used by Markdown and DOCX:
-    it exposes ``block_kinds`` and returns a heading-tree ``DocumentAST`` so
-    the existing splitters can operate on HTML input without a separate path.
+    It mirrors the public feller shape used by Markdown and DOCX:
+    it exposes ``block_kinds`` and returns a heading-tree ``Log`` so
+    the existing sawyers can operate on HTML input without a separate path.
     """
 
     default_block_kinds: ClassVar[frozenset[str]] = frozenset(
@@ -432,18 +432,18 @@ class HTMLParser(ParserProtocol[str]):
 
     @property
     def block_kinds(self) -> frozenset[str]:
-        """Block kinds this parser can produce."""
+        """Block kinds this feller can produce."""
         return self.default_block_kinds
 
-    def parse(
+    def fell(
         self,
-        data: str,
+        tree: Tree | str,
         *,
         document_title: str | None = None,
-        metadata_overrides: Mapping[str, object] | None = None,
+        metadata_overrides: dict[str, object] | None = None,
         source_path: str | Path | None = None,
-    ) -> DocumentAST:
-        """Parse raw HTML text into a ``DocumentAST``.
+    ) -> Log:
+        """Parse raw HTML text into a ``Log``.
 
         Args:
             data: Raw HTML source.
@@ -455,14 +455,23 @@ class HTMLParser(ParserProtocol[str]):
         Raises:
             TypeError: If ``data`` is not a ``str``.
         """
+        if not isinstance(tree, Tree):
+            tree = Tree(
+                tree,
+                format="html",
+                document_title=document_title,
+                metadata_overrides=dict(metadata_overrides or {}),
+                source_path=source_path,
+            )
+        data = tree.source
         if not isinstance(data, str):
-            msg = f"HTMLParser.parse expects str, got {type(data).__name__}"
+            msg = f"HTMLFeller.fell expects Tree[str], got {type(data).__name__}"
             raise TypeError(msg)
 
         builder = _HTMLDocumentBuilder(
             source=data,
-            document_title=document_title,
-            metadata_overrides=metadata_overrides or {},
-            source_path=str(source_path) if source_path is not None else None,
+            document_title=tree.document_title,
+            metadata_overrides=tree.metadata_overrides,
+            source_path=str(tree.source_path) if tree.source_path is not None else None,
         )
         return builder.build()

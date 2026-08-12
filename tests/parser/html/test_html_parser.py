@@ -2,22 +2,23 @@
 
 from __future__ import annotations
 
-from lumberjack._internal.block_splitter import BlockSplitter
+from lumberjack._internal.block_saw import BlockSaw
 from lumberjack.block import normalize_block_options
-from lumberjack.parser.html import HTMLParser
-from lumberjack.parser.html.table_parser import HTMLTableParser
-from lumberjack.parser.markdown.parser import MarkdownParser
+from lumberjack.feller.html import HTMLFeller
+from lumberjack.feller.html.table_parser import HTMLTableParser
+from lumberjack.feller.markdown.feller import MarkdownFeller
 from tests.helpers import (
-    CharacterTokenizer,
+    CharacterScaler,
     TableBlockParams,
-    create_splitter,
-    splitter_options,
+    create_sawyer,
+    saw,
+    sawyer_options,
 )
 
 
 def test_html_parser_builds_document_ast_with_sections_and_blocks():
-    """HTMLParser should produce the same DocumentAST shape as Markdown/DOCX parsers."""
-    parser = HTMLParser()
+    """HTMLParser should produce the same Log shape as Markdown/DOCX parsers."""
+    parser = HTMLFeller()
     html = """<!doctype html>
 <html>
   <head>
@@ -33,7 +34,7 @@ def test_html_parser_builds_document_ast_with_sections_and_blocks():
   </body>
 </html>"""
 
-    document = parser.parse(html, document_title="guide.html")
+    document = parser.fell(html, document_title="guide.html")
 
     assert document.title == "guide.html"
     assert document.source == html
@@ -52,9 +53,9 @@ def test_html_parser_builds_document_ast_with_sections_and_blocks():
 
 
 def test_html_parser_block_kinds_match_default_block_kinds() -> None:
-    parser = HTMLParser()
+    parser = HTMLFeller()
 
-    assert parser.block_kinds == HTMLParser.default_block_kinds
+    assert parser.block_kinds == HTMLFeller.default_block_kinds
     assert parser.block_kinds == frozenset(
         {
             "paragraph",
@@ -69,20 +70,20 @@ def test_html_parser_block_kinds_match_default_block_kinds() -> None:
 
 
 def test_html_splitter_respects_max_heading_level():
-    """Heading-depth limiting is applied by the splitter, not the HTML parser."""
-    parser = HTMLParser()
-    document = parser.parse("<h1>Top</h1><h3>Deep</h3><p>Body</p>")
+    """Heading-depth limiting is applied by the sawyer, not the HTML parser."""
+    parser = HTMLFeller()
+    document = parser.fell("<h1>Top</h1><h3>Deep</h3><p>Body</p>")
 
     top = document.root.children[0]
     assert top.title == "Top"
     assert top.children[0].title == "Deep"
 
-    splitter = create_splitter(
+    sawyer = create_sawyer(
         "sibling",
-        CharacterTokenizer(),
-        **splitter_options(max_tokens=500, max_heading_level=2),
+        CharacterScaler(),
+        **sawyer_options(max_tokens=500, max_heading_level=2),
     )
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].ancestor_headings == ()
@@ -91,9 +92,9 @@ def test_html_splitter_respects_max_heading_level():
 
 
 def test_html_parser_preserves_preformatted_text() -> None:
-    parser = HTMLParser()
+    parser = HTMLFeller()
 
-    document = parser.parse("<h1>Code</h1><pre>def f():\n    return 1</pre>")
+    document = parser.fell("<h1>Code</h1><pre>def f():\n    return 1</pre>")
 
     code_block = document.root.children[0].blocks[0]
     assert code_block.kind == "code_block"
@@ -240,10 +241,10 @@ def test_html_table_to_markdown_with_caption():
 
 def test_text_splitter_handles_html_table_block():
     """Test that TextSplitter can split HTML blocks containing tables."""
-    tokenizer = CharacterTokenizer()
-    options = splitter_options(block_options={"html_table": TableBlockParams()})
-    splitter = BlockSplitter(
-        tokenizer,
+    scaler = CharacterScaler()
+    options = sawyer_options(block_options={"html_table": TableBlockParams()})
+    sawyer = BlockSaw(
+        scaler,
         max_tokens=options["max_tokens"],
         block_options=normalize_block_options(options["block_options"]),
     )
@@ -259,7 +260,7 @@ def test_text_splitter_handles_html_table_block():
     )
 
     # Test that the block can be split
-    pieces = splitter.split_oversized_block(
+    pieces = sawyer.split_oversized_block(
         html_table_block,
         default_budget=1000,
     )
@@ -269,12 +270,12 @@ def test_text_splitter_handles_html_table_block():
 
 
 def test_table_splitter_reads_table_params_from_options() -> None:
-    tokenizer = CharacterTokenizer()
-    options = splitter_options(
+    scaler = CharacterScaler()
+    options = sawyer_options(
         block_options={"table": TableBlockParams(max_tokens=28, repeat_header=False)},
     )
-    splitter = BlockSplitter(
-        tokenizer,
+    sawyer = BlockSaw(
+        scaler,
         max_tokens=options["max_tokens"],
         block_options=normalize_block_options(options["block_options"]),
     )
@@ -291,7 +292,7 @@ def test_table_splitter_reads_table_params_from_options() -> None:
             "| Gamma | 300 |"
         ),
     )
-    pieces = splitter.split_table_block(block)
+    pieces = sawyer.split_table_block(block)
 
     assert len(pieces) == 3
     assert "| Name | Value |" in pieces[0][0]
@@ -300,7 +301,7 @@ def test_table_splitter_reads_table_params_from_options() -> None:
 
 def test_markdown_parser_with_html_table():
     """Test that the markdown parser correctly handles HTML tables in markdown."""
-    parser = MarkdownParser()
+    parser = MarkdownFeller()
 
     markdown = """# Document with HTML Table
 
@@ -313,7 +314,7 @@ def test_markdown_parser_with_html_table():
 Some text after the table.
 """
 
-    document = parser.parse(markdown)
+    document = parser.fell(markdown)
 
     # Find html_table blocks (HTML tables should be identified as html_table type)
     html_table_blocks = []
@@ -333,8 +334,8 @@ Some text after the table.
 
 def test_splitter_with_html_table_in_document():
     """Test splitting a document containing HTML tables."""
-    parser = MarkdownParser()
-    splitter = create_splitter("sibling")
+    parser = MarkdownFeller()
+    sawyer = create_sawyer("sibling")
 
     markdown = """# Document with HTML Table
 
@@ -349,8 +350,8 @@ def test_splitter_with_html_table_in_document():
 Some text after the table.
 """
 
-    document = parser.parse(markdown)
-    chunks = splitter.split(document)
+    document = parser.fell(markdown)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) > 0
 

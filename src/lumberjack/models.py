@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Literal, TypeAlias
 
 from lumberjack.block import BlockKind
@@ -10,11 +11,23 @@ from ._internal.rendering import join_rendered_blocks
 
 HeadingKey: TypeAlias = tuple[int, str]
 HeadingPath: TypeAlias = tuple[HeadingKey, ...]
+InputFormat: TypeAlias = Literal["auto", "markdown", "html", "docx"]
+
+
+@dataclass(slots=True, frozen=True)
+class Tree:
+    """Raw document and provenance waiting to be felled into a structured log."""
+
+    source: str | bytes | Path
+    format: InputFormat = "auto"
+    document_title: str | None = None
+    metadata_overrides: dict[str, object] = field(default_factory=dict)
+    source_path: str | Path | None = None
 
 
 @dataclass(slots=True, frozen=True)
 class DocumentInline:
-    """Format-neutral inline node normalized by an input parser.
+    """Format-neutral inline node normalized by an input feller.
 
     Attributes:
         kind: Inline node type (e.g. ``"text"``, ``"link"``, ``"code_inline"``,
@@ -38,7 +51,7 @@ class DocumentBlock:
         kind: Block type (e.g. ``"paragraph"``, ``"heading"``, ``"code_fence"``,
             ``"blockquote"``, ``"list"``, ``"list_item"``, ``"table"``,
             ``"html_block"``, ``"math_block"``).
-        text: Canonical rendered text consumed by splitters. Markdown input is
+        text: Canonical rendered text consumed by sawyers. Markdown input is
             normalized Markdown; HTML and DOCX input is converted to the same
             Markdown-like representation. It is not guaranteed to be a source
             slice.
@@ -97,14 +110,14 @@ class SectionNode:
 
 
 @dataclass(slots=True, frozen=True)
-class DocumentAST:
+class Log:
     """Parsed document with a normalized section tree, source, and metadata.
 
     Attributes:
         title: Document title.  Priority: user-provided ``document_title``,
             then front matter ``title`` field, then first level-1 heading,
             then ``"Anonymous"``.
-        source: Original text for Markdown and HTML inputs. Binary parsers may
+        source: Original text for Markdown and HTML inputs. Binary fellers may
             leave this empty or provide a normalized textual representation.
         root: Root section node of the heading tree.
         source_path: Original file path or caller-supplied source provenance.
@@ -131,11 +144,11 @@ class Chunk:
             ``"code_fence"``, ``"document"``).
         body: Rendered chunk body. Ancestor and own headings are never rendered
             here; headings needed to represent merged internal sections remain.
-        token_count: Sum of heading tokens, ``tokenizer.count("\n\n")``, and
+        token_count: Sum of heading tokens, ``scaler.scale("\n\n")``, and
             body tokens.
         estimated_token_count: Split-time running estimate (additive + separator-delta
             window). ``token_count`` is the authoritative final total. The two
-            may differ slightly for incremental splitters due to join approximations.
+            may differ slightly for incremental sawyers due to join approximations.
         headings_token_count: Token count of the canonical Markdown rendering of
             the complete heading path.
         body_token_count: Token count of ``body``.
@@ -242,8 +255,8 @@ class Entry:
 
 
 @dataclass(slots=True)
-class ChunkDraft:
-    """Intermediate chunk holding grouped entries, token estimate, and split source.
+class Bundle:
+    """Intermediate lumber bundle holding grouped entries and a token estimate.
 
     Args:
         entries: List of entries to be merged into the chunk, with heading context and body.
@@ -257,8 +270,8 @@ class ChunkDraft:
         headings_token_count: The token count for the chunk's full heading path.
         body_token_count: The token count for the chunk body (sum of entry body_token_count plus separator deltas).
         token_count: Split-time sum of heading and body tokens.
-        split_origin: The source of the split that produced this draft, for debugging/analysis.
-        chunk_type: The type of content in the chunk (e.g. "paragraph", "code_block"), used for metadata.
+        split_origin: The saw cut that produced this bundle, for debugging/analysis.
+        chunk_type: The bundled content type (e.g. "paragraph", "code_block"), used for metadata.
 
     """
 
@@ -270,3 +283,4 @@ class ChunkDraft:
     token_count: int
     split_origin: Literal["section", "fragment", "text_piece", "merge"] = "section"
     chunk_type: str = "paragraph"
+    counting_mode: Literal["incremental", "exact"] = "incremental"

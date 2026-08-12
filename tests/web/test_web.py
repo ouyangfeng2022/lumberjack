@@ -8,7 +8,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient, Response
 
-from lumberjack.tokenizer import ApproxByteTokenizer, TiktokenTokenizer
+from lumberjack.scaler import ApproxByteScaler, TiktokenScaler
 from lumberjack.web import create_app
 
 
@@ -359,7 +359,7 @@ def test_split_block_configs_default_applies_when_field_not_sent(
 
 
 def test_split_text_with_approx(client: ASGITestClient) -> None:
-    """The /split/text endpoint works with the approx (exact) tokenizer."""
+    """The /split/text endpoint works with the approx (exact) scaler."""
     payload = {
         "text": "# T\n\nbody text here\n",
         "input_format": "markdown",
@@ -372,12 +372,21 @@ def test_split_text_with_approx(client: ASGITestClient) -> None:
     chunk = data["chunks"][0]
     assert chunk["token_count"] == (
         chunk["headings_token_count"]
-        + ApproxByteTokenizer().count("\n\n")
+        + ApproxByteScaler().scale("\n\n")
         + chunk["body_token_count"]
     )
 
 
-def test_split_text_with_tiktoken(client: ASGITestClient) -> None:
+def test_split_text_with_tiktoken(
+    client: ASGITestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Encoding:
+        def encode(self, text: str) -> list[int]:
+            return list(text.encode("utf-8"))
+
+    import tiktoken
+
+    monkeypatch.setattr(tiktoken, "encoding_for_model", lambda _model: Encoding())
     payload = {
         "text": "# T\n\nThe quick brown fox jumps over the lazy dog "
         "repeatedly every single day without fail.\n",
@@ -390,7 +399,7 @@ def test_split_text_with_tiktoken(client: ASGITestClient) -> None:
     assert chunk["token_count"] > 0
     assert chunk["token_count"] == (
         chunk["headings_token_count"]
-        + TiktokenTokenizer().count("\n\n")
+        + TiktokenScaler().scale("\n\n")
         + chunk["body_token_count"]
     )
 
@@ -408,6 +417,6 @@ def test_split_file_with_approx(client: ASGITestClient) -> None:
     chunk = response.json()["chunks"][0]
     assert chunk["token_count"] == (
         chunk["headings_token_count"]
-        + ApproxByteTokenizer().count("\n\n")
+        + ApproxByteScaler().scale("\n\n")
         + chunk["body_token_count"]
     )

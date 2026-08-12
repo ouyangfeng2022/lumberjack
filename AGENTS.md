@@ -61,75 +61,79 @@ uv run python xxx.py
 Core pipeline:
 
 ```
-Markdown text ----> MarkdownItParser ----> DocumentAST ----> Splitter ----> Chunk[]
-DOCX binary  ----> DocxParser ----------------------------------------------------> Chunk[]
-HTML text    ----> HTMLParser ----------------------------------------------------> Chunk[]
+Tree -> Feller.fell() -> Log -> Sawyer.saw() -> Bundle[]
+     -> Mill.mill() -> Seasoner -> Planer -> Chunk[]
 ```
 
-All three formats produce the same `DocumentAST` (with `SectionNode` tree and `DocumentBlock` children), so all splitters work with any format. Public component namespaces own their implementations directly; there is no `lumberjack.core` compatibility package.
+All three formats produce the same `Log` (with `SectionNode` tree and `DocumentBlock` children), so all sawyers work with any format. Public component namespaces own their implementations directly; the removed parser/splitter/tokenizer/core paths have no compatibility aliases.
 
 Main components:
 
 ### Shared public modules
 
 - **Models**: `src/lumberjack/models.py`
-  - `DocumentInline`, `DocumentBlock`, `SectionNode`, `DocumentAST` — shared across formats
-  - `Chunk` — shared output type; `DocumentAST.source_path` stores source provenance independently from semantic metadata
+  - `Tree` — raw input plus format, title, metadata overrides, and provenance
+  - `DocumentInline`, `DocumentBlock`, `SectionNode`, `Log` — shared across formats
+  - `Bundle` — internal output of sawing; `Chunk` — final output of milling
 - **Protocols**: `src/lumberjack/protocols.py`
-  - `TokenizerProtocol`, `ParserProtocol`, `SplitterProtocol`
-- **Tokenizer**: `src/lumberjack/tokenizer.py`
-  - `ApproxByteTokenizer` (default, estimates tokens as UTF-8 bytes ÷ 3), `TiktokenTokenizer` and `TransformersTokenizer` (optional)
+  - `ScalerProtocol`, `FellerProtocol`, `SawyerProtocol`, `SeasonerProtocol`, `PlanerProtocol`
+- **Scaler**: `src/lumberjack/scaler.py`
+  - `ApproxByteScaler` (default, estimates tokens as UTF-8 bytes ÷ 3), `TiktokenScaler` and `TransformersScaler` (optional)
 - **Block configuration**: `src/lumberjack/block.py`
   - `BlockKind`, `BlockConfig`, `MarkdownTableConfig`, `HTMLTableConfig`, and `CustomBlockConfig`
   - Python `block_options` accepts a sequence of these objects; CLI/Web adapters convert their external mapping formats at the boundary
-- **Splitters**: `src/lumberjack/splitter/` — public implementations operating on `DocumentAST`, format-agnostic
-  - `base.py` provides `BaseSplitter` shared state and helpers
-  - `sibling.py` provides `SiblingSplitter` (registry: "sibling"/"exact-sibling") — structure-first, budget-aware sibling packing
-  - `subtree.py` provides `SubtreeSplitter` (registry: "subtree"/"exact-subtree") — subtree-first: collapses a fitting subtree into one chunk, otherwise one chunk per heading section (with tail-fragment merging).
-  - `section.py` provides `SectionSplitter` (registry: "section"/"exact-section"). It emits one chunk per heading section's direct body and recurses into children, with **no** subtree-collapse. It only merges adjacent same-heading `paragraph` tails bottom-up according to `merge_below_ratio`; non-text block chunks are not merged. `IncrementalSubtreeSplitter`/`IncrementalSectionSplitter` are the incremental-measure variants.
-  - Unprefixed class names use incremental counting and `Exact*Splitter` names use full recounting
+- **Sawyers**: `src/lumberjack/sawyer/` — public implementations operating on `Log`, format-agnostic
+  - `base.py` provides `BaseSawyer` shared state and helpers
+  - `sibling.py` provides `SiblingSawyer` — structure-first, budget-aware sibling packing
+  - `subtree.py` provides `SubtreeSawyer` — subtree-first collapse with section fallback
+  - `section.py` provides `SectionSawyer` — direct-body recursion with no subtree collapse
+  - Unprefixed class names use incremental counting and `Exact*Sawyer` names use full recounting
+- **Mill stages**: `mill.py`, `seasoner.py`, and `planer.py`
+  - `Mill` renders bundles, applies `Seasoner` then `Planer`, performs authoritative counts, and emits chunks
+  - `PlainTextPlaner` is opt-in; default stages preserve Markdown surface syntax
 - **Private helpers**: `src/lumberjack/_internal/`
-  - `block_splitter.py` handles oversized blocks, `options.py` converts CLI/Web block configuration, `formats.py` detects integration input formats, `pipeline.py` orchestrates CLI/Web components, and `rendering.py` contains shared rendering helpers
+  - `block_saw.py` handles oversized blocks, `options.py` converts CLI/Web block configuration, `formats.py` detects integration input formats, `pipeline.py` orchestrates CLI/Web components, and `rendering.py` contains shared rendering helpers
 
-### Parsers (`src/lumberjack/parser/`)
+### Fellers (`src/lumberjack/feller/`)
 
-Format-specific parsers — each turns one input format into the shared `DocumentAST`.
+Format-specific fellers — each turns one input format into the shared `Log`.
 
-#### Markdown (`src/lumberjack/parser/markdown/`)
+#### Markdown (`src/lumberjack/feller/markdown/`)
 
-- **Parser**: `src/lumberjack/parser/markdown/parser.py`
-  - `MarkdownParser` aliases `MarkdownItParser`
+- **Feller**: `src/lumberjack/feller/markdown/feller.py`
+  - `MarkdownFeller` aliases `MarkdownItFeller`
   - Uses `MarkdownIt("gfm-like")` with built-in plugins
-  - `MarkdownItParser(disable_lheading=True)` to disable Setext heading parsing
+  - `MarkdownItFeller(disable_lheading=True)` to disable Setext heading parsing
   - Parses YAML front matter, preserves heading hierarchy, inlines, reference definitions, line ranges
-- **Plugins**: `src/lumberjack/parser/markdown/plugins/`
+- **Plugins**: `src/lumberjack/feller/markdown/plugins/`
   - `brackets_math_plugin`: `\[...\]` block math and `\(...\)` inline math syntax
 
-#### DOCX (`src/lumberjack/parser/docx/`)
+#### DOCX (`src/lumberjack/feller/docx/`)
 
-- **Parser**: `src/lumberjack/parser/docx/parser.py`
-  - `DocxParser` — parses DOCX into `DocumentAST`
+- **Feller**: `src/lumberjack/feller/docx/feller.py`
+  - `DocxFeller` — fells DOCX into `Log`
   - Maps Heading styles -> `SectionNode`, paragraphs -> `paragraph`, tables -> `table`, lists -> `list`, etc.
   - Iterates body elements in document order to preserve paragraph/table sequence
   - Extracts core properties as document metadata
 
-#### HTML (`src/lumberjack/parser/html/`)
+#### HTML (`src/lumberjack/feller/html/`)
 
-- **Parser**: `src/lumberjack/parser/html/parser.py`
-  - `HTMLParser` — parses HTML into `DocumentAST`, mirroring `MarkdownItParser` and `DocxParser`
+- **Feller**: `src/lumberjack/feller/html/feller.py`
+  - `HTMLFeller` — fells HTML into `Log`, mirroring Markdown and DOCX fellers
   - Built on stdlib `html.parser.HTMLParser` (aliased internally as `_StdlibHTMLParser` to avoid name shadowing)
   - `_HTMLDocumentBuilder` is the event-driven internal builder
   - Maps headings -> `SectionNode`, paragraphs -> `paragraph`, tables -> `html_table`, lists -> `list`, etc.
-- **Table utility**: `src/lumberjack/parser/html/table_parser.py`
+- **Table utility**: `src/lumberjack/feller/html/table_parser.py`
   - `HTMLTableParser` + `HTMLTable`/`HTMLTableRow`/`HTMLTableCell` dataclasses
-  - Consumed by `parser/markdown/parser.py` (to detect tables inside `html_block`) and `block.py` (to split oversized `html_table` blocks); not used by `HTMLParser` itself
+  - Consumed by the Markdown feller and `block_saw.py`; not used by `HTMLFeller` itself
 
 ### Public API
 
-- `src/lumberjack/__init__.py` — exports only minimal `lumber(source, *, format="auto", max_tokens=1200)`
-- `src/lumberjack/parser/` — `AutoParser`, concrete parsers, and Markdown plugin extensions; no module-level `parse()`
-- `src/lumberjack/splitter/` — default incremental splitters and explicit `Exact*Splitter` classes
-- `src/lumberjack/tokenizer.py` — tokenizer implementations
+- `src/lumberjack/__init__.py` — exports only `Lumberjack` and `Tree`
+- `src/lumberjack/feller/` — `AutoFeller`, concrete fellers, and Markdown plugin extensions
+- `src/lumberjack/sawyer/` — default incremental sawyers and explicit `Exact*Sawyer` classes
+- `src/lumberjack/scaler.py` — scaler implementations
+- `src/lumberjack/mill.py`, `seasoner.py`, `planer.py` — final processing stages
 - `src/lumberjack/block.py` — typed block configuration
 - `src/lumberjack/models.py` and `src/lumberjack/protocols.py` — shared data and extension contracts
 - `src/lumberjack/_internal/` — private cross-component helpers used by built-ins and integrations
@@ -163,7 +167,7 @@ Implemented in `src/lumberjack/cli.py`.
 - `--input-format`: `auto` (detect from extension), `markdown`, `html`, or `docx`
 - Output format: JSON only
 - Tokenizers (engine): `approx`, `tiktoken`, `transformers`
-- Exact vs incremental counting is a property of the splitter class, not the tokenizer. Unprefixed CLI/Web names (`sibling`, `subtree`, `section`) use incremental counting; `incremental-*` are equivalent aliases and `exact-*` selects full recounting. Any tokenizer works with any splitter.
+- Exact vs incremental counting is a property of the sawyer class, not the scaler. CLI/Web retain their existing `splitter` and `tokenizer` field names as an integration protocol.
 - Splitter choices: `sibling` (default, incremental), `subtree` (incremental), `section` (incremental), `exact-sibling`, `incremental-sibling`, `exact-subtree`, `incremental-subtree`, `exact-section`, `incremental-section`
 - `--block-config KIND[:isolated][:nosplit][:TOKENS]` per-block-kind config; repeatable
 - JSON output serializes dataclasses with `dataclasses.asdict`
@@ -171,14 +175,14 @@ Implemented in `src/lumberjack/cli.py`.
 ## Splitting Rules
 
 - Whole document is kept as one chunk when it already fits the budget
-- `SiblingSplitter` (default): merges adjacent sibling sections when they fit within `max_tokens`
-- `SubtreeSplitter`: subtree-first — collapses a fitting subtree into one chunk, otherwise one chunk per heading section (with tail-fragment merging). `SectionSplitter`: always per-heading with no subtree-collapse; `merge_below_ratio` only merges adjacent same-heading `paragraph` tails within each section.
+- `SiblingSawyer` (default): merges adjacent sibling sections when they fit within `max_tokens`
+- `SubtreeSawyer`: subtree-first collapse. `SectionSawyer`: always per-heading with no subtree-collapse.
 - Tail-fragment merging (`merge_below_ratio`, default `0.125`): bottom-up, merges same-heading adjacent `paragraph` chunks whose tail is below `int(max_tokens * ratio)` tokens, when the merged result fits `max_tokens`. Disabled when `ratio == 0`. In the `section` splitter this runs only within each section's direct-body drafts, so it cannot collapse subtrees or merge non-text block chunks.
 - Text fallback order is paragraph break -> line break -> sentence -> word -> hard split
 - `Chunk.body` always includes rendered heading context; shared parent headings are deduplicated
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
 - `block_options` is a sequence of typed objects from `lumberjack.block`; duplicate kinds are rejected
-- Exact `Exact*Splitter` classes fully recount rendered text at every budget decision; `Chunk.token_count == Chunk.estimated_token_count`. Default unprefixed splitters measure the tree once and use a running additive estimate + 8-char separator-delta window; `Chunk.token_count` is the authoritative final recount and `Chunk.estimated_token_count` is the split-time estimate.
+- Exact `Exact*Sawyer` classes fully recount rendered text at every budget decision. Default unprefixed sawyers use a running additive estimate. `Mill` performs the authoritative final recount after seasoning and planing.
 
 ## Constraints
 
@@ -193,10 +197,10 @@ Tests use `pytest`. `tests/conftest.py` adds `src/` to `sys.path`.
 
 Current test areas:
 
-- Markdown parser heading-tree construction, inlines, line ranges
-- DOCX parser heading parsing, table extraction, list detection, section tree structure
+- Markdown feller heading-tree construction, inlines, line ranges
+- DOCX feller heading parsing, table extraction, list detection, section tree structure
 - Section-aware chunking, budget management, merging
-- Public API (`lumber()`) with Markdown and DOCX input
+- Public `Lumberjack.saw()` API with Markdown and DOCX input
 - Web API split with text input, file upload, error handling, and full options
 
 After Python code changes:
@@ -257,26 +261,29 @@ When a change warrants a changelog entry, do it in the same commit (or PR) as th
 
 ```
 src/lumberjack/
-    __init__.py                     # Public API: lumber()
-    lumber.py                       # Minimal convenience pipeline
+    __init__.py                     # Public API: Lumberjack, Tree
+    lumberjack.py                   # Full pipeline orchestrator
     cli.py                          # CLI orchestration
     block.py                        # Public block kinds and typed configuration
     models.py                       # Public shared data models
     protocols.py                    # Public extension protocols
-    tokenizer.py                    # Public tokenizer implementations
+    scaler.py                       # Public scaler implementations
+    mill.py                         # Bundle-to-Chunk finishing stage
+    seasoner.py                     # Text stabilization stage
+    planer.py                       # Text normalization/plain-text stages
     web/                            # FastAPI layer
-    parser/                         # Public parser implementations
-        __init__.py                 # AutoParser and concrete parser exports
-        auto.py                     # Format inference and parser selection
+    feller/                         # Public feller implementations
+        __init__.py                 # AutoFeller and concrete feller exports
+        auto.py                     # Format inference and feller selection
         markdown/
-            parser.py               # MarkdownItParser
+            feller.py               # MarkdownItFeller
             plugins/                # markdown-it plugins
         docx/
-            parser.py               # DocxParser
+            feller.py               # DocxFeller
         html/
-            parser.py               # HTMLParser + _HTMLDocumentBuilder
+            feller.py               # HTMLFeller + _HTMLDocumentBuilder
             table_parser.py         # HTMLTableParser + HTMLTable*
-    splitter/                       # Public splitter implementations
+    sawyer/                         # Public sawyer implementations
         base.py
         exact.py
         incremental.py
@@ -285,7 +292,7 @@ src/lumberjack/
         section.py
         topology/
     _internal/                      # Private cross-component helpers
-        block_splitter.py
+        block_saw.py
         formats.py
         options.py
         pipeline.py
@@ -295,15 +302,15 @@ tests/                              # mirrors src/lumberjack layout
     __init__.py
     conftest.py
     helpers.py                     # shared test helpers (FIXTURES_DIR, etc.)
-    test_api.py                    # tests src/lumberjack/__init__.py + lumber.py
+    test_api.py                    # tests package API and built-in components
     test_cli.py                    # tests src/lumberjack/cli.py
     test_docker.py                 # tests docker/Dockerfile
-    parser/                        # tests src/lumberjack/parser/
+    parser/                        # historical test folder; covers src/lumberjack/feller/
         markdown/test_markdown_parser.py
         docx/test_docx_parser.py
         html/test_html_parser.py
         html/test_table_integration.py
-    splitter/                      # tests src/lumberjack/splitter/
+    splitter/                      # historical test folder; covers src/lumberjack/sawyer/
         test_splitter.py
         test_render_headings.py
         test_max_heading_level.py

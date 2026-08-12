@@ -25,7 +25,7 @@ else:
 
 
 class BlockKind(StrEnum):
-    """Built-in block kinds emitted by lumberjack parsers."""
+    """Built-in block kinds emitted by lumberjack fellers."""
 
     PARAGRAPH = "paragraph"
     BLOCKQUOTE = "blockquote"
@@ -100,7 +100,7 @@ class HTMLTableConfig:
 
 @dataclass(slots=True, frozen=True)
 class CustomBlockConfig:
-    """Splitting behavior for a parser plugin's custom block kind."""
+    """Sawing behavior for a feller plugin's custom block kind."""
 
     kind: str
     isolated: bool = False

@@ -1,29 +1,30 @@
 from __future__ import annotations
 
 from lumberjack.block import BlockConfig, BlockKind
-from lumberjack.models import ChunkDraft, Entry, complete_heading_path
-from lumberjack.parser.markdown.parser import MarkdownParser
-from lumberjack.splitter import (
-    ExactSiblingSplitter as SiblingSplitter,
+from lumberjack.feller.markdown.feller import MarkdownFeller
+from lumberjack.models import Bundle, Entry, complete_heading_path
+from lumberjack.sawyer import (
+    ExactSiblingSawyer as SiblingSawyer,
 )
-from lumberjack.splitter import (
-    ExactSubtreeSplitter as SubtreeSplitter,
+from lumberjack.sawyer import (
+    ExactSubtreeSawyer as SubtreeSawyer,
 )
-from lumberjack.splitter import (
-    IncrementalSiblingSplitter,
-    IncrementalSubtreeSplitter,
+from lumberjack.sawyer import (
+    IncrementalSiblingSawyer,
+    IncrementalSubtreeSawyer,
 )
-from lumberjack.splitter.context import IncrementalCountingContext
-from lumberjack.tokenizer import ApproxByteTokenizer
+from lumberjack.sawyer.context import IncrementalCountingContext
+from lumberjack.scaler import ApproxByteScaler
 from tests.helpers import (
     FIXTURES_DIR,
     BaseParams,
-    CharacterTokenizer,
+    CharacterScaler,
     TableBlockParams,
-    create_splitter,
+    create_sawyer,
     resolve_block_options,
-    section_options,
-    splitter_options,
+    saw,
+    sawyer_options,
+    section_sawyer_options,
 )
 
 FIXTURE = (FIXTURES_DIR / "markdown" / "sample.md").read_text(encoding="utf-8")
@@ -133,31 +134,31 @@ Alpha bravo charlie delta echo foxtrot golf hotel india juliet.
 """
 
 
-class RecordingTokenizer(CharacterTokenizer):
+class RecordingScaler(CharacterScaler):
     """Records every ``count`` argument; drives the incremental split path."""
 
     def __init__(self) -> None:
         self.counted: list[str] = []
 
-    def count(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
+    def scale(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
         self.counted.append(text)
-        return super().count(text)
+        return super().scale(text)
 
 
 def markdown_block_options(
     overrides: dict[str, BaseParams] | None = None,
 ) -> dict[str, BaseParams]:
-    return resolve_block_options(MarkdownParser().block_kinds, overrides)
+    return resolve_block_options(MarkdownFeller().block_kinds, overrides)
 
 
 def test_splitter_preserves_heading_context() -> None:
-    """Test that splitter preserves heading hierarchy in chunks."""
-    document = MarkdownParser().parse(FIXTURE, document_title="sample.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=140, merge_below_ratio=0.143),
+    """Test that sawyer preserves heading hierarchy in chunks."""
+    document = MarkdownFeller().fell(FIXTURE, document_title="sample.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=140, merge_below_ratio=0.143),
     )
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) >= 2
     heading_paths = [
@@ -172,30 +173,30 @@ def test_splitter_preserves_heading_context() -> None:
 
 
 def test_create_splitter_routes_sibling_and_subtree() -> None:
-    options = splitter_options(max_tokens=100, merge_below_ratio=0.0)
+    options = sawyer_options(max_tokens=100, merge_below_ratio=0.0)
 
     assert isinstance(
-        create_splitter("sibling", CharacterTokenizer(), options),
-        IncrementalSiblingSplitter,
+        create_sawyer("sibling", CharacterScaler(), options),
+        IncrementalSiblingSawyer,
     )
     assert isinstance(
-        create_splitter("subtree", CharacterTokenizer(), options),
-        IncrementalSubtreeSplitter,
+        create_sawyer("subtree", CharacterScaler(), options),
+        IncrementalSubtreeSawyer,
     )
-    assert not issubclass(SubtreeSplitter, SiblingSplitter)
+    assert not issubclass(SubtreeSawyer, SiblingSawyer)
 
 
 def test_heading_splitter_merges_small_subtree_into_one_chunk() -> None:
     """A small subtree collapses into one chunk; children render once each."""
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         HEADING_SPLITTER_FIXTURE, document_title="heading.md"
     )
-    splitter = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=1000, merge_below_ratio=0.0),
+    sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=1000, merge_below_ratio=0.0),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].ancestor_headings == ()
@@ -210,19 +211,19 @@ def test_heading_splitter_merges_small_subtree_into_one_chunk() -> None:
 
 
 def test_heading_splitter_splits_oversized_section_body() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         HEADING_OVERSIZED_FIXTURE, document_title="heading.md"
     )
-    splitter = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=35,
             merge_below_ratio=0.0,
             block_options={"paragraph": BaseParams()},
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) > 1
     assert all(chunk.ancestor_headings == () for chunk in chunks)
@@ -236,44 +237,46 @@ def test_heading_splitter_splits_oversized_section_body() -> None:
 def test_heading_splitter_splits_oversized_body_with_nosplit_blocks_kept_intact() -> (
     None
 ):
-    """SubtreeSplitter respects nosplit block options for oversized bodies."""
-    document = MarkdownParser().parse(
+    """SubtreeSawyer respects nosplit block options for oversized bodies."""
+    document = MarkdownFeller().fell(
         HEADING_OVERSIZED_FIXTURE, document_title="heading.md"
     )
-    splitter = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=35,
             merge_below_ratio=0.0,
             block_options={"paragraph": BaseParams(split=False)},
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     # Paragraph is nosplit so the oversized body stays as one chunk
     assert len(chunks) == 1
     assert chunks[0].ancestor_headings == ()
     assert chunks[0].section_level == 1
-    assert chunks[0].estimated_token_count > splitter.max_tokens
+    assert chunks[0].estimated_token_count > sawyer.max_tokens
     assert "Alpha bravo charlie" in chunks[0].body
 
 
 def test_heading_splitter_respects_empty_section_options() -> None:
-    document = MarkdownParser().parse("# Empty\n\n## Child\n\nChild body.")
+    document = MarkdownFeller().fell("# Empty\n\n## Child\n\nChild body.")
 
-    default_chunks = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=1000, merge_below_ratio=0.0),
-    ).split(document)
-    kept_chunks = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    default_sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=1000, merge_below_ratio=0.0),
+    )
+    kept_sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=1000,
             merge_below_ratio=0.0,
             skip_empty_sections=False,
         ),
-    ).split(document)
+    )
+    default_chunks = saw(default_sawyer, document)
+    kept_chunks = saw(kept_sawyer, document)
 
     # The small subtree collapses to one chunk in both cases.  ``# Empty``
     # has no body of its own, so the only entry is ``## Child`` and the
@@ -287,13 +290,13 @@ def test_heading_splitter_respects_empty_section_options() -> None:
 
 
 def test_splitter_respects_budget_except_unsplittable_code_fence() -> None:
-    """Test that splitter respects token budget except for code fences."""
-    document = MarkdownParser().parse(FIXTURE, document_title="sample.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=180, merge_below_ratio=0.112),
+    """Test that sawyer respects token budget except for code fences."""
+    document = MarkdownFeller().fell(FIXTURE, document_title="sample.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=180, merge_below_ratio=0.112),
     )
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     oversized = [chunk for chunk in chunks if chunk.estimated_token_count > 180]
     if oversized:
@@ -301,14 +304,14 @@ def test_splitter_respects_budget_except_unsplittable_code_fence() -> None:
 
 
 def test_splitter_deduplicates_shared_parent_heading_in_merged_chunk() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         MERGED_SECTION_FIXTURE, document_title="development.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=1000, merge_below_ratio=0.02),
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=1000, merge_below_ratio=0.02),
     )
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].body.count("# Development Guide") == 0
@@ -323,30 +326,30 @@ def test_splitter_deduplicates_shared_parent_heading_in_merged_chunk() -> None:
 
 
 def test_splitter_no_longer_holds_options_aggregate() -> None:
-    splitter = SiblingSplitter(CharacterTokenizer())
-    assert not hasattr(splitter, "options")
+    sawyer = SiblingSawyer(CharacterScaler())
+    assert not hasattr(sawyer, "options")
 
 
 def test_splitter_has_no_legacy_isolate_front_matter_argument() -> None:
     import inspect
 
-    assert "isolate_front_matter" not in inspect.signature(SiblingSplitter).parameters
+    assert "isolate_front_matter" not in inspect.signature(SiblingSawyer).parameters
 
 
 def test_splitter_recursively_descends_heading_levels_when_section_is_oversized() -> (
     None
 ):
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         SIBLING_SECTION_FIXTURE, document_title="sibling.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=90, ideal_max_tokens_ratio=1, merge_below_ratio=0.889
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 3
     assert chunks[0].body == "Alpha summary."
@@ -359,32 +362,30 @@ def test_splitter_recursively_descends_heading_levels_when_section_is_oversized(
 def test_splitter_checks_whole_document_before_splitting_by_top_level_headings() -> (
     None
 ):
-    document = MarkdownParser().parse(
-        MULTI_ROOT_FIXTURE, document_title="multi-root.md"
-    )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=200, merge_below_ratio=0.1),
+    document = MarkdownFeller().fell(MULTI_ROOT_FIXTURE, document_title="multi-root.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=200, merge_below_ratio=0.1),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].body == "# First\n\nFirst body.\n\n# Second\n\nSecond body."
 
 
 def test_splitter_greedily_merges_same_level_siblings_before_descending() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         GREEDY_SIBLING_FIXTURE, document_title="siblings.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=62, ideal_max_tokens_ratio=1, merge_below_ratio=0.323
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 2
     assert chunks[0].body == "## One\n\nOne body.\n\n## Two\n\nTwo body."
@@ -395,17 +396,17 @@ def test_splitter_greedily_merges_same_level_siblings_before_descending() -> Non
 
 
 def test_splitter_exposes_ancestor_headings_for_single_leaf_chunk() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         THIRD_LEVEL_FIXTURE, document_title="third-level.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=40, ideal_max_tokens_ratio=1, merge_below_ratio=0.0
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert chunks[0].ancestor_headings == ((1, "Root"), (2, "Scope"))
     assert chunks[0].own_heading == (3, "A")
@@ -414,15 +415,15 @@ def test_splitter_exposes_ancestor_headings_for_single_leaf_chunk() -> None:
 
 
 def test_splitter_exposes_common_ancestor_headings_for_multi_entry_chunk() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         THIRD_LEVEL_FIXTURE, document_title="third-level.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=110, merge_below_ratio=0.0),
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=110, merge_below_ratio=0.0),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].ancestor_headings == ()
@@ -431,19 +432,19 @@ def test_splitter_exposes_common_ancestor_headings_for_multi_entry_chunk() -> No
 
 
 def test_splitter_fragment_uses_ancestor_headings_and_keeps_own_title() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         THIRD_LEVEL_FIXTURE, document_title="third-level.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=50,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert chunks[0].ancestor_headings == ((1, "Root"), (2, "Scope"))
     assert chunks[0].own_heading == (3, "A")
@@ -452,12 +453,12 @@ def test_splitter_fragment_uses_ancestor_headings_and_keeps_own_title() -> None:
 
 
 def test_splitter_externalizes_own_title_from_body() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         THIRD_LEVEL_FIXTURE, document_title="third-level.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=30,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -465,7 +466,7 @@ def test_splitter_externalizes_own_title_from_body() -> None:
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert chunks[0].ancestor_headings == ((1, "Root"), (2, "Scope"))
     assert chunks[0].section_level == 3
@@ -474,44 +475,42 @@ def test_splitter_externalizes_own_title_from_body() -> None:
 
 
 def test_splitter_body_includes_headings_by_default() -> None:
-    document = MarkdownParser().parse(
-        MULTI_ROOT_FIXTURE, document_title="multi-root.md"
-    )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=200, merge_below_ratio=0.0),
+    document = MarkdownFeller().fell(MULTI_ROOT_FIXTURE, document_title="multi-root.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=200, merge_below_ratio=0.0),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].body == "# First\n\nFirst body.\n\n# Second\n\nSecond body."
 
 
 def test_splitter_body_includes_nested_headings_by_default() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         THIRD_LEVEL_FIXTURE, document_title="third-level.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=60,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].body == ("## Scope\n\n### A\n\nAlpha body.\n\n### B\n\nBeta body.")
 
 
 def test_splitter_measures_section_token_counts_bottom_up() -> None:
-    document = MarkdownParser().parse("# A\n\nBody", document_title="tokens.md")
-    splitter = IncrementalSiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell("# A\n\nBody", document_title="tokens.md")
+    sawyer = IncrementalSiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=9,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -519,8 +518,8 @@ def test_splitter_measures_section_token_counts_bottom_up() -> None:
         ),
     )
 
-    measured_root = IncrementalCountingContext(splitter).prepare(document.root)
-    chunks = splitter.split(document)
+    measured_root = IncrementalCountingContext(sawyer).prepare(document.root)
+    chunks = saw(sawyer, document)
 
     measured_section = measured_root.children[0]
     assert measured_section.body_tokens == len("Body")
@@ -536,34 +535,34 @@ def test_splitter_measures_section_token_counts_bottom_up() -> None:
 
 
 def test_splitter_splits_when_rendered_heading_budget_is_tight() -> None:
-    document = MarkdownParser().parse("# A\n\nBody", document_title="estimated.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell("# A\n\nBody", document_title="estimated.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=7,
             merge_below_ratio=0.0,
             block_options={},
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 2
     assert "".join(chunk.body for chunk in chunks) == "Body"
-    assert all(chunk.token_count <= splitter.max_tokens for chunk in chunks)
+    assert all(chunk.token_count <= sawyer.max_tokens for chunk in chunks)
 
 
 def test_estimated_tokens_do_not_include_trailing_separator_for_last_block() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         "# A\n\nOne\n\nTwo",
         document_title="multi-block.md",
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=100, merge_below_ratio=0.0),
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=100, merge_below_ratio=0.0),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].body == "One\n\nTwo"
@@ -573,34 +572,34 @@ def test_estimated_tokens_do_not_include_trailing_separator_for_last_block() -> 
 
 def test_estimated_tokens_do_not_use_tail_window_between_blocks() -> None:
     long_block = "a" * 80
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         f"# A\n\n{long_block}\n\nb",
         document_title="block-join.md",
     )
-    tokenizer = RecordingTokenizer()
-    splitter = IncrementalSiblingSplitter(
-        tokenizer=tokenizer,
-        **splitter_options(max_tokens=500, merge_below_ratio=0.0),
+    scaler = RecordingScaler()
+    sawyer = IncrementalSiblingSawyer(
+        scaler=scaler,
+        **sawyer_options(max_tokens=500, merge_below_ratio=0.0),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].estimated_token_count == chunks[0].token_count - len("\n\n")
-    assert f"{long_block}\n\n" in tokenizer.counted
-    assert f"{long_block[-64:]}\n\n" not in tokenizer.counted
+    assert f"{long_block}\n\n" in scaler.counted
+    assert f"{long_block[-64:]}\n\n" not in scaler.counted
 
 
 def test_entry_merge_uses_tail_window_only_between_entry_groups() -> None:
     long_body = "a" * 80
-    tokenizer = RecordingTokenizer()
-    splitter = IncrementalSiblingSplitter(
-        tokenizer=tokenizer,
-        **splitter_options(max_tokens=500, merge_below_ratio=0.0),
+    scaler = RecordingScaler()
+    sawyer = IncrementalSiblingSawyer(
+        scaler=scaler,
+        **sawyer_options(max_tokens=500, merge_below_ratio=0.0),
     )
     heading_path = ((1, "A"),)
     heading_tc = len("# A")
-    left = ChunkDraft(
+    left = Bundle(
         entries=[
             Entry(
                 headings=heading_path,
@@ -616,7 +615,7 @@ def test_entry_merge_uses_tail_window_only_between_entry_groups() -> None:
         body_token_count=len(long_body),
         token_count=heading_tc + len(long_body),
     )
-    right = ChunkDraft(
+    right = Bundle(
         entries=[
             Entry(
                 headings=heading_path,
@@ -633,39 +632,40 @@ def test_entry_merge_uses_tail_window_only_between_entry_groups() -> None:
         token_count=heading_tc + 1,
     )
 
-    merged = splitter._merge_drafts(left, right)
+    merged = sawyer._merge_bundles(left, right)
 
     assert merged.token_count == len("# A") + len(long_body + "\n\nb")
-    assert f"{long_body}\n\n" not in tokenizer.counted
-    assert f"{long_body[-8:]}\n\n" in tokenizer.counted
+    assert f"{long_body}\n\n" not in scaler.counted
+    assert f"{long_body[-8:]}\n\n" in scaler.counted
 
 
 def test_heading_estimate_counts_title_once_and_marker_as_one_token() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         "### Cacheable Title\n\nBody", document_title="tokens.md"
     )
-    tokenizer = RecordingTokenizer()
-    splitter = IncrementalSiblingSplitter(
-        tokenizer=tokenizer,
-        **splitter_options(max_tokens=100, merge_below_ratio=0.0),
+    scaler = RecordingScaler()
+    sawyer = IncrementalSiblingSawyer(
+        scaler=scaler,
+        **sawyer_options(max_tokens=100, merge_below_ratio=0.0),
     )
 
-    measured_root = IncrementalCountingContext(splitter).prepare(document.root)
+    measured_root = IncrementalCountingContext(sawyer).prepare(document.root)
 
     measured_section = measured_root.children[0]
     assert measured_section.title_tokens == len("### Cacheable Title")
-    assert "### Cacheable Title" in tokenizer.counted
+    assert "### Cacheable Title" in scaler.counted
 
 
 def test_estimated_tokens_include_rendered_heading_path() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         THIRD_LEVEL_FIXTURE, document_title="third-level.md"
     )
 
-    chunks = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=100, merge_below_ratio=0.0),
-    ).split(document)
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=100, merge_below_ratio=0.0),
+    )
+    chunks = saw(sawyer, document)
 
     assert chunks[0].own_heading == (1, "Root")
     assert chunks[0].body.startswith("## Scope\n\n")
@@ -689,36 +689,36 @@ Two body.
 
 Three body.
 """
-    document = MarkdownParser().parse(markdown, document_title="recording.md")
-    tokenizer = RecordingTokenizer()
-    splitter = IncrementalSiblingSplitter(
-        tokenizer=tokenizer,
-        **splitter_options(max_tokens=35, merge_below_ratio=0.0),
+    document = MarkdownFeller().fell(markdown, document_title="recording.md")
+    scaler = RecordingScaler()
+    sawyer = IncrementalSiblingSawyer(
+        scaler=scaler,
+        **sawyer_options(max_tokens=35, merge_below_ratio=0.0),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     oversized_rendering = "# Parent\n\n## One\n\nOne body.\n\n## Two\n\nTwo body.\n\n## Three\n\nThree body."
-    assert oversized_rendering not in tokenizer.counted
+    assert oversized_rendering not in scaler.counted
     assert all(chunk.estimated_token_count <= 35 for chunk in chunks)
 
 
 def test_section_chunk_estimate_includes_heading_tokens_without_entries() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         THIRD_LEVEL_FIXTURE, document_title="third-level.md"
     )
-    splitter = IncrementalSiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=100, merge_below_ratio=0.0),
+    sawyer = IncrementalSiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=100, merge_below_ratio=0.0),
     )
-    measured_root = IncrementalCountingContext(splitter).prepare(document.root)
+    measured_root = IncrementalCountingContext(sawyer).prepare(document.root)
     measured_scope = measured_root.children[0].children[0]
 
     assert measured_scope.subtree_tokens == 37
 
 
 def test_section_view_caches_single_chunk_eligibility_from_standalone_blocks() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         """# Root
 
 Intro.
@@ -735,16 +735,16 @@ Plain body.
 """,
         document_title="standalone-cache.md",
     )
-    splitter = IncrementalSiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = IncrementalSiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=500,
             merge_below_ratio=0.0,
             block_options={"table": BaseParams(isolated=True)},
         ),
     )
 
-    measured_root = IncrementalCountingContext(splitter).prepare(document.root)
+    measured_root = IncrementalCountingContext(sawyer).prepare(document.root)
     measured_h1 = measured_root.children[0]
     measured_plain = measured_h1.children[0]
     measured_table = measured_h1.children[1]
@@ -754,9 +754,9 @@ Plain body.
     assert measured_h1.can_emit_as_single_chunk is False
     assert measured_root.can_emit_as_single_chunk is False
 
-    disabled_splitter = IncrementalSiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    disabled_splitter = IncrementalSiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=500,
             merge_below_ratio=0.0,
             block_options={},
@@ -775,9 +775,9 @@ Plain body.
 
 def test_splitter_rejects_invalid_ideal_max_tokens_ratio() -> None:
     try:
-        SiblingSplitter(
-            tokenizer=CharacterTokenizer(),
-            **splitter_options(max_tokens=10, ideal_max_tokens_ratio=0),
+        SiblingSawyer(
+            scaler=CharacterScaler(),
+            **sawyer_options(max_tokens=10, ideal_max_tokens_ratio=0),
         )
     except ValueError as exc:
         assert str(exc) == "ideal_max_tokens_ratio must be greater than 0 and at most 1"
@@ -786,20 +786,20 @@ def test_splitter_rejects_invalid_ideal_max_tokens_ratio() -> None:
 
 
 def test_sibling_splitter_uses_ideal_budget_for_initial_splitting() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         "# A\n\nalpha1\n\nbravo2",
         document_title="ideal-budget.md",
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=30,
             ideal_max_tokens_ratio=0.5,
             merge_below_ratio=0.0,
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert [chunk.body for chunk in chunks] == [
         "alpha1",
@@ -809,40 +809,40 @@ def test_sibling_splitter_uses_ideal_budget_for_initial_splitting() -> None:
 
 
 def test_merge_small_chunks_can_exceed_ideal_budget_up_to_max_tokens() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         "# A\n\nalpha1\n\nbravo2",
         document_title="ideal-budget.md",
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=30,
             ideal_max_tokens_ratio=0.5,
             merge_below_ratio=0.967,
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert [chunk.body for chunk in chunks] == ["alpha1\n\nbravo2"]
     assert 15 < chunks[0].token_count <= 30
 
 
 def test_merge_small_chunks_combines_sibling_sections_with_same_parent() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         "# Parent\n\n## One\n\nA\n\n## Two\n\nB",
         document_title="same-parent.md",
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=40,
             ideal_max_tokens_ratio=0.8,
             merge_below_ratio=0.975,
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert [chunk.body for chunk in chunks] == ["## One\n\nA\n\n## Two\n\nB"]
     assert chunks[0].estimated_token_count == chunks[0].token_count
@@ -850,13 +850,13 @@ def test_merge_small_chunks_combines_sibling_sections_with_same_parent() -> None
 
 
 def test_merge_below_ratio_does_not_merge_past_rendered_budget() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         "# A\n\n" + "x " * 31 + "\n\ny",
         document_title="merge-budget.md",
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=60,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.167,
@@ -864,7 +864,7 @@ def test_merge_below_ratio_does_not_merge_past_rendered_budget() -> None:
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert [chunk.token_count for chunk in chunks] == [62, 11]
     assert chunks[1].body == "x x\n\ny"
@@ -872,20 +872,20 @@ def test_merge_below_ratio_does_not_merge_past_rendered_budget() -> None:
 
 
 def test_merge_below_ratio_zero_disables_merging() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         "# A\n\nalpha1\n\nbravo2",
         document_title="merge-none.md",
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=30,
             ideal_max_tokens_ratio=0.5,
             merge_below_ratio=0.0,
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     # With merging disabled, the two short tails stay as separate chunks.
     assert [chunk.body for chunk in chunks] == [
@@ -895,13 +895,13 @@ def test_merge_below_ratio_zero_disables_merging() -> None:
 
 
 def test_merge_below_ratio_absorbs_same_parent_paragraph_tails() -> None:
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=100, merge_below_ratio=0.25),
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=100, merge_below_ratio=0.25),
     )
     heading_path = ((1, "A"),)
     heading_tc = len("# A")
-    left = ChunkDraft(
+    left = Bundle(
         entries=[
             Entry(
                 headings=heading_path,
@@ -918,7 +918,7 @@ def test_merge_below_ratio_absorbs_same_parent_paragraph_tails() -> None:
         token_count=heading_tc + len("section body"),
         split_origin="section",
     )
-    section_tail = ChunkDraft(
+    section_tail = Bundle(
         entries=[
             Entry(
                 headings=heading_path,
@@ -935,7 +935,7 @@ def test_merge_below_ratio_absorbs_same_parent_paragraph_tails() -> None:
         token_count=heading_tc + len("tiny section"),
         split_origin="section",
     )
-    fragment_tail = ChunkDraft(
+    fragment_tail = Bundle(
         entries=[
             Entry(
                 headings=heading_path,
@@ -952,7 +952,7 @@ def test_merge_below_ratio_absorbs_same_parent_paragraph_tails() -> None:
         token_count=heading_tc + len("tiny fragment"),
         split_origin="fragment",
     )
-    text_piece_tail = ChunkDraft(
+    text_piece_tail = Bundle(
         entries=[
             Entry(
                 headings=heading_path,
@@ -970,23 +970,23 @@ def test_merge_below_ratio_absorbs_same_parent_paragraph_tails() -> None:
         split_origin="text_piece",
     )
 
-    assert len(splitter._merge_small_chunks([left, section_tail])[0].entries) == 2
-    assert len(splitter._merge_small_chunks([left, fragment_tail])[0].entries) == 2
-    assert len(splitter._merge_small_chunks([left, text_piece_tail])[0].entries) == 2
+    assert len(sawyer._merge_small_chunks([left, section_tail])[0].entries) == 2
+    assert len(sawyer._merge_small_chunks([left, fragment_tail])[0].entries) == 2
+    assert len(sawyer._merge_small_chunks([left, text_piece_tail])[0].entries) == 2
 
 
 def test_splitter_keeps_oversized_lists_intact_when_in_nosplit_kinds() -> None:
-    document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(LIST_FIXTURE, document_title="list.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=20,
             merge_below_ratio=0.0,
             block_options={"list": BaseParams(split=False)},
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].body == LIST_FIXTURE.strip()
@@ -994,10 +994,10 @@ def test_splitter_keeps_oversized_lists_intact_when_in_nosplit_kinds() -> None:
 
 
 def test_splitter_can_split_oversized_lists_by_default() -> None:
-    document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(LIST_FIXTURE, document_title="list.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=20,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1005,7 +1005,7 @@ def test_splitter_can_split_oversized_lists_by_default() -> None:
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert [chunk.body for chunk in chunks] == [
         "- alpha alpha alpha",
@@ -1029,10 +1029,10 @@ def test_splitter_splits_oversized_tables_by_rows_with_repeated_header() -> None
 | Gamma | 300 |
 | Delta | 400 |
 """
-    document = MarkdownParser().parse(md, document_title="table.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(md, document_title="table.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=28,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1040,7 +1040,7 @@ def test_splitter_splits_oversized_tables_by_rows_with_repeated_header() -> None
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 4
     assert all(chunk.chunk_type == "table" for chunk in chunks)
@@ -1064,10 +1064,10 @@ def test_splitter_can_omit_repeated_header_for_split_table_pieces() -> None:
 | Gamma | 300 |
 | Delta | 400 |
 """
-    document = MarkdownParser().parse(md, document_title="table.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(md, document_title="table.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=28,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1080,7 +1080,7 @@ def test_splitter_can_omit_repeated_header_for_split_table_pieces() -> None:
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 4
     assert "| Name | Value |" in chunks[0].body
@@ -1103,10 +1103,10 @@ def test_splitter_keeps_oversized_tables_intact_when_in_nosplit_kinds() -> None:
 | Gamma | 300 |
 | Delta | 400 |
 """
-    document = MarkdownParser().parse(md, document_title="table.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(md, document_title="table.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=58,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1114,7 +1114,7 @@ def test_splitter_keeps_oversized_tables_intact_when_in_nosplit_kinds() -> None:
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].body == md.strip()
@@ -1128,10 +1128,10 @@ def test_splitter_uses_block_max_tokens_for_table_row_packing() -> None:
 | Beta | 200 |
 | Gamma | 300 |
 """
-    document = MarkdownParser().parse(md, document_title="table.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(md, document_title="table.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=79,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1139,7 +1139,7 @@ def test_splitter_uses_block_max_tokens_for_table_row_packing() -> None:
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 3
     assert all("| Name | Value |" in chunk.body for chunk in chunks)
@@ -1156,10 +1156,10 @@ def test_splitter_preserves_oversized_single_table_rows() -> None:
 | Alpha | very very very very very very very very long |
 | Beta | short |
 """
-    document = MarkdownParser().parse(md, document_title="table.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(md, document_title="table.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=58,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1167,7 +1167,7 @@ def test_splitter_preserves_oversized_single_table_rows() -> None:
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 2
     assert "| Alpha | very very very very very very very very long |" in chunks[0].body
@@ -1177,10 +1177,10 @@ def test_splitter_preserves_oversized_single_table_rows() -> None:
 
 
 def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
-    document = MarkdownParser().parse(CODE_FENCE_FIXTURE, document_title="code.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(CODE_FENCE_FIXTURE, document_title="code.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=28,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1188,7 +1188,7 @@ def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert [chunk.body for chunk in chunks] == [
         '```python\nprint("alpha")\n```',
@@ -1200,16 +1200,16 @@ def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
 
 
 def test_splitter_never_splits_oversized_urls() -> None:
-    document = MarkdownParser().parse(LONG_URL_FIXTURE, document_title="url.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(LONG_URL_FIXTURE, document_title="url.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=30,
             merge_below_ratio=0.0,
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].body == LONG_URL_FIXTURE
@@ -1233,16 +1233,16 @@ Body content here.
 
 
 def test_front_matter_is_handled_as_normal_block_by_default() -> None:
-    document = MarkdownParser().parse(FRONT_MATTER_FIXTURE, document_title="doc.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(FRONT_MATTER_FIXTURE, document_title="doc.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=500,
             merge_below_ratio=0.0,
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].chunk_id == "chunk-0001"
@@ -1258,13 +1258,13 @@ def test_front_matter_is_handled_as_normal_block_by_default() -> None:
 
 
 def test_subtree_splitter_handles_front_matter_as_root_body_chunk() -> None:
-    document = MarkdownParser().parse(FRONT_MATTER_FIXTURE, document_title="doc.md")
-    splitter = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=100, merge_below_ratio=0.0),
+    document = MarkdownFeller().fell(FRONT_MATTER_FIXTURE, document_title="doc.md")
+    sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=100, merge_below_ratio=0.0),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert chunks[0].chunk_type == "paragraph"
     assert chunks[0].chunk_id == "chunk-0001"
@@ -1276,17 +1276,17 @@ def test_subtree_splitter_handles_front_matter_as_root_body_chunk() -> None:
 
 
 def test_front_matter_can_be_isolated_with_block_params() -> None:
-    document = MarkdownParser().parse(FRONT_MATTER_FIXTURE, document_title="doc.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(FRONT_MATTER_FIXTURE, document_title="doc.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=500,
             merge_below_ratio=0.0,
             block_options={"front_matter": BaseParams(isolated=True)},
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert chunks[0].chunk_id == "chunk-0001"
     assert chunks[0].chunk_type == "front_matter"
@@ -1298,18 +1298,18 @@ def test_front_matter_can_be_isolated_with_block_params() -> None:
 
 
 def test_no_front_matter_works_normally() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         "# Just a heading\n\nSome text.", document_title="doc.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=500,
             merge_below_ratio=0.0,
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert chunks[0].chunk_id == "chunk-0001"
     assert chunks[0].own_heading == (1, "Just a heading")
@@ -1327,13 +1327,13 @@ Second paragraph.
 
 
 def test_thematic_break_is_ignored_in_chunk_body() -> None:
-    document = MarkdownParser().parse(THEMATIC_BREAK_FIXTURE, document_title="hr.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=500, merge_below_ratio=0.0),
+    document = MarkdownFeller().fell(THEMATIC_BREAK_FIXTURE, document_title="hr.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=500, merge_below_ratio=0.0),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert "---" not in chunks[0].body
@@ -1342,16 +1342,16 @@ def test_thematic_break_is_ignored_in_chunk_body() -> None:
 
 
 def test_thematic_break_is_ignored_at_chunk_boundary() -> None:
-    document = MarkdownParser().parse(THEMATIC_BREAK_FIXTURE, document_title="hr.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(THEMATIC_BREAK_FIXTURE, document_title="hr.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=40,
             merge_below_ratio=0.0,
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert not any("---" in chunk.body for chunk in chunks)
     assert all(chunk.body.strip() != "---" for chunk in chunks)
@@ -1359,13 +1359,13 @@ def test_thematic_break_is_ignored_at_chunk_boundary() -> None:
 
 def test_thematic_break_at_document_start_is_ignored() -> None:
     md = "---\n\nParagraph text."
-    document = MarkdownParser().parse(md, document_title="hr-first.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=500, merge_below_ratio=0.0),
+    document = MarkdownFeller().fell(md, document_title="hr-first.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=500, merge_below_ratio=0.0),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
     assert len(chunks) == 1
     assert "---" not in chunks[0].body
     assert "Paragraph text." in chunks[0].body
@@ -1373,10 +1373,9 @@ def test_thematic_break_at_document_start_is_ignored() -> None:
 
 def test_thematic_break_after_front_matter_is_ignored_in_body_content() -> None:
     md = "---\ntitle: T\n---\n\n---\n\nBody"
-    document = MarkdownParser().parse(md)
-    chunks = SiblingSplitter(
-        CharacterTokenizer(), max_tokens=100, merge_below_ratio=0.0
-    ).split(document)
+    document = MarkdownFeller().fell(md)
+    sawyer = SiblingSawyer(CharacterScaler(), max_tokens=100, merge_below_ratio=0.0)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].chunk_type == "paragraph"
@@ -1387,10 +1386,10 @@ def test_thematic_break_after_front_matter_is_ignored_in_body_content() -> None:
 
 def test_thematic_break_after_split_list_is_ignored() -> None:
     md = f"- {'a' * 40}\n- {'b' * 40}\n\n---\n\nAfter"
-    document = MarkdownParser().parse(md)
-    chunks = SiblingSplitter(
-        CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(md)
+    sawyer = SiblingSawyer(
+        CharacterScaler(),
+        **sawyer_options(
             max_tokens=50,
             merge_below_ratio=0.0,
             block_options={
@@ -1398,7 +1397,8 @@ def test_thematic_break_after_split_list_is_ignored() -> None:
                 "paragraph": BaseParams(),
             },
         ),
-    ).split(document)
+    )
+    chunks = saw(sawyer, document)
 
     assert not any("---" in chunk.body for chunk in chunks)
     assert all(chunk.body.strip() != "---" for chunk in chunks)
@@ -1418,15 +1418,15 @@ If you encounter issues, check the following.
 
 def test_empty_section_discarded_by_default() -> None:
     """Heading-only chunks are discarded by default."""
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         EMPTY_SECTION_FIXTURE, document_title="empty-section.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=500, merge_below_ratio=0.0),
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=500, merge_below_ratio=0.0),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert all(chunk.body.strip() for chunk in chunks)
     assert "This guide walks you through the basics" in chunks[0].body
@@ -1435,19 +1435,19 @@ def test_empty_section_discarded_by_default() -> None:
 
 def test_empty_section_discarded_by_default_with_headings() -> None:
     """Heading-only chunks discarded by default (skip_empty_sections=True)."""
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         EMPTY_SECTION_FIXTURE, document_title="empty-section.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=50,
             merge_below_ratio=0.0,
             skip_empty_sections=True,
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert all(chunk.body.strip() for chunk in chunks)
     assert not any(
@@ -1458,56 +1458,56 @@ def test_empty_section_discarded_by_default_with_headings() -> None:
 
 def test_empty_section_kept_when_skip_empty_sections_false() -> None:
     """Heading-only chunks kept when skip_empty_sections=False."""
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         EMPTY_SECTION_FIXTURE, document_title="empty-section.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=500,
             merge_below_ratio=0.0,
             skip_empty_sections=False,
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert any("## Installation" in chunk.body for chunk in chunks)
 
 
 def test_empty_section_kept_with_skip_false() -> None:
     """Heading-only chunks are kept when skip_empty_sections=False."""
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         EMPTY_SECTION_FIXTURE, document_title="empty-section.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=500,
             merge_below_ratio=0.0,
             skip_empty_sections=False,
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert all(chunk.body.strip() for chunk in chunks)
     assert any("Installation" in chunk.body for chunk in chunks)
 
 
 def test_empty_section_between_non_empty_sections_is_skipped() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         EMPTY_SECTION_FIXTURE, document_title="empty-section.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=50,
             merge_below_ratio=0.0,
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert all(chunk.body.strip() for chunk in chunks)
 
@@ -1542,19 +1542,19 @@ Some text after.
 
 def test_standalone_table_is_isolated_even_when_budget_allows_merge() -> None:
     """Table is emitted as its own chunk even when whole doc fits in budget."""
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         STANDALONE_TABLE_FIXTURE, document_title="standalone.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=1000,
             merge_below_ratio=0.0,
             block_options={"table": BaseParams(isolated=True)},
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     types = [c.chunk_type for c in chunks]
     assert "table" in types
@@ -1569,19 +1569,19 @@ def test_standalone_table_is_isolated_even_when_budget_allows_merge() -> None:
 
 def test_standalone_blocks_empty_frozenset_restores_merge_behavior() -> None:
     """Empty standalone_kinds merges table back with paragraphs."""
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         STANDALONE_TABLE_FIXTURE, document_title="standalone.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=1000,
             merge_below_ratio=0.0,
             block_options={},
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert "Intro paragraph." in chunks[0].body
@@ -1592,19 +1592,19 @@ def test_standalone_blocks_empty_frozenset_restores_merge_behavior() -> None:
 
 def test_standalone_chunk_not_merged_by_merge_small_chunks() -> None:
     """Small standalone chunks are not merged back into adjacent paragraphs."""
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         STANDALONE_CODE_FENCE_IN_SECTION, document_title="standalone.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=1000,
             merge_below_ratio=0.1,
             block_options={"code_fence": BaseParams(isolated=True)},
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     code_chunks = [c for c in chunks if c.chunk_type == "code_fence"]
     assert len(code_chunks) == 1
@@ -1617,17 +1617,17 @@ def test_oversized_standalone_code_fence_with_split_oversized() -> None:
     """Oversized standalone code fence splits into independent code chunks."""
     long_code = "```python\n" + "\n".join(f"line{i}" for i in range(30)) + "\n```"
     md = f"# Code\n\n{long_code}"
-    document = MarkdownParser().parse(md, document_title="code.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(md, document_title="code.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=50,
             merge_below_ratio=0.0,
             block_options={"code_fence": BaseParams(isolated=True)},
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) > 1
     assert all(c.chunk_type == "code_fence" for c in chunks)
@@ -1639,17 +1639,17 @@ def test_oversized_standalone_code_fence_without_split_stays_intact() -> None:
     """Oversized standalone code fence stays as one chunk when nosplit_kinds includes it."""
     long_code = "```python\n" + "\n".join(f"line{i}" for i in range(30)) + "\n```"
     md = f"# Code\n\n{long_code}"
-    document = MarkdownParser().parse(md, document_title="code.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(md, document_title="code.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=50,
             merge_below_ratio=0.0,
             block_options={"code_fence": BaseParams(isolated=True, split=False)},
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].chunk_type == "code_fence"
@@ -1657,7 +1657,7 @@ def test_oversized_standalone_code_fence_without_split_stays_intact() -> None:
 
 
 def test_subtree_splitter_isolates_standalone_blocks_in_body() -> None:
-    """SubtreeSplitter isolates standalone blocks from direct body."""
+    """SubtreeSawyer isolates standalone blocks from direct body."""
     md = """# Doc
 
 Intro.
@@ -1672,17 +1672,17 @@ Outro.
 
 Child body.
 """
-    document = MarkdownParser().parse(md, document_title="section.md")
-    splitter = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(md, document_title="section.md")
+    sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=1000,
             merge_below_ratio=0.0,
             block_options={"table": BaseParams(isolated=True)},
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     table_chunks = [c for c in chunks if c.chunk_type == "table"]
     assert len(table_chunks) == 1
@@ -1693,19 +1693,19 @@ Child body.
 
 def test_standalone_block_preserves_heading_context() -> None:
     """Standalone chunk retains heading breadcrumbs."""
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         STANDALONE_CODE_FENCE_IN_SECTION, document_title="headings.md"
     )
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=1000,
             merge_below_ratio=0.0,
             block_options={"code_fence": BaseParams(isolated=True)},
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
     code_chunks = [c for c in chunks if c.chunk_type == "code_fence"]
 
     assert len(code_chunks) == 1
@@ -1728,17 +1728,17 @@ Parent intro.
 | val  |
 
 """
-    document = MarkdownParser().parse(md, document_title="nested.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(md, document_title="nested.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=500,
             merge_below_ratio=0.0,
             block_options={"table": BaseParams(isolated=True)},
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     table_chunks = [c for c in chunks if c.chunk_type == "table"]
     assert len(table_chunks) == 1
@@ -1759,10 +1759,10 @@ def test_per_block_max_tokens_overrides_budget_for_paragraph() -> None:
     """Paragraph splitting respects per-block max_tokens override."""
     # No heading so prefix_tokens=0 and budget equals the override directly.
     long_para = " ".join(f"word{i}" for i in range(100))
-    document = MarkdownParser().parse(long_para, document_title="override.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(long_para, document_title="override.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=500,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1770,7 +1770,7 @@ def test_per_block_max_tokens_overrides_budget_for_paragraph() -> None:
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     # With a 30-token override the paragraph should be split into many chunks
     assert len(chunks) > 1
@@ -1783,10 +1783,10 @@ def test_per_block_max_tokens_falls_back_to_unified_max_tokens() -> None:
     # Short paragraph (30 words ≈ 210 tokens) fits within max_tokens=500.
     short_para = " ".join(f"word{i}" for i in range(30))
     md = f"# Title\n\n{short_para}"
-    document = MarkdownParser().parse(md, document_title="fallback.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(md, document_title="fallback.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=500,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1797,7 +1797,7 @@ def test_per_block_max_tokens_falls_back_to_unified_max_tokens() -> None:
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     # The paragraph fits within 500 tokens → single chunk
     assert len(chunks) == 1
@@ -1807,17 +1807,17 @@ def test_per_block_max_tokens_for_code_fence() -> None:
     """Per-block override works for standalone code fences."""
     long_code = "```python\n" + "\n".join(f"line{i}" for i in range(30)) + "\n```"
     md = f"# Code\n\n{long_code}"
-    document = MarkdownParser().parse(md, document_title="code-override.md")
-    splitter = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(md, document_title="code-override.md")
+    sawyer = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=500,
             merge_below_ratio=0.0,
             block_options={"code_fence": BaseParams(isolated=True, max_tokens=25)},
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) > 1
     assert all(c.chunk_type == "code_fence" for c in chunks)
@@ -1827,9 +1827,9 @@ def test_per_block_max_tokens_for_code_fence() -> None:
 
 def test_per_block_max_tokens_validation_rejects_non_positive() -> None:
     try:
-        SiblingSplitter(
-            tokenizer=CharacterTokenizer(),
-            **splitter_options(
+        SiblingSawyer(
+            scaler=CharacterScaler(),
+            **sawyer_options(
                 block_options={"paragraph": BaseParams(max_tokens=0)},
             ),
         )
@@ -1839,9 +1839,9 @@ def test_per_block_max_tokens_validation_rejects_non_positive() -> None:
         raise AssertionError("Expected non-positive override validation to fail")
 
     try:
-        SiblingSplitter(
-            tokenizer=CharacterTokenizer(),
-            **splitter_options(
+        SiblingSawyer(
+            scaler=CharacterScaler(),
+            **sawyer_options(
                 block_options={"paragraph": BaseParams(max_tokens=-10)},
             ),
         )
@@ -1852,41 +1852,42 @@ def test_per_block_max_tokens_validation_rejects_non_positive() -> None:
 
 
 def test_manual_pipeline_accepts_block_max_tokens() -> None:
-    """Direct splitter configuration respects per-block max_tokens."""
+    """Direct sawyer configuration respects per-block max_tokens."""
     # Large enough that, under the default ``bytes // 3`` counting, the block
     # exceeds ``max_tokens`` and triggers the block-split path where the
     # per-kind ``paragraph`` budget applies.
     long_para = " ".join(f"word{i}" for i in range(400))
-    document = MarkdownParser().parse(long_para)
-    chunks = SiblingSplitter(
-        ApproxByteTokenizer(),
+    document = MarkdownFeller().fell(long_para)
+    sawyer = SiblingSawyer(
+        ApproxByteScaler(),
         max_tokens=500,
         ideal_max_tokens_ratio=1,
         merge_below_ratio=0.0,
         block_options=[BlockConfig(BlockKind.PARAGRAPH, max_tokens=30)],
-    ).split(document)
+    )
+    chunks = saw(sawyer, document)
     assert len(chunks) > 1
     assert all(c.token_count <= 30 for c in chunks)
 
 
 # ---------------------------------------------------------------------------
-# SubtreeSplitter block_options consistency with SiblingSplitter
+# SubtreeSawyer block_options consistency with SiblingSawyer
 # ---------------------------------------------------------------------------
 
 
 def test_subtree_splitter_keeps_oversized_lists_intact_when_nosplit() -> None:
-    """SubtreeSplitter respects nosplit for lists, same as SiblingSplitter."""
-    document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
-    splitter = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    """SubtreeSawyer respects nosplit for lists, same as SiblingSawyer."""
+    document = MarkdownFeller().fell(LIST_FIXTURE, document_title="list.md")
+    sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=20,
             merge_below_ratio=0.0,
             block_options={"list": BaseParams(split=False)},
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].body == LIST_FIXTURE.strip()
@@ -1894,11 +1895,11 @@ def test_subtree_splitter_keeps_oversized_lists_intact_when_nosplit() -> None:
 
 
 def test_subtree_splitter_can_split_oversized_lists_by_default() -> None:
-    """SubtreeSplitter splits lists when not in nosplit, same as SiblingSplitter."""
-    document = MarkdownParser().parse(LIST_FIXTURE, document_title="list.md")
-    splitter = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    """SubtreeSawyer splits lists when not in nosplit, same as SiblingSawyer."""
+    document = MarkdownFeller().fell(LIST_FIXTURE, document_title="list.md")
+    sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=20,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1906,7 +1907,7 @@ def test_subtree_splitter_can_split_oversized_lists_by_default() -> None:
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) > 1
     assert all(chunk.body_token_count <= 20 for chunk in chunks)
@@ -1914,7 +1915,7 @@ def test_subtree_splitter_can_split_oversized_lists_by_default() -> None:
 
 
 def test_subtree_splitter_splits_oversized_tables_when_isolated() -> None:
-    """SubtreeSplitter isolates and splits oversized tables, same as SiblingSplitter."""
+    """SubtreeSawyer isolates and splits oversized tables, same as SiblingSawyer."""
     md = """# Data
 
 | Name | Value |
@@ -1924,10 +1925,10 @@ def test_subtree_splitter_splits_oversized_tables_when_isolated() -> None:
 | Gamma | 300 |
 | Delta | 400 |
 """
-    document = MarkdownParser().parse(md, document_title="table.md")
-    splitter = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(md, document_title="table.md")
+    sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=58,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1935,7 +1936,7 @@ def test_subtree_splitter_splits_oversized_tables_when_isolated() -> None:
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     table_chunks = [c for c in chunks if c.chunk_type == "table"]
     assert len(table_chunks) > 1
@@ -1944,7 +1945,7 @@ def test_subtree_splitter_splits_oversized_tables_when_isolated() -> None:
 
 
 def test_subtree_splitter_can_omit_repeated_header_for_split_tables() -> None:
-    """SubtreeSplitter uses the same table params as SiblingSplitter."""
+    """SubtreeSawyer uses the same table params as SiblingSawyer."""
     md = """# Data
 
 | Name | Value |
@@ -1954,10 +1955,10 @@ def test_subtree_splitter_can_omit_repeated_header_for_split_tables() -> None:
 | Gamma | 300 |
 | Delta | 400 |
 """
-    document = MarkdownParser().parse(md, document_title="table.md")
-    splitter = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(md, document_title="table.md")
+    sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=58,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -1970,7 +1971,7 @@ def test_subtree_splitter_can_omit_repeated_header_for_split_tables() -> None:
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     table_chunks = [c for c in chunks if c.chunk_type == "table"]
     assert len(table_chunks) > 1
@@ -1979,7 +1980,7 @@ def test_subtree_splitter_can_omit_repeated_header_for_split_tables() -> None:
 
 
 def test_subtree_splitter_keeps_oversized_tables_intact_when_nosplit() -> None:
-    """SubtreeSplitter keeps oversized tables intact when nosplit, same as SiblingSplitter."""
+    """SubtreeSawyer keeps oversized tables intact when nosplit, same as SiblingSawyer."""
     md = """# Data
 
 | Name | Value |
@@ -1989,10 +1990,10 @@ def test_subtree_splitter_keeps_oversized_tables_intact_when_nosplit() -> None:
 | Gamma | 300 |
 | Delta | 400 |
 """
-    document = MarkdownParser().parse(md, document_title="table.md")
-    splitter = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(md, document_title="table.md")
+    sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=58,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -2000,19 +2001,19 @@ def test_subtree_splitter_keeps_oversized_tables_intact_when_nosplit() -> None:
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].token_count > 58
 
 
 def test_subtree_splitter_uses_per_block_max_tokens() -> None:
-    """SubtreeSplitter respects per-block max_tokens, same as SiblingSplitter."""
+    """SubtreeSawyer respects per-block max_tokens, same as SiblingSawyer."""
     long_para = " ".join(f"word{i}" for i in range(100))
-    document = MarkdownParser().parse(long_para, document_title="override.md")
-    splitter = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(long_para, document_title="override.md")
+    sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=500,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
@@ -2020,7 +2021,7 @@ def test_subtree_splitter_uses_per_block_max_tokens() -> None:
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) > 1
     assert all(c.body_token_count <= 30 for c in chunks)
@@ -2028,28 +2029,28 @@ def test_subtree_splitter_uses_per_block_max_tokens() -> None:
 
 
 def test_subtree_splitter_merges_small_fragments() -> None:
-    """SubtreeSplitter merges small fragments from body splitting, same as SiblingSplitter."""
-    document = MarkdownParser().parse(
+    """SubtreeSawyer merges small fragments from body splitting, same as SiblingSawyer."""
+    document = MarkdownFeller().fell(
         "# A\n\nalpha1\n\nbravo2",
         document_title="merge.md",
     )
-    splitter = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=30,
             ideal_max_tokens_ratio=0.5,
             merge_below_ratio=0.967,
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert [chunk.body for chunk in chunks] == ["alpha1\n\nbravo2"]
     assert 15 < chunks[0].token_count <= 30
 
 
 def test_subtree_splitter_uses_body_not_subtree_for_oversize_check() -> None:
-    """SubtreeSplitter checks body tokens (not subtree) for the oversize decision."""
+    """SubtreeSawyer checks body tokens (not subtree) for the oversize decision."""
     md = (
         """# Parent
 
@@ -2060,17 +2061,17 @@ Small body.
 """
         + "Alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike."
     )
-    document = MarkdownParser().parse(md, document_title="body-vs-subtree.md")
-    splitter = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(md, document_title="body-vs-subtree.md")
+    sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=50,
             merge_below_ratio=0.0,
             block_options=markdown_block_options(),
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     # Parent body ("Small body.") fits budget → single chunk despite large subtree
     parent_chunks = [c for c in chunks if c.section_level == 1]
@@ -2089,10 +2090,10 @@ Small body.
 
 
 def test_splitter_default_uses_approx_byte_tokenizer() -> None:
-    from lumberjack.tokenizer import ApproxByteTokenizer
+    from lumberjack.scaler import ApproxByteScaler
 
-    splitter = create_splitter("sibling")
-    assert isinstance(splitter.tokenizer, ApproxByteTokenizer)
+    sawyer = create_sawyer("sibling")
+    assert isinstance(sawyer.scaler, ApproxByteScaler)
 
 
 def test_subtree_splitter_merges_subtree_when_within_budget() -> None:
@@ -2109,13 +2110,13 @@ One body.
 
 Two body.
 """
-    document = MarkdownParser().parse(fixture, document_title="t.md")
-    splitter = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=1000, merge_below_ratio=0.0),
+    document = MarkdownFeller().fell(fixture, document_title="t.md")
+    sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=1000, merge_below_ratio=0.0),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].ancestor_headings == ()
@@ -2140,10 +2141,10 @@ def test_subtree_splitter_does_not_merge_when_subtree_has_standalone() -> None:
 
 One body.
 """
-    document = MarkdownParser().parse(fixture, document_title="t.md")
-    splitter = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(fixture, document_title="t.md")
+    sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=10000,  # well above subtree size
             merge_below_ratio=0.0,
             block_options=markdown_block_options(
@@ -2152,7 +2153,7 @@ One body.
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     # Standalone table forces split: not collapsed into one chunk.
     assert len(chunks) >= 2
@@ -2163,7 +2164,7 @@ One body.
 
 
 def test_incremental_subtree_splitter_merges_subtree_when_within_budget() -> None:
-    """IncrementalSubtreeSplitter collapses a fitting subtree to one chunk."""
+    """IncrementalSubtreeSawyer collapses a fitting subtree to one chunk."""
     fixture = """# Parent
 
 Parent intro.
@@ -2176,13 +2177,13 @@ One body.
 
 Two body.
 """
-    document = MarkdownParser().parse(fixture, document_title="t.md")
-    splitter = IncrementalSubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=1000, merge_below_ratio=0.0),
+    document = MarkdownFeller().fell(fixture, document_title="t.md")
+    sawyer = IncrementalSubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=1000, merge_below_ratio=0.0),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 1
     assert chunks[0].ancestor_headings == ()
@@ -2211,10 +2212,10 @@ def test_incremental_subtree_splitter_does_not_merge_when_subtree_has_standalone
 
 One body.
 """
-    document = MarkdownParser().parse(fixture, document_title="t.md")
-    splitter = IncrementalSubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    document = MarkdownFeller().fell(fixture, document_title="t.md")
+    sawyer = IncrementalSubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=10000,
             merge_below_ratio=0.0,
             block_options=markdown_block_options(
@@ -2223,7 +2224,7 @@ One body.
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) >= 2
 
@@ -2235,7 +2236,7 @@ def test_subtree_splitter_does_not_cross_top_level_sections() -> None:
     budget so the root short-circuit fails and falls through to per-section
     splitting.  Each top-level section then independently collapses into one
     chunk (each well under 160 tokens).  The two sections are NOT merged
-    together — there is no cross-sibling merging in SubtreeSplitter.
+    together — there is no cross-sibling merging in SubtreeSawyer.
     """
     first_body = "Alpha beta gamma delta. " * 4  # ~100 chars
     second_body = "Echo foxtrot golf hotel. " * 4  # ~100 chars
@@ -2247,13 +2248,13 @@ def test_subtree_splitter_does_not_cross_top_level_sections() -> None:
 
 {second_body}
 """
-    document = MarkdownParser().parse(fixture, document_title="t.md")
-    splitter = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=200, merge_below_ratio=0.0),
+    document = MarkdownFeller().fell(fixture, document_title="t.md")
+    sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=200, merge_below_ratio=0.0),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     # Root short-circuit fails (total > ideal); each top-level section
     # collapses to its own chunk.
@@ -2283,24 +2284,26 @@ One body.
 
 Two body.
 """
-    document = MarkdownParser().parse(fixture, document_title="t.md")
+    document = MarkdownFeller().fell(fixture, document_title="t.md")
 
-    merged = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=1000, merge_below_ratio=0.0),
-    ).split(document)
+    subtree_sawyer = SubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=1000, merge_below_ratio=0.0),
+    )
+    merged = saw(subtree_sawyer, document)
     assert len(merged) == 1
     assert merged[0].ancestor_headings == ()
     assert merged[0].own_heading == (1, "Parent")
     assert "## One" in merged[0].body
     assert "## Two" in merged[0].body
 
-    from lumberjack.splitter import ExactSectionSplitter
+    from lumberjack.sawyer import ExactSectionSawyer
 
-    per_section = ExactSectionSplitter(
-        tokenizer=CharacterTokenizer(),
-        **section_options(max_tokens=1000, merge_below_ratio=0.0),
-    ).split(document)
+    section_sawyer = ExactSectionSawyer(
+        scaler=CharacterScaler(),
+        **section_sawyer_options(max_tokens=1000, merge_below_ratio=0.0),
+    )
+    per_section = saw(section_sawyer, document)
     # section: three chunks, one per section, with external headings in metadata.
     assert len(per_section) == 3
     assert per_section[0].ancestor_headings == ()
@@ -2328,22 +2331,24 @@ One body.
 
 Two body.
 """
-    document = MarkdownParser().parse(fixture, document_title="t.md")
+    document = MarkdownFeller().fell(fixture, document_title="t.md")
 
-    merged = IncrementalSubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(max_tokens=1000, merge_below_ratio=0.0),
-    ).split(document)
+    subtree_sawyer = IncrementalSubtreeSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(max_tokens=1000, merge_below_ratio=0.0),
+    )
+    merged = saw(subtree_sawyer, document)
     assert len(merged) == 1
     assert merged[0].ancestor_headings == ()
     assert merged[0].own_heading == (1, "Parent")
 
-    from lumberjack.splitter.section import IncrementalSectionSplitter
+    from lumberjack.sawyer.section import IncrementalSectionSawyer
 
-    per_section = IncrementalSectionSplitter(
-        tokenizer=CharacterTokenizer(),
-        **section_options(max_tokens=1000, merge_below_ratio=0.0),
-    ).split(document)
+    section_sawyer = IncrementalSectionSawyer(
+        scaler=CharacterScaler(),
+        **section_sawyer_options(max_tokens=1000, merge_below_ratio=0.0),
+    )
+    per_section = saw(section_sawyer, document)
     assert len(per_section) == 3
     assert per_section[0].ancestor_headings == ()
     assert per_section[1].ancestor_headings == ((1, "Parent"),)
@@ -2354,7 +2359,7 @@ Two body.
 
 
 def test_section_splitter_still_splits_standalone_blocks() -> None:
-    """section splitter still routes standalone blocks through body splitting."""
+    """section sawyer still routes standalone blocks through body splitting."""
     fixture = """# Parent
 
 | A | B |
@@ -2365,12 +2370,12 @@ def test_section_splitter_still_splits_standalone_blocks() -> None:
 
 One body.
 """
-    document = MarkdownParser().parse(fixture, document_title="t.md")
-    from lumberjack.splitter import ExactSectionSplitter
+    document = MarkdownFeller().fell(fixture, document_title="t.md")
+    from lumberjack.sawyer import ExactSectionSawyer
 
-    splitter = ExactSectionSplitter(
-        tokenizer=CharacterTokenizer(),
-        **section_options(
+    sawyer = ExactSectionSawyer(
+        scaler=CharacterScaler(),
+        **section_sawyer_options(
             max_tokens=10000,
             merge_below_ratio=0.0,
             block_options=markdown_block_options(
@@ -2379,7 +2384,7 @@ One body.
         ),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     # Standalone table forces its own chunk regardless of flat mode.
     assert len(chunks) >= 2
@@ -2387,37 +2392,37 @@ One body.
 
 
 def test_splitter_merge_below_ratio_defaults_to_0_125() -> None:
-    from lumberjack.splitter import SectionSplitter
+    from lumberjack.sawyer import SectionSawyer
 
-    for splitter_class in (SiblingSplitter, SectionSplitter):
-        splitter = splitter_class(CharacterTokenizer())
-        assert splitter.merge_below_ratio == 0.125
+    for splitter_class in (SiblingSawyer, SectionSawyer):
+        sawyer = splitter_class(CharacterScaler())
+        assert sawyer.merge_below_ratio == 0.125
 
 
 def test_splitter_merge_below_ratio_rejects_negative() -> None:
     import pytest
 
     with pytest.raises(ValueError, match="merge_below_ratio"):
-        SiblingSplitter(CharacterTokenizer(), merge_below_ratio=-0.1)
+        SiblingSawyer(CharacterScaler(), merge_below_ratio=-0.1)
 
 
 def test_splitter_merge_below_ratio_rejects_one_or_above() -> None:
     import pytest
 
     with pytest.raises(ValueError, match="merge_below_ratio"):
-        SiblingSplitter(CharacterTokenizer(), merge_below_ratio=1.0)
+        SiblingSawyer(CharacterScaler(), merge_below_ratio=1.0)
     with pytest.raises(ValueError, match="merge_below_ratio"):
-        SiblingSplitter(CharacterTokenizer(), merge_below_ratio=1.5)
+        SiblingSawyer(CharacterScaler(), merge_below_ratio=1.5)
 
 
 def test_splitter_has_no_merge_below_tokens_attribute() -> None:
-    splitter = SiblingSplitter(CharacterTokenizer())
-    assert not hasattr(splitter, "merge_below_tokens")
-    assert splitter.merge_below_ratio == 0.125
+    sawyer = SiblingSawyer(CharacterScaler())
+    assert not hasattr(sawyer, "merge_below_tokens")
+    assert sawyer.merge_below_ratio == 0.125
 
 
 def test_splitter_has_no_subtree_merge_attribute() -> None:
-    assert not hasattr(SubtreeSplitter(CharacterTokenizer()), "subtree_merge")
+    assert not hasattr(SubtreeSawyer(CharacterScaler()), "subtree_merge")
 
 
 def test_merge_below_ratio_threshold_derived_from_max_tokens() -> None:
@@ -2426,98 +2431,96 @@ def test_merge_below_ratio_threshold_derived_from_max_tokens() -> None:
     用与 ``test_merge_small_chunks_can_exceed_ideal_budget_up_to_max_tokens``
     相同的 fixture 验证 ratio 的控制作用.
     """
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         "# A\n\nalpha1\n\nbravo2",
         document_title="ideal-budget.md",
     )
 
     # ratio=0.0 -> 禁用合并
-    no_merge = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    no_merge = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=30,
             ideal_max_tokens_ratio=0.5,
             merge_below_ratio=0.0,
         ),
     )
-    chunks_no_merge = no_merge.split(document)
+    chunks_no_merge = saw(no_merge, document)
     assert len(chunks_no_merge) == 2
     assert chunks_no_merge[0].body == "alpha1"
     assert chunks_no_merge[1].body == "bravo2"
 
     # ratio=0.967 -> 阈值=29; 尾部 "# A\n\nbravo2" (7 tokens) < 29 -> 合并
-    merge = SiblingSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
+    merge = SiblingSawyer(
+        scaler=CharacterScaler(),
+        **sawyer_options(
             max_tokens=30,
             ideal_max_tokens_ratio=0.5,
             merge_below_ratio=0.967,
         ),
     )
-    chunks_merge = merge.split(document)
+    chunks_merge = saw(merge, document)
     assert len(chunks_merge) == 1
     assert chunks_merge[0].body == "alpha1\n\nbravo2"
     assert 15 < chunks_merge[0].token_count <= 30
 
 
 def test_section_splitter_registry_lookup() -> None:
-    from lumberjack.splitter import (
-        ExactSectionSplitter,
-        IncrementalSectionSplitter,
+    from lumberjack.sawyer import (
+        ExactSectionSawyer,
+        IncrementalSectionSawyer,
     )
 
-    assert isinstance(create_splitter("section"), IncrementalSectionSplitter)
-    assert isinstance(create_splitter("exact-section"), ExactSectionSplitter)
-    assert (
-        create_splitter("incremental-section").__class__ is IncrementalSectionSplitter
-    )
+    assert isinstance(create_sawyer("section"), IncrementalSectionSawyer)
+    assert isinstance(create_sawyer("exact-section"), ExactSectionSawyer)
+    assert create_sawyer("incremental-section").__class__ is IncrementalSectionSawyer
 
 
 def test_section_splitters_share_one_topology_implementation() -> None:
     """Counting mode must not duplicate the per-section traversal algorithm."""
-    from lumberjack.splitter import (
-        ExactSectionSplitter,
-        IncrementalSectionSplitter,
+    from lumberjack.sawyer import (
+        ExactSectionSawyer,
+        IncrementalSectionSawyer,
     )
-    from lumberjack.splitter.topology.section import SectionTopologyMixin
+    from lumberjack.sawyer.topology.section import SectionTopologyMixin
 
-    assert ExactSectionSplitter._split_section is SectionTopologyMixin._split_section
+    assert ExactSectionSawyer._split_section is SectionTopologyMixin._split_section
     assert (
-        IncrementalSectionSplitter._split_section is SectionTopologyMixin._split_section
+        IncrementalSectionSawyer._split_section is SectionTopologyMixin._split_section
     )
 
 
 def test_subtree_splitters_share_one_topology_implementation() -> None:
     """Counting mode must not duplicate subtree collapse and recursion."""
-    from lumberjack.splitter import (
-        ExactSubtreeSplitter,
-        IncrementalSubtreeSplitter,
+    from lumberjack.sawyer import (
+        ExactSubtreeSawyer,
+        IncrementalSubtreeSawyer,
     )
-    from lumberjack.splitter.topology.subtree import SubtreeTopologyMixin
+    from lumberjack.sawyer.topology.subtree import SubtreeTopologyMixin
 
-    assert ExactSubtreeSplitter._split_section is SubtreeTopologyMixin._split_section
+    assert ExactSubtreeSawyer._split_section is SubtreeTopologyMixin._split_section
     assert (
-        IncrementalSubtreeSplitter._split_section is SubtreeTopologyMixin._split_section
+        IncrementalSubtreeSawyer._split_section is SubtreeTopologyMixin._split_section
     )
 
 
 def test_sibling_splitters_share_one_topology_implementation() -> None:
     """Counting mode must not duplicate sibling packing and recursion order."""
-    from lumberjack.splitter import (
-        ExactSiblingSplitter,
-        IncrementalSiblingSplitter,
+    from lumberjack.sawyer import (
+        ExactSiblingSawyer,
+        IncrementalSiblingSawyer,
     )
-    from lumberjack.splitter.topology.sibling import SiblingTopologyMixin
+    from lumberjack.sawyer.topology.sibling import SiblingTopologyMixin
 
-    assert ExactSiblingSplitter._split_section is SiblingTopologyMixin._split_section
+    assert ExactSiblingSawyer._split_section is SiblingTopologyMixin._split_section
     assert (
-        IncrementalSiblingSplitter._split_section is SiblingTopologyMixin._split_section
+        IncrementalSiblingSawyer._split_section is SiblingTopologyMixin._split_section
     )
 
 
 def test_section_splitter_does_not_subtree_collapse() -> None:
     """section 永远不合并整棵子树, 即使它很小."""
-    from lumberjack.splitter import ExactSectionSplitter
+    from lumberjack.sawyer import ExactSectionSawyer
 
     fixture = """# Parent
 
@@ -2531,13 +2534,13 @@ One body.
 
 Two body.
 """
-    document = MarkdownParser().parse(fixture, document_title="t.md")
-    splitter = ExactSectionSplitter(
-        tokenizer=CharacterTokenizer(),
-        **section_options(max_tokens=10000, merge_below_ratio=0.0),
+    document = MarkdownFeller().fell(fixture, document_title="t.md")
+    sawyer = ExactSectionSawyer(
+        scaler=CharacterScaler(),
+        **section_sawyer_options(max_tokens=10000, merge_below_ratio=0.0),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     # 即使整棵子树远小于预算, section 也不做 subtree-collapse.
     assert len(chunks) == 3
@@ -2545,30 +2548,32 @@ Two body.
 
 def test_section_splitters_merge_same_heading_text_tail_fragments() -> None:
     """section 自下而上整理 oversize text block 的同 heading 尾部碎片."""
-    from lumberjack.splitter import (
-        ExactSectionSplitter,
-        IncrementalSectionSplitter,
+    from lumberjack.sawyer import (
+        ExactSectionSawyer,
+        IncrementalSectionSawyer,
     )
 
     # body 超过 ideal_max_tokens, 强制 oversize block 拆成 text_piece;
     # 最后一块低于 merge threshold 时只向同 heading 的前一块合并。
     body = "x " * 200  # ~400 tokens
-    document = MarkdownParser().parse(f"# A\n\n{body}", document_title="t.md")
+    document = MarkdownFeller().fell(f"# A\n\n{body}", document_title="t.md")
 
-    for splitter_class in (ExactSectionSplitter, IncrementalSectionSplitter):
+    for splitter_class in (ExactSectionSawyer, IncrementalSectionSawyer):
         common = {
             "max_tokens": 100,
             "ideal_max_tokens_ratio": 0.5,
             "block_options": markdown_block_options(),
         }
-        unmerged = splitter_class(
-            CharacterTokenizer(),
-            **section_options(**common, merge_below_ratio=0.0),
-        ).split(document)
-        merged = splitter_class(
-            CharacterTokenizer(),
-            **section_options(**common, merge_below_ratio=0.5),
-        ).split(document)
+        unmerged_sawyer = splitter_class(
+            CharacterScaler(),
+            **section_sawyer_options(**common, merge_below_ratio=0.0),
+        )
+        merged_sawyer = splitter_class(
+            CharacterScaler(),
+            **section_sawyer_options(**common, merge_below_ratio=0.5),
+        )
+        unmerged = saw(unmerged_sawyer, document)
+        merged = saw(merged_sawyer, document)
 
         assert len(unmerged) >= 2
         assert len(merged) == len(unmerged) - 1
@@ -2578,7 +2583,7 @@ def test_section_splitters_merge_same_heading_text_tail_fragments() -> None:
 
 def test_section_splitter_does_not_merge_non_text_block_pieces() -> None:
     """section 的尾部整理不合并 table 等非 paragraph chunk."""
-    from lumberjack.splitter import ExactSectionSplitter
+    from lumberjack.sawyer import ExactSectionSawyer
 
     markdown = """# Data
 
@@ -2589,7 +2594,7 @@ def test_section_splitter_does_not_merge_non_text_block_pieces() -> None:
 | Gamma | 300 |
 | Delta | 400 |
 """
-    document = MarkdownParser().parse(markdown, document_title="table.md")
+    document = MarkdownFeller().fell(markdown, document_title="table.md")
     common = {
         "max_tokens": 50,
         "ideal_max_tokens_ratio": 1,
@@ -2598,14 +2603,16 @@ def test_section_splitter_does_not_merge_non_text_block_pieces() -> None:
         ),
     }
 
-    unmerged = ExactSectionSplitter(
-        CharacterTokenizer(),
-        **section_options(**common, merge_below_ratio=0.0),
-    ).split(document)
-    with_merging_enabled = ExactSectionSplitter(
-        CharacterTokenizer(),
-        **section_options(**common, merge_below_ratio=0.9),
-    ).split(document)
+    unmerged_sawyer = ExactSectionSawyer(
+        CharacterScaler(),
+        **section_sawyer_options(**common, merge_below_ratio=0.0),
+    )
+    merging_sawyer = ExactSectionSawyer(
+        CharacterScaler(),
+        **section_sawyer_options(**common, merge_below_ratio=0.9),
+    )
+    unmerged = saw(unmerged_sawyer, document)
+    with_merging_enabled = saw(merging_sawyer, document)
 
     assert len(unmerged) == 4
     assert [chunk.body for chunk in with_merging_enabled] == [
@@ -2616,7 +2623,7 @@ def test_section_splitter_does_not_merge_non_text_block_pieces() -> None:
 
 def test_incremental_section_splitter_does_not_subtree_collapse() -> None:
     """incremental-section 同样不做 subtree-collapse."""
-    from lumberjack.splitter.section import IncrementalSectionSplitter
+    from lumberjack.sawyer.section import IncrementalSectionSawyer
 
     fixture = """# Parent
 
@@ -2630,12 +2637,12 @@ One body.
 
 Two body.
 """
-    document = MarkdownParser().parse(fixture, document_title="t.md")
-    splitter = IncrementalSectionSplitter(
-        tokenizer=CharacterTokenizer(),
-        **section_options(max_tokens=10000, merge_below_ratio=0.0),
+    document = MarkdownFeller().fell(fixture, document_title="t.md")
+    sawyer = IncrementalSectionSawyer(
+        scaler=CharacterScaler(),
+        **section_sawyer_options(max_tokens=10000, merge_below_ratio=0.0),
     )
 
-    chunks = splitter.split(document)
+    chunks = saw(sawyer, document)
 
     assert len(chunks) == 3

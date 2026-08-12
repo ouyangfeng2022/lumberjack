@@ -37,99 +37,29 @@ uv sync --extra web
 uv run lumberjack-serve --reload
 ```
 
-## Markdown Parser 自定义插件
+## Markdown Feller 自定义插件
 
-Web UI 通过 HTTP 调用后端 `/lumber/api/split/*` 接口，浏览器端不能运行时注册 Python `markdown-it-py` 插件。需要自定义 Markdown parser 插件时，应在后端代码中直接组合 `MarkdownItParser -> Splitter` 管线；UI 仍然可以展示返回的 chunk 结果。
-
-如果插件只改变已有 Markdown 结构，例如 task list 仍然解析成 list item，只是在行内增加 checkbox HTML，只需要把插件传给 `MarkdownItParser`：
+Web UI 通过 HTTP 调用后端 `/lumber/api/split/*` 接口，浏览器端不能运行时注册
+Python `markdown-it-py` 插件。需要自定义 Markdown feller 时，应在后端组合
+`MarkdownItFeller -> Sawyer -> Mill`；UI 仍然展示最终 chunk。
 
 ```python
 from mdit_py_plugins.tasklists import tasklists_plugin
-from lumberjack.core.parser.markdown import MarkdownItParser
 
-parser = MarkdownItParser(plugins=(tasklists_plugin,))
-document = parser.parse("- [x] done", document_title="tasks.md")
+from lumberjack.feller import MarkdownItFeller
+from lumberjack.mill import Mill
+from lumberjack.sawyer import SiblingSawyer
+from lumberjack.scaler import ApproxByteScaler
+
+scaler = ApproxByteScaler()
+feller = MarkdownItFeller(plugins=(tasklists_plugin,))
+log = feller.fell("- [x] done", document_title="tasks.md")
+bundles = SiblingSawyer(scaler).saw(log)
+chunks = Mill(scaler).mill(log, bundles)
 ```
 
-如果插件会产生新的块级 token type，需要用 `MarkdownBlockSpec` 声明 token type 到 lumberjack 块类型的映射。下面是完整示例：用 `mdit_py_plugins.container.container_plugin` 解析 callout 容器，并把 `callout` 作为可配置的块类型交给 splitter：
-
-```python
-from mdit_py_plugins.container import container_plugin
-
-from lumberjack.core.models import BaseParams, DocumentBlock, SplitOptions
-from lumberjack.core.options import resolve_block_options
-from lumberjack.core.parser.markdown import MarkdownBlockContext, MarkdownBlockSpec
-from lumberjack.core.parser.markdown import MarkdownItParser
-from lumberjack.core.splitter import SiblingSplitter
-from lumberjack.core.tokenizers import SimpleCharTokenizer
-
-
-def callout_block(context: MarkdownBlockContext) -> tuple[DocumentBlock | None, int]:
-    close_index = context.parser.find_matching_close(context.tokens, context.index)
-    children = context.parser.parse_child_blocks(
-        context.tokens,
-        context.index + 1,
-        close_index,
-        context.source_lines,
-    )
-    body = "\n\n".join(child.text for child in children if child.text)
-    return (
-        DocumentBlock(
-            kind="callout",
-            text=body,
-            start_line=context.token.map[0] + 1 if context.token.map else None,
-            end_line=context.token.map[1] if context.token.map else None,
-            children=children,
-            attrs={
-                "source_token_type": context.token.type,
-                "info": context.token.info.strip(),
-            },
-        ),
-        close_index + 1,
-    )
-
-
-parser = MarkdownItParser(
-    plugins=(lambda md: container_plugin(md, name="callout"),),
-    block_specs=(
-        MarkdownBlockSpec(
-            kind="callout",
-            token_types=("container_callout_open",),
-            handler=callout_block,
-        ),
-    ),
-)
-
-markdown_text = """# Guide
-
-::: callout note
-Remember to configure custom block kinds before splitting.
-:::
-"""
-
-document = parser.parse(markdown_text, document_title="guide.md")
-options = SplitOptions(
-    max_tokens=1200,
-    block_options=resolve_block_options(
-        parser.block_kinds,
-        {"callout": BaseParams(isolated=True, max_tokens=400)},
-    ),
-)
-chunks = SiblingSplitter(
-    tokenizer=SimpleCharTokenizer(),
-    options=options,
-).split(document)
-```
-
-使用规则：
-
-- `MarkdownBlockSpec.kind` 会规范化为小写，并成为 `DocumentBlock.kind`。
-- `token_types` 必须声明自定义 markdown-it token type，例如 `("container_callout_open",)`。
-- 不提供 `handler` 时，lumberjack 会捕获源码片段；容器类 token 会递归解析子块。
-- `handler` 接收 `MarkdownBlockContext`，返回 `(block, next_index)`；需要跳过 token 时可返回 `None` 作为 block。
-- handler 返回的 block 必须使用声明的 `kind`。
-- 内置 token type（如 `paragraph_open`、`fence`、`table_open`、`html_block`）不能通过 `MarkdownBlockSpec` 重映射。
-- 配置插件产生的块类型时，请使用 `parser.block_kinds` 调用 `resolve_block_options()`；不要用只包含内置类型的 `MarkdownItParser.default_block_kinds`。
+产生新块级 token type 的插件可通过 `MarkdownBlockSpec` 声明映射；自定义 handler
+接收 `MarkdownBlockContext`，并通过 `context.feller` 使用 feller 的辅助方法。
 
 ## 项目结构
 

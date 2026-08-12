@@ -44,8 +44,8 @@ class ExactCountingContext:
 class IncrementalCountingContext:
     """Measure sections once while building the topology-facing view."""
 
-    def __init__(self, splitter: _IncrementalOwner) -> None:
-        self.splitter = splitter
+    def __init__(self, sawyer: _IncrementalOwner) -> None:
+        self.sawyer = sawyer
 
     def prepare(self, section: SectionNode) -> SectionView:
         children = tuple(self.prepare(child) for child in section.children)
@@ -54,13 +54,13 @@ class IncrementalCountingContext:
         body_texts = [block.text for block in section.blocks if block.text]
         for index, text in enumerate(body_texts):
             if index == len(body_texts) - 1:
-                body_tokens += self.splitter._count_once(text)
+                body_tokens += self.sawyer._count_once(text)
             else:
-                body_tokens += self.splitter._count_once(text + RENDER_SEPARATOR)
+                body_tokens += self.sawyer._count_once(text + RENDER_SEPARATOR)
 
         if section.level > 0:
             title_text = render_heading_path((section.heading_key,))
-            title_tokens = self.splitter._count_once(title_text)
+            title_tokens = self.sawyer._count_once(title_text)
         else:
             title_tokens = 0
 
@@ -81,9 +81,9 @@ class IncrementalCountingContext:
             child_tokens = child_title_tokens + child_subtree_tokens
             child_has_body = bool(child.node.blocks or child.children)
             if child_title and child_has_body:
-                child_tokens += self.splitter._separator_delta_after(child_title)
+                child_tokens += self.sawyer._separator_delta_after(child_title)
             if previous_tail:
-                subtree_tokens += self.splitter._separator_delta_after(previous_tail)
+                subtree_tokens += self.sawyer._separator_delta_after(previous_tail)
             subtree_tokens += child_tokens
             previous_tail = child_tail
 
@@ -95,12 +95,12 @@ class IncrementalCountingContext:
             tail_text = ""
 
         body_has_standalone = any(
-            block.kind in self.splitter.standalone_kinds for block in section.blocks
+            block.kind in self.sawyer.standalone_kinds for block in section.blocks
         )
         child_eligibility = tuple(child.can_emit_as_single_chunk for child in children)
         if any(eligible is None for eligible in child_eligibility):
             raise TypeError(
-                "incremental child view is missing single-chunk eligibility"
+                "incremental child view is missing single-bundle eligibility"
             )
         can_emit_as_single_chunk = not body_has_standalone and all(child_eligibility)
 

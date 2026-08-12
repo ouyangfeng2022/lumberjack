@@ -4,28 +4,27 @@ from collections.abc import Iterable
 
 from lumberjack.block import BlockKind, BlockOption, normalize_block_options
 
-from .._internal.block_splitter import BlockSplitter
-from .._internal.rendering import RENDER_SEPARATOR, join_rendered_blocks
+from .._internal.block_saw import BlockSaw
+from .._internal.rendering import join_rendered_blocks
 from ..models import (
-    Chunk,
-    ChunkDraft,
-    DocumentAST,
+    Bundle,
     DocumentBlock,
     Entry,
     HeadingKey,
     HeadingPath,
+    Log,
     SectionNode,
     common_heading_path,
     render_heading_path,
 )
-from ..protocols import SplitterProtocol, TokenizerProtocol
+from ..protocols import ScalerProtocol
 from .context import SectionView
 
 
-class BaseSplitter(SplitterProtocol):
-    """Shared state and helpers for splitter strategies.
+class BaseSawyer:
+    """Shared state and helpers for sawyer strategies.
 
-    Concrete splitters combine this base with one counting-strategy mixin:
+    Concrete sawyers combine this base with one counting-strategy mixin:
 
     * :class:`ExactCountingMixin` — full recount at every budget decision
       (walks the raw ``SectionNode`` tree, no pre-measure).
@@ -33,16 +32,16 @@ class BaseSplitter(SplitterProtocol):
       8-char separator-delta window (walks a pre-measured
       :class:`SectionView` tree).
 
-    Each mixin owns :meth:`split`, :meth:`_draft_budget_tokens`,
-    :meth:`_merge_drafts`, :meth:`_finalize_estimate`, body splitting, and
+    Each mixin owns :meth:`saw`, :meth:`_bundle_budget_tokens`,
+    :meth:`_merge_bundles`, :meth:`_finalize_estimate`, body splitting, and
     section entry rendering.  This class holds only the pieces that are
-    independent of both topology and counting strategy: tokenizer/options
-    wiring, rendering helpers, finalization shell, and small-chunk merging.
+    independent of both topology and counting strategy: scaler/options
+    wiring, rendering helpers, and small-bundle merging.
     """
 
     def __init__(
         self,
-        tokenizer: TokenizerProtocol,
+        scaler: ScalerProtocol,
         *,
         max_tokens: int = 1200,
         ideal_max_tokens_ratio: float = 0.8,
@@ -52,7 +51,7 @@ class BaseSplitter(SplitterProtocol):
         block_options: Iterable[BlockOption] | None = None,
         _merge_below_ratio: float = 0.0,
     ) -> None:
-        self.tokenizer = tokenizer
+        self.scaler = scaler
         self.max_tokens = max_tokens
         self.ideal_max_tokens_ratio = ideal_max_tokens_ratio
         self.ideal_max_tokens = max(1, int(max_tokens * ideal_max_tokens_ratio))
@@ -65,22 +64,22 @@ class BaseSplitter(SplitterProtocol):
             kind for kind, config in self.block_options.items() if config.isolated
         )
         self._validate_options()
-        self._block_splitter = BlockSplitter(
-            self.tokenizer,
+        self._block_saw = BlockSaw(
+            scaler,
             max_tokens=self.max_tokens,
             block_options=self.block_options,
         )
 
-    def split(self, document: DocumentAST) -> list[Chunk]:  # pragma: no cover
+    def saw(self, log: Log) -> list[Bundle]:  # pragma: no cover
         raise NotImplementedError(
-            "split() is provided by a counting-strategy mixin "
+            "saw() is provided by a counting-strategy mixin "
             "(ExactCountingMixin or IncrementalCountingMixin)"
         )
 
     def _heading_path_token_count(self, path: HeadingPath) -> int:
         if not path:
             return 0
-        return self.tokenizer.count(render_heading_path(path), cache=True)
+        return self.scaler.scale(render_heading_path(path), cache=True)
 
     def _render_body(
         self,
@@ -121,19 +120,19 @@ class BaseSplitter(SplitterProtocol):
         """Full token count of the rendered body for *entries*."""
         if external_headings is None:
             external_headings = common_heading_path(entry.headings for entry in entries)
-        return self.tokenizer.count(
+        return self.scaler.scale(
             self._render_body(entries, external_headings=external_headings), cache=True
         )
 
     def _heading_budget_token_count(self, path: HeadingPath) -> int:
-        """Canonical Markdown token count for a draft's external heading path."""
+        """Canonical Markdown token count for a bundle's external heading path."""
         return self._heading_path_token_count(path)
 
-    def _root_for_splitting(self, document: DocumentAST) -> SectionNode:
-        """Return the section tree used by splitters after option-level shaping."""
+    def _root_for_splitting(self, log: Log) -> SectionNode:
+        """Return the section tree used by sawyers after option-level shaping."""
         if self.max_heading_level is None:
-            return document.root
-        return self._limit_heading_depth(document.root, self.max_heading_level)
+            return log.root
+        return self._limit_heading_depth(log.root, self.max_heading_level)
 
     def _limit_heading_depth(
         self,
@@ -189,58 +188,56 @@ class BaseSplitter(SplitterProtocol):
 
         return limited_root
 
-    def _draft_budget_tokens(self, draft: ChunkDraft) -> int:  # pragma: no cover
-        """Rendered footprint of a draft, used for budget decisions.
+    def _bundle_budget_tokens(self, bundle: Bundle) -> int:  # pragma: no cover
+        """Rendered footprint of a bundle, used for budget decisions.
 
         Provided by :class:`ExactCountingMixin` (full recount) or
         :class:`IncrementalCountingMixin` (running estimate).
         """
         raise NotImplementedError
 
-    def _merge_drafts(
+    def _merge_bundles(
         self,
-        left_draft: ChunkDraft,
-        right_draft: ChunkDraft,
+        left_bundle: Bundle,
+        right_bundle: Bundle,
         *,
         expected_common: HeadingPath | None = None,
-    ) -> ChunkDraft:
-        """Merge two drafts; provided by the counting-strategy mixin."""
+    ) -> Bundle:
+        """Merge two bundles; provided by the counting-strategy mixin."""
         raise NotImplementedError
 
     @staticmethod
     def _merged_own_heading(
-        left_draft: ChunkDraft,
-        right_draft: ChunkDraft,
+        left_bundle: Bundle,
+        right_bundle: Bundle,
         common_headings: HeadingPath,
     ) -> HeadingKey | None:
         """Keep a structural root only when one input owns the merged prefix."""
-        for draft in (left_draft, right_draft):
+        for bundle in (left_bundle, right_bundle):
             if (
                 common_headings
-                and draft.headings == common_headings
-                and draft.own_heading is not None
-                and draft.own_heading == common_headings[-1]
+                and bundle.headings == common_headings
+                and bundle.own_heading is not None
+                and bundle.own_heading == common_headings[-1]
             ):
-                return draft.own_heading
+                return bundle.own_heading
         return None
 
     def _finalize_estimate(
         self,
-        chunk: ChunkDraft,
+        bundle: Bundle,
         external_headings: HeadingPath,
         token_count: int,
     ) -> int:
         """Estimated token count carried onto the final Chunk; mixin-provided."""
         raise NotImplementedError
 
-    def _split_section(
-        self, section: SectionView
-    ) -> list[ChunkDraft]:  # pragma: no cover
-        """Topology + counting-strategy specific section splitter."""
+    def _split_section(self, section: SectionView) -> list[Bundle]:  # pragma: no cover
+        """Saw one section using the selected topology and counting strategy."""
         raise NotImplementedError
 
-    def _post_process_drafts(self, drafts: list[ChunkDraft]) -> list[ChunkDraft]:
-        return drafts
+    def _post_process_bundles(self, bundles: list[Bundle]) -> list[Bundle]:
+        return bundles
 
     def _validate_options(self) -> None:
         if self.max_tokens <= 0:
@@ -255,74 +252,6 @@ class BaseSplitter(SplitterProtocol):
             )
         if self.max_heading_level is not None and self.max_heading_level < 0:
             raise ValueError("max_heading_level must be greater than or equal to 0")
-
-    def _finalize_chunks(
-        self,
-        chunks: list[ChunkDraft],
-        document: DocumentAST,
-    ) -> list[Chunk]:
-        """Convert chunk drafts into final ``Chunk`` objects with rendered body and metadata."""
-        finalized: list[Chunk] = []
-        document_path = document.source_path
-        index = 0
-        for chunk in chunks:
-            external_headings = chunk.headings
-            own_heading = chunk.own_heading
-            ancestor_headings = (
-                external_headings[:-1] if own_heading is not None else external_headings
-            )
-            body = self._render_body(chunk.entries, external_headings=external_headings)
-            if self.skip_empty_sections and not any(
-                entry.body.strip() for entry in chunk.entries
-            ):
-                continue
-            index += 1
-            heading_text = render_heading_path(external_headings)
-            headings_token_count = self.tokenizer.count(heading_text, cache=True)
-            body_token_count = self.tokenizer.count(body, cache=True)
-            token_count = (
-                headings_token_count
-                + self.tokenizer.count(RENDER_SEPARATOR, cache=True)
-                + body_token_count
-            )
-            estimated = self._finalize_estimate(chunk, external_headings, token_count)
-            section_level = max(
-                (level for entry in chunk.entries for level, _title in entry.headings),
-                default=0,
-            )
-            finalized.append(
-                Chunk(
-                    chunk_id=f"chunk-{index:04d}",
-                    chunk_type=chunk.chunk_type,
-                    body=body,
-                    token_count=token_count,
-                    estimated_token_count=estimated,
-                    headings_token_count=headings_token_count,
-                    body_token_count=body_token_count,
-                    ancestor_headings=ancestor_headings,
-                    own_heading=own_heading,
-                    section_level=section_level,
-                    document_title=document.title,
-                    document_path=document_path,
-                    start_line=min(
-                        (
-                            entry.start_line
-                            for entry in chunk.entries
-                            if entry.start_line is not None
-                        ),
-                        default=None,
-                    ),
-                    end_line=max(
-                        (
-                            entry.end_line
-                            for entry in chunk.entries
-                            if entry.end_line is not None
-                        ),
-                        default=None,
-                    ),
-                )
-            )
-        return finalized
 
     def _entry_from_blocks(
         self,
@@ -356,22 +285,22 @@ class BaseSplitter(SplitterProtocol):
 
     def _merge_small_chunks(
         self,
-        chunks: list[ChunkDraft],
+        bundles: list[Bundle],
         *,
         parent_headings: HeadingPath | None = None,
-    ) -> list[ChunkDraft]:
-        """Merge adjacent same-parent chunks below the merge threshold, bottom-up.
+    ) -> list[Bundle]:
+        """Merge adjacent same-parent bundles below the merge threshold, bottom-up.
 
         Threshold = ``int(max_tokens * merge_below_ratio)``;
         ``merge_below_ratio == 0`` disables merging entirely.
         """
         merge_below = int(self.max_tokens * self.merge_below_ratio)
         if merge_below <= 0:
-            return chunks
-        if not chunks:
-            return chunks
+            return bundles
+        if not bundles:
+            return bundles
 
-        merged: list[ChunkDraft] = list(chunks)
+        merged: list[Bundle] = list(bundles)
         i = len(merged) - 1
         while i > 0:
             current = merged[i]
@@ -383,16 +312,16 @@ class BaseSplitter(SplitterProtocol):
             )
             if (
                 can_merge
-                and self._draft_budget_tokens(current) < merge_below
+                and self._bundle_budget_tokens(current) < merge_below
                 and previous.chunk_type == "paragraph"
                 and current.chunk_type == "paragraph"
             ):
-                merged_draft = self._merge_drafts(previous, current)
+                merged_bundle = self._merge_bundles(previous, current)
                 # Compare the policy-selected footprint against max_tokens.
                 # Because can_merge guarantees matching heading paths, the
                 # merged common prefix is that shared path.
-                if self._draft_budget_tokens(merged_draft) <= self.max_tokens:
-                    merged[i - 1] = merged_draft
+                if self._bundle_budget_tokens(merged_bundle) <= self.max_tokens:
+                    merged[i - 1] = merged_bundle
                     del merged[i]
             i -= 1
         return merged
@@ -418,4 +347,4 @@ class BaseSplitter(SplitterProtocol):
         return max(vals) if vals else None
 
 
-__all__ = ["BaseSplitter"]
+__all__ = ["BaseSawyer"]

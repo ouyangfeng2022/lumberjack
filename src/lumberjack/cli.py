@@ -8,9 +8,9 @@ from typing import cast
 
 from ._internal.formats import detect_format
 from ._internal.options import parse_cli_block_configs
-from ._internal.pipeline import BUILTIN_SPLITTER_NAMES, split_source
+from ._internal.pipeline import BUILTIN_SAWYER_NAMES, saw_source
 from .block import BlockKind
-from .parser import InputFormat
+from .feller import InputFormat
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--splitter",
-        choices=BUILTIN_SPLITTER_NAMES,
+        choices=BUILTIN_SAWYER_NAMES,
         default="sibling",
         help=(
             "Splitter implementation. 'sibling'/'subtree'/'section' default "
@@ -106,7 +106,7 @@ def main() -> None:
         json_config=args.block_config_json,
     )
 
-    chunks = split_source(
+    chunks = saw_source(
         input_path,
         format=cast(InputFormat, input_format),
         max_tokens=args.max_tokens,

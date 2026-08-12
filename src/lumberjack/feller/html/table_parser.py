@@ -62,7 +62,7 @@ class HTMLTableParser:
 
     This parser detects and extracts <table> elements from HTML content,
     parsing their structure (headers, rows, cells) for further processing
-    by the document splitter.
+    by the block saw.
     """
 
     # HTML tag parsing patterns

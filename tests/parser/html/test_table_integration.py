@@ -5,9 +5,10 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from lumberjack.block import BlockOption, HTMLTableConfig
-from lumberjack.parser import MarkdownParser
-from lumberjack.splitter import SiblingSplitter
-from lumberjack.tokenizer import ApproxByteTokenizer
+from lumberjack.feller import MarkdownFeller
+from lumberjack.sawyer import SiblingSawyer
+from lumberjack.scaler import ApproxByteScaler
+from tests.helpers import saw
 
 
 def _split(
@@ -17,14 +18,14 @@ def _split(
     merge_below_ratio: float = 0.125,
     block_options: Iterable[BlockOption] | None = None,
 ):
-    document = MarkdownParser().parse(markdown)
-    splitter = SiblingSplitter(
-        ApproxByteTokenizer(),
+    document = MarkdownFeller().fell(markdown)
+    sawyer = SiblingSawyer(
+        ApproxByteScaler(),
         max_tokens=max_tokens,
         merge_below_ratio=merge_below_ratio,
         block_options=block_options,
     )
-    return splitter.split(document)
+    return saw(sawyer, document)
 
 
 def test_html_table_with_table_isolation():

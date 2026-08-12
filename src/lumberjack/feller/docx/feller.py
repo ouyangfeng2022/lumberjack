@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -8,12 +7,13 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from lumberjack.block import BlockKind
 
 from ...models import (
-    DocumentAST,
     DocumentBlock,
     DocumentInline,
+    Log,
     SectionNode,
+    Tree,
 )
-from ...protocols import ParserProtocol
+from ...protocols import FellerProtocol
 
 if TYPE_CHECKING:
     from docx.document import Document as DocxDocument
@@ -155,11 +155,11 @@ def _render_table(table: Any) -> str:
     return "\n".join(lines)
 
 
-class DocxParser(ParserProtocol[bytes]):
-    """Parse DOCX documents into DocumentAST.
+class DocxFeller(FellerProtocol):
+    """Parse DOCX documents into Log.
 
-    Maps DOCX structural elements to the same DocumentAST model used by
-    the Markdown parser, enabling reuse of all existing splitters.
+    Maps DOCX structural elements to the same Log model used by
+    the Markdown feller, enabling reuse of all existing sawyers.
 
     Block kind mapping:
         - Heading styles  → SectionNode hierarchy
@@ -183,18 +183,18 @@ class DocxParser(ParserProtocol[bytes]):
 
     @property
     def block_kinds(self) -> frozenset[str]:
-        """Block kinds this parser can produce."""
+        """Block kinds this feller can produce."""
         return self.default_block_kinds
 
-    def parse(
+    def fell(
         self,
-        data: bytes,
+        tree: Tree | bytes,
         *,
         document_title: str | None = None,
-        metadata_overrides: Mapping[str, object] | None = None,
+        metadata_overrides: dict[str, object] | None = None,
         source_path: str | Path | None = None,
-    ) -> DocumentAST:
-        """Parse DOCX binary data into a DocumentAST.
+    ) -> Log:
+        """Parse DOCX binary data into a Log.
 
         Args:
             data: Raw DOCX file content.
@@ -204,11 +204,20 @@ class DocxParser(ParserProtocol[bytes]):
         """
         from docx import Document
 
+        if not isinstance(tree, Tree):
+            tree = Tree(
+                tree,
+                format="docx",
+                document_title=document_title,
+                metadata_overrides=dict(metadata_overrides or {}),
+                source_path=source_path,
+            )
+        data = tree.source
         if not isinstance(data, bytes | bytearray):
-            msg = f"DocxParser.parse expects bytes, got {type(data).__name__}"
+            msg = f"DocxFeller.fell expects Tree[bytes], got {type(data).__name__}"
             raise TypeError(msg)
 
-        metadata = dict(metadata_overrides or {})
+        metadata = dict(tree.metadata_overrides)
 
         doc = Document(BytesIO(data))
 
@@ -351,14 +360,14 @@ class DocxParser(ParserProtocol[bytes]):
                         )
                     )
 
-        final_title = self._resolve_document_title(document_title, doc, root)
+        final_title = self._resolve_document_title(tree.document_title, doc, root)
         root.title = final_title
 
-        return DocumentAST(
+        return Log(
             title=final_title,
             source="",
             root=root,
-            source_path=str(source_path) if source_path is not None else None,
+            source_path=str(tree.source_path) if tree.source_path is not None else None,
             metadata=metadata,
         )
 

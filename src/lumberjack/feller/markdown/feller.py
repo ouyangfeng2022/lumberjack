@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -19,8 +19,8 @@ from .plugins import brackets_math_plugin
 if TYPE_CHECKING:
     from markdown_it.token import Token
 
-from ...models import DocumentAST, DocumentBlock, DocumentInline, SectionNode
-from ...protocols import ParserProtocol
+from ...models import DocumentBlock, DocumentInline, Log, SectionNode, Tree
+from ...protocols import FellerProtocol
 
 LINK_REFERENCE_DEFINITION_RE = re.compile(r"^[ ]{0,3}\[([^\]]+)\]:")
 
@@ -58,7 +58,7 @@ def is_tight_list(tokens: list[Token], start: int, end: int) -> bool:
 class MarkdownBlockContext:
     """Context passed to custom Markdown block handlers."""
 
-    parser: MarkdownItParser
+    feller: MarkdownItFeller
     tokens: list[Token]
     index: int
     source_lines: list[str]
@@ -323,7 +323,7 @@ class InlineNormalizer:
         return node.text
 
 
-class MarkdownItParser(ParserProtocol[str]):
+class MarkdownItFeller(FellerProtocol):
     """Parse Markdown with markdown-it-py and normalize tokens into lumberjack's document model."""
 
     # Token-type → DocumentBlock.kind mapping for simple (non-container) blocks.
@@ -451,7 +451,7 @@ class MarkdownItParser(ParserProtocol[str]):
         return token_type_to_kind, handlers
 
     def _compute_block_kinds(self) -> frozenset[str]:
-        """Compute block kinds from this parser's active rules and extensions."""
+        """Compute block kinds from this feller's active rules and extensions."""
         active_rules = self._parser.get_active_rules().get("block", [])
         kinds: set[str] = set()
         for rule in active_rules:
@@ -473,7 +473,7 @@ class MarkdownItParser(ParserProtocol[str]):
 
     @property
     def block_kinds(self) -> frozenset[str]:
-        """Block kinds this parser instance can produce, based on active rules."""
+        """Block kinds this feller instance can produce, based on active rules."""
         return self._block_kinds
 
     def __init__(
@@ -500,15 +500,15 @@ class MarkdownItParser(ParserProtocol[str]):
             self._parser.disable("lheading")
         self._block_kinds = self._compute_block_kinds()
 
-    def parse(
+    def fell(
         self,
-        data: str,
+        tree: Tree | str,
         *,
         document_title: str | None = None,
-        metadata_overrides: Mapping[str, object] | None = None,
+        metadata_overrides: dict[str, object] | None = None,
         source_path: str | Path | None = None,
-    ) -> DocumentAST:
-        """Parse raw Markdown text into a ``DocumentAST`` with section tree and reference definitions.
+    ) -> Log:
+        """Parse raw Markdown text into a ``Log`` with section tree and reference definitions.
 
         Args:
             data: Raw Markdown text to parse.
@@ -520,11 +520,20 @@ class MarkdownItParser(ParserProtocol[str]):
         Raises:
             TypeError: If ``data`` is not a ``str``.
         """
+        if not isinstance(tree, Tree):
+            tree = Tree(
+                tree,
+                format="markdown",
+                document_title=document_title,
+                metadata_overrides=dict(metadata_overrides or {}),
+                source_path=source_path,
+            )
+        data = tree.source
         if not isinstance(data, str):
-            msg = f"MarkdownParser.parse expects str, got {type(data).__name__}"
+            msg = f"MarkdownFeller.fell expects Tree[str], got {type(data).__name__}"
             raise TypeError(msg)
 
-        metadata = dict(metadata_overrides or {})
+        metadata = dict(tree.metadata_overrides)
 
         env: dict[str, Any] = {}
         tokens = self._parser.parse(data, env)
@@ -562,14 +571,16 @@ class MarkdownItParser(ParserProtocol[str]):
             for key, value in fm_metadata.items():
                 metadata.setdefault(key, value)
 
-        final_title = self._resolve_document_title(document_title, fm_metadata, root)
+        final_title = self._resolve_document_title(
+            tree.document_title, fm_metadata, root
+        )
         root.title = final_title
 
-        return DocumentAST(
+        return Log(
             title=final_title,
             source=data,
             root=root,
-            source_path=str(source_path) if source_path is not None else None,
+            source_path=str(tree.source_path) if tree.source_path is not None else None,
             metadata=metadata,
             reference_definitions=self._extract_reference_definitions(
                 env, source_lines
@@ -817,7 +828,7 @@ class MarkdownItParser(ParserProtocol[str]):
 
             block, next_index = handler(
                 MarkdownBlockContext(
-                    parser=self,
+                    feller=self,
                     tokens=tokens,
                     index=index,
                     source_lines=source_lines,
@@ -1019,4 +1030,4 @@ class MarkdownItParser(ParserProtocol[str]):
         return fallback
 
 
-MarkdownParser = MarkdownItParser
+MarkdownFeller = MarkdownItFeller

@@ -1,79 +1,46 @@
 from __future__ import annotations
 
-import inspect
 from dataclasses import fields
-from importlib.util import find_spec
+from pathlib import Path
 
 import lumberjack
-import lumberjack.parser as parser_package
-from lumberjack import lumber
-from lumberjack.block import (
-    BlockConfig,
-    BlockKind,
-    CustomBlockConfig,
-    HTMLTableConfig,
-    MarkdownTableConfig,
+from lumberjack import Lumberjack, Tree
+from lumberjack.feller import AutoFeller, DocxFeller, HTMLFeller, MarkdownFeller
+from lumberjack.models import Bundle, Chunk, DocumentBlock, DocumentInline, Log
+from lumberjack.planer import PlainTextPlaner, Planer
+from lumberjack.protocols import (
+    FellerProtocol,
+    PlanerProtocol,
+    SawyerProtocol,
+    ScalerProtocol,
+    SeasonerProtocol,
 )
-from lumberjack.models import Chunk, DocumentAST, DocumentBlock, DocumentInline
-from lumberjack.parser import AutoParser, DocxParser, HTMLParser, MarkdownParser
-from lumberjack.protocols import ParserProtocol, SplitterProtocol, TokenizerProtocol
-from lumberjack.splitter import (
-    ExactSectionSplitter,
-    ExactSiblingSplitter,
-    ExactSubtreeSplitter,
-    SectionSplitter,
-    SiblingSplitter,
-    SubtreeSplitter,
-)
-from lumberjack.tokenizer import (
-    ApproxByteTokenizer,
-    TiktokenTokenizer,
-    TransformersTokenizer,
-)
+from lumberjack.sawyer import ExactSiblingSawyer, SiblingSawyer
+from lumberjack.scaler import ApproxByteScaler
+from lumberjack.seasoner import Seasoner
 
 
-def test_top_level_only_exports_lumber() -> None:
-    assert lumberjack.__all__ == ["lumber"]
+def test_top_level_exports_lumberjack_and_tree() -> None:
+    assert lumberjack.__all__ == ["Lumberjack", "Tree"]
+    assert Lumberjack and Tree
+    assert not hasattr(lumberjack, "lumber")
 
 
-def test_lumber_is_deliberately_minimal() -> None:
-    parameters = inspect.signature(lumber).parameters
-    assert list(parameters) == ["source", "format", "max_tokens"]
-    assert parameters["format"].default == "auto"
-    assert parameters["max_tokens"].default == 1200
+def test_public_lumber_pipeline_components() -> None:
+    assert AutoFeller and MarkdownFeller and HTMLFeller and DocxFeller
+    assert SiblingSawyer and ExactSiblingSawyer and ApproxByteScaler
+    assert Seasoner and Planer and PlainTextPlaner
+    assert Log and Bundle and Chunk and DocumentBlock and DocumentInline
+    assert FellerProtocol and SawyerProtocol and ScalerProtocol
+    assert SeasonerProtocol and PlanerProtocol
 
 
-def test_public_components_own_their_implementations() -> None:
-    assert AutoParser and MarkdownParser and HTMLParser and DocxParser
-    assert SiblingSplitter and SubtreeSplitter and SectionSplitter
-    assert ExactSiblingSplitter and ExactSubtreeSplitter and ExactSectionSplitter
-    assert ApproxByteTokenizer and TiktokenTokenizer and TransformersTokenizer
-    assert BlockConfig and BlockKind and MarkdownTableConfig and HTMLTableConfig
-    assert CustomBlockConfig
-    assert DocumentAST and DocumentBlock and DocumentInline
-    assert ParserProtocol and SplitterProtocol and TokenizerProtocol
-    assert AutoParser.__module__ == "lumberjack.parser.auto"
-    assert SiblingSplitter.__module__ == "lumberjack.splitter.sibling"
-    assert ApproxByteTokenizer.__module__ == "lumberjack.tokenizer"
-    assert BlockConfig.__module__ == "lumberjack.block"
-    assert DocumentAST.__module__ == "lumberjack.models"
-
-
-def test_core_package_does_not_exist() -> None:
-    assert find_spec("lumberjack.core") is None
-
-
-def test_parser_package_has_no_module_level_parse_function() -> None:
-    assert not hasattr(parser_package, "parse")
-
-
-def test_default_splitter_names_are_incremental() -> None:
-    assert SiblingSplitter.__name__ == "IncrementalSiblingSplitter"
-    assert SubtreeSplitter.__name__ == "IncrementalSubtreeSplitter"
-    assert SectionSplitter.__name__ == "IncrementalSectionSplitter"
-    assert ExactSiblingSplitter is not SiblingSplitter
-    assert ExactSubtreeSplitter is not SubtreeSplitter
-    assert ExactSectionSplitter is not SectionSplitter
+def test_removed_component_packages_do_not_exist() -> None:
+    package_root = Path(lumberjack.__file__).parent
+    assert not (package_root / "core").exists()
+    assert not (package_root / "parser").exists()
+    assert not (package_root / "splitter").exists()
+    assert not (package_root / "tokenizer.py").exists()
 
 
 def test_chunk_serialization_fields() -> None:

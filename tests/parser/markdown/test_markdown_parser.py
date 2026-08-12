@@ -5,13 +5,13 @@ from markdown_it.token import Token
 from mdit_py_plugins.footnote import footnote_plugin
 from mdit_py_plugins.tasklists import tasklists_plugin
 
-from lumberjack.models import DocumentBlock
-from lumberjack.parser.markdown.parser import (
+from lumberjack.feller.markdown.feller import (
     MarkdownBlockContext,
     MarkdownBlockSpec,
-    MarkdownItParser,
-    MarkdownParser,
+    MarkdownFeller,
+    MarkdownItFeller,
 )
+from lumberjack.models import DocumentBlock
 from tests.helpers import FIXTURES_DIR
 
 FIXTURE = (FIXTURES_DIR / "markdown" / "sample.md").read_text(encoding="utf-8")
@@ -73,7 +73,7 @@ COMPREHENSIVE_FIXTURE = (FIXTURES_DIR / "markdown" / "commonmark-spec.md").read_
 
 def test_parser_builds_heading_tree() -> None:
     """Test that parser builds correct heading tree structure."""
-    document = MarkdownParser().parse(FIXTURE, document_title="sample.md")
+    document = MarkdownFeller().fell(FIXTURE, document_title="sample.md")
     root = document.root
 
     assert root.title == "sample.md"
@@ -86,7 +86,7 @@ def test_parser_builds_heading_tree() -> None:
 
 def test_parser_ignores_headings_inside_code_fence() -> None:
     """Test that headings inside fenced code blocks are ignored."""
-    document = MarkdownParser().parse(FIXTURE, document_title="sample.md")
+    document = MarkdownFeller().fell(FIXTURE, document_title="sample.md")
     details = document.root.children[0].children[0]
     code_blocks = [block for block in details.blocks if block.kind == "code_fence"]
 
@@ -96,9 +96,7 @@ def test_parser_ignores_headings_inside_code_fence() -> None:
 
 
 def test_parser_captures_commonmark_blocks_and_inlines() -> None:
-    document = MarkdownParser().parse(
-        COMMONMARK_FIXTURE, document_title="commonmark.md"
-    )
+    document = MarkdownFeller().fell(COMMONMARK_FIXTURE, document_title="commonmark.md")
     heading = document.root.children[0]
 
     assert heading.title == "Heading with [link](https://example.com)"
@@ -164,7 +162,7 @@ def test_parser_captures_commonmark_blocks_and_inlines() -> None:
 
 
 def test_markdown_it_parser_supports_setext_tables_and_extended_inlines() -> None:
-    document = MarkdownParser(disable_lheading=False).parse(
+    document = MarkdownFeller(disable_lheading=False).fell(
         MARKDOWN_IT_FIXTURE, document_title="markdown-it.md"
     )
     heading = document.root.children[0]
@@ -198,7 +196,7 @@ def test_markdown_it_parser_supports_setext_tables_and_extended_inlines() -> Non
 
 
 def test_markdown_it_parser_can_disable_setext_headings() -> None:
-    document = MarkdownItParser(disable_lheading=True).parse(
+    document = MarkdownItFeller(disable_lheading=True).fell(
         "Title\n=====\n\nbody",
         document_title="setext.md",
     )
@@ -211,7 +209,7 @@ def test_markdown_it_parser_can_disable_setext_headings() -> None:
 def test_markdown_it_parser_handles_all_block_and_inline_tokens_in_comprehensive_fixture() -> (
     None
 ):
-    parser = MarkdownItParser()
+    parser = MarkdownItFeller()
     env: dict[str, object] = {}
     tokens = parser._parser.parse(COMPREHENSIVE_FIXTURE, env)
 
@@ -275,17 +273,17 @@ def test_markdown_it_parser_handles_all_block_and_inline_tokens_in_comprehensive
 
 
 def test_markdown_it_parser_rejects_undeclared_custom_block_tokens() -> None:
-    parser = MarkdownItParser()
+    parser = MarkdownItFeller()
     parser._parser.parse = lambda _text, _env: [  # ty: ignore[invalid-assignment]
         Token("mystery_block", "", 0, map=[0, 1], content="@@ mystery @@")
     ]
 
     with pytest.raises(ValueError, match="undeclared Markdown block token"):
-        parser.parse("@@ mystery @@", document_title="mystery.md")
+        parser.fell("@@ mystery @@", document_title="mystery.md")
 
 
 def test_markdown_block_spec_maps_custom_token_to_declared_kind() -> None:
-    parser = MarkdownItParser(
+    parser = MarkdownItFeller(
         block_specs=(
             MarkdownBlockSpec(
                 kind="Callout",
@@ -298,7 +296,7 @@ def test_markdown_block_spec_maps_custom_token_to_declared_kind() -> None:
         Token("callout_close", "div", -1),
     ]
 
-    document = parser.parse("!!! note", document_title="callout.md")
+    document = parser.fell("!!! note", document_title="callout.md")
 
     assert "callout" in parser.block_kinds
     assert document.root.blocks[0].kind == "callout"
@@ -308,7 +306,7 @@ def test_markdown_block_spec_maps_custom_token_to_declared_kind() -> None:
 
 def test_markdown_block_spec_rejects_empty_kind() -> None:
     with pytest.raises(ValueError, match="block kind cannot be empty"):
-        MarkdownItParser(
+        MarkdownItFeller(
             block_specs=(
                 MarkdownBlockSpec(
                     kind=" ",
@@ -320,7 +318,7 @@ def test_markdown_block_spec_rejects_empty_kind() -> None:
 
 def test_markdown_block_spec_rejects_empty_token_type() -> None:
     with pytest.raises(ValueError, match="token type cannot be empty"):
-        MarkdownItParser(
+        MarkdownItFeller(
             block_specs=(
                 MarkdownBlockSpec(
                     kind="callout",
@@ -332,7 +330,7 @@ def test_markdown_block_spec_rejects_empty_token_type() -> None:
 
 def test_markdown_block_spec_rejects_conflicting_token_kind_mapping() -> None:
     with pytest.raises(ValueError, match="conflicting block spec"):
-        MarkdownItParser(
+        MarkdownItFeller(
             block_specs=(
                 MarkdownBlockSpec(
                     kind="callout",
@@ -348,7 +346,7 @@ def test_markdown_block_spec_rejects_conflicting_token_kind_mapping() -> None:
 
 def test_markdown_block_spec_rejects_builtin_token_type() -> None:
     with pytest.raises(ValueError, match="handled internally"):
-        MarkdownItParser(
+        MarkdownItFeller(
             block_specs=(
                 MarkdownBlockSpec(
                     kind="custom_paragraph",
@@ -360,7 +358,7 @@ def test_markdown_block_spec_rejects_builtin_token_type() -> None:
 
 def test_markdown_block_spec_rejects_string_token_types() -> None:
     with pytest.raises(TypeError, match="token_types must be an iterable of strings"):
-        MarkdownItParser(
+        MarkdownItFeller(
             block_specs=(
                 MarkdownBlockSpec(
                     kind="callout",
@@ -372,7 +370,7 @@ def test_markdown_block_spec_rejects_string_token_types() -> None:
 
 def test_markdown_block_spec_rejects_non_string_token_type() -> None:
     with pytest.raises(TypeError, match="token type must be a string"):
-        MarkdownItParser(
+        MarkdownItFeller(
             block_specs=(
                 MarkdownBlockSpec(
                     kind="callout",
@@ -384,7 +382,7 @@ def test_markdown_block_spec_rejects_non_string_token_type() -> None:
 
 def test_markdown_block_spec_rejects_non_callable_handler() -> None:
     with pytest.raises(TypeError, match="block spec handler must be callable"):
-        MarkdownItParser(
+        MarkdownItFeller(
             block_specs=(
                 MarkdownBlockSpec(
                     kind="callout",
@@ -413,7 +411,7 @@ def test_markdown_block_spec_handler_builds_custom_block() -> None:
             context.index + 1,
         )
 
-    parser = MarkdownItParser(
+    parser = MarkdownItFeller(
         block_specs=(
             MarkdownBlockSpec(
                 kind="callout",
@@ -426,7 +424,7 @@ def test_markdown_block_spec_handler_builds_custom_block() -> None:
         Token("callout_block", "div", 0, map=[0, 1], content="note")
     ]
 
-    document = parser.parse("!!! note", document_title="callout.md")
+    document = parser.fell("!!! note", document_title="callout.md")
 
     assert seen_contexts
     assert seen_contexts[0].index == 0
@@ -449,7 +447,7 @@ def test_markdown_block_spec_handler_must_return_declared_kind() -> None:
             1,
         )
 
-    parser = MarkdownItParser(
+    parser = MarkdownItFeller(
         block_specs=(
             MarkdownBlockSpec(
                 kind="callout",
@@ -463,18 +461,18 @@ def test_markdown_block_spec_handler_must_return_declared_kind() -> None:
     ]
 
     with pytest.raises(ValueError, match="returned undeclared block kind"):
-        parser.parse("!!! note", document_title="callout.md")
+        parser.fell("!!! note", document_title="callout.md")
 
 
 def test_markdown_block_spec_handler_can_parse_container_children() -> None:
     def build_container(
         context: MarkdownBlockContext,
     ) -> tuple[DocumentBlock | None, int]:
-        close_index = context.parser.find_matching_close(
+        close_index = context.feller.find_matching_close(
             context.tokens,
             context.index,
         )
-        children = context.parser.parse_child_blocks(
+        children = context.feller.parse_child_blocks(
             context.tokens,
             context.index + 1,
             close_index,
@@ -494,7 +492,7 @@ def test_markdown_block_spec_handler_can_parse_container_children() -> None:
 
     inline = Token("inline", "", 0, map=[1, 2], content="Body")
     inline.children = [Token("text", "", 0, content="Body")]
-    parser = MarkdownItParser(
+    parser = MarkdownItFeller(
         block_specs=(
             MarkdownBlockSpec(
                 kind="callout",
@@ -511,7 +509,7 @@ def test_markdown_block_spec_handler_can_parse_container_children() -> None:
         Token("callout_close", "div", -1),
     ]
 
-    document = parser.parse("!!! note\nBody", document_title="callout.md")
+    document = parser.fell("!!! note\nBody", document_title="callout.md")
 
     block = document.root.blocks[0]
     assert block.kind == "callout"
@@ -521,7 +519,7 @@ def test_markdown_block_spec_handler_can_parse_container_children() -> None:
 
 
 def test_markdown_block_spec_maps_leaf_token_to_declared_kind() -> None:
-    parser = MarkdownItParser(
+    parser = MarkdownItFeller(
         block_specs=(
             MarkdownBlockSpec(
                 kind="directive",
@@ -533,7 +531,7 @@ def test_markdown_block_spec_maps_leaf_token_to_declared_kind() -> None:
         Token("directive", "", 0, map=[0, 1], content=":: directive")
     ]
 
-    document = parser.parse(":: directive", document_title="directive.md")
+    document = parser.fell(":: directive", document_title="directive.md")
 
     assert "directive" in parser.block_kinds
     assert document.root.blocks[0].kind == "directive"
@@ -542,10 +540,10 @@ def test_markdown_block_spec_maps_leaf_token_to_declared_kind() -> None:
 
 
 def test_markdown_it_parser_supports_task_list_plugin() -> None:
-    parser = MarkdownItParser(plugins=(tasklists_plugin,))
+    parser = MarkdownItFeller(plugins=(tasklists_plugin,))
     markdown = "- [x] done\n- [ ] todo"
 
-    document = parser.parse(markdown, document_title="tasks.md")
+    document = parser.fell(markdown, document_title="tasks.md")
 
     assert len(document.root.blocks) == 1
     task_list = document.root.blocks[0]
@@ -557,7 +555,7 @@ def test_markdown_it_parser_supports_task_list_plugin() -> None:
 
 
 def test_markdown_it_parser_supports_footnote_plugin() -> None:
-    parser = MarkdownItParser(
+    parser = MarkdownItFeller(
         plugins=(footnote_plugin,),
         block_specs=(
             MarkdownBlockSpec(
@@ -572,7 +570,7 @@ def test_markdown_it_parser_supports_footnote_plugin() -> None:
     )
     markdown = "Footnote ref[^1].\n\n[^1]: Footnote body\n    continued"
 
-    document = parser.parse(markdown, document_title="footnotes.md")
+    document = parser.fell(markdown, document_title="footnotes.md")
 
     assert "footnote_block" in parser.block_kinds
     assert "footnote" in parser.block_kinds
@@ -595,8 +593,8 @@ def test_parser_distinguishes_tight_and_loose_lists() -> None:
     tight_md = "- a\n- b\n- c"
     loose_md = "- a\n\n- b\n\n- c"
 
-    tight_doc = MarkdownParser().parse(tight_md, document_title="tight.md")
-    loose_doc = MarkdownParser().parse(loose_md, document_title="loose.md")
+    tight_doc = MarkdownFeller().fell(tight_md, document_title="tight.md")
+    loose_doc = MarkdownFeller().fell(loose_md, document_title="loose.md")
 
     tight_list = tight_doc.root.blocks[0]
     loose_list = loose_doc.root.blocks[0]
@@ -609,7 +607,7 @@ def test_parser_distinguishes_tight_and_loose_lists() -> None:
 
 
 def test_parser_preserves_line_ranges_for_normalized_block_syntax() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         NORMALIZED_SOURCE_FIXTURE, document_title="normalized.md"
     )
     heading = document.root.children[0]
@@ -626,7 +624,7 @@ def test_parser_preserves_line_ranges_for_normalized_block_syntax() -> None:
 
 
 def test_parser_normalizes_only_surrounding_newlines_on_block_text() -> None:
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         "# A\n\n    print('indented')\n",
         document_title="indented.md",
     )
@@ -640,7 +638,7 @@ def test_parser_normalizes_only_surrounding_newlines_on_block_text() -> None:
 def test_user_provided_title_takes_priority_over_front_matter() -> None:
     """User-provided document_title takes priority over front matter title."""
     md = "---\ntitle: FM Title\n---\n\n# Heading\n\nBody."
-    document = MarkdownParser().parse(md, document_title="external.md")
+    document = MarkdownFeller().fell(md, document_title="external.md")
 
     assert document.title == "external.md"
     assert document.metadata["title"] == "FM Title"
@@ -649,7 +647,7 @@ def test_user_provided_title_takes_priority_over_front_matter() -> None:
 def test_front_matter_without_title_falls_back_to_external() -> None:
     """Front matter without a title field uses the external document_title."""
     md = "---\nauthor: Alice\n---\n\nBody."
-    document = MarkdownParser().parse(md, document_title="external.md")
+    document = MarkdownFeller().fell(md, document_title="external.md")
 
     assert document.title == "external.md"
     assert document.metadata["author"] == "Alice"
@@ -658,7 +656,7 @@ def test_front_matter_without_title_falls_back_to_external() -> None:
 def test_front_matter_populates_metadata() -> None:
     """YAML front matter key-value pairs populate document.metadata."""
     md = "---\ntitle: Guide\nauthor: Bob\nversion: 2\ntags:\n  - python\n  - markdown\n---\n\nBody."
-    document = MarkdownParser().parse(md, document_title="fallback.md")
+    document = MarkdownFeller().fell(md, document_title="fallback.md")
 
     assert document.metadata == {
         "title": "Guide",
@@ -671,7 +669,7 @@ def test_front_matter_populates_metadata() -> None:
 def test_no_front_matter_uses_external_values() -> None:
     """Without front matter, external title and metadata overrides are used."""
     md = "# Hello\n\nWorld."
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         md,
         document_title="hello.md",
         metadata_overrides={"path": "/tmp/hello.md"},
@@ -684,7 +682,7 @@ def test_no_front_matter_uses_external_values() -> None:
 def test_malformed_front_matter_falls_back_gracefully() -> None:
     """Malformed YAML front matter does not crash; external values are preserved."""
     md = "---\n: invalid: yaml: [\n---\n\nBody."
-    document = MarkdownParser().parse(md, document_title="fallback.md")
+    document = MarkdownFeller().fell(md, document_title="fallback.md")
 
     assert document.title == "fallback.md"
     assert document.metadata == {}
@@ -693,7 +691,7 @@ def test_malformed_front_matter_falls_back_gracefully() -> None:
 def test_front_matter_title_empty_string_uses_external() -> None:
     """An empty front matter title is treated as absent."""
     md = '---\ntitle: ""\n---\n\nBody.'
-    document = MarkdownParser().parse(md, document_title="external.md")
+    document = MarkdownFeller().fell(md, document_title="external.md")
 
     assert document.title == "external.md"
 
@@ -701,7 +699,7 @@ def test_front_matter_title_empty_string_uses_external() -> None:
 def test_front_matter_and_external_metadata_merge() -> None:
     """Front matter metadata and external metadata merge, with external values winning."""
     md = "---\ntitle: Guide\nauthor: Bob\n---\n\nBody."
-    document = MarkdownParser().parse(
+    document = MarkdownFeller().fell(
         md,
         document_title="fallback.md",
         metadata_overrides={"path": "/tmp/guide.md", "author": "Override"},
@@ -716,7 +714,7 @@ def test_front_matter_and_external_metadata_merge() -> None:
 def test_no_document_title_uses_front_matter_title() -> None:
     """Without explicit document_title, front matter title is used."""
     md = "---\ntitle: From Front Matter\n---\n\n# Heading\n\nBody."
-    document = MarkdownParser().parse(md)
+    document = MarkdownFeller().fell(md)
 
     assert document.title == "From Front Matter"
     assert document.metadata["title"] == "From Front Matter"
@@ -725,7 +723,7 @@ def test_no_document_title_uses_front_matter_title() -> None:
 def test_no_document_title_no_front_matter_uses_first_h1() -> None:
     """Without document_title and front matter, first H1 heading is used."""
     md = "# My Document\n\nSome content.\n\n## Section\n\nMore."
-    document = MarkdownParser().parse(md)
+    document = MarkdownFeller().fell(md)
 
     assert document.title == "My Document"
 
@@ -733,7 +731,7 @@ def test_no_document_title_no_front_matter_uses_first_h1() -> None:
 def test_no_document_title_no_front_matter_h2_only_uses_anonymous() -> None:
     """Without document_title, front matter, or H1 heading, falls back to Anonymous."""
     md = "## Section\n\nContent without H1."
-    document = MarkdownParser().parse(md)
+    document = MarkdownFeller().fell(md)
 
     assert document.title == "Anonymous"
 
@@ -741,7 +739,7 @@ def test_no_document_title_no_front_matter_h2_only_uses_anonymous() -> None:
 def test_no_document_title_no_headings_uses_anonymous() -> None:
     """Without document_title, front matter, or any headings, falls back to Anonymous."""
     md = "Just plain text.\n\nNo headings at all."
-    document = MarkdownParser().parse(md)
+    document = MarkdownFeller().fell(md)
 
     assert document.title == "Anonymous"
 
@@ -749,7 +747,7 @@ def test_no_document_title_no_headings_uses_anonymous() -> None:
 def test_no_document_title_front_matter_empty_title_uses_first_h1() -> None:
     """Empty front matter title is skipped, falling back to first H1."""
     md = '---\ntitle: ""\n---\n\n# Real Title\n\nContent.'
-    document = MarkdownParser().parse(md)
+    document = MarkdownFeller().fell(md)
 
     assert document.title == "Real Title"
 
@@ -757,7 +755,7 @@ def test_no_document_title_front_matter_empty_title_uses_first_h1() -> None:
 def test_thematic_break_is_ignored_by_parser() -> None:
     """thematic_break is treated as a separator and omitted from the AST."""
     md = "Paragraph.\n\n---\n\nMore text."
-    document = MarkdownParser().parse(md, document_title="hr.md")
+    document = MarkdownFeller().fell(md, document_title="hr.md")
     blocks = document.root.blocks
 
     assert len(blocks) == 2
@@ -770,7 +768,7 @@ def test_thematic_break_is_ignored_by_parser() -> None:
 def test_thematic_break_at_start_is_ignored_by_parser() -> None:
     """thematic_break with no preceding block is omitted."""
     md = "---\n\nParagraph."
-    document = MarkdownParser().parse(md, document_title="hr-first.md")
+    document = MarkdownFeller().fell(md, document_title="hr-first.md")
     blocks = document.root.blocks
 
     assert len(blocks) == 1
@@ -781,7 +779,7 @@ def test_thematic_break_at_start_is_ignored_by_parser() -> None:
 def test_multiple_thematic_breaks_are_ignored_by_parser() -> None:
     """Multiple thematic_break tokens are omitted from the AST."""
     md = "Para 1\n\n---\n\nPara 2\n\n***\n\nPara 3"
-    document = MarkdownParser().parse(md, document_title="multi-hr.md")
+    document = MarkdownFeller().fell(md, document_title="multi-hr.md")
     blocks = document.root.blocks
 
     assert len(blocks) == 3
@@ -795,19 +793,19 @@ def test_multiple_thematic_breaks_are_ignored_by_parser() -> None:
 
 def test_default_block_kinds_match_default_markdown_parser() -> None:
     """Markdown default_block_kinds must match a fresh default parser."""
-    parser = MarkdownItParser()
+    parser = MarkdownItFeller()
 
-    assert MarkdownItParser.default_block_kinds == parser.block_kinds
-    assert "paragraph" in MarkdownItParser.default_block_kinds
-    assert "code_fence" in MarkdownItParser.default_block_kinds
-    assert "table" in MarkdownItParser.default_block_kinds
-    assert "html_table" in MarkdownItParser.default_block_kinds
-    assert not hasattr(MarkdownItParser, "default_registry")
+    assert MarkdownItFeller.default_block_kinds == parser.block_kinds
+    assert "paragraph" in MarkdownItFeller.default_block_kinds
+    assert "code_fence" in MarkdownItFeller.default_block_kinds
+    assert "table" in MarkdownItFeller.default_block_kinds
+    assert "html_table" in MarkdownItFeller.default_block_kinds
+    assert not hasattr(MarkdownItFeller, "default_registry")
 
 
 def test_block_kinds_reflect_markdown_parser_preset() -> None:
     """Parser instance block_kinds should reflect active rules for that instance."""
-    parser = MarkdownItParser(preset="commonmark")
+    parser = MarkdownItFeller(preset="commonmark")
 
     assert "table" not in parser.block_kinds
     assert "html_table" in parser.block_kinds
@@ -817,7 +815,7 @@ def test_block_kinds_reflect_markdown_parser_preset() -> None:
 
 def test_block_kinds_reflect_parser_configuration() -> None:
     """block_kinds is auto-detected from the parser's active block rules."""
-    parser = MarkdownItParser()
+    parser = MarkdownItFeller()
     kinds = parser.block_kinds
     assert "paragraph" in kinds
     assert "code_fence" in kinds

@@ -1,47 +1,54 @@
 # Lumberjack
 
-Structure-aware Markdown, HTML, and DOCX splitting for RAG preprocessing.
+Structure-aware Markdown, HTML, and DOCX lumbering for RAG preprocessing.
 
-Lumberjack separates parsing, tokenization, and splitting into explicit components. All
-parsers produce the same `DocumentAST`, so every splitter works with every supported
-format.
+Lumberjack models document processing as a real lumber pipeline:
+
+```text
+Tree -> Feller.fell() -> Log -> Sawyer.saw() -> Bundle[]
+     -> Mill.mill() -> Seasoner -> Planer -> Chunk[]
+```
 
 ## Installation
 
 ```bash
 pip install lumberjack
 
-# Optional tokenizers, DOCX, and Web API support
+# Optional scalers, DOCX, and Web API support
 pip install "lumberjack[tokenizers,docx,web]"
 ```
 
 Python 3.10 or newer is required.
 
-## Minimal API
+## Main API
 
-The package root intentionally exposes only `lumber()`:
+The package root exposes `Lumberjack` and `Tree`:
 
 ```python
 from pathlib import Path
 
-from lumberjack import lumber
+from lumberjack import Lumberjack, Tree
 
-chunks = lumber(Path("guide.md"), max_tokens=1200)
+jack = Lumberjack(max_tokens=1200)
+
+# Raw values are wrapped into Tree automatically.
+chunks = jack.saw(Path("guide.md"))
+
+# Tree carries format, title, metadata, and source provenance explicitly.
+chunks = jack.saw(
+    Tree(
+        source=markdown_text,
+        format="markdown",
+        document_title="Guide",
+        metadata_overrides={"tenant": "docs"},
+        source_path="imports/guide.md",
+    )
+)
 ```
 
-`lumber()` uses `AutoParser`, `ApproxByteTokenizer`, and the incremental
-`SiblingSplitter`. Its complete signature is:
-
-```python
-lumber(
-    source: str | bytes | Path,
-    *,
-    format: Literal["auto", "markdown", "html", "docx"] = "auto",
-    max_tokens: int = 1200,
-) -> list[Chunk]
-```
-
-Use the component API for any other configuration.
+`Lumberjack()` defaults to `AutoFeller`, `ApproxByteScaler`, incremental
+`SiblingSawyer`, `Seasoner`, `Planer`, and `Mill`. The same scaler instance is used for
+split-budget estimates and final counts.
 
 ## Component pipeline
 
@@ -49,98 +56,79 @@ Use the component API for any other configuration.
 from pathlib import Path
 
 from lumberjack.block import BlockConfig, BlockKind, MarkdownTableConfig
-from lumberjack.parser import AutoParser
-from lumberjack.splitter import SiblingSplitter
-from lumberjack.tokenizer import TiktokenTokenizer
+from lumberjack.feller import AutoFeller
+from lumberjack.mill import Mill
+from lumberjack.models import Tree
+from lumberjack.sawyer import SiblingSawyer
+from lumberjack.scaler import TiktokenScaler
 
-tokenizer = TiktokenTokenizer(model="gpt-4o-mini")
-parser = AutoParser()
-splitter = SiblingSplitter(
-    tokenizer,
+scaler = TiktokenScaler(model="gpt-4o-mini")
+feller = AutoFeller()
+sawyer = SiblingSawyer(
+    scaler,
     max_tokens=1200,
     block_options=[
         MarkdownTableConfig(isolated=True, max_tokens=500),
         BlockConfig(BlockKind.CODE_FENCE, split=False),
     ],
 )
+mill = Mill(scaler)
 
-document = parser.parse(Path("guide.md"))
-chunks = splitter.split(document)
+log = feller.fell(Tree(Path("guide.md")))
+bundles = sawyer.saw(log)
+chunks = mill.mill(log, bundles)
 ```
 
-Public components own their implementations directly:
+Public components:
 
-- `lumberjack.parser`: `AutoParser`, `MarkdownParser`, `HTMLParser`, `DocxParser`,
-  and Markdown plugin extension types.
-- `lumberjack.splitter`: incremental `SiblingSplitter`, `SubtreeSplitter`, and
-  `SectionSplitter`, plus explicit `Exact*Splitter` implementations.
-- `lumberjack.tokenizer`: `ApproxByteTokenizer`, `TiktokenTokenizer`, and
-  `TransformersTokenizer`.
-- `lumberjack.block`: typed block kinds and block configuration objects.
-- `lumberjack.models`: the shared AST and `Chunk` output types.
-- `lumberjack.protocols`: protocols for custom components.
+- `lumberjack.feller`: `AutoFeller`, `MarkdownFeller`, `HTMLFeller`, and
+  `DocxFeller` turn `Tree` into the shared `Log` structure.
+- `lumberjack.scaler`: `ApproxByteScaler`, `TiktokenScaler`, and
+  `TransformersScaler` implement `encode()` and `scale()`.
+- `lumberjack.sawyer`: incremental `SiblingSawyer`, `SubtreeSawyer`, and
+  `SectionSawyer`, plus explicit `Exact*Sawyer` implementations, produce `Bundle`.
+- `lumberjack.mill`: `Mill` renders, processes, recounts, and finishes `Chunk`.
+- `lumberjack.seasoner` and `lumberjack.planer`: built-in post-processing stages.
+- `lumberjack.models` and `lumberjack.protocols`: shared state and extension contracts.
 
-There is no public or compatibility `lumberjack.core` package. Private
-cross-component adapters live under `lumberjack._internal`.
+The removed `parser`, `splitter`, `tokenizer`, and `core` packages are not compatibility
+paths.
 
-## Parsing
+## Fellers and Log
 
-### Automatic parser selection
+`AutoFeller` detects input in this order:
 
-```python
-from lumberjack.parser import AutoParser
-
-parser = AutoParser()
-document = parser.parse(text, source_path="archive/guide.md")
-```
-
-In `format="auto"` mode, detection uses:
-
-1. The suffix of a `Path` input or explicit `source_path`.
+1. A `Path` or `Tree.source_path` suffix.
 2. The DOCX ZIP structure.
-3. A leading HTML doctype or structural HTML tag.
+3. A leading HTML doctype or structural tag.
 4. Markdown as the fallback.
 
-A plain `str` is always document content. Use `Path("guide.md")` to read a file;
-Lumberjack never treats an arbitrary string as an implicit filesystem path.
-
-Force one parser with `AutoParser(format="markdown")`, `"html"`, or `"docx"`.
-
-### Parser-specific settings
+A plain string is content, never an implicit filesystem path. Each format-specific
+feller also accepts a raw text/bytes convenience value:
 
 ```python
-from lumberjack.parser import MarkdownParser
+from lumberjack.feller import MarkdownFeller
 
-# Setext headings are disabled by default.
-parser = MarkdownParser(disable_lheading=False)
-document = parser.parse(markdown_text)
-```
-
-Every parser accepts the same document-level keyword arguments:
-
-```python
-document = parser.parse(
-    source,
+log = MarkdownFeller(disable_lheading=False).fell(
+    markdown_text,
     document_title="Guide",
     metadata_overrides={"tenant": "docs"},
     source_path="imports/guide.md",
 )
 ```
 
-`DocumentAST.metadata` contains semantic metadata extracted from front matter, HTML
-metadata, or DOCX core properties. `metadata_overrides` supplements or overrides it.
-Source provenance is stored separately in `DocumentAST.source_path`, which becomes
-`Chunk.document_path`.
+`Log.metadata` contains semantic metadata; `Log.source_path` independently records
+provenance and becomes `Chunk.document_path`.
 
-## Splitters
+## Sawyers and Bundles
 
-The unprefixed Python classes use incremental measurement:
+Sawyers accept the same budget and block options as the previous splitting pipeline:
 
 ```python
-from lumberjack.splitter import SiblingSplitter
+from lumberjack.sawyer import SiblingSawyer
 
-splitter = SiblingSplitter(
-    tokenizer,
+sawyer = SiblingSawyer(
+    scaler,
     max_tokens=1200,
     ideal_max_tokens_ratio=0.8,
     merge_below_ratio=0.125,
@@ -148,88 +136,65 @@ splitter = SiblingSplitter(
     heading_sensitive=True,
     max_heading_level=None,
 )
+
+bundles = sawyer.saw(log)
 ```
 
-- `SiblingSplitter`: greedily packs adjacent sibling sections.
-- `SubtreeSplitter`: first collapses a fitting subtree, then falls back to sections.
-- `SectionSplitter`: emits direct section bodies recursively and uses
-  `merge_below_ratio` only to merge adjacent same-heading text tails bottom-up;
-  it never collapses subtrees or merges non-text block chunks.
-- `ExactSiblingSplitter`, `ExactSubtreeSplitter`, `ExactSectionSplitter`: fully recount
-  rendered candidates at each budget decision.
+- `SiblingSawyer` greedily packs adjacent sibling sections.
+- `SubtreeSawyer` first collapses a fitting subtree, then falls back to sections.
+- `SectionSawyer` emits direct section bodies recursively without subtree collapse.
+- `Exact*Sawyer` recount rendered candidates at every budget decision; unprefixed
+  sawyers use incremental estimates.
 
-Incremental chunks store the authoritative final recount in `token_count` and the
-split-time estimate in `estimated_token_count`. Exact splitters make those values equal.
-`Chunk.ancestor_headings` contains ancestor headings, `Chunk.own_heading` contains
-the optional own heading, and `Chunk.body` never repeats either external heading path. Set
-`heading_sensitive=False` to exclude external heading tokens from split budgets; the
-reported `token_count` equals `headings_token_count + tokenizer.count("\n\n") +
-body_token_count`.
+`Bundle.token_count` is the split-time footprint. `Mill` writes it to
+`Chunk.estimated_token_count` for incremental sawyers and performs the authoritative
+final recount after text processing. Exact sawyers produce equal estimated and final
+counts.
+
+## Seasoning, planing, and milling
+
+The default `Seasoner` normalizes CRLF/CR to LF and removes BOM/NUL characters.
+The default `Planer` trims line endings and collapses repeated blank separators without
+removing Markdown syntax.
+
+`PlainTextPlaner` is an explicit opt-in for removing common Markdown/HTML surface
+formatting while retaining readable content, code text, and block separation:
+
+```python
+from lumberjack import Lumberjack
+from lumberjack.planer import PlainTextPlaner
+
+jack = Lumberjack(planer=PlainTextPlaner())
+chunks = jack.saw(markdown_text)
+```
+
+Custom `FellerProtocol`, `ScalerProtocol`, `SawyerProtocol`, `SeasonerProtocol`, and
+`PlanerProtocol` implementations can be injected through `Lumberjack(...)`.
 
 ## Typed block configuration
 
-Python `block_options` accepts a sequence of configuration objects, never a dictionary:
+Python `block_options` accepts a sequence of `BlockConfig`, `MarkdownTableConfig`,
+`HTMLTableConfig`, or `CustomBlockConfig`. Duplicate kinds and non-positive budgets are
+rejected at construction time.
 
-```python
-from lumberjack.block import (
-    BlockConfig,
-    BlockKind,
-    CustomBlockConfig,
-    HTMLTableConfig,
-    MarkdownTableConfig,
-)
+## CLI and Web API
 
-block_options = [
-    BlockConfig(BlockKind.LIST, isolated=True),
-    BlockConfig(BlockKind.CODE_FENCE, split=False),
-    MarkdownTableConfig(max_tokens=500, repeat_header=True),
-    HTMLTableConfig(max_tokens=500, repeat_header=False),
-    CustomBlockConfig("callout", isolated=True),
-]
-```
-
-Each built-in kind is selected by `BlockKind`; the table config classes select their
-kind implicitly. `CustomBlockConfig` is reserved for parser-plugin block kinds.
-Duplicate kinds and non-positive per-block budgets are rejected at construction time.
-
-## Custom components
-
-Implement the protocols from `lumberjack.protocols`, then compose objects directly:
-
-```python
-from lumberjack.parser import MarkdownParser
-
-document = MarkdownParser().parse(markdown_text)
-chunks = custom_splitter.split(document)
-```
-
-There is intentionally no public Pipeline, Builder, options aggregate, registry factory,
-or module-level `parse()` function.
-
-## CLI
+The integration protocols intentionally retain their established domain-oriented names:
 
 ```bash
 lumber guide.md --max-tokens 1200
 lumber guide.md --tokenizer tiktoken --splitter sibling
 lumber guide.md --splitter exact-sibling
 lumber report.docx --input-format docx
-lumber guide.md --block-config table:isolated:500
-```
-
-Unprefixed CLI splitter names use incremental measurement. `incremental-*` remains an
-equivalent explicit alias; `exact-*` selects full recounting. CLI output is JSON.
-
-## Web API
-
-```bash
 lumberjack-serve --reload
 ```
 
 - `POST /lumber/api/split/text`
 - `POST /lumber/api/split/file`
 
-The CLI and Web request fields remain integration-friendly mappings. Those boundary
-layers convert external block JSON into the typed Python configuration objects.
+CLI and Web fields remain `tokenizer` and `splitter`; the private integration adapter
+translates them to Scaler and Sawyer implementations. CLI output and Web responses retain
+the existing serialized `Chunk` schema.
 
 ## Development
 
