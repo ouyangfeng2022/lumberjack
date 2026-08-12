@@ -12,9 +12,9 @@ from ..models import (
     DocumentAST,
     DocumentBlock,
     Entry,
+    HeadingKey,
     HeadingPath,
     SectionNode,
-    ancestor_heading_path,
     common_heading_path,
     render_heading_path,
 )
@@ -48,7 +48,7 @@ class BaseSplitter(SplitterProtocol):
         max_tokens: int = 1200,
         ideal_max_tokens_ratio: float = 0.8,
         skip_empty_sections: bool = True,
-        render_headings: bool = True,
+        heading_sensitive: bool = True,
         max_heading_level: int | None = None,
         block_options: Iterable[BlockOption] | None = None,
         _merge_below_ratio: float = 0.0,
@@ -59,7 +59,7 @@ class BaseSplitter(SplitterProtocol):
         self.ideal_max_tokens = max(1, int(max_tokens * ideal_max_tokens_ratio))
         self.merge_below_ratio = _merge_below_ratio
         self.skip_empty_sections = skip_empty_sections
-        self.render_headings = render_headings
+        self.heading_sensitive = heading_sensitive
         self.max_heading_level = max_heading_level
         self.block_options = normalize_block_options(block_options)
         self.standalone_kinds = frozenset(
@@ -81,33 +81,24 @@ class BaseSplitter(SplitterProtocol):
     def _heading_path_token_count(self, path: HeadingPath) -> int:
         if not path:
             return 0
-        tokens = 0
-        for level, title in path:
-            if title:
-                tokens = tokens + self.tokenizer.count(
-                    "#" * level + " " + title + SEPARATOR, cache=True
-                )
-        return tokens
+        return self.tokenizer.count(render_heading_path(path), cache=True)
 
     def _render_body(
         self,
         entries: list[Entry],
         *,
-        ancestor_headings: HeadingPath,
+        external_headings: HeadingPath,
     ) -> str:
         """Render entries into Markdown body content."""
         if not entries:
             return ""
 
         parts: list[str] = []
-        if ancestor_headings and self.render_headings:
-            parts.append(render_heading_path(ancestor_headings))
-
-        previous_headings = ancestor_headings
+        previous_headings = external_headings
         for entry in entries:
             shared_headings = common_heading_path((previous_headings, entry.headings))
-            if len(shared_headings) < len(ancestor_headings):
-                shared_headings = ancestor_headings
+            if len(shared_headings) < len(external_headings):
+                shared_headings = external_headings
             relative_headings = entry.headings[len(shared_headings) :]
 
             entry_parts: list[str] = []
@@ -126,19 +117,17 @@ class BaseSplitter(SplitterProtocol):
         self,
         entries: list[Entry],
         *,
-        ancestor_headings: HeadingPath | None = None,
+        external_headings: HeadingPath | None = None,
     ) -> int:
         """Full token count of the rendered body for *entries*."""
-        if ancestor_headings is None:
-            ancestor_headings = ancestor_heading_path(
-                entry.headings for entry in entries
-            )
+        if external_headings is None:
+            external_headings = common_heading_path(entry.headings for entry in entries)
         return self.tokenizer.count(
-            self._render_body(entries, ancestor_headings=ancestor_headings), cache=True
+            self._render_body(entries, external_headings=external_headings), cache=True
         )
 
     def _heading_budget_token_count(self, path: HeadingPath) -> int:
-        """Full heading token count for a draft's internal common prefix."""
+        """Canonical Markdown token count for a draft's external heading path."""
         return self._heading_path_token_count(path)
 
     def _root_for_splitting(self, document: DocumentAST) -> SectionNode:
@@ -219,10 +208,27 @@ class BaseSplitter(SplitterProtocol):
         """Merge two drafts; provided by the counting-strategy mixin."""
         raise NotImplementedError
 
+    @staticmethod
+    def _merged_own_heading(
+        left_draft: ChunkDraft,
+        right_draft: ChunkDraft,
+        common_headings: HeadingPath,
+    ) -> HeadingKey | None:
+        """Keep a structural root only when one input owns the merged prefix."""
+        for draft in (left_draft, right_draft):
+            if (
+                common_headings
+                and draft.headings == common_headings
+                and draft.own_heading is not None
+                and draft.own_heading == common_headings[-1]
+            ):
+                return draft.own_heading
+        return None
+
     def _finalize_estimate(
         self,
         chunk: ChunkDraft,
-        headings: HeadingPath,
+        external_headings: HeadingPath,
         token_count: int,
     ) -> int:
         """Estimated token count carried onto the final Chunk; mixin-provided."""
@@ -259,18 +265,26 @@ class BaseSplitter(SplitterProtocol):
         document_path = document.source_path
         index = 0
         for chunk in chunks:
-            headings = ancestor_heading_path(entry.headings for entry in chunk.entries)
-            body = self._render_body(chunk.entries, ancestor_headings=headings)
-            if not body:
-                continue
+            external_headings = chunk.headings
+            own_heading = chunk.own_heading
+            ancestor_headings = (
+                external_headings[:-1] if own_heading is not None else external_headings
+            )
+            body = self._render_body(chunk.entries, external_headings=external_headings)
             if self.skip_empty_sections and not any(
                 entry.body.strip() for entry in chunk.entries
             ):
                 continue
             index += 1
-            # token_count: always a full recount of the rendered body.
-            token_count = self.tokenizer.count(body, cache=True)
-            estimated = self._finalize_estimate(chunk, headings, token_count)
+            heading_text = render_heading_path(external_headings)
+            headings_token_count = self.tokenizer.count(heading_text, cache=True)
+            body_token_count = self.tokenizer.count(body, cache=True)
+            token_count = (
+                headings_token_count
+                + self.tokenizer.count(SEPARATOR, cache=True)
+                + body_token_count
+            )
+            estimated = self._finalize_estimate(chunk, external_headings, token_count)
             section_level = max(
                 (level for entry in chunk.entries for level, _title in entry.headings),
                 default=0,
@@ -282,7 +296,10 @@ class BaseSplitter(SplitterProtocol):
                     body=body,
                     token_count=token_count,
                     estimated_token_count=estimated,
-                    headings=headings,
+                    headings_token_count=headings_token_count,
+                    body_token_count=body_token_count,
+                    ancestor_headings=ancestor_headings,
+                    own_heading=own_heading,
                     section_level=section_level,
                     document_title=document.title,
                     document_path=document_path,
@@ -370,9 +387,9 @@ class BaseSplitter(SplitterProtocol):
                 and current.chunk_type == "paragraph"
             ):
                 merged_draft = self._merge_drafts(previous, current)
-                # Compare the rendered footprint against max_tokens.  Because
-                # can_merge guarantees previous.headings == current.headings,
-                # the merged common prefix is that shared path.
+                # Compare the policy-selected footprint against max_tokens.
+                # Because can_merge guarantees matching heading paths, the
+                # merged common prefix is that shared path.
                 if self._draft_budget_tokens(merged_draft) <= self.max_tokens:
                     merged[i - 1] = merged_draft
                     del merged[i]

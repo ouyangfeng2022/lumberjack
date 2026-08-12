@@ -28,7 +28,7 @@ const en = {
   opts_hide_advanced: 'Hide advanced options',
   opts_merge_below_ratio: 'Tail merge ratio (0 disables)',
   opts_skip_empty_sections: 'Skip empty sections',
-  opts_render_headings: 'Include ancestor headings in each chunk',
+  opts_heading_sensitive: 'Count headings toward the split budget',
   opts_splitter: 'Splitter',
   opts_splitter_sibling: 'Sibling packing',
   opts_splitter_exact_sibling: 'Sibling packing (exact)',

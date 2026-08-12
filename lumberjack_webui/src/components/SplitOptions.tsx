@@ -172,10 +172,10 @@ export default function SplitOptions({ options, onChange }: Props) {
             <label className={styles.checkField}>
               <input
                 type="checkbox"
-                checked={options.render_headings}
-                onChange={(e) => update('render_headings', e.target.checked)}
+                checked={options.heading_sensitive}
+                onChange={(e) => update('heading_sensitive', e.target.checked)}
               />
-              <span>{t('opts_render_headings')}</span>
+              <span>{t('opts_heading_sensitive')}</span>
             </label>
           </div>
 

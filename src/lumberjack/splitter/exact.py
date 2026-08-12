@@ -7,6 +7,7 @@ from ..models import (
     ChunkDraft,
     DocumentBlock,
     Entry,
+    HeadingKey,
     HeadingPath,
     SectionNode,
     common_heading_path,
@@ -15,8 +16,6 @@ from .base import BaseSplitter
 
 if TYPE_CHECKING:
     from ..models import Chunk, DocumentAST
-
-SEPARATOR = "\n\n"
 
 
 class ExactCountingMixin(BaseSplitter):
@@ -35,8 +34,8 @@ class ExactCountingMixin(BaseSplitter):
         return self._finalize_chunks(drafts, document)
 
     def _draft_budget_tokens(self, draft: ChunkDraft) -> int:
-        """Rendered footprint a draft occupies — full recount of the body."""
-        return self._rendered_token_count(draft.entries)
+        """Exact logical footprint selected by the heading-sensitivity policy."""
+        return draft.token_count if self.heading_sensitive else draft.body_token_count
 
     def _merge_drafts(
         self,
@@ -45,7 +44,7 @@ class ExactCountingMixin(BaseSplitter):
         *,
         expected_common: HeadingPath | None = None,
     ) -> ChunkDraft:
-        """Merge two drafts by deriving token counts from the rendered body."""
+        """Merge two drafts by fully recounting separated headings and body."""
         left_headings = left_draft.headings
         right_headings = right_draft.headings
         if expected_common is not None:
@@ -53,9 +52,11 @@ class ExactCountingMixin(BaseSplitter):
         else:
             common_headings = common_heading_path([left_headings, right_headings])
         merged_entries = [*left_draft.entries, *right_draft.entries]
+        own_heading = self._merged_own_heading(left_draft, right_draft, common_headings)
         return self._draft_from_entries(
             merged_entries,
             common_headings,
+            own_heading=own_heading,
             origin="merge",
             chunk_type=left_draft.chunk_type,
         )
@@ -63,7 +64,7 @@ class ExactCountingMixin(BaseSplitter):
     def _finalize_estimate(
         self,
         chunk: ChunkDraft,  # noqa: ARG002
-        headings: HeadingPath,  # noqa: ARG002
+        external_headings: HeadingPath,  # noqa: ARG002
         token_count: int,
     ) -> int:
         """Exact path: the split-time estimate already equals the full recount."""
@@ -71,30 +72,37 @@ class ExactCountingMixin(BaseSplitter):
 
     def _exact_body_budget(self, headings: HeadingPath) -> int:
         """Body-only token budget for exact-path body splitting."""
-        max_tokens = self.ideal_max_tokens
-        if self.render_headings:
-            prefix_tokens = self._heading_path_token_count(headings)
-        else:
-            prefix_tokens = self._heading_path_token_count(headings[-1:])
-        return max(0, max_tokens - prefix_tokens)
+        if not self.heading_sensitive:
+            return self.ideal_max_tokens
+        prefix_tokens = self._heading_path_token_count(headings)
+        limit = (
+            self.max_tokens
+            if prefix_tokens >= self.ideal_max_tokens
+            else self.ideal_max_tokens
+        )
+        return max(0, limit - prefix_tokens)
 
     def _draft_from_entries(
         self,
         entries: list[Entry],
         headings: HeadingPath,
         *,
+        own_heading: HeadingKey | None,
         origin: Literal["section", "fragment", "text_piece", "merge"],
         chunk_type: str = "paragraph",
     ) -> ChunkDraft:
-        """Build a ChunkDraft from entries, deriving token counts from render."""
-        body_tokens = self._rendered_token_count(entries)
+        """Build a draft by fully recounting its separated public fields."""
+        body = self._render_body(entries, external_headings=headings)
+        body_tokens = self.tokenizer.count(body, cache=True)
         prefix_tokens = self._heading_path_token_count(headings)
+        token_count = prefix_tokens + body_tokens
         return ChunkDraft(
             entries=entries,
             headings=headings,
+            own_heading=own_heading,
             headings_token_count=prefix_tokens,
             body_token_count=body_tokens,
-            token_count=body_tokens,
+            token_count=token_count,
             split_origin=origin,
             chunk_type=chunk_type,
         )
@@ -132,17 +140,22 @@ class ExactCountingMixin(BaseSplitter):
         blocks = section.blocks
         budget = self._exact_body_budget(headings)
 
-        if not blocks:
-            entry = self._entry_from_blocks(headings, blocks, body_token_count=0)
-            prefix_tokens = self._heading_path_token_count(headings)
+        if (
+            self.heading_sensitive
+            and self._heading_path_token_count(headings) >= self.max_tokens
+        ) or not blocks:
+            body = join_rendered_blocks([block.text for block in blocks])
+            entry = self._entry_from_blocks(
+                headings,
+                blocks,
+                body_token_count=self.tokenizer.count(body, cache=True),
+            )
             return [
-                ChunkDraft(
-                    entries=[entry],
-                    headings=headings,
-                    headings_token_count=prefix_tokens,
-                    body_token_count=0,
-                    token_count=prefix_tokens,
-                    split_origin="fragment",
+                self._draft_from_entries(
+                    [entry],
+                    headings,
+                    own_heading=headings[-1] if headings else None,
+                    origin="fragment",
                 )
             ]
 
@@ -157,7 +170,8 @@ class ExactCountingMixin(BaseSplitter):
             chunks.append(
                 self._draft_from_entries(
                     entries,
-                    common_heading_path(e.headings for e in entries),
+                    headings,
+                    own_heading=headings[-1] if headings else None,
                     origin="fragment",
                 )
             )
@@ -186,6 +200,7 @@ class ExactCountingMixin(BaseSplitter):
                             self._draft_from_entries(
                                 [entry],
                                 headings,
+                                own_heading=headings[-1] if headings else None,
                                 origin="text_piece",
                                 chunk_type=block.kind,
                             )
@@ -198,6 +213,7 @@ class ExactCountingMixin(BaseSplitter):
                         self._draft_from_entries(
                             [entry],
                             headings,
+                            own_heading=headings[-1] if headings else None,
                             origin="fragment",
                             chunk_type=block.kind,
                         )
@@ -207,22 +223,25 @@ class ExactCountingMixin(BaseSplitter):
             entry = make_entry(
                 block, block.text, self.tokenizer.count(block.text, cache=True)
             )
+            block_draft = self._draft_from_entries(
+                [entry],
+                headings,
+                own_heading=headings[-1] if headings else None,
+                origin="fragment",
+                chunk_type="paragraph",
+            )
 
-            if block.text and self.tokenizer.count(block.text, cache=True) > budget:
+            if (
+                block.text
+                and self._draft_budget_tokens(block_draft) > self.ideal_max_tokens
+            ):
                 flush_current()
                 block_pieces = self._block_splitter.split_oversized_block(
                     block,
                     default_budget=budget,
                 )
                 if block_pieces is None:
-                    chunks.append(
-                        self._draft_from_entries(
-                            [entry],
-                            headings,
-                            origin="fragment",
-                            chunk_type="paragraph",
-                        )
-                    )
+                    chunks.append(block_draft)
                 else:
                     for piece, piece_tokens in block_pieces:
                         pe = make_entry(block, piece, piece_tokens)
@@ -230,6 +249,7 @@ class ExactCountingMixin(BaseSplitter):
                             self._draft_from_entries(
                                 [pe],
                                 headings,
+                                own_heading=headings[-1] if headings else None,
                                 origin="text_piece",
                                 chunk_type="paragraph",
                             )
@@ -237,10 +257,15 @@ class ExactCountingMixin(BaseSplitter):
                 continue
 
             candidate_entries = [*current_entries, entry]
+            candidate_draft = self._draft_from_entries(
+                candidate_entries,
+                headings,
+                own_heading=headings[-1] if headings else None,
+                origin="fragment",
+            )
             if (
                 current_entries
-                and self._rendered_token_count(candidate_entries)
-                > self.ideal_max_tokens
+                and self._draft_budget_tokens(candidate_draft) > self.ideal_max_tokens
             ):
                 flush_current()
 
@@ -265,8 +290,6 @@ class ExactCountingMixin(BaseSplitter):
         has_standalone = any(
             block.kind in self.standalone_kinds for block in section.blocks
         )
-        if has_standalone or body_tokens > self._exact_body_budget(section.path):
-            return self._split_section_body(section)
         entry = Entry(
             headings=section.path,
             body=body,
@@ -274,24 +297,27 @@ class ExactCountingMixin(BaseSplitter):
             end_line=self._max_end_lines(section.blocks),
             body_token_count=body_tokens,
         )
-        headings_token_count = self._heading_budget_token_count(section.path)
-        return [
-            ChunkDraft(
-                entries=[entry],
-                headings=section.path,
-                headings_token_count=headings_token_count,
-                body_token_count=body_tokens,
-                token_count=headings_token_count + body_tokens,
-            )
-        ]
+        draft = self._draft_from_entries(
+            [entry],
+            section.path,
+            own_heading=section.path[-1] if section.path else None,
+            origin="section",
+        )
+        if has_standalone or self._draft_budget_tokens(draft) > self.ideal_max_tokens:
+            return self._split_section_body(section)
+        return [draft]
 
     def _single_subtree_draft(self, section: SectionNode) -> ChunkDraft | None:
         if self._section_has_standalone(section):
             return None
-        entries = self._entries_from_section(section)
+        structural_root = section
+        if section.level == 0 and not section.blocks and len(section.children) == 1:
+            structural_root = section.children[0]
+        entries = self._entries_from_section(structural_root)
         return self._draft_from_entries(
             entries,
-            common_heading_path(entry.headings for entry in entries),
+            structural_root.path,
+            own_heading=(structural_root.path[-1] if structural_root.path else None),
             origin="section",
         )
 
@@ -308,7 +334,12 @@ class ExactCountingMixin(BaseSplitter):
                 cache=True,
             ),
         )
-        draft = self._draft_from_entries([entry], section.path, origin="section")
+        draft = self._draft_from_entries(
+            [entry],
+            section.path,
+            own_heading=section.path[-1] if section.path else None,
+            origin="section",
+        )
         return (
             draft if self._draft_budget_tokens(draft) <= self.ideal_max_tokens else None
         )

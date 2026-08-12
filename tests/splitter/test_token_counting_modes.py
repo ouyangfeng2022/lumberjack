@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 import lumberjack.tokenizer as tokenizers
+from lumberjack.models import complete_heading_path, render_heading_path
 from lumberjack.parser.markdown.parser import MarkdownItParser
 from lumberjack.tokenizer import (
     ApproxByteTokenizer,
@@ -115,7 +116,7 @@ class TestSeparatorDeltaAfter:
     def _splitter(self):
         return create_splitter(
             "incremental-sibling",
-            TiktokenTokenizer(),
+            ApproxByteTokenizer(),
             splitter_options(max_tokens=1200),
         )
 
@@ -226,17 +227,33 @@ class TestChunkCounts:
 
     def test_approx_token_count_is_bytes_div_3(self) -> None:
         chunks, _ = _split_with(self.SOURCE, "approx")
+        engine = create_tokenizer("approx")
         for chunk in chunks:
-            # token_count is always a full recount of the rendered body, as
-            # UTF-8 bytes // 3.
-            assert chunk.token_count == len(chunk.body.encode("utf-8")) // 3
+            assert chunk.token_count == (
+                chunk.headings_token_count
+                + engine.count("\n\n", cache=True)
+                + chunk.body_token_count
+            )
 
     def test_tiktoken_token_count_matches_full_recount(self) -> None:
         chunks, _ = _split_with(self.SOURCE, "tiktoken")
         engine = create_tokenizer("tiktoken")
         for chunk in chunks:
-            # token_count is always a full cached recount of the rendered body
-            assert chunk.token_count == engine.count(chunk.body, cache=True)
+            assert chunk.headings_token_count == engine.count(
+                render_heading_path(
+                    complete_heading_path(
+                        chunk.ancestor_headings,
+                        chunk.own_heading,
+                    )
+                ),
+                cache=True,
+            )
+            assert chunk.body_token_count == engine.count(chunk.body, cache=True)
+            assert chunk.token_count == (
+                chunk.headings_token_count
+                + engine.count("\n\n", cache=True)
+                + chunk.body_token_count
+            )
 
 
 class TestSplitterUsesTailWindow:
@@ -274,7 +291,11 @@ class TestComponentTokenizerSelection:
 
         chunks = lumber("# T\n\nbody\n")
         assert chunks
-        assert chunks[0].token_count == len(chunks[0].body.encode("utf-8")) // 3
+        assert chunks[0].token_count == (
+            chunks[0].headings_token_count
+            + create_tokenizer("approx").count("\n\n", cache=True)
+            + chunks[0].body_token_count
+        )
 
     def test_manual_pipeline_accepts_tiktoken(self) -> None:
         chunks, _ = _split_with("# T\n\nbody text here\n", "tiktoken")

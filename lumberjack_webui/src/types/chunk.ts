@@ -4,7 +4,10 @@ export interface ChunkData {
   body: string;
   token_count: number;
   estimated_token_count: number;
-  headings: [number, string][];
+  headings_token_count: number;
+  body_token_count: number;
+  ancestor_headings: [number, string][];
+  own_heading: [number, string] | null;
   section_level: number;
   document_title: string;
   document_path: string | null;
@@ -43,7 +46,7 @@ export interface SplitOptions {
   ideal_max_tokens_ratio: number;
   merge_below_ratio: number;
   skip_empty_sections: boolean;
-  render_headings: boolean;
+  heading_sensitive: boolean;
   block_configs: Record<string, BlockHandlingState> | null;
   tokenizer: TokenizerName;
   splitter: SplitterName;

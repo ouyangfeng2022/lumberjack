@@ -8,6 +8,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient, Response
 
+from lumberjack.tokenizer import ApproxByteTokenizer, TiktokenTokenizer
 from lumberjack.web import create_app
 
 
@@ -60,7 +61,7 @@ def test_split_with_text(client: ASGITestClient) -> None:
     assert "body" in chunk
     assert "token_count" in chunk
     assert "estimated_token_count" in chunk
-    assert "headings" in chunk
+    assert "ancestor_headings" in chunk
 
 
 def test_split_text_accepts_html_format(client: ASGITestClient) -> None:
@@ -76,7 +77,8 @@ def test_split_text_accepts_html_format(client: ASGITestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["document"] == "Guide"
-    assert body["chunks"][0]["body"] == "# Guide\n\nIntro"
+    assert body["chunks"][0]["own_heading"] == [1, "Guide"]
+    assert body["chunks"][0]["body"] == "Intro"
 
 
 def test_split_with_file(client: ASGITestClient) -> None:
@@ -92,34 +94,56 @@ def test_split_with_file(client: ASGITestClient) -> None:
     assert body["chunk_count"] >= 1
 
 
-def test_split_text_accepts_render_headings_false(client: ASGITestClient) -> None:
+def test_split_text_accepts_heading_sensitive_false(client: ASGITestClient) -> None:
     response = client.post(
         "/lumber/api/split/text",
         json={
             "text": "# Parent\n\nIntro.",
             "max_tokens": 500,
-            "render_headings": False,
+            "heading_sensitive": False,
         },
     )
 
     assert response.status_code == 200
     chunk = response.json()["chunks"][0]
-    assert chunk["headings"] == []
-    assert chunk["body"] == "# Parent\n\nIntro."
+    assert chunk["ancestor_headings"] == []
+    assert chunk["own_heading"] == [1, "Parent"]
+    assert chunk["body"] == "Intro."
 
 
-def test_split_file_accepts_render_headings_false(client: ASGITestClient) -> None:
+def test_split_text_serializes_merged_siblings_without_own_heading(
+    client: ASGITestClient,
+) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={
+            "text": "# First\n\nOne.\n\n# Second\n\nTwo.",
+            "max_tokens": 500,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["chunk_count"] == 1
+    chunk = body["chunks"][0]
+    assert chunk["ancestor_headings"] == []
+    assert chunk["own_heading"] is None
+    assert chunk["body"] == "# First\n\nOne.\n\n# Second\n\nTwo."
+
+
+def test_split_file_accepts_heading_sensitive_false(client: ASGITestClient) -> None:
     md_file = io.BytesIO(b"# Parent\n\nIntro.")
     response = client.post(
         "/lumber/api/split/file",
         files={"file": ("guide.md", md_file, "text/markdown")},
-        data={"max_tokens": "500", "render_headings": "false"},
+        data={"max_tokens": "500", "heading_sensitive": "false"},
     )
 
     assert response.status_code == 200
     chunk = response.json()["chunks"][0]
-    assert chunk["headings"] == []
-    assert chunk["body"] == "# Parent\n\nIntro."
+    assert chunk["ancestor_headings"] == []
+    assert chunk["own_heading"] == [1, "Parent"]
+    assert chunk["body"] == "Intro."
 
 
 def test_split_text_accepts_max_heading_level(client: ASGITestClient) -> None:
@@ -134,7 +158,8 @@ def test_split_text_accepts_max_heading_level(client: ASGITestClient) -> None:
 
     assert response.status_code == 200
     chunk = response.json()["chunks"][0]
-    assert chunk["headings"] == [[1, "Parent"]]
+    assert chunk["ancestor_headings"] == []
+    assert chunk["own_heading"] == [1, "Parent"]
     assert chunk["section_level"] == 2
     assert "### Detail" in chunk["body"]
 
@@ -149,7 +174,8 @@ def test_split_file_accepts_max_heading_level(client: ASGITestClient) -> None:
 
     assert response.status_code == 200
     chunk = response.json()["chunks"][0]
-    assert chunk["headings"] == [[1, "Parent"]]
+    assert chunk["ancestor_headings"] == []
+    assert chunk["own_heading"] == [1, "Parent"]
     assert chunk["section_level"] == 2
     assert "### Detail" in chunk["body"]
 
@@ -165,7 +191,8 @@ def test_split_with_html_file_auto_detects_format(client: ASGITestClient) -> Non
     assert response.status_code == 200
     body = response.json()
     assert body["document"] == "guide.html"
-    assert body["chunks"][0]["body"] == "# Guide\n\nIntro"
+    assert body["chunks"][0]["own_heading"] == [1, "Guide"]
+    assert body["chunks"][0]["body"] == "Intro"
 
 
 def test_split_no_input(client: ASGITestClient) -> None:
@@ -184,7 +211,7 @@ def test_split_with_options(client: ASGITestClient) -> None:
             "ideal_max_tokens_ratio": 0.8,
             "merge_below_ratio": 0.0,
             "block_configs": {"paragraph": {"isolated": False}},
-            "tokenizer": "tiktoken",
+            "tokenizer": "approx",
         },
     )
     assert response.status_code == 200
@@ -206,8 +233,9 @@ def test_split_ignores_legacy_render_common_headings_form_field(
 
     assert response.status_code == 200
     chunk = response.json()["chunks"][0]
-    assert chunk["headings"] == [[1, "Parent"]]
-    assert chunk["body"] == "# Parent\n\n## Child\n\nChild body."
+    assert chunk["ancestor_headings"] == []
+    assert chunk["own_heading"] == [1, "Parent"]
+    assert chunk["body"] == "## Child\n\nChild body."
 
 
 def test_unprefixed_api_path_is_not_registered(client: ASGITestClient) -> None:
@@ -342,7 +370,11 @@ def test_split_text_with_approx(client: ASGITestClient) -> None:
     data = response.json()
     assert data["chunk_count"] >= 1
     chunk = data["chunks"][0]
-    assert chunk["token_count"] == len(chunk["body"].encode("utf-8")) // 3
+    assert chunk["token_count"] == (
+        chunk["headings_token_count"]
+        + ApproxByteTokenizer().count("\n\n")
+        + chunk["body_token_count"]
+    )
 
 
 def test_split_text_with_tiktoken(client: ASGITestClient) -> None:
@@ -355,11 +387,12 @@ def test_split_text_with_tiktoken(client: ASGITestClient) -> None:
     response = client.post("/lumber/api/split/text", json=payload)
     assert response.status_code == 200
     chunk = response.json()["chunks"][0]
-    # tiktoken reports a full cached recount; on typical English text it maps
-    # to roughly 4 bytes per token and so must be strictly less than the
-    # bytes//3 approx estimate, and > 0.
     assert chunk["token_count"] > 0
-    assert chunk["token_count"] < len(chunk["body"].encode("utf-8")) // 3
+    assert chunk["token_count"] == (
+        chunk["headings_token_count"]
+        + TiktokenTokenizer().count("\n\n")
+        + chunk["body_token_count"]
+    )
 
 
 def test_split_file_with_approx(client: ASGITestClient) -> None:
@@ -373,4 +406,8 @@ def test_split_file_with_approx(client: ASGITestClient) -> None:
     )
     assert response.status_code == 200
     chunk = response.json()["chunks"][0]
-    assert chunk["token_count"] == len(chunk["body"].encode("utf-8")) // 3
+    assert chunk["token_count"] == (
+        chunk["headings_token_count"]
+        + ApproxByteTokenizer().count("\n\n")
+        + chunk["body_token_count"]
+    )

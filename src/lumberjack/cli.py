@@ -62,10 +62,11 @@ def build_parser() -> argparse.ArgumentParser:
         "in [0.0, 1.0); 0 disables merging (default: 0.125)",
     )
     parser.add_argument(
-        "--no-render-headings",
-        action="store_true",
-        help="Omit the chunk's ancestor heading breadcrumb from the rendered body. "
-        "The split budget is based on the rendered body.",
+        "--heading-sensitive",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Include the chunk's external heading-path tokens in split budgets "
+        "(default: enabled). Headings are always returned as metadata.",
     )
     parser.add_argument(
         "--max-heading-level",
@@ -114,7 +115,7 @@ def main() -> None:
         block_options=block_options,
         tokenizer=args.tokenizer,
         splitter=args.splitter,
-        render_headings=not args.no_render_headings,
+        heading_sensitive=args.heading_sensitive,
         max_heading_level=args.max_heading_level,
     )
 

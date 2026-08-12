@@ -14,7 +14,7 @@ const DEFAULT_OPTIONS: Options = {
   ideal_max_tokens_ratio: 0.8,
   merge_below_ratio: 0.125,
   skip_empty_sections: true,
-  render_headings: true,
+  heading_sensitive: true,
   block_configs: null,
   tokenizer: 'approx',
   splitter: 'sibling',
@@ -114,7 +114,11 @@ export default function App() {
   const resultStats = useMemo(() => {
     if (!result) return null;
     const largestChunk = result.chunks.reduce(
-      (max, chunk) => Math.max(max, chunk.token_count),
+      (max, chunk) =>
+        Math.max(
+          max,
+          options.heading_sensitive ? chunk.token_count : chunk.body_token_count,
+        ),
       0,
     );
     const budgetUse = Math.min(100, Math.round((largestChunk / options.max_tokens) * 100));
@@ -122,7 +126,7 @@ export default function App() {
     return {
       budgetUse,
     };
-  }, [options.max_tokens, result]);
+  }, [options.heading_sensitive, options.max_tokens, result]);
 
   const handleSubmit = async () => {
     setError(null);

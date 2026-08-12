@@ -85,7 +85,7 @@ def test_html_splitter_respects_max_heading_level():
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].headings == ()
+    assert chunks[0].ancestor_headings == ()
     assert chunks[0].section_level == 1
     assert "### Deep" in chunks[0].body
 

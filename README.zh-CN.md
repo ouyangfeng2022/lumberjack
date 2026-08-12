@@ -142,7 +142,7 @@ splitter = SiblingSplitter(
     ideal_max_tokens_ratio=0.8,
     merge_below_ratio=0.125,
     skip_empty_sections=True,
-    render_headings=True,
+    heading_sensitive=True,
     max_heading_level=None,
 )
 ```
@@ -156,6 +156,10 @@ splitter = SiblingSplitter(
 
 增量式 splitter 将最终权威计数写入 `token_count`，将切分时估算写入
 `estimated_token_count`；精确 splitter 的两个值相等。
+`Chunk.ancestor_headings` 保存祖先标题，`Chunk.own_heading` 保存可选的自身标题，
+`Chunk.body` 不会重复这段外部标题路径。设置 `heading_sensitive=False` 可让切分
+预算忽略外部标题 token。输出的 `token_count` 等于
+`headings_token_count + tokenizer.count("\n\n") + body_token_count`。
 
 ## 类型安全的 Block 配置
 

@@ -103,7 +103,7 @@ def splitter_options(
     ideal_max_tokens_ratio: float = 0.8,
     merge_below_ratio: float = 0.125,
     skip_empty_sections: bool = True,
-    render_headings: bool = True,
+    heading_sensitive: bool = True,
     max_heading_level: int | None = None,
     block_options: dict[str, BaseParams] | None = None,
 ) -> dict[str, Any]:
@@ -112,7 +112,7 @@ def splitter_options(
         "ideal_max_tokens_ratio": ideal_max_tokens_ratio,
         "merge_below_ratio": merge_below_ratio,
         "skip_empty_sections": skip_empty_sections,
-        "render_headings": render_headings,
+        "heading_sensitive": heading_sensitive,
         "max_heading_level": max_heading_level,
         "block_options": _block_configs(block_options),
     }

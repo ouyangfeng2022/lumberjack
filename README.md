@@ -145,7 +145,7 @@ splitter = SiblingSplitter(
     ideal_max_tokens_ratio=0.8,
     merge_below_ratio=0.125,
     skip_empty_sections=True,
-    render_headings=True,
+    heading_sensitive=True,
     max_heading_level=None,
 )
 ```
@@ -159,6 +159,11 @@ splitter = SiblingSplitter(
 
 Incremental chunks store the authoritative final recount in `token_count` and the
 split-time estimate in `estimated_token_count`. Exact splitters make those values equal.
+`Chunk.ancestor_headings` contains ancestor headings, `Chunk.own_heading` contains
+the optional own heading, and `Chunk.body` never repeats either external heading path. Set
+`heading_sensitive=False` to exclude external heading tokens from split budgets; the
+reported `token_count` equals `headings_token_count + tokenizer.count("\n\n") +
+body_token_count`.
 
 ## Typed block configuration
 

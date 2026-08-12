@@ -25,7 +25,7 @@ def test_cli_public_defaults_and_choices() -> None:
     assert _action(parser, "max_tokens").default == 1200
     assert _action(parser, "ideal_max_tokens_ratio").default == 0.8
     assert _action(parser, "merge_below_ratio").default == 0.125
-    assert _action(parser, "no_render_headings").default is False
+    assert _action(parser, "heading_sensitive").default is True
 
 
 def test_cli_help_assigns_counting_mode_to_splitter() -> None:

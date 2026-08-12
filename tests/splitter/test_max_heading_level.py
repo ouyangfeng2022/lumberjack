@@ -70,18 +70,17 @@ Content here.
     chunks = _split(markdown, max_heading_level=None)
     assert len(chunks) >= 1  # At least one chunk
 
-    # Ancestor metadata excludes the chunk's own H4 title, while section_level
-    # still reports the deepest covered heading level.
+    # A collapsed subtree owns its structural H1 root; deeper headings remain body.
     chunk = chunks[0]
-    assert len(chunk.headings) == 3  # H1, H2, H3 ancestors
+    assert chunk.ancestor_headings == ()
+    assert chunk.own_heading == (1, "Main Section")
     assert chunk.section_level == 4
 
     # With max_heading_level=2, only H1 and H2 remain chunk section context.
     chunks = _split(markdown, max_heading_level=2)
     chunk = chunks[0]
-    # H2 is the chunk's own section title, so only H1 is ancestor metadata.
-    assert len(chunk.headings) == 1
-    assert chunk.headings[0][0] == 1  # H1
+    assert chunk.ancestor_headings == ()
+    assert chunk.own_heading == (1, "Main Section")
     assert chunk.section_level == 2
 
     # Check that H3 and H4 are in the body as text
@@ -116,7 +115,12 @@ def test_max_heading_level_manual_splitter_pipeline(splitter_name: str):
 
     assert len(chunks) == 1
     chunk = chunks[0]
-    assert chunk.headings == ((1, "H1"),)
+    if splitter_name == "section":
+        assert chunk.ancestor_headings == ((1, "H1"),)
+        assert chunk.own_heading == (2, "H2")
+    else:
+        assert chunk.ancestor_headings == ()
+        assert chunk.own_heading == (1, "H1")
     assert chunk.section_level == 2
     assert "### H3" in chunk.body
 
@@ -133,7 +137,8 @@ Body.
 
     chunks = _split(markdown, max_heading_level=None)
     chunk = chunks[0]
-    assert chunk.headings == ((1, "H1"),)
+    assert chunk.ancestor_headings == ()
+    assert chunk.own_heading == (1, "H1")
     assert chunk.section_level == 6
 
 
@@ -151,7 +156,7 @@ def test_max_heading_level_zero_disables_all_headings():
 
     assert len(chunks) == 1
     chunk = chunks[0]
-    assert chunk.headings == ()
+    assert chunk.ancestor_headings == ()
     assert chunk.section_level == 0
     assert chunk.body == "# H1\n\n## H2\n\n### H3"
 

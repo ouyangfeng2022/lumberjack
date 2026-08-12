@@ -123,29 +123,31 @@ class DocumentAST:
 
 @dataclass(slots=True, frozen=True)
 class Chunk:
-    """Final chunk payload with rendered and estimated token counts plus source metadata.
+    """Final chunk payload with separated heading/body content and token counts.
 
     Attributes:
         chunk_id: Unique identifier for this chunk.
         chunk_type: Origin block type (e.g. ``"paragraph"``, ``"heading"``,
             ``"code_fence"``, ``"document"``).
-        body: Rendered chunk text, optionally including heading breadcrumbs.
-        token_count: Token count measured by the configured tokenizer.
+        body: Rendered chunk body. Ancestor and own headings are never rendered
+            here; headings needed to represent merged internal sections remain.
+        token_count: Sum of heading tokens, ``tokenizer.count("\n\n")``, and
+            body tokens.
         estimated_token_count: Split-time running estimate (additive + separator-delta
-            window) used for budget decisions; ``token_count`` is the authoritative
-            full recount of the rendered body. The two may differ slightly due
-            to join approximations.
-        headings: Tuple of ``(level, title)`` pairs representing the chunk's
-            ancestor heading path.
-
-            ``# H1 \\n\\n ## H2.1 \\n\\n Content1``, headings=[(1, "H1")].
-
-            ``# H1 \\n\\n ## H2.1 \\n\\n Content1 ## H2.2 \\n\\n Content2``, headings=[(1, "H1")].
+            window). ``token_count`` is the authoritative final total. The two
+            may differ slightly for incremental splitters due to join approximations.
+        headings_token_count: Token count of the canonical Markdown rendering of
+            the complete heading path.
+        body_token_count: Token count of ``body``.
+        ancestor_headings: Tuple of ``(level, title)`` pairs representing the
+            chunk's ancestor heading path.
+        own_heading: The chunk's own ``(level, title)`` heading, or ``None``
+            when the chunk represents multiple merged sibling sections.
 
         section_level: Deepest heading level in this chunk.
 
             ``section_level`` is derived from the full section paths covered by
-            the chunk, not from the ancestor-only ``headings`` metadata.
+            the chunk, not from the ancestor-only ``ancestor_headings`` metadata.
 
         document_title: Title of the source document.
         document_path: File path of the source document, if split from a file.
@@ -158,7 +160,10 @@ class Chunk:
     body: str = ""
     token_count: int = 0
     estimated_token_count: int = 0
-    headings: HeadingPath = ()
+    headings_token_count: int = 0
+    body_token_count: int = 0
+    ancestor_headings: HeadingPath = ()
+    own_heading: HeadingKey | None = None
     section_level: int = 0
     document_title: str = ""
     document_path: str | None = None
@@ -178,6 +183,16 @@ def render_heading_path(path: HeadingPath) -> str:
     return join_rendered_blocks(
         [_render_heading(level, title) for level, title in path]
     )
+
+
+def complete_heading_path(
+    ancestor_headings: HeadingPath,
+    own_heading: HeadingKey | None,
+) -> HeadingPath:
+    """Return the complete external path for a chunk's separated headings."""
+    if own_heading is None:
+        return ancestor_headings
+    return (*ancestor_headings, own_heading)
 
 
 def common_heading_path(paths: Iterable[HeadingPath]) -> HeadingPath:
@@ -232,7 +247,8 @@ class ChunkDraft:
 
     Args:
         entries: List of entries to be merged into the chunk, with heading context and body.
-        headings: The full heading path context for the chunk, used for rendering and metadata.
+        headings: Full external heading path excluded from the rendered body.
+        own_heading: Optional final heading identifying the chunk itself.
 
             ``# H1 \n\n ## H2.1 \n\n Content1``, headings=[(1, "H1"), (2, "H2.1")].
 
@@ -240,7 +256,7 @@ class ChunkDraft:
 
         headings_token_count: The token count for the chunk's full heading path.
         body_token_count: The token count for the chunk body (sum of entry body_token_count plus separator deltas).
-        token_count: `headings_token_count` + `body_token_count`.
+        token_count: Split-time sum of heading and body tokens.
         split_origin: The source of the split that produced this draft, for debugging/analysis.
         chunk_type: The type of content in the chunk (e.g. "paragraph", "code_block"), used for metadata.
 
@@ -248,6 +264,7 @@ class ChunkDraft:
 
     entries: list[Entry]
     headings: HeadingPath
+    own_heading: HeadingKey | None
     headings_token_count: int
     body_token_count: int
     token_count: int
@@ -262,8 +279,8 @@ class SectionTokenCounts:
     Args:
         title: Tokens for the section's own heading title (0 if level 0).
         body: Tokens for the section's own body blocks (0 if no blocks).
-        subtree: Tokens for the entire section subtree, including own heading and body,
-            and all descendant sections' headings and bodies.
+        subtree: Tokens for the rendered subtree body with this section's own
+            heading externalized; descendant headings remain included.
     """
 
     title: int

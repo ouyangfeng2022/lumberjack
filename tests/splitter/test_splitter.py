@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from lumberjack.block import BlockConfig, BlockKind
-from lumberjack.models import ChunkDraft, Entry
+from lumberjack.models import ChunkDraft, Entry, complete_heading_path
 from lumberjack.parser.markdown.parser import MarkdownParser
 from lumberjack.splitter import (
     ExactSiblingSplitter as SiblingSplitter,
@@ -159,8 +159,15 @@ def test_splitter_preserves_heading_context() -> None:
     chunks = splitter.split(document)
 
     assert len(chunks) >= 2
-    assert any("# Overview" in chunk.body for chunk in chunks)
-    assert any("## Details" in chunk.body for chunk in chunks)
+    heading_paths = [
+        complete_heading_path(chunk.ancestor_headings, chunk.own_heading)
+        for chunk in chunks
+    ]
+    assert any((1, "Overview") in path for path in heading_paths)
+    assert any(
+        (2, "Details") in path or "## Details" in chunk.body
+        for path, chunk in zip(heading_paths, chunks, strict=True)
+    )
 
 
 def test_create_splitter_routes_sibling_and_subtree() -> None:
@@ -190,9 +197,10 @@ def test_heading_splitter_merges_small_subtree_into_one_chunk() -> None:
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].headings == ((1, "Parent"),)
-    # Common parent breadcrumb renders once; each child renders once.
-    assert chunks[0].body.count("# Parent") == 1
+    assert chunks[0].ancestor_headings == ()
+    assert chunks[0].own_heading == (1, "Parent")
+    # The external parent is metadata; each internal child renders once.
+    assert chunks[0].body.count("# Parent") == 0
     assert chunks[0].body.count("## One") == 1
     assert chunks[0].body.count("## Two") == 1
     assert "Parent intro." in chunks[0].body
@@ -216,9 +224,10 @@ def test_heading_splitter_splits_oversized_section_body() -> None:
     chunks = splitter.split(document)
 
     assert len(chunks) > 1
-    assert all(chunk.headings == () for chunk in chunks)
+    assert all(chunk.ancestor_headings == () for chunk in chunks)
     assert all(chunk.section_level == 1 for chunk in chunks)
-    assert all(chunk.body.startswith("# Long\n\n") for chunk in chunks)
+    assert all(chunk.own_heading == (1, "Long") for chunk in chunks)
+    assert all(not chunk.body.startswith("# Long") for chunk in chunks)
     assert "Alpha bravo" in chunks[0].body
     assert "juliet." in chunks[-1].body
 
@@ -243,7 +252,7 @@ def test_heading_splitter_splits_oversized_body_with_nosplit_blocks_kept_intact(
 
     # Paragraph is nosplit so the oversized body stays as one chunk
     assert len(chunks) == 1
-    assert chunks[0].headings == ()
+    assert chunks[0].ancestor_headings == ()
     assert chunks[0].section_level == 1
     assert chunks[0].estimated_token_count > splitter.max_tokens
     assert "Alpha bravo charlie" in chunks[0].body
@@ -267,10 +276,11 @@ def test_heading_splitter_respects_empty_section_options() -> None:
 
     # The small subtree collapses to one chunk in both cases.  ``# Empty``
     # has no body of its own, so the only entry is ``## Child`` and the
-    # chunk metadata exposes that entry's ancestor path.
-    assert [chunk.headings for chunk in default_chunks] == [((1, "Empty"),)]
-    assert [chunk.headings for chunk in kept_chunks] == [((1, "Empty"),)]
-    assert "# Empty" in kept_chunks[0].body
+    # chunk metadata exposes the collapsed subtree root as its own heading.
+    assert [chunk.ancestor_headings for chunk in default_chunks] == [()]
+    assert [chunk.ancestor_headings for chunk in kept_chunks] == [()]
+    assert [chunk.own_heading for chunk in kept_chunks] == [(1, "Empty")]
+    assert "# Empty" not in kept_chunks[0].body
     assert "## Child" in kept_chunks[0].body
     assert "Child body." in kept_chunks[0].body
 
@@ -300,13 +310,14 @@ def test_splitter_deduplicates_shared_parent_heading_in_merged_chunk() -> None:
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].body.count("# Development Guide") == 1
+    assert chunks[0].body.count("# Development Guide") == 0
     assert "## Current Scope" in chunks[0].body
     assert "## Milestones" in chunks[0].body
     assert "### M0" in chunks[0].body
     assert "### M1" in chunks[0].body
     assert "## Suggested Workflow" in chunks[0].body
-    assert chunks[0].headings == ((1, "Development Guide"),)
+    assert chunks[0].ancestor_headings == ()
+    assert chunks[0].own_heading == (1, "Development Guide")
     assert chunks[0].section_level == 3
 
 
@@ -337,15 +348,10 @@ def test_splitter_recursively_descends_heading_levels_when_section_is_oversized(
     chunks = splitter.split(document)
 
     assert len(chunks) == 3
-    assert chunks[0].body == "# Alpha\n\nAlpha summary."
-    assert (
-        chunks[1].body
-        == "# Beta\n\n## Beta One\n\nThis subsection stays comfortably under the budget."
-    )
-    assert (
-        chunks[2].body
-        == "# Beta\n\n## Beta Two\n\nThis subsection also stays under the budget by itself."
-    )
+    assert chunks[0].body == "Alpha summary."
+    assert chunks[0].own_heading == (1, "Alpha")
+    assert chunks[1].body == "This subsection stays comfortably under the budget."
+    assert chunks[2].body == "This subsection also stays under the budget by itself."
     assert all(chunk.estimated_token_count <= 90 for chunk in chunks)
 
 
@@ -380,8 +386,10 @@ def test_splitter_greedily_merges_same_level_siblings_before_descending() -> Non
     chunks = splitter.split(document)
 
     assert len(chunks) == 2
-    assert chunks[0].body == "# Parent\n\n## One\n\nOne body.\n\n## Two\n\nTwo body."
-    assert chunks[1].body == "# Parent\n\n## Three\n\nThree body is a little longer."
+    assert chunks[0].body == "## One\n\nOne body.\n\n## Two\n\nTwo body."
+    assert chunks[0].own_heading is None
+    assert chunks[1].body == "Three body is a little longer."
+    assert chunks[1].own_heading == (2, "Three")
     assert all(chunk.estimated_token_count <= 62 for chunk in chunks)
 
 
@@ -398,9 +406,10 @@ def test_splitter_exposes_ancestor_headings_for_single_leaf_chunk() -> None:
 
     chunks = splitter.split(document)
 
-    assert chunks[0].headings == ((1, "Root"), (2, "Scope"))
+    assert chunks[0].ancestor_headings == ((1, "Root"), (2, "Scope"))
+    assert chunks[0].own_heading == (3, "A")
     assert chunks[0].section_level == 3
-    assert chunks[0].body == "# Root\n\n## Scope\n\n### A\n\nAlpha body."
+    assert chunks[0].body == "Alpha body."
 
 
 def test_splitter_exposes_common_ancestor_headings_for_multi_entry_chunk() -> None:
@@ -415,11 +424,9 @@ def test_splitter_exposes_common_ancestor_headings_for_multi_entry_chunk() -> No
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].headings == ((1, "Root"), (2, "Scope"))
-    assert (
-        chunks[0].body
-        == "# Root\n\n## Scope\n\n### A\n\nAlpha body.\n\n### B\n\nBeta body."
-    )
+    assert chunks[0].ancestor_headings == ()
+    assert chunks[0].own_heading == (1, "Root")
+    assert chunks[0].body == "## Scope\n\n### A\n\nAlpha body.\n\n### B\n\nBeta body."
 
 
 def test_splitter_fragment_uses_ancestor_headings_and_keeps_own_title() -> None:
@@ -437,12 +444,13 @@ def test_splitter_fragment_uses_ancestor_headings_and_keeps_own_title() -> None:
 
     chunks = splitter.split(document)
 
-    assert chunks[0].headings == ((1, "Root"), (2, "Scope"))
+    assert chunks[0].ancestor_headings == ((1, "Root"), (2, "Scope"))
+    assert chunks[0].own_heading == (3, "A")
     assert chunks[0].section_level == 3
-    assert chunks[0].body == "# Root\n\n## Scope\n\n### A\n\nAlpha body."
+    assert chunks[0].body == "Alpha body."
 
 
-def test_splitter_render_headings_false_keeps_self_title_only() -> None:
+def test_splitter_externalizes_own_title_from_body() -> None:
     document = MarkdownParser().parse(
         THIRD_LEVEL_FIXTURE, document_title="third-level.md"
     )
@@ -452,15 +460,16 @@ def test_splitter_render_headings_false_keeps_self_title_only() -> None:
             max_tokens=30,
             ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
-            render_headings=False,
+            heading_sensitive=False,
         ),
     )
 
     chunks = splitter.split(document)
 
-    assert chunks[0].headings == ((1, "Root"), (2, "Scope"))
+    assert chunks[0].ancestor_headings == ((1, "Root"), (2, "Scope"))
     assert chunks[0].section_level == 3
-    assert chunks[0].body == "### A\n\nAlpha body."
+    assert chunks[0].own_heading == (3, "A")
+    assert chunks[0].body == "Alpha body."
 
 
 def test_splitter_body_includes_headings_by_default() -> None:
@@ -494,9 +503,7 @@ def test_splitter_body_includes_nested_headings_by_default() -> None:
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].body == (
-        "# Root\n\n## Scope\n\n### A\n\nAlpha body.\n\n### B\n\nBeta body."
-    )
+    assert chunks[0].body == ("## Scope\n\n### A\n\nAlpha body.\n\n### B\n\nBeta body.")
 
 
 def test_splitter_measures_section_token_counts_bottom_up() -> None:
@@ -504,7 +511,8 @@ def test_splitter_measures_section_token_counts_bottom_up() -> None:
     splitter = IncrementalSiblingSplitter(
         tokenizer=CharacterTokenizer(),
         **splitter_options(
-            max_tokens=7,
+            max_tokens=9,
+            ideal_max_tokens_ratio=1,
             merge_below_ratio=0.0,
             block_options={},
         ),
@@ -515,16 +523,14 @@ def test_splitter_measures_section_token_counts_bottom_up() -> None:
 
     measured_section = measured_root.children[0]
     assert measured_section.counts.body == len("Body")
-    assert measured_section.counts.title == len("# A\n\n")
-    assert measured_section.counts.subtree == (
-        measured_section.counts.title + measured_section.counts.body
-    )
+    assert measured_section.counts.title == len("# A")
+    assert measured_section.counts.subtree == measured_section.counts.body
     assert not hasattr(document.root.children[0], "body_token_count")
     assert not hasattr(document.root.children[0], "title_token_count")
     assert not hasattr(document.root.children[0], "subtree_token_count")
     assert len(chunks) == 1
-    assert chunks[0].body == "# A\n\nBody"
-    assert chunks[0].estimated_token_count == len("# A\n\nBody")
+    assert chunks[0].body == "Body"
+    assert chunks[0].estimated_token_count == len("# ABody")
     assert chunks[0].token_count == len("# A\n\nBody")
 
 
@@ -541,8 +547,8 @@ def test_splitter_splits_when_rendered_heading_budget_is_tight() -> None:
 
     chunks = splitter.split(document)
 
-    assert len(chunks) == 4
-    assert "".join(chunk.body.removeprefix("# A\n\n") for chunk in chunks) == "Body"
+    assert len(chunks) == 2
+    assert "".join(chunk.body for chunk in chunks) == "Body"
     assert all(chunk.token_count <= splitter.max_tokens for chunk in chunks)
 
 
@@ -559,7 +565,7 @@ def test_estimated_tokens_do_not_include_trailing_separator_for_last_block() -> 
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].body == "# A\n\nOne\n\nTwo"
+    assert chunks[0].body == "One\n\nTwo"
     assert chunks[0].estimated_token_count == chunks[0].token_count
     assert chunks[0].estimated_token_count == len("# A\n\nOne\n\nTwo")
 
@@ -579,7 +585,7 @@ def test_estimated_tokens_do_not_use_tail_window_between_blocks() -> None:
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].estimated_token_count == chunks[0].token_count
+    assert chunks[0].estimated_token_count == chunks[0].token_count - len("\n\n")
     assert f"{long_block}\n\n" in tokenizer.counted
     assert f"{long_block[-64:]}\n\n" not in tokenizer.counted
 
@@ -592,7 +598,7 @@ def test_entry_merge_uses_tail_window_only_between_entry_groups() -> None:
         **splitter_options(max_tokens=500, merge_below_ratio=0.0),
     )
     heading_path = ((1, "A"),)
-    heading_tc = len("# A\n\n")
+    heading_tc = len("# A")
     left = ChunkDraft(
         entries=[
             Entry(
@@ -604,6 +610,7 @@ def test_entry_merge_uses_tail_window_only_between_entry_groups() -> None:
             )
         ],
         headings=heading_path,
+        own_heading=heading_path[-1],
         headings_token_count=heading_tc,
         body_token_count=len(long_body),
         token_count=heading_tc + len(long_body),
@@ -619,6 +626,7 @@ def test_entry_merge_uses_tail_window_only_between_entry_groups() -> None:
             )
         ],
         headings=heading_path,
+        own_heading=heading_path[-1],
         headings_token_count=heading_tc,
         body_token_count=1,
         token_count=heading_tc + 1,
@@ -626,7 +634,7 @@ def test_entry_merge_uses_tail_window_only_between_entry_groups() -> None:
 
     merged = splitter._merge_drafts(left, right)
 
-    assert merged.token_count == len("# A\n\n" + long_body + "\n\nb")
+    assert merged.token_count == len("# A") + len(long_body + "\n\nb")
     assert f"{long_body}\n\n" not in tokenizer.counted
     assert f"{long_body[-8:]}\n\n" in tokenizer.counted
 
@@ -644,8 +652,8 @@ def test_heading_estimate_counts_title_once_and_marker_as_one_token() -> None:
     measured_root = splitter._measure_section(document.root)
 
     measured_section = measured_root.children[0]
-    assert measured_section.counts.title == len("### Cacheable Title\n\n")
-    assert "### Cacheable Title\n\n" in tokenizer.counted
+    assert measured_section.counts.title == len("### Cacheable Title")
+    assert "### Cacheable Title" in tokenizer.counted
 
 
 def test_estimated_tokens_include_rendered_heading_path() -> None:
@@ -658,7 +666,8 @@ def test_estimated_tokens_include_rendered_heading_path() -> None:
         **splitter_options(max_tokens=100, merge_below_ratio=0.0),
     ).split(document)
 
-    assert chunks[0].body.startswith("# Root\n\n## Scope\n\n")
+    assert chunks[0].own_heading == (1, "Root")
+    assert chunks[0].body.startswith("## Scope\n\n")
     assert chunks[0].estimated_token_count >= chunks[0].token_count
 
 
@@ -704,7 +713,7 @@ def test_section_chunk_estimate_includes_heading_tokens_without_entries() -> Non
     measured_root = splitter._measure_section(document.root)
     measured_scope = measured_root.children[0].children[0]
 
-    assert measured_scope.counts.subtree == 47
+    assert measured_scope.counts.subtree == 37
 
 
 def test_measured_section_caches_single_chunk_eligibility_from_standalone_blocks() -> (
@@ -792,8 +801,8 @@ def test_sibling_splitter_uses_ideal_budget_for_initial_splitting() -> None:
     chunks = splitter.split(document)
 
     assert [chunk.body for chunk in chunks] == [
-        "# A\n\nalpha1",
-        "# A\n\nbravo2",
+        "alpha1",
+        "bravo2",
     ]
     assert all(chunk.token_count <= 15 for chunk in chunks)
 
@@ -814,7 +823,7 @@ def test_merge_small_chunks_can_exceed_ideal_budget_up_to_max_tokens() -> None:
 
     chunks = splitter.split(document)
 
-    assert [chunk.body for chunk in chunks] == ["# A\n\nalpha1\n\nbravo2"]
+    assert [chunk.body for chunk in chunks] == ["alpha1\n\nbravo2"]
     assert 15 < chunks[0].token_count <= 30
 
 
@@ -834,9 +843,7 @@ def test_merge_small_chunks_combines_sibling_sections_with_same_parent() -> None
 
     chunks = splitter.split(document)
 
-    assert [chunk.body for chunk in chunks] == [
-        "# Parent\n\n## One\n\nA\n\n## Two\n\nB"
-    ]
+    assert [chunk.body for chunk in chunks] == ["## One\n\nA\n\n## Two\n\nB"]
     assert chunks[0].estimated_token_count == chunks[0].token_count
     assert 20 < chunks[0].token_count <= 40
 
@@ -858,9 +865,9 @@ def test_merge_below_ratio_does_not_merge_past_rendered_budget() -> None:
 
     chunks = splitter.split(document)
 
-    assert [chunk.token_count for chunk in chunks] == [60, 13]
-    assert chunks[1].body == "# A\n\nx x x\n\ny"
-    assert all(chunk.estimated_token_count <= 60 for chunk in chunks)
+    assert [chunk.token_count for chunk in chunks] == [62, 11]
+    assert chunks[1].body == "x x\n\ny"
+    assert all(chunk.estimated_token_count <= 62 for chunk in chunks)
 
 
 def test_merge_below_ratio_zero_disables_merging() -> None:
@@ -881,8 +888,8 @@ def test_merge_below_ratio_zero_disables_merging() -> None:
 
     # With merging disabled, the two short tails stay as separate chunks.
     assert [chunk.body for chunk in chunks] == [
-        "# A\n\nalpha1",
-        "# A\n\nbravo2",
+        "alpha1",
+        "bravo2",
     ]
 
 
@@ -892,7 +899,7 @@ def test_merge_below_ratio_absorbs_same_parent_paragraph_tails() -> None:
         **splitter_options(max_tokens=100, merge_below_ratio=0.25),
     )
     heading_path = ((1, "A"),)
-    heading_tc = len("# A\n\n")
+    heading_tc = len("# A")
     left = ChunkDraft(
         entries=[
             Entry(
@@ -904,6 +911,7 @@ def test_merge_below_ratio_absorbs_same_parent_paragraph_tails() -> None:
             )
         ],
         headings=heading_path,
+        own_heading=heading_path[-1],
         headings_token_count=heading_tc,
         body_token_count=len("section body"),
         token_count=heading_tc + len("section body"),
@@ -920,6 +928,7 @@ def test_merge_below_ratio_absorbs_same_parent_paragraph_tails() -> None:
             )
         ],
         headings=heading_path,
+        own_heading=heading_path[-1],
         headings_token_count=heading_tc,
         body_token_count=len("tiny section"),
         token_count=heading_tc + len("tiny section"),
@@ -936,6 +945,7 @@ def test_merge_below_ratio_absorbs_same_parent_paragraph_tails() -> None:
             )
         ],
         headings=heading_path,
+        own_heading=heading_path[-1],
         headings_token_count=heading_tc,
         body_token_count=len("tiny fragment"),
         token_count=heading_tc + len("tiny fragment"),
@@ -952,6 +962,7 @@ def test_merge_below_ratio_absorbs_same_parent_paragraph_tails() -> None:
             )
         ],
         headings=heading_path,
+        own_heading=heading_path[-1],
         headings_token_count=heading_tc,
         body_token_count=len("tiny text"),
         token_count=heading_tc + len("tiny text"),
@@ -1003,7 +1014,8 @@ def test_splitter_can_split_oversized_lists_by_default() -> None:
         "- gamma gamma gamma",
         "gamma",
     ]
-    assert all(chunk.estimated_token_count <= 20 for chunk in chunks)
+    assert all(chunk.body_token_count <= 20 for chunk in chunks)
+    assert all(chunk.estimated_token_count <= 22 for chunk in chunks)
 
 
 def test_splitter_splits_oversized_tables_by_rows_with_repeated_header() -> None:
@@ -1182,7 +1194,8 @@ def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
         '```python\nprint("beta")\n```',
         '```python\nprint("gamma")\n```',
     ]
-    assert all(chunk.estimated_token_count <= 28 for chunk in chunks)
+    assert all(chunk.body_token_count <= 28 for chunk in chunks)
+    assert all(chunk.estimated_token_count <= 30 for chunk in chunks)
 
 
 def test_splitter_never_splits_oversized_urls() -> None:
@@ -1257,7 +1270,7 @@ def test_subtree_splitter_handles_front_matter_as_root_body_chunk() -> None:
     assert chunks[0].body == (
         "---\ntitle: Test Document\nauthor: Alice\ndate: 2024-01-01\n---"
     )
-    assert [chunk.headings for chunk in chunks[1:]] == [(), ()]
+    assert [chunk.ancestor_headings for chunk in chunks[1:]] == [(), ()]
     assert [chunk.section_level for chunk in chunks[1:]] == [1, 1]
 
 
@@ -1298,7 +1311,8 @@ def test_no_front_matter_works_normally() -> None:
     chunks = splitter.split(document)
 
     assert chunks[0].chunk_id == "chunk-0001"
-    assert "Just a heading" in chunks[0].body
+    assert chunks[0].own_heading == (1, "Just a heading")
+    assert "Just a heading" not in chunks[0].body
 
 
 THEMATIC_BREAK_FIXTURE = """# Section
@@ -1436,7 +1450,7 @@ def test_empty_section_discarded_by_default_with_headings() -> None:
 
     assert all(chunk.body.strip() for chunk in chunks)
     assert not any(
-        chunk.headings == ((1, "Getting Started"), (2, "Installation"))
+        chunk.ancestor_headings == ((1, "Getting Started"), (2, "Installation"))
         for chunk in chunks
     )
 
@@ -1694,7 +1708,7 @@ def test_standalone_block_preserves_heading_context() -> None:
     code_chunks = [c for c in chunks if c.chunk_type == "code_fence"]
 
     assert len(code_chunks) == 1
-    assert code_chunks[0].headings == ((1, "Doc"),)
+    assert code_chunks[0].ancestor_headings == ((1, "Doc"),)
     assert code_chunks[0].section_level == 2
 
 
@@ -1759,7 +1773,8 @@ def test_per_block_max_tokens_overrides_budget_for_paragraph() -> None:
 
     # With a 30-token override the paragraph should be split into many chunks
     assert len(chunks) > 1
-    assert all(c.token_count <= 30 for c in chunks)
+    assert all(c.body_token_count <= 30 for c in chunks)
+    assert all(c.token_count <= 32 for c in chunks)
 
 
 def test_per_block_max_tokens_falls_back_to_unified_max_tokens() -> None:
@@ -1893,7 +1908,8 @@ def test_subtree_splitter_can_split_oversized_lists_by_default() -> None:
     chunks = splitter.split(document)
 
     assert len(chunks) > 1
-    assert all(chunk.estimated_token_count <= 20 for chunk in chunks)
+    assert all(chunk.body_token_count <= 20 for chunk in chunks)
+    assert all(chunk.estimated_token_count <= 22 for chunk in chunks)
 
 
 def test_subtree_splitter_splits_oversized_tables_when_isolated() -> None:
@@ -2006,7 +2022,8 @@ def test_subtree_splitter_uses_per_block_max_tokens() -> None:
     chunks = splitter.split(document)
 
     assert len(chunks) > 1
-    assert all(c.token_count <= 30 for c in chunks)
+    assert all(c.body_token_count <= 30 for c in chunks)
+    assert all(c.token_count <= 32 for c in chunks)
 
 
 def test_subtree_splitter_merges_small_fragments() -> None:
@@ -2026,7 +2043,7 @@ def test_subtree_splitter_merges_small_fragments() -> None:
 
     chunks = splitter.split(document)
 
-    assert [chunk.body for chunk in chunks] == ["# A\n\nalpha1\n\nbravo2"]
+    assert [chunk.body for chunk in chunks] == ["alpha1\n\nbravo2"]
     assert 15 < chunks[0].token_count <= 30
 
 
@@ -2060,7 +2077,9 @@ Small body.
     assert "Small body." in parent_chunks[0].body
     # Child body is oversized → split into multiple chunks
     child_chunks = [
-        c for c in chunks if c.headings == ((1, "Parent"),) and c.section_level == 2
+        c
+        for c in chunks
+        if c.ancestor_headings == ((1, "Parent"),) and c.section_level == 2
     ]
     assert len(child_chunks) > 1
     child_bodies = " ".join(c.body for c in child_chunks)
@@ -2098,7 +2117,8 @@ Two body.
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].headings == ((1, "Parent"),)
+    assert chunks[0].ancestor_headings == ()
+    assert chunks[0].own_heading == (1, "Parent")
     # Whole subtree rendered into one body
     assert "Parent intro." in chunks[0].body
     assert "## One" in chunks[0].body
@@ -2136,8 +2156,9 @@ One body.
     # Standalone table forces split: not collapsed into one chunk.
     assert len(chunks) >= 2
     table_chunk = next(c for c in chunks if "| A |" in c.body)
-    assert table_chunk.headings == ()
-    assert table_chunk.body.startswith("# Parent")
+    assert table_chunk.ancestor_headings == ()
+    assert table_chunk.own_heading == (1, "Parent")
+    assert not table_chunk.body.startswith("# Parent")
 
 
 def test_incremental_subtree_splitter_merges_subtree_when_within_budget() -> None:
@@ -2163,7 +2184,8 @@ Two body.
     chunks = splitter.split(document)
 
     assert len(chunks) == 1
-    assert chunks[0].headings == ((1, "Parent"),)
+    assert chunks[0].ancestor_headings == ()
+    assert chunks[0].own_heading == (1, "Parent")
     assert "Parent intro." in chunks[0].body
     assert "## One" in chunks[0].body
     assert "One body." in chunks[0].body
@@ -2235,10 +2257,12 @@ def test_subtree_splitter_does_not_cross_top_level_sections() -> None:
     # Root short-circuit fails (total > ideal); each top-level section
     # collapses to its own chunk.
     assert len(chunks) == 2
-    assert chunks[0].headings == ()
-    assert chunks[1].headings == ()
-    assert chunks[0].body.startswith("# First")
-    assert chunks[1].body.startswith("# Second")
+    assert chunks[0].ancestor_headings == ()
+    assert chunks[1].ancestor_headings == ()
+    assert chunks[0].own_heading == (1, "First")
+    assert chunks[1].own_heading == (1, "Second")
+    assert not chunks[0].body.startswith("# First")
+    assert not chunks[1].body.startswith("# Second")
     assert "Alpha beta" in chunks[0].body
     assert "Echo foxtrot" in chunks[1].body
     assert "Echo foxtrot" not in chunks[0].body
@@ -2265,7 +2289,8 @@ Two body.
         **splitter_options(max_tokens=1000, merge_below_ratio=0.0),
     ).split(document)
     assert len(merged) == 1
-    assert merged[0].headings == ((1, "Parent"),)
+    assert merged[0].ancestor_headings == ()
+    assert merged[0].own_heading == (1, "Parent")
     assert "## One" in merged[0].body
     assert "## Two" in merged[0].body
 
@@ -2275,16 +2300,17 @@ Two body.
         tokenizer=CharacterTokenizer(),
         **section_options(max_tokens=1000, merge_below_ratio=0.0),
     ).split(document)
-    # section: three chunks, one per section.  The "# Parent" body
-    # lives under the document root (level 0), so its headings tuple is
-    # empty under ancestor-heading rendering.
+    # section: three chunks, one per section, with external headings in metadata.
     assert len(per_section) == 3
-    assert per_section[0].headings == ()
-    assert per_section[1].headings == ((1, "Parent"),)
-    assert per_section[2].headings == ((1, "Parent"),)
-    assert per_section[0].body == "# Parent\n\nParent intro."
-    assert per_section[1].body == "# Parent\n\n## One\n\nOne body."
-    assert per_section[2].body == "# Parent\n\n## Two\n\nTwo body."
+    assert per_section[0].ancestor_headings == ()
+    assert per_section[1].ancestor_headings == ((1, "Parent"),)
+    assert per_section[2].ancestor_headings == ((1, "Parent"),)
+    assert per_section[0].own_heading == (1, "Parent")
+    assert per_section[1].own_heading == (2, "One")
+    assert per_section[2].own_heading == (2, "Two")
+    assert per_section[0].body == "Parent intro."
+    assert per_section[1].body == "One body."
+    assert per_section[2].body == "Two body."
 
 
 def test_incremental_subtree_vs_section_splitter_behavior() -> None:
@@ -2308,7 +2334,8 @@ Two body.
         **splitter_options(max_tokens=1000, merge_below_ratio=0.0),
     ).split(document)
     assert len(merged) == 1
-    assert merged[0].headings == ((1, "Parent"),)
+    assert merged[0].ancestor_headings == ()
+    assert merged[0].own_heading == (1, "Parent")
 
     from lumberjack.splitter.section import IncrementalSectionSplitter
 
@@ -2317,9 +2344,12 @@ Two body.
         **section_options(max_tokens=1000, merge_below_ratio=0.0),
     ).split(document)
     assert len(per_section) == 3
-    assert per_section[0].headings == ()
-    assert per_section[1].headings == ((1, "Parent"),)
-    assert per_section[2].headings == ((1, "Parent"),)
+    assert per_section[0].ancestor_headings == ()
+    assert per_section[1].ancestor_headings == ((1, "Parent"),)
+    assert per_section[2].ancestor_headings == ((1, "Parent"),)
+    assert per_section[0].own_heading == (1, "Parent")
+    assert per_section[1].own_heading == (2, "One")
+    assert per_section[2].own_heading == (2, "Two")
 
 
 def test_section_splitter_still_splits_standalone_blocks() -> None:
@@ -2408,8 +2438,8 @@ def test_merge_below_ratio_threshold_derived_from_max_tokens() -> None:
     )
     chunks_no_merge = no_merge.split(document)
     assert len(chunks_no_merge) == 2
-    assert chunks_no_merge[0].body == "# A\n\nalpha1"
-    assert chunks_no_merge[1].body == "# A\n\nbravo2"
+    assert chunks_no_merge[0].body == "alpha1"
+    assert chunks_no_merge[1].body == "bravo2"
 
     # ratio=0.967 -> 阈值=29; 尾部 "# A\n\nbravo2" (7 tokens) < 29 -> 合并
     merge = SiblingSplitter(
@@ -2422,7 +2452,7 @@ def test_merge_below_ratio_threshold_derived_from_max_tokens() -> None:
     )
     chunks_merge = merge.split(document)
     assert len(chunks_merge) == 1
-    assert chunks_merge[0].body == "# A\n\nalpha1\n\nbravo2"
+    assert chunks_merge[0].body == "alpha1\n\nbravo2"
     assert 15 < chunks_merge[0].token_count <= 30
 
 

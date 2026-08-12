@@ -15,7 +15,7 @@ def test_text_request_defaults() -> None:
     assert fields["ideal_max_tokens_ratio"].default == 0.8
     assert fields["merge_below_ratio"].default == 0.125
     assert fields["skip_empty_sections"].default is True
-    assert fields["render_headings"].default is True
+    assert fields["heading_sensitive"].default is True
     assert fields["max_heading_level"].default is None
     assert "only to encode and count" in (fields["tokenizer"].description or "")
     assert "counting mode" in (fields["splitter"].description or "")
@@ -28,7 +28,10 @@ def test_chunk_response_fields_match_serialized_chunk() -> None:
         "body",
         "token_count",
         "estimated_token_count",
-        "headings",
+        "headings_token_count",
+        "body_token_count",
+        "ancestor_headings",
+        "own_heading",
         "section_level",
         "document_title",
         "document_path",
@@ -47,5 +50,5 @@ def test_file_request_defaults() -> None:
     assert parameters["ideal_max_tokens_ratio"].default.default == 0.8
     assert parameters["merge_below_ratio"].default.default == 0.125
     assert parameters["skip_empty_sections"].default.default is True
-    assert parameters["render_headings"].default.default is True
+    assert parameters["heading_sensitive"].default.default is True
     assert parameters["max_heading_level"].default.default is None

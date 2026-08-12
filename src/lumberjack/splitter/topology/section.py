@@ -20,7 +20,7 @@ class SectionTopologyMixin(BaseSplitter):
         max_tokens: int = 1200,
         ideal_max_tokens_ratio: float = 0.8,
         skip_empty_sections: bool = True,
-        render_headings: bool = True,
+        heading_sensitive: bool = True,
         max_heading_level: int | None = None,
         block_options: Iterable[BlockOption] | None = None,
     ) -> None:
@@ -29,7 +29,7 @@ class SectionTopologyMixin(BaseSplitter):
             max_tokens=max_tokens,
             ideal_max_tokens_ratio=ideal_max_tokens_ratio,
             skip_empty_sections=skip_empty_sections,
-            render_headings=render_headings,
+            heading_sensitive=heading_sensitive,
             max_heading_level=max_heading_level,
             block_options=block_options,
             _merge_below_ratio=0.0,

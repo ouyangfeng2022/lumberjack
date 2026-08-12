@@ -191,7 +191,8 @@ def test_explicit_parser_splitter_pipeline() -> None:
         max_tokens=100,
         block_options=[BlockConfig(BlockKind.CODE_FENCE, split=False)],
     ).split(document)
-    assert chunks[0].body == "# Guide\n\nA paragraph"
+    assert chunks[0].own_heading == (1, "Guide")
+    assert chunks[0].body == "A paragraph"
 
 
 def test_default_and_exact_splitters_expose_different_counting_modes() -> None:

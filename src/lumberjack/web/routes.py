@@ -39,7 +39,7 @@ class TextSplitRequest(BaseModel):
     ideal_max_tokens_ratio: float = 0.8
     merge_below_ratio: float = 0.125
     skip_empty_sections: bool = True
-    render_headings: bool = True
+    heading_sensitive: bool = True
     block_configs: dict[str, Any] | None = None
     tokenizer: TokenizerName = PydanticField(
         "approx",
@@ -61,7 +61,10 @@ class ChunkResponse(BaseModel):
     body: str
     token_count: int
     estimated_token_count: int
-    headings: list[list[Any]]
+    headings_token_count: int
+    body_token_count: int
+    ancestor_headings: list[tuple[int, str]]
+    own_heading: tuple[int, str] | None
     section_level: int
     document_title: str
     document_path: str | None
@@ -106,7 +109,7 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
             ideal_max_tokens_ratio=payload.ideal_max_tokens_ratio,
             merge_below_ratio=payload.merge_below_ratio,
             skip_empty_sections=payload.skip_empty_sections,
-            render_headings=payload.render_headings,
+            heading_sensitive=payload.heading_sensitive,
             block_options=block_options,
             tokenizer=payload.tokenizer,
             splitter=payload.splitter,
@@ -130,7 +133,7 @@ async def split_file(
     ideal_max_tokens_ratio: float = Form(0.8),
     merge_below_ratio: float = Form(0.125),
     skip_empty_sections: bool = Form(True),
-    render_headings: bool = Form(True),
+    heading_sensitive: bool = Form(True),
     block_configs: str = Form(""),
     tokenizer: TokenizerName = Form(  # noqa: B008
         "approx", description="Tokenizer engine used only to encode and count text."
@@ -174,7 +177,7 @@ async def split_file(
             ideal_max_tokens_ratio=ideal_max_tokens_ratio,
             merge_below_ratio=merge_below_ratio,
             skip_empty_sections=skip_empty_sections,
-            render_headings=render_headings,
+            heading_sensitive=heading_sensitive,
             block_options=block_options,
             tokenizer=tokenizer,
             splitter=splitter,

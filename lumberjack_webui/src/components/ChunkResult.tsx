@@ -10,7 +10,10 @@ interface Props {
 export default function ChunkResult({ chunk, index }: Props) {
   const { t } = useTranslation();
 
-  const headingBreadcrumb = chunk.headings
+  const headingBreadcrumb = [
+    ...chunk.ancestor_headings,
+    ...(chunk.own_heading ? [chunk.own_heading] : []),
+  ]
     .map(([, title]) => title)
     .join(' > ');
 
@@ -24,7 +27,10 @@ export default function ChunkResult({ chunk, index }: Props) {
       <div className={styles.header}>
         <div className={styles.headerLeft}>
           <span className={styles.index}>#{index + 1}</span>
-          <span className={styles.tokenBadge}>{t('chunk_tokens', { count: chunk.token_count })}</span>
+          <span className={styles.tokenBadge}>
+            {t('chunk_tokens', { count: chunk.token_count })}
+            {` (${chunk.headings_token_count} + ${chunk.body_token_count})`}
+          </span>
           {lineRange && <span className={styles.lineRange}>{lineRange}</span>}
         </div>
       </div>

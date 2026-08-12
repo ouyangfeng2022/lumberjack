@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** Chunk headings are now separated into `ancestor_headings` and an optional singular `own_heading`; external headings are never rendered in `body`, while headings for merged internal sections remain in the body.
+- **Breaking:** Replaced `render_headings` with `heading_sensitive`, which controls whether external heading tokens count toward split budgets. Chunks now report separate `headings_token_count` and `body_token_count`; `token_count` also includes `tokenizer.count("\n\n")` for the separator between them.
+
 ## [0.3.0] - 2026-07-22
 
 ### Added
