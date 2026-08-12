@@ -6,7 +6,7 @@ from .topology.section import SectionTopologyMixin
 
 
 class ExactSectionSplitter(ExactCountingMixin, SectionTopologyMixin):
-    """Per-heading section splitter without subtree-collapse or tail merging.
+    """Per-heading section splitter without subtree-collapse.
 
     Emits one chunk per heading section's direct body and recurses into
     children.  This variant:
@@ -14,8 +14,8 @@ class ExactSectionSplitter(ExactCountingMixin, SectionTopologyMixin):
     1. Never collapses an entire subtree into a single chunk (no
        subtree-collapse short-circuit — see :class:`ExactSubtreeSplitter` for
        that topology).
-    2. Never calls :meth:`_merge_small_chunks` — tail-fragment merging is
-       fully disabled in this variant, regardless of ``merge_below_ratio``.
+    2. Merges only adjacent same-heading paragraph tails, bottom-up, according
+       to ``merge_below_ratio``.  Non-text block chunks remain isolated.
 
     Oversized section bodies are still split by token budget respecting
     ``block_options`` (standalone isolation, splittable kinds, per-block
@@ -28,14 +28,16 @@ class ExactSectionSplitter(ExactCountingMixin, SectionTopologyMixin):
 
 
 class IncrementalSectionSplitter(IncrementalCountingMixin, SectionTopologyMixin):
-    """Per-heading section splitter (incremental estimate) without subtree-collapse or tail merging.
+    """Per-heading section splitter using incremental estimates.
 
     Same per-section topology as :class:`ExactSectionSplitter`, but uses
     the additive incremental estimate path: the subtree is pre-measured and
     budget decisions use a running estimate rather than full rendered
     recounts.
 
-    No subtree-collapse short-circuit and no tail-fragment merging.
+    It has no subtree-collapse short-circuit.  Small adjacent paragraph tails
+    from the same heading are merged bottom-up according to
+    ``merge_below_ratio``; non-text block chunks are not merged.
 
     This is also the unprefixed public ``SectionSplitter`` default. Works with
     any tokenizer.

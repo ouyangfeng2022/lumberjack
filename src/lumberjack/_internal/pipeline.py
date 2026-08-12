@@ -100,9 +100,13 @@ def split_source(
             tokenizer_impl, merge_below_ratio=merge_below_ratio, **common
         )
     elif normalized_splitter in {"section", "incremental-section"}:
-        splitter_impl = SectionSplitter(tokenizer_impl, **common)
+        splitter_impl = SectionSplitter(
+            tokenizer_impl, merge_below_ratio=merge_below_ratio, **common
+        )
     else:
-        splitter_impl = ExactSectionSplitter(tokenizer_impl, **common)
+        splitter_impl = ExactSectionSplitter(
+            tokenizer_impl, merge_below_ratio=merge_below_ratio, **common
+        )
     return splitter_impl.split(document)
 
 

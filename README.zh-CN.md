@@ -149,8 +149,8 @@ splitter = SiblingSplitter(
 
 - `SiblingSplitter`：贪心打包相邻同级 section。
 - `SubtreeSplitter`：优先折叠可容纳的子树，再回退为按 section 切分。
-- `SectionSplitter`：递归输出各 section 的直接正文；不接受无效的
-  `merge_below_ratio` 参数。
+- `SectionSplitter`：递归输出各 section 的直接正文；`merge_below_ratio` 仅用于
+  自下而上合并同 heading 的相邻 text 尾部碎片，不折叠子树，也不合并非文本 block chunk。
 - `ExactSiblingSplitter`、`ExactSubtreeSplitter`、`ExactSectionSplitter`：每次预算
   决策都完整重计渲染文本。
 

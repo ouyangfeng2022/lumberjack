@@ -68,8 +68,7 @@ def _split(
         "ideal_max_tokens_ratio": 1.0,
         "heading_sensitive": heading_sensitive,
     }
-    if "Section" not in splitter_class.__name__:
-        options["merge_below_ratio"] = 0.0
+    options["merge_below_ratio"] = 0.0
     document = MarkdownParser().parse(source, document_title="test.md")
     return splitter_class(CharacterTokenizer(), **options).split(document)
 
@@ -130,8 +129,7 @@ def test_incremental_finalization_preserves_split_time_estimate(
         "max_tokens": 100,
         "ideal_max_tokens_ratio": 1.0,
     }
-    if "Section" not in splitter_class.__name__:
-        options["merge_below_ratio"] = 0.0
+    options["merge_below_ratio"] = 0.0
 
     chunk = splitter_class(FloorTenTokenizer(), **options).split(document)[0]
 

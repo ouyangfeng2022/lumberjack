@@ -19,6 +19,7 @@ class SectionTopologyMixin(BaseSplitter):
         *,
         max_tokens: int = 1200,
         ideal_max_tokens_ratio: float = 0.8,
+        merge_below_ratio: float = 0.125,
         skip_empty_sections: bool = True,
         heading_sensitive: bool = True,
         max_heading_level: int | None = None,
@@ -32,7 +33,7 @@ class SectionTopologyMixin(BaseSplitter):
             heading_sensitive=heading_sensitive,
             max_heading_level=max_heading_level,
             block_options=block_options,
-            _merge_below_ratio=0.0,
+            _merge_below_ratio=merge_below_ratio,
         )
 
     def _direct_body_drafts(self, section: SectionView) -> list[ChunkDraft]:
@@ -43,7 +44,9 @@ class SectionTopologyMixin(BaseSplitter):
         children = section.children
         if not (node.blocks or children or node.level > 0):
             return []
-        chunks = self._direct_body_drafts(section)
+        chunks = self._merge_small_chunks(
+            self._direct_body_drafts(section), parent_headings=node.path
+        )
         for child in children:
             chunks.extend(self._split_section(child))
         return chunks

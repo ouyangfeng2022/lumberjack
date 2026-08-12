@@ -152,8 +152,9 @@ splitter = SiblingSplitter(
 
 - `SiblingSplitter`: greedily packs adjacent sibling sections.
 - `SubtreeSplitter`: first collapses a fitting subtree, then falls back to sections.
-- `SectionSplitter`: emits direct section bodies recursively; it has no
-  `merge_below_ratio` argument because tail merging does not apply.
+- `SectionSplitter`: emits direct section bodies recursively and uses
+  `merge_below_ratio` only to merge adjacent same-heading text tails bottom-up;
+  it never collapses subtrees or merges non-text block chunks.
 - `ExactSiblingSplitter`, `ExactSubtreeSplitter`, `ExactSectionSplitter`: fully recount
   rendered candidates at each budget decision.
 

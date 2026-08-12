@@ -120,9 +120,7 @@ def splitter_options(
 
 def section_options(**kwargs: Any) -> dict[str, Any]:
     """Build direct constructor kwargs for section splitters."""
-    options = splitter_options(**kwargs)
-    options.pop("merge_below_ratio")
-    return options
+    return splitter_options(**kwargs)
 
 
 def create_splitter(
@@ -149,8 +147,6 @@ def create_splitter(
     cls = classes.get(normalized)
     if cls is None:
         raise ValueError(f"Unsupported splitter: {name}")
-    if "section" in normalized:
-        config.pop("merge_below_ratio", None)
     return cls(tokenizer, **config)
 
 

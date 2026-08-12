@@ -2387,8 +2387,11 @@ One body.
 
 
 def test_splitter_merge_below_ratio_defaults_to_0_125() -> None:
-    splitter = SiblingSplitter(CharacterTokenizer())
-    assert splitter.merge_below_ratio == 0.125
+    from lumberjack.splitter import SectionSplitter
+
+    for splitter_class in (SiblingSplitter, SectionSplitter):
+        splitter = splitter_class(CharacterTokenizer())
+        assert splitter.merge_below_ratio == 0.125
 
 
 def test_splitter_merge_below_ratio_rejects_negative() -> None:
@@ -2540,48 +2543,79 @@ Two body.
     assert len(chunks) == 3
 
 
-def test_section_splitter_does_not_merge_tail_fragments() -> None:
-    """section 不调用 _merge_small_chunks, 尾部碎片保留."""
-    from lumberjack.splitter import ExactSectionSplitter
+def test_section_splitters_merge_same_heading_text_tail_fragments() -> None:
+    """section 自下而上整理 oversize text block 的同 heading 尾部碎片."""
+    from lumberjack.splitter import (
+        ExactSectionSplitter,
+        IncrementalSectionSplitter,
+    )
 
-    # 构造一个 body 超过 ideal_max_tokens 的 section, 强制 _split_section_body
-    # 切出多块; 尾部碎片(小于 merge 阈值)在 section 模式下会被合并,
-    # 在 section 模式下保留.
+    # body 超过 ideal_max_tokens, 强制 oversize block 拆成 text_piece;
+    # 最后一块低于 merge threshold 时只向同 heading 的前一块合并。
     body = "x " * 200  # ~400 tokens
     document = MarkdownParser().parse(f"# A\n\n{body}", document_title="t.md")
 
-    flat_splitter = ExactSectionSplitter(
-        tokenizer=CharacterTokenizer(),
-        **section_options(
-            max_tokens=100,
-            ideal_max_tokens_ratio=0.5,
-            merge_below_ratio=0.5,  # 阈值 = 50, flat 模式下不生效
-            block_options=markdown_block_options(),
-        ),
-    )
-    flat_chunks = flat_splitter.split(document)
+    for splitter_class in (ExactSectionSplitter, IncrementalSectionSplitter):
+        common = {
+            "max_tokens": 100,
+            "ideal_max_tokens_ratio": 0.5,
+            "block_options": markdown_block_options(),
+        }
+        unmerged = splitter_class(
+            CharacterTokenizer(),
+            **section_options(**common, merge_below_ratio=0.0),
+        ).split(document)
+        merged = splitter_class(
+            CharacterTokenizer(),
+            **section_options(**common, merge_below_ratio=0.5),
+        ).split(document)
 
-    section_splitter = SubtreeSplitter(
-        tokenizer=CharacterTokenizer(),
-        **splitter_options(
-            max_tokens=100,
-            ideal_max_tokens_ratio=0.5,
-            merge_below_ratio=0.5,
-            block_options=markdown_block_options(),
-        ),
-    )
-    section_chunks = section_splitter.split(document)
+        assert len(unmerged) >= 2
+        assert len(merged) == len(unmerged) - 1
+        assert merged[-1].body == f"{unmerged[-2].body}\n\n{unmerged[-1].body}"
+        assert merged[-1].token_count <= 100
 
-    # flat 模式产出的 chunk 数应 >= section 模式(因为 flat 不合并尾部).
-    # 由于 subtree-collapse 在这个 fixture 下会失败(body 远超 ideal_max_tokens=50),
-    # section 会走 per-section + _merge_small_chunks; flat 只走 per-section.
-    assert len(flat_chunks) >= len(section_chunks)
-    # flat 至少切出 2 块(body 超过 ideal_max_tokens=50)
-    assert len(flat_chunks) >= 2
+
+def test_section_splitter_does_not_merge_non_text_block_pieces() -> None:
+    """section 的尾部整理不合并 table 等非 paragraph chunk."""
+    from lumberjack.splitter import ExactSectionSplitter
+
+    markdown = """# Data
+
+| Name | Value |
+| ---- | ----- |
+| Alpha | 100 |
+| Beta | 200 |
+| Gamma | 300 |
+| Delta | 400 |
+"""
+    document = MarkdownParser().parse(markdown, document_title="table.md")
+    common = {
+        "max_tokens": 50,
+        "ideal_max_tokens_ratio": 1,
+        "block_options": markdown_block_options(
+            {"table": BaseParams(isolated=True)},
+        ),
+    }
+
+    unmerged = ExactSectionSplitter(
+        CharacterTokenizer(),
+        **section_options(**common, merge_below_ratio=0.0),
+    ).split(document)
+    with_merging_enabled = ExactSectionSplitter(
+        CharacterTokenizer(),
+        **section_options(**common, merge_below_ratio=0.9),
+    ).split(document)
+
+    assert len(unmerged) == 4
+    assert [chunk.body for chunk in with_merging_enabled] == [
+        chunk.body for chunk in unmerged
+    ]
+    assert all(chunk.chunk_type == "table" for chunk in with_merging_enabled)
 
 
 def test_incremental_section_splitter_does_not_subtree_collapse() -> None:
-    """incremental-section 同样不做 subtree-collapse 与尾部合并."""
+    """incremental-section 同样不做 subtree-collapse."""
     from lumberjack.splitter.section import IncrementalSectionSplitter
 
     fixture = """# Parent

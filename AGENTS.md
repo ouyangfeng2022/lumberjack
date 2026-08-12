@@ -86,7 +86,7 @@ Main components:
   - `base.py` provides `BaseSplitter` shared state and helpers
   - `sibling.py` provides `SiblingSplitter` (registry: "sibling"/"exact-sibling") — structure-first, budget-aware sibling packing
   - `subtree.py` provides `SubtreeSplitter` (registry: "subtree"/"exact-subtree") — subtree-first: collapses a fitting subtree into one chunk, otherwise one chunk per heading section (with tail-fragment merging).
-  - `section.py` provides `SectionSplitter` (registry: "section"/"exact-section"). It emits one chunk per heading section's direct body and recurses into children, with **no** subtree-collapse and **no** tail-fragment merging (regardless of `merge_below_ratio`). `IncrementalSubtreeSplitter`/`IncrementalSectionSplitter` are the incremental-measure variants.
+  - `section.py` provides `SectionSplitter` (registry: "section"/"exact-section"). It emits one chunk per heading section's direct body and recurses into children, with **no** subtree-collapse. It only merges adjacent same-heading `paragraph` tails bottom-up according to `merge_below_ratio`; non-text block chunks are not merged. `IncrementalSubtreeSplitter`/`IncrementalSectionSplitter` are the incremental-measure variants.
   - Unprefixed class names use incremental counting and `Exact*Splitter` names use full recounting
 - **Private helpers**: `src/lumberjack/_internal/`
   - `block_splitter.py` handles oversized blocks, `options.py` converts CLI/Web block configuration, `formats.py` detects integration input formats, `pipeline.py` orchestrates CLI/Web components, and `rendering.py` contains shared rendering helpers
@@ -172,8 +172,8 @@ Implemented in `src/lumberjack/cli.py`.
 
 - Whole document is kept as one chunk when it already fits the budget
 - `SiblingSplitter` (default): merges adjacent sibling sections when they fit within `max_tokens`
-- `SubtreeSplitter`: subtree-first — collapses a fitting subtree into one chunk, otherwise one chunk per heading section (with tail-fragment merging). `SectionSplitter`: always per-heading, no subtree-collapse, no tail-fragment merging and no `merge_below_ratio` constructor parameter.
-- Tail-fragment merging (`merge_below_ratio`, default `0.125`): bottom-up, merges same-heading adjacent `paragraph` chunks whose tail is below `int(max_tokens * ratio)` tokens, when the merged result fits `max_tokens`. Disabled when `ratio == 0`. The `section` splitter disables this entirely.
+- `SubtreeSplitter`: subtree-first — collapses a fitting subtree into one chunk, otherwise one chunk per heading section (with tail-fragment merging). `SectionSplitter`: always per-heading with no subtree-collapse; `merge_below_ratio` only merges adjacent same-heading `paragraph` tails within each section.
+- Tail-fragment merging (`merge_below_ratio`, default `0.125`): bottom-up, merges same-heading adjacent `paragraph` chunks whose tail is below `int(max_tokens * ratio)` tokens, when the merged result fits `max_tokens`. Disabled when `ratio == 0`. In the `section` splitter this runs only within each section's direct-body drafts, so it cannot collapse subtrees or merge non-text block chunks.
 - Text fallback order is paragraph break -> line break -> sentence -> word -> hard split
 - `Chunk.body` always includes rendered heading context; shared parent headings are deduplicated
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
