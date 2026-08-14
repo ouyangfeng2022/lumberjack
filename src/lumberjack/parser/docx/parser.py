@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from lumberjack.block import BlockKind
 
 from ...models import (
+    DocTree,
     DocumentBlock,
     DocumentInline,
-    Log,
     SectionNode,
     Tree,
 )
-from ...protocols import FellerProtocol
+from ...protocols import ParserProtocol
 
 if TYPE_CHECKING:
     from docx.document import Document as DocxDocument
@@ -155,11 +155,11 @@ def _render_table(table: Any) -> str:
     return "\n".join(lines)
 
 
-class DocxFeller(FellerProtocol):
-    """Parse DOCX documents into Log.
+class DocxParser(ParserProtocol):
+    """Parse DOCX documents into DocTree.
 
-    Maps DOCX structural elements to the same Log model used by
-    the Markdown feller, enabling reuse of all existing sawyers.
+    Maps DOCX structural elements to the same DocTree model used by
+    the Markdown parser, enabling reuse of all existing splitters.
 
     Block kind mapping:
         - Heading styles  → SectionNode hierarchy
@@ -183,18 +183,18 @@ class DocxFeller(FellerProtocol):
 
     @property
     def block_kinds(self) -> frozenset[str]:
-        """Block kinds this feller can produce."""
+        """Block kinds this parser can produce."""
         return self.default_block_kinds
 
-    def fell(
+    def parse(
         self,
         tree: Tree | bytes,
         *,
         document_title: str | None = None,
         metadata_overrides: dict[str, object] | None = None,
         source_path: str | Path | None = None,
-    ) -> Log:
-        """Parse DOCX binary data into a Log.
+    ) -> DocTree:
+        """Parse DOCX binary data into a DocTree.
 
         Args:
             data: Raw DOCX file content.
@@ -214,7 +214,7 @@ class DocxFeller(FellerProtocol):
             )
         data = tree.source
         if not isinstance(data, bytes | bytearray):
-            msg = f"DocxFeller.fell expects Tree[bytes], got {type(data).__name__}"
+            msg = f"DocxParser.parse expects Tree[bytes], got {type(data).__name__}"
             raise TypeError(msg)
 
         metadata = dict(tree.metadata_overrides)
@@ -363,7 +363,7 @@ class DocxFeller(FellerProtocol):
         final_title = self._resolve_document_title(tree.document_title, doc, root)
         root.title = final_title
 
-        return Log(
+        return DocTree(
             title=final_title,
             source="",
             root=root,

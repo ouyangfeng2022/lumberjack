@@ -4,27 +4,27 @@ from collections.abc import Iterable
 
 from lumberjack.block import BlockKind, BlockOption, normalize_block_options
 
-from .._internal.block_saw import BlockSaw
+from .._internal.block_splitter import BlockSplitter
 from .._internal.rendering import join_rendered_blocks
 from ..models import (
-    Bundle,
+    ChunkDraft,
+    DocTree,
     DocumentBlock,
     Entry,
     HeadingKey,
     HeadingPath,
-    Log,
     SectionNode,
     common_heading_path,
     render_heading_path,
 )
-from ..protocols import ScalerProtocol
+from ..protocols import TokenizerProtocol
 from .context import SectionView
 
 
-class BaseSawyer:
-    """Shared state and helpers for sawyer strategies.
+class BaseSplitter:
+    """Shared state and helpers for splitter strategies.
 
-    Concrete sawyers combine this base with one counting-strategy mixin:
+    Concrete splitters combine this base with one counting-strategy mixin:
 
     * :class:`ExactCountingMixin` — full recount at every budget decision
       (walks the raw ``SectionNode`` tree, no pre-measure).
@@ -32,16 +32,16 @@ class BaseSawyer:
       8-char separator-delta window (walks a pre-measured
       :class:`SectionView` tree).
 
-    Each mixin owns :meth:`saw`, :meth:`_bundle_budget_tokens`,
-    :meth:`_merge_bundles`, :meth:`_finalize_estimate`, body splitting, and
+    Each mixin owns :meth:`saw`, :meth:`_draft_budget_tokens`,
+    :meth:`_merge_drafts`, :meth:`_finalize_estimate`, body splitting, and
     section entry rendering.  This class holds only the pieces that are
-    independent of both topology and counting strategy: scaler/options
-    wiring, rendering helpers, and small-bundle merging.
+    independent of both topology and counting strategy: tokenizer/options
+    wiring, rendering helpers, and small-draft merging.
     """
 
     def __init__(
         self,
-        scaler: ScalerProtocol,
+        tokenizer: TokenizerProtocol,
         *,
         max_tokens: int = 1200,
         ideal_max_tokens_ratio: float = 0.8,
@@ -51,7 +51,7 @@ class BaseSawyer:
         block_options: Iterable[BlockOption] | None = None,
         _merge_below_ratio: float = 0.0,
     ) -> None:
-        self.scaler = scaler
+        self.tokenizer = tokenizer
         self.max_tokens = max_tokens
         self.ideal_max_tokens_ratio = ideal_max_tokens_ratio
         self.ideal_max_tokens = max(1, int(max_tokens * ideal_max_tokens_ratio))
@@ -64,22 +64,22 @@ class BaseSawyer:
             kind for kind, config in self.block_options.items() if config.isolated
         )
         self._validate_options()
-        self._block_saw = BlockSaw(
-            scaler,
+        self._block_splitter = BlockSplitter(
+            tokenizer,
             max_tokens=self.max_tokens,
             block_options=self.block_options,
         )
 
-    def saw(self, log: Log) -> list[Bundle]:  # pragma: no cover
+    def split(self, document: DocTree) -> list[ChunkDraft]:  # pragma: no cover
         raise NotImplementedError(
-            "saw() is provided by a counting-strategy mixin "
+            "split() is provided by a counting-strategy mixin "
             "(ExactCountingMixin or IncrementalCountingMixin)"
         )
 
     def _heading_path_token_count(self, path: HeadingPath) -> int:
         if not path:
             return 0
-        return self.scaler.scale(render_heading_path(path), cache=True)
+        return self.tokenizer.count(render_heading_path(path), cache=True)
 
     def _render_body(
         self,
@@ -120,19 +120,19 @@ class BaseSawyer:
         """Full token count of the rendered body for *entries*."""
         if external_headings is None:
             external_headings = common_heading_path(entry.headings for entry in entries)
-        return self.scaler.scale(
+        return self.tokenizer.count(
             self._render_body(entries, external_headings=external_headings), cache=True
         )
 
     def _heading_budget_token_count(self, path: HeadingPath) -> int:
-        """Canonical Markdown token count for a bundle's external heading path."""
+        """Canonical Markdown token count for a draft's external heading path."""
         return self._heading_path_token_count(path)
 
-    def _root_for_splitting(self, log: Log) -> SectionNode:
-        """Return the section tree used by sawyers after option-level shaping."""
+    def _root_for_splitting(self, document: DocTree) -> SectionNode:
+        """Return the section tree used by splitters after option-level shaping."""
         if self.max_heading_level is None:
-            return log.root
-        return self._limit_heading_depth(log.root, self.max_heading_level)
+            return document.root
+        return self._limit_heading_depth(document.root, self.max_heading_level)
 
     def _limit_heading_depth(
         self,
@@ -188,56 +188,58 @@ class BaseSawyer:
 
         return limited_root
 
-    def _bundle_budget_tokens(self, bundle: Bundle) -> int:  # pragma: no cover
-        """Rendered footprint of a bundle, used for budget decisions.
+    def _draft_budget_tokens(self, draft: ChunkDraft) -> int:  # pragma: no cover
+        """Rendered footprint of a draft, used for budget decisions.
 
         Provided by :class:`ExactCountingMixin` (full recount) or
         :class:`IncrementalCountingMixin` (running estimate).
         """
         raise NotImplementedError
 
-    def _merge_bundles(
+    def _merge_drafts(
         self,
-        left_bundle: Bundle,
-        right_bundle: Bundle,
+        left_draft: ChunkDraft,
+        right_draft: ChunkDraft,
         *,
         expected_common: HeadingPath | None = None,
-    ) -> Bundle:
-        """Merge two bundles; provided by the counting-strategy mixin."""
+    ) -> ChunkDraft:
+        """Merge two drafts; provided by the counting-strategy mixin."""
         raise NotImplementedError
 
     @staticmethod
     def _merged_own_heading(
-        left_bundle: Bundle,
-        right_bundle: Bundle,
+        left_draft: ChunkDraft,
+        right_draft: ChunkDraft,
         common_headings: HeadingPath,
     ) -> HeadingKey | None:
         """Keep a structural root only when one input owns the merged prefix."""
-        for bundle in (left_bundle, right_bundle):
+        for draft in (left_draft, right_draft):
             if (
                 common_headings
-                and bundle.headings == common_headings
-                and bundle.own_heading is not None
-                and bundle.own_heading == common_headings[-1]
+                and draft.headings == common_headings
+                and draft.own_heading is not None
+                and draft.own_heading == common_headings[-1]
             ):
-                return bundle.own_heading
+                return draft.own_heading
         return None
 
     def _finalize_estimate(
         self,
-        bundle: Bundle,
+        draft: ChunkDraft,
         external_headings: HeadingPath,
         token_count: int,
     ) -> int:
         """Estimated token count carried onto the final Chunk; mixin-provided."""
         raise NotImplementedError
 
-    def _split_section(self, section: SectionView) -> list[Bundle]:  # pragma: no cover
+    def _split_section(
+        self, section: SectionView
+    ) -> list[ChunkDraft]:  # pragma: no cover
         """Saw one section using the selected topology and counting strategy."""
         raise NotImplementedError
 
-    def _post_process_bundles(self, bundles: list[Bundle]) -> list[Bundle]:
-        return bundles
+    def _post_process_drafts(self, drafts: list[ChunkDraft]) -> list[ChunkDraft]:
+        return drafts
 
     def _validate_options(self) -> None:
         if self.max_tokens <= 0:
@@ -285,22 +287,22 @@ class BaseSawyer:
 
     def _merge_small_chunks(
         self,
-        bundles: list[Bundle],
+        drafts: list[ChunkDraft],
         *,
         parent_headings: HeadingPath | None = None,
-    ) -> list[Bundle]:
-        """Merge adjacent same-parent bundles below the merge threshold, bottom-up.
+    ) -> list[ChunkDraft]:
+        """Merge adjacent same-parent drafts below the merge threshold, bottom-up.
 
         Threshold = ``int(max_tokens * merge_below_ratio)``;
         ``merge_below_ratio == 0`` disables merging entirely.
         """
         merge_below = int(self.max_tokens * self.merge_below_ratio)
         if merge_below <= 0:
-            return bundles
-        if not bundles:
-            return bundles
+            return drafts
+        if not drafts:
+            return drafts
 
-        merged: list[Bundle] = list(bundles)
+        merged: list[ChunkDraft] = list(drafts)
         i = len(merged) - 1
         while i > 0:
             current = merged[i]
@@ -312,16 +314,16 @@ class BaseSawyer:
             )
             if (
                 can_merge
-                and self._bundle_budget_tokens(current) < merge_below
+                and self._draft_budget_tokens(current) < merge_below
                 and previous.chunk_type == "paragraph"
                 and current.chunk_type == "paragraph"
             ):
-                merged_bundle = self._merge_bundles(previous, current)
+                merged_draft = self._merge_drafts(previous, current)
                 # Compare the policy-selected footprint against max_tokens.
                 # Because can_merge guarantees matching heading paths, the
                 # merged common prefix is that shared path.
-                if self._bundle_budget_tokens(merged_bundle) <= self.max_tokens:
-                    merged[i - 1] = merged_bundle
+                if self._draft_budget_tokens(merged_draft) <= self.max_tokens:
+                    merged[i - 1] = merged_draft
                     del merged[i]
             i -= 1
         return merged
@@ -347,4 +349,4 @@ class BaseSawyer:
         return max(vals) if vals else None
 
 
-__all__ = ["BaseSawyer"]
+__all__ = ["BaseSplitter"]

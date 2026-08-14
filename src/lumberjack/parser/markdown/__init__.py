@@ -1,15 +1,15 @@
-from .feller import (
+from .parser import (
     MarkdownBlockContext,
     MarkdownBlockHandler,
     MarkdownBlockSpec,
-    MarkdownFeller,
-    MarkdownItFeller,
+    MarkdownItParser,
+    MarkdownParser,
 )
 
 __all__ = [
     "MarkdownBlockContext",
     "MarkdownBlockHandler",
     "MarkdownBlockSpec",
-    "MarkdownFeller",
-    "MarkdownItFeller",
+    "MarkdownItParser",
+    "MarkdownParser",
 ]

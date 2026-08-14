@@ -37,29 +37,29 @@ uv sync --extra web
 uv run lumberjack-serve --reload
 ```
 
-## Markdown Feller 自定义插件
+## Markdown Parser 自定义插件
 
 Web UI 通过 HTTP 调用后端 `/lumber/api/split/*` 接口，浏览器端不能运行时注册
-Python `markdown-it-py` 插件。需要自定义 Markdown feller 时，应在后端组合
-`MarkdownItFeller -> Sawyer -> Mill`；UI 仍然展示最终 chunk。
+Python `markdown-it-py` 插件。需要自定义 Markdown parser 时，应在后端组合
+`MarkdownItParser -> Splitter -> ChunkFinalizer`；UI 仍然展示最终 chunk。
 
 ```python
 from mdit_py_plugins.tasklists import tasklists_plugin
 
-from lumberjack.feller import MarkdownItFeller
-from lumberjack.mill import Mill
-from lumberjack.sawyer import SiblingSawyer
-from lumberjack.scaler import ApproxByteScaler
+from lumberjack.parser import MarkdownItParser
+from lumberjack.finalizer import ChunkFinalizer
+from lumberjack.splitter import SiblingSplitter
+from lumberjack.tokenizer import ApproxByteTokenizer
 
-scaler = ApproxByteScaler()
-feller = MarkdownItFeller(plugins=(tasklists_plugin,))
-log = feller.fell("- [x] done", document_title="tasks.md")
-bundles = SiblingSawyer(scaler).saw(log)
-chunks = Mill(scaler).mill(log, bundles)
+tokenizer = ApproxByteTokenizer()
+parser = MarkdownItParser(plugins=(tasklists_plugin,))
+document = parser.parse("- [x] done", document_title="tasks.md")
+drafts = SiblingSplitter(tokenizer).saw(document)
+chunks = ChunkFinalizer(tokenizer).finalize(document, drafts)
 ```
 
 产生新块级 token type 的插件可通过 `MarkdownBlockSpec` 声明映射；自定义 handler
-接收 `MarkdownBlockContext`，并通过 `context.feller` 使用 feller 的辅助方法。
+接收 `MarkdownBlockContext`，并通过 `context.parser` 使用 parser 的辅助方法。
 
 ## 项目结构
 

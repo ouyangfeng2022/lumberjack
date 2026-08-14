@@ -8,7 +8,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient, Response
 
-from lumberjack.scaler import ApproxByteScaler, TiktokenScaler
+from lumberjack.tokenizer import ApproxByteTokenizer, TiktokenTokenizer
 from lumberjack.web import create_app
 
 
@@ -359,7 +359,7 @@ def test_split_block_configs_default_applies_when_field_not_sent(
 
 
 def test_split_text_with_approx(client: ASGITestClient) -> None:
-    """The /split/text endpoint works with the approx (exact) scaler."""
+    """The /split/text endpoint works with the approx (exact) tokenizer."""
     payload = {
         "text": "# T\n\nbody text here\n",
         "input_format": "markdown",
@@ -372,7 +372,7 @@ def test_split_text_with_approx(client: ASGITestClient) -> None:
     chunk = data["chunks"][0]
     assert chunk["token_count"] == (
         chunk["headings_token_count"]
-        + ApproxByteScaler().scale("\n\n")
+        + ApproxByteTokenizer().count("\n\n")
         + chunk["body_token_count"]
     )
 
@@ -399,7 +399,7 @@ def test_split_text_with_tiktoken(
     assert chunk["token_count"] > 0
     assert chunk["token_count"] == (
         chunk["headings_token_count"]
-        + TiktokenScaler().scale("\n\n")
+        + TiktokenTokenizer().count("\n\n")
         + chunk["body_token_count"]
     )
 
@@ -417,6 +417,6 @@ def test_split_file_with_approx(client: ASGITestClient) -> None:
     chunk = response.json()["chunks"][0]
     assert chunk["token_count"] == (
         chunk["headings_token_count"]
-        + ApproxByteScaler().scale("\n\n")
+        + ApproxByteTokenizer().count("\n\n")
         + chunk["body_token_count"]
     )

@@ -1,9 +1,9 @@
-"""Tests for sawyer ``max_heading_level`` constructor arguments."""
+"""Tests for splitter ``max_heading_level`` constructor arguments."""
 
 import pytest
 
-from lumberjack.feller.markdown.feller import MarkdownItFeller
-from tests.helpers import create_sawyer, saw, sawyer_options
+from lumberjack.parser.markdown.parser import MarkdownItParser
+from tests.helpers import create_splitter, saw, splitter_options
 
 
 def test_parser_preserves_full_heading_depth():
@@ -24,7 +24,7 @@ def test_parser_preserves_full_heading_depth():
 Content in H6 section.
 """
 
-    doc = MarkdownItFeller().fell(markdown)
+    doc = MarkdownItParser().parse(markdown)
     assert len(doc.root.children) == 1  # H1
     h1_section = doc.root.children[0]
     assert len(h1_section.children) == 1  # H2
@@ -41,19 +41,19 @@ Content in H6 section.
 
 
 def _split(markdown: str, *, max_heading_level: int | None):
-    document = MarkdownItFeller().fell(markdown)
-    sawyer = create_sawyer(
+    document = MarkdownItParser().parse(markdown)
+    splitter = create_splitter(
         "sibling",
-        **sawyer_options(
+        **splitter_options(
             max_tokens=1200,
             max_heading_level=max_heading_level,
         ),
     )
-    return saw(sawyer, document)
+    return saw(splitter, document)
 
 
 def test_max_heading_level_on_splitter():
-    """Heading-depth limiting is configured directly on a sawyer."""
+    """Heading-depth limiting is configured directly on a splitter."""
     markdown = """
 # Main Section
 
@@ -93,7 +93,7 @@ Content here.
     ("sibling", "incremental-sibling", "subtree", "section"),
 )
 def test_max_heading_level_manual_splitter_pipeline(splitter_name: str):
-    """Manual parse -> split users configure heading depth on the sawyer."""
+    """Manual parse -> split users configure heading depth on the splitter."""
     markdown = """
 # H1
 
@@ -102,16 +102,16 @@ def test_max_heading_level_manual_splitter_pipeline(splitter_name: str):
 ### H3
 """
 
-    doc = MarkdownItFeller().fell(markdown)
+    doc = MarkdownItParser().parse(markdown)
     h1 = doc.root.children[0]
     assert len(h1.children) == 1  # H2
     assert len(h1.children[0].children) == 1  # H3 remains in parsed AST
 
-    sawyer = create_sawyer(
+    splitter = create_splitter(
         splitter_name,
-        **sawyer_options(max_tokens=500, max_heading_level=2),
+        **splitter_options(max_tokens=500, max_heading_level=2),
     )
-    chunks = saw(sawyer, doc)
+    chunks = saw(splitter, doc)
 
     assert len(chunks) == 1
     chunk = chunks[0]

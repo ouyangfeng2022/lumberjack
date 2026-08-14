@@ -3,20 +3,20 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from .feller import AutoFeller
-from .mill import Mill
+from .finalizer import ChunkFinalizer
 from .models import Chunk, InputFormat, Tree
-from .planer import Planer
+from .normalizer import TextNormalizer
+from .parser import AutoParser
 from .protocols import (
-    FellerProtocol,
-    PlanerProtocol,
-    SawyerProtocol,
-    ScalerProtocol,
-    SeasonerProtocol,
+    ParserProtocol,
+    SplitterProtocol,
+    TextNormalizerProtocol,
+    TextTransformerProtocol,
+    TokenizerProtocol,
 )
-from .sawyer import SiblingSawyer
-from .scaler import ApproxByteScaler
-from .seasoner import Seasoner
+from .splitter import SiblingSplitter
+from .tokenizer import ApproxByteTokenizer
+from .transformer import TextTransformer
 
 
 class Lumberjack:
@@ -25,29 +25,31 @@ class Lumberjack:
     def __init__(
         self,
         *,
-        scaler: ScalerProtocol | None = None,
-        feller: FellerProtocol | None = None,
-        sawyer: SawyerProtocol | None = None,
-        seasoner: SeasonerProtocol | None = None,
-        planer: PlanerProtocol | None = None,
+        tokenizer: TokenizerProtocol | None = None,
+        parser: ParserProtocol | None = None,
+        splitter: SplitterProtocol | None = None,
+        normalizer: TextNormalizerProtocol | None = None,
+        transformer: TextTransformerProtocol | None = None,
         max_tokens: int = 1200,
         skip_empty_sections: bool = True,
     ) -> None:
-        if scaler is None and sawyer is not None:
-            scaler = sawyer.scaler
-        self.scaler = scaler or ApproxByteScaler()
-        self.feller = feller or AutoFeller()
-        if sawyer is not None and sawyer.scaler is not self.scaler:
-            raise ValueError("sawyer and mill must share the same scaler instance")
-        self.sawyer = sawyer or SiblingSawyer(
-            self.scaler,
+        if tokenizer is None and splitter is not None:
+            tokenizer = splitter.tokenizer
+        self.tokenizer = tokenizer or ApproxByteTokenizer()
+        self.parser = parser or AutoParser()
+        if splitter is not None and splitter.tokenizer is not self.tokenizer:
+            raise ValueError(
+                "splitter and finalize must share the same tokenizer instance"
+            )
+        self.splitter = splitter or SiblingSplitter(
+            self.tokenizer,
             max_tokens=max_tokens,
             skip_empty_sections=skip_empty_sections,
         )
-        self.mill = Mill(
-            self.scaler,
-            seasoner=seasoner or Seasoner(),
-            planer=planer or Planer(),
+        self.finalizer = ChunkFinalizer(
+            self.tokenizer,
+            normalizer=normalizer or TextNormalizer(),
+            transformer=transformer or TextTransformer(),
             skip_empty_sections=skip_empty_sections,
         )
 
@@ -60,7 +62,7 @@ class Lumberjack:
         metadata_overrides: Mapping[str, object] | None = None,
         source_path: str | Path | None = None,
     ) -> list[Chunk]:
-        """Fell, saw, and mill one raw document into final chunks."""
+        """Parse, split, and finalize one raw document into final chunks."""
         if not isinstance(tree, Tree):
             tree = Tree(
                 source=tree,
@@ -69,9 +71,9 @@ class Lumberjack:
                 metadata_overrides=dict(metadata_overrides or {}),
                 source_path=source_path,
             )
-        log = self.feller.fell(tree)
-        bundles = self.sawyer.saw(log)
-        return self.mill.mill(log, bundles)
+        document = self.parser.parse(tree)
+        drafts = self.splitter.split(document)
+        return self.finalizer.finalize(document, drafts)
 
 
 __all__ = ["Lumberjack"]

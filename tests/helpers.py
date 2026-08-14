@@ -11,20 +11,20 @@ from lumberjack.block import (
     HTMLTableConfig,
     MarkdownTableConfig,
 )
-from lumberjack.mill import Mill
-from lumberjack.models import Chunk, InputFormat, Log, Tree
-from lumberjack.sawyer import (
-    ExactSectionSawyer,
-    ExactSiblingSawyer,
-    ExactSubtreeSawyer,
-    SectionSawyer,
-    SiblingSawyer,
-    SubtreeSawyer,
+from lumberjack.finalizer import ChunkFinalizer
+from lumberjack.models import Chunk, DocTree, InputFormat, Tree
+from lumberjack.splitter import (
+    ExactSectionSplitter,
+    ExactSiblingSplitter,
+    ExactSubtreeSplitter,
+    SectionSplitter,
+    SiblingSplitter,
+    SubtreeSplitter,
 )
-from lumberjack.scaler import (
-    ApproxByteScaler,
-    TiktokenScaler,
-    TransformersScaler,
+from lumberjack.tokenizer import (
+    ApproxByteTokenizer,
+    TiktokenTokenizer,
+    TransformersTokenizer,
 )
 
 # Root of the shared test fixtures, regardless of which test subpackage imports
@@ -32,26 +32,26 @@ from lumberjack.scaler import (
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 
-class CharacterScaler:
-    """Test-only scaler that counts each character as one token."""
+class CharacterTokenizer:
+    """Test-only tokenizer that counts each character as one token."""
 
     def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
         return tuple(ord(char) for char in text)
 
-    def scale(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
+    def count(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
         return len(text)
 
 
-def fell(
-    feller,
+def parse(
+    parser,
     source: str | bytes | Path,
     *,
     format: InputFormat = "auto",
     document_title: str | None = None,
     metadata_overrides: dict[str, object] | None = None,
     source_path: str | Path | None = None,
-) -> Log:
-    return feller.fell(
+) -> DocTree:
+    return parser.parse(
         Tree(
             source=source,
             format=format,
@@ -62,11 +62,11 @@ def fell(
     )
 
 
-def saw(sawyer, log: Log) -> list[Chunk]:
-    return Mill(
-        sawyer.scaler,
-        skip_empty_sections=sawyer.skip_empty_sections,
-    ).mill(log, sawyer.saw(log))
+def saw(splitter, document: DocTree) -> list[Chunk]:
+    return ChunkFinalizer(
+        splitter.tokenizer,
+        skip_empty_sections=splitter.skip_empty_sections,
+    ).finalize(document, splitter.split(document))
 
 
 @dataclass(frozen=True)
@@ -126,7 +126,7 @@ def _block_configs(
     return result
 
 
-def sawyer_options(
+def splitter_options(
     *,
     max_tokens: int = 1200,
     ideal_max_tokens_ratio: float = 0.8,
@@ -147,44 +147,44 @@ def sawyer_options(
     }
 
 
-def section_sawyer_options(**kwargs: Any) -> dict[str, Any]:
+def section_splitter_options(**kwargs: Any) -> dict[str, Any]:
     """Build direct constructor kwargs for section splitters."""
-    return sawyer_options(**kwargs)
+    return splitter_options(**kwargs)
 
 
-def create_sawyer(
+def create_splitter(
     name: str,
-    scaler=None,
+    tokenizer=None,
     options: dict[str, Any] | None = None,
     **kwargs: Any,
 ):
     config = dict(options or {})
     config.update(kwargs)
-    scaler = scaler or ApproxByteScaler()
+    tokenizer = tokenizer or ApproxByteTokenizer()
     normalized = name.strip().lower()
     classes = {
-        "sibling": SiblingSawyer,
-        "incremental-sibling": SiblingSawyer,
-        "exact-sibling": ExactSiblingSawyer,
-        "subtree": SubtreeSawyer,
-        "incremental-subtree": SubtreeSawyer,
-        "exact-subtree": ExactSubtreeSawyer,
-        "section": SectionSawyer,
-        "incremental-section": SectionSawyer,
-        "exact-section": ExactSectionSawyer,
+        "sibling": SiblingSplitter,
+        "incremental-sibling": SiblingSplitter,
+        "exact-sibling": ExactSiblingSplitter,
+        "subtree": SubtreeSplitter,
+        "incremental-subtree": SubtreeSplitter,
+        "exact-subtree": ExactSubtreeSplitter,
+        "section": SectionSplitter,
+        "incremental-section": SectionSplitter,
+        "exact-section": ExactSectionSplitter,
     }
     cls = classes.get(normalized)
     if cls is None:
-        raise ValueError(f"Unsupported sawyer: {name}")
-    return cls(scaler, **config)
+        raise ValueError(f"Unsupported splitter: {name}")
+    return cls(tokenizer, **config)
 
 
-def create_scaler(name: str):
+def create_tokenizer(name: str):
     normalized = name.strip().lower()
     if normalized == "approx":
-        return ApproxByteScaler()
+        return ApproxByteTokenizer()
     if normalized == "tiktoken":
-        return TiktokenScaler()
+        return TiktokenTokenizer()
     if normalized == "transformers":
-        return TransformersScaler()
-    raise ValueError(f"Unsupported scaler: {name}")
+        return TransformersTokenizer()
+    raise ValueError(f"Unsupported tokenizer: {name}")

@@ -1,4 +1,4 @@
-"""HTML document feller producing the shared ``Log`` model."""
+"""HTML document parser producing the shared ``DocTree`` model."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from typing import Any, ClassVar
 
 from lumberjack.block import BlockKind
 
-from ...models import DocumentBlock, DocumentInline, Log, SectionNode, Tree
-from ...protocols import FellerProtocol
+from ...models import DocTree, DocumentBlock, DocumentInline, SectionNode, Tree
+from ...protocols import ParserProtocol
 
 
 def _clean_text(text: str) -> str:
@@ -77,7 +77,7 @@ class _TableCollector:
 
 
 class _HTMLDocumentBuilder(_StdlibHTMLParser):
-    """Event-driven builder that normalizes HTML into the shared Log model."""
+    """Event-driven builder that normalizes HTML into the shared DocTree model."""
 
     _BLOCK_TAGS: ClassVar[frozenset[str]] = frozenset({"p", "pre", "blockquote"})
     _HEADING_TAGS: ClassVar[frozenset[str]] = frozenset(
@@ -120,13 +120,13 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         self._body_seen = False
         self._inline_stack: list[str] = []
 
-    def build(self) -> Log:
+    def build(self) -> DocTree:
         self.feed(self._source)
         self.close()
         self._close_block(self.getpos()[0])
         final_title = self._resolve_document_title()
         self._root.title = final_title
-        return Log(
+        return DocTree(
             title=final_title,
             source=self._source,
             root=self._root,
@@ -411,12 +411,12 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         return len(self._source) if tag_end == -1 else tag_end + 1
 
 
-class HTMLFeller(FellerProtocol):
-    """Fell HTML documents into the shared ``Log`` model.
+class HTMLParser(ParserProtocol):
+    """Parse HTML documents into the shared ``DocTree`` model.
 
-    It mirrors the public feller shape used by Markdown and DOCX:
-    it exposes ``block_kinds`` and returns a heading-tree ``Log`` so
-    the existing sawyers can operate on HTML input without a separate path.
+    It mirrors the public parser shape used by Markdown and DOCX:
+    it exposes ``block_kinds`` and returns a heading-tree ``DocTree`` so
+    the existing splitters can operate on HTML input without a separate path.
     """
 
     default_block_kinds: ClassVar[frozenset[str]] = frozenset(
@@ -432,18 +432,18 @@ class HTMLFeller(FellerProtocol):
 
     @property
     def block_kinds(self) -> frozenset[str]:
-        """Block kinds this feller can produce."""
+        """Block kinds this parser can produce."""
         return self.default_block_kinds
 
-    def fell(
+    def parse(
         self,
         tree: Tree | str,
         *,
         document_title: str | None = None,
         metadata_overrides: dict[str, object] | None = None,
         source_path: str | Path | None = None,
-    ) -> Log:
-        """Parse raw HTML text into a ``Log``.
+    ) -> DocTree:
+        """Parse raw HTML text into a ``DocTree``.
 
         Args:
             data: Raw HTML source.
@@ -465,7 +465,7 @@ class HTMLFeller(FellerProtocol):
             )
         data = tree.source
         if not isinstance(data, str):
-            msg = f"HTMLFeller.fell expects Tree[str], got {type(data).__name__}"
+            msg = f"HTMLParser.parse expects Tree[str], got {type(data).__name__}"
             raise TypeError(msg)
 
         builder = _HTMLDocumentBuilder(

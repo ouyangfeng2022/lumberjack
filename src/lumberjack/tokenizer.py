@@ -3,17 +3,17 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Protocol, cast
 
-from .protocols import ScalerProtocol
+from .protocols import TokenizerProtocol
 
 DEFAULT_TRANSFORMERS_MODEL = "bert-base-uncased"
 
 
-class _TransformersScalerProtocol(Protocol):
+class _TransformersTokenizerProtocol(Protocol):
     def encode(self, text: str) -> Iterable[int]: ...
 
 
-class TiktokenScaler(ScalerProtocol):
-    """Token scaler backed by the tiktoken library."""
+class TiktokenTokenizer(TokenizerProtocol):
+    """Tokenizer backed by the tiktoken library."""
 
     def __init__(
         self,
@@ -26,7 +26,7 @@ class TiktokenScaler(ScalerProtocol):
             from cachetools import LRUCache
         except ImportError as e:
             raise ImportError(
-                "TiktokenScaler requires the optional 'tiktoken' and "
+                "TiktokenTokenizer requires the optional 'tiktoken' and "
                 "'cachetools' dependencies. Install them with "
                 "'lumberjack[tokenizers]'."
             ) from e
@@ -57,7 +57,7 @@ class TiktokenScaler(ScalerProtocol):
 
         return token_ids
 
-    def scale(
+    def count(
         self,
         text: str,
         *,
@@ -71,8 +71,8 @@ class TiktokenScaler(ScalerProtocol):
         self._cache.clear()
 
 
-class ApproxByteScaler(ScalerProtocol):
-    """Approximate scaler using ``len(text.encode(\"utf-8\")) // 3`` tokens.
+class ApproxByteTokenizer(TokenizerProtocol):
+    """Approximate tokenizer using ``len(text.encode(\"utf-8\")) // 3`` tokens.
 
     Assumes an average of 3 UTF-8 bytes per token, which is a better fit for
     mixed ASCII / CJK text than the older ``chars // 4`` heuristic.
@@ -81,12 +81,12 @@ class ApproxByteScaler(ScalerProtocol):
     def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
         return tuple(text.encode("utf-8"))
 
-    def scale(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
+    def count(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
         return len(self.encode(text)) // 3
 
 
-class TransformersScaler(ScalerProtocol):
-    """Token scaler backed by a Hugging Face fast tokenizer."""
+class TransformersTokenizer(TokenizerProtocol):
+    """Tokenizer backed by a Hugging Face fast tokenizer."""
 
     def __init__(
         self,
@@ -99,13 +99,13 @@ class TransformersScaler(ScalerProtocol):
             from transformers import AutoTokenizer
         except ImportError as e:
             raise ImportError(
-                "TransformersScaler requires the optional 'transformers' "
+                "TransformersTokenizer requires the optional 'transformers' "
                 "dependency. Install it with 'lumberjack[tokenizers]'."
             ) from e
 
         self.model = model
-        self.scaler = cast(
-            _TransformersScalerProtocol,
+        self.tokenizer = cast(
+            _TransformersTokenizerProtocol,
             AutoTokenizer.from_pretrained(model, use_fast=True),
         )
         self.default_cache = default_cache
@@ -126,14 +126,14 @@ class TransformersScaler(ScalerProtocol):
             if cached is not None:
                 return cached
 
-        token_ids = tuple(self.scaler.encode(text))
+        token_ids = tuple(self.tokenizer.encode(text))
 
         if use_cache:
             self._cache[text] = token_ids
 
         return token_ids
 
-    def scale(
+    def count(
         self,
         text: str,
         *,

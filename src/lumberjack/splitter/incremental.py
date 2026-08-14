@@ -2,23 +2,23 @@ from __future__ import annotations
 
 from .._internal.rendering import RENDER_SEPARATOR, join_rendered_blocks
 from ..models import (
-    Bundle,
+    ChunkDraft,
+    DocTree,
     Entry,
     HeadingPath,
-    Log,
     common_heading_path,
     render_heading_path,
 )
-from .base import BaseSawyer
+from .base import BaseSplitter
 from .context import IncrementalCountingContext, SectionView
 
 
-class IncrementalCountingMixin(BaseSawyer):
+class IncrementalCountingMixin(BaseSplitter):
     """Incremental counting strategy: additive estimate + 8-char delta window.
 
     Sections are measured once into :class:`SectionView` (with title / body /
-    subtree / tail text / single-bundle eligibility). Budget decisions during
-    packing use a running additive estimate carried on each bundle; joins
+    subtree / tail text / single-draft eligibility). Budget decisions during
+    packing use a running additive estimate carried on each draft; joins
     between entries are approximated by :meth:`_separator_delta_after` (an
     8-char tail window) so the estimate stays cheap.  Full recounts of the
     separated heading path and body happen only at finalization.
@@ -26,18 +26,20 @@ class IncrementalCountingMixin(BaseSawyer):
 
     _DELTA_WINDOW = 8
 
-    def saw(self, log: Log) -> list[Bundle]:
+    def split(self, document: DocTree) -> list[ChunkDraft]:
         """Measure the tree once, then split via the topology's _split_section."""
         self._atomic_token_counts: dict[str, int] = {}
-        root = IncrementalCountingContext(self).prepare(self._root_for_splitting(log))
-        return self._post_process_bundles(self._split_section(root))
+        root = IncrementalCountingContext(self).prepare(
+            self._root_for_splitting(document)
+        )
+        return self._post_process_drafts(self._split_section(root))
 
-    def _bundle_running_estimate(self, bundle: Bundle) -> int:
-        return bundle.token_count
+    def _draft_running_estimate(self, draft: ChunkDraft) -> int:
+        return draft.token_count
 
-    def _bundle_budget_tokens(self, bundle: Bundle) -> int:
+    def _draft_budget_tokens(self, draft: ChunkDraft) -> int:
         """Running estimate selected by the heading-sensitivity policy."""
-        return bundle.token_count if self.heading_sensitive else bundle.body_token_count
+        return draft.token_count if self.heading_sensitive else draft.body_token_count
 
     def _count_once(self, text: str) -> int:
         """Count an atomic measurement once during the incremental pre-pass."""
@@ -48,7 +50,7 @@ class IncrementalCountingMixin(BaseSawyer):
         cached = counts.get(text)
         if cached is not None:
             return cached
-        count = self.scaler.scale(text, cache=True)
+        count = self.tokenizer.count(text, cache=True)
         counts[text] = count
         return count
 
@@ -58,62 +60,60 @@ class IncrementalCountingMixin(BaseSawyer):
         return self._count_once(render_heading_path(path))
 
     @staticmethod
-    def _bundle_body_present(bundle: Bundle) -> bool:
+    def _draft_body_present(draft: ChunkDraft) -> bool:
         return any(
-            entry.body or entry.headings != bundle.headings for entry in bundle.entries
+            entry.body or entry.headings != draft.headings for entry in draft.entries
         )
 
-    def _bundle_body_tail(self, bundle: Bundle) -> str:
-        return self._entry_group_tail(bundle.entries) if bundle.entries else ""
+    def _draft_body_tail(self, draft: ChunkDraft) -> str:
+        return self._entry_group_tail(draft.entries) if draft.entries else ""
 
-    def _bundle_contribution_below(
+    def _draft_contribution_below(
         self,
-        bundle: Bundle,
+        draft: ChunkDraft,
         common_headings: HeadingPath,
     ) -> tuple[int, str, bool]:
         """Return body estimate/tail/presence after exposing a removed prefix."""
-        relative_headings = bundle.headings[len(common_headings) :]
+        relative_headings = draft.headings[len(common_headings) :]
         relative_text = render_heading_path(relative_headings)
         relative_tokens = self._heading_path_token_count(relative_headings)
-        body_present = self._bundle_body_present(bundle)
-        count = relative_tokens + bundle.body_token_count
+        body_present = self._draft_body_present(draft)
+        count = relative_tokens + draft.body_token_count
         if relative_text and body_present:
             count += self._separator_delta_after(relative_text)
         present = bool(relative_text) or body_present
-        tail = self._bundle_body_tail(bundle) if body_present else relative_text
+        tail = self._draft_body_tail(draft) if body_present else relative_text
         return count, tail, present
 
-    def _merge_bundles(
+    def _merge_drafts(
         self,
-        left_bundle: Bundle,
-        right_bundle: Bundle,
+        left_draft: ChunkDraft,
+        right_draft: ChunkDraft,
         *,
         expected_common: HeadingPath | None = None,
-    ) -> Bundle:
-        """Merge two bundles via additive estimate + separator-delta window."""
-        left_headings = left_bundle.headings
-        right_headings = right_bundle.headings
+    ) -> ChunkDraft:
+        """Merge two drafts via additive estimate + separator-delta window."""
+        left_headings = left_draft.headings
+        right_headings = right_draft.headings
         if expected_common is not None:
             common_headings = expected_common
         else:
             common_headings = common_heading_path([left_headings, right_headings])
 
-        merged_entries = [*left_bundle.entries, *right_bundle.entries]
+        merged_entries = [*left_draft.entries, *right_draft.entries]
         headings_token_count = self._heading_budget_token_count(common_headings)
-        own_heading = self._merged_own_heading(
-            left_bundle, right_bundle, common_headings
-        )
+        own_heading = self._merged_own_heading(left_draft, right_draft, common_headings)
 
-        left_count, left_tail, left_present = self._bundle_contribution_below(
-            left_bundle, common_headings
+        left_count, left_tail, left_present = self._draft_contribution_below(
+            left_draft, common_headings
         )
-        right_count, _right_tail, right_present = self._bundle_contribution_below(
-            right_bundle, common_headings
+        right_count, _right_tail, right_present = self._draft_contribution_below(
+            right_draft, common_headings
         )
         body_token_count = left_count + right_count
         if left_present and right_present:
             body_token_count += self._separator_delta_after(left_tail)
-        return Bundle(
+        return ChunkDraft(
             entries=merged_entries,
             headings=common_headings,
             own_heading=own_heading,
@@ -121,17 +121,17 @@ class IncrementalCountingMixin(BaseSawyer):
             body_token_count=body_token_count,
             token_count=headings_token_count + body_token_count,
             split_origin="merge",
-            chunk_type=left_bundle.chunk_type,
+            chunk_type=left_draft.chunk_type,
         )
 
     def _finalize_estimate(
         self,
-        bundle: Bundle,
+        draft: ChunkDraft,
         external_headings: HeadingPath,  # noqa: ARG002
         token_count: int,  # noqa: ARG002
     ) -> int:
         """Return the separated heading-plus-body running estimate."""
-        return self._bundle_running_estimate(bundle)
+        return self._draft_running_estimate(draft)
 
     def _separator_delta_after(self, text: str) -> int:
         """Estimate the token delta of appending the Markdown separator.
@@ -165,7 +165,7 @@ class IncrementalCountingMixin(BaseSawyer):
         return section.can_emit_as_single_chunk
 
     def _entries_from_section(self, section: SectionView) -> list[Entry]:
-        """Render-ready entries for a section selected as a bundle."""
+        """Render-ready entries for a section selected as a draft."""
         node = section.node
         entries: list[Entry] = []
         if node.blocks or (not section.children and node.level > 0):
@@ -185,8 +185,8 @@ class IncrementalCountingMixin(BaseSawyer):
     def _split_section_body(
         self,
         section: SectionView,
-    ) -> list[Bundle]:
-        """Split a section's own blocks into fragments, then into bundle bundles."""
+    ) -> list[ChunkDraft]:
+        """Split a section's own blocks into fragments, then into draft drafts."""
         node = section.node
         headings = node.path
         blocks = node.blocks
@@ -213,7 +213,7 @@ class IncrementalCountingMixin(BaseSawyer):
                 headings, blocks, body_token_count=body_tokens
             )
             return [
-                Bundle(
+                ChunkDraft(
                     entries=[entry],
                     headings=node.path,
                     own_heading=node.path[-1] if node.path else None,
@@ -224,7 +224,7 @@ class IncrementalCountingMixin(BaseSawyer):
                 )
             ]
 
-        bundles: list[Bundle] = []
+        drafts: list[ChunkDraft] = []
         current_parts: list[str] = []
         current_joined = ""
         current_body_tokens = 0
@@ -233,7 +233,7 @@ class IncrementalCountingMixin(BaseSawyer):
 
         budget = body_budget
 
-        def bundle_current() -> Bundle:
+        def draft_current() -> ChunkDraft:
             entry = Entry(
                 headings=headings,
                 body=join_rendered_blocks(current_parts),
@@ -242,7 +242,7 @@ class IncrementalCountingMixin(BaseSawyer):
                 body_token_count=current_body_tokens,
             )
             token_count = prefix_tokens + current_body_tokens
-            return Bundle(
+            return ChunkDraft(
                 entries=[entry],
                 headings=headings,
                 own_heading=headings[-1] if headings else None,
@@ -255,7 +255,7 @@ class IncrementalCountingMixin(BaseSawyer):
         for block in blocks:
             if standalone_kinds and block.kind in standalone_kinds:
                 if current_parts:
-                    bundles.append(bundle_current())
+                    drafts.append(draft_current())
                     current_parts = []
                     current_joined = ""
                     current_body_tokens = 0
@@ -263,8 +263,8 @@ class IncrementalCountingMixin(BaseSawyer):
                     current_end_line = None
 
                 block_tokens = self._count_once(block.text)
-                # This bundle will only contain this block and headings.
-                block_pieces = self._block_saw.split_oversized_block(
+                # This draft will only contain this block and headings.
+                block_pieces = self._block_splitter.split_oversized_block(
                     block,
                     default_budget=budget,
                 )
@@ -277,8 +277,8 @@ class IncrementalCountingMixin(BaseSawyer):
                             end_line=block.end_line,
                             body_token_count=piece_tokens,
                         )
-                        bundles.append(
-                            Bundle(
+                        drafts.append(
+                            ChunkDraft(
                                 entries=[entry],
                                 headings=headings,
                                 own_heading=headings[-1] if headings else None,
@@ -298,8 +298,8 @@ class IncrementalCountingMixin(BaseSawyer):
                         body_token_count=block_tokens,
                     )
 
-                    bundles.append(
-                        Bundle(
+                    drafts.append(
+                        ChunkDraft(
                             entries=[entry],
                             headings=headings,
                             own_heading=headings[-1] if headings else None,
@@ -331,7 +331,7 @@ class IncrementalCountingMixin(BaseSawyer):
             # heading tokens are constant for every fragment here (all share
             # ``headings``), and ``budget`` already reflects heading sensitivity.
             if current_parts and candidate_body_tokens > budget:
-                bundles.append(bundle_current())
+                drafts.append(draft_current())
                 current_parts = []
                 current_joined = ""
                 current_body_tokens = 0
@@ -357,9 +357,9 @@ class IncrementalCountingMixin(BaseSawyer):
                 ):
                     current_end_line = block.end_line
                 continue
-            # TODO: bundle.tokens should not exceed the max_tokens.
-            # Special bundles can be split using a smaller tokens.
-            block_pieces = self._block_saw.split_oversized_block(
+            # TODO: draft.tokens should not exceed the max_tokens.
+            # Special drafts can be split using a smaller tokens.
+            block_pieces = self._block_splitter.split_oversized_block(
                 block,
                 default_budget=budget,
             )
@@ -371,8 +371,8 @@ class IncrementalCountingMixin(BaseSawyer):
                     end_line=block.end_line,
                     body_token_count=block_tokens,
                 )
-                bundles.append(
-                    Bundle(
+                drafts.append(
+                    ChunkDraft(
                         entries=[entry],
                         headings=headings,
                         own_heading=headings[-1] if headings else None,
@@ -398,8 +398,8 @@ class IncrementalCountingMixin(BaseSawyer):
                     end_line=block.end_line,
                     body_token_count=piece_tokens,
                 )
-                bundles.append(
-                    Bundle(
+                drafts.append(
+                    ChunkDraft(
                         entries=[entry],
                         headings=headings,
                         own_heading=headings[-1] if headings else None,
@@ -414,11 +414,11 @@ class IncrementalCountingMixin(BaseSawyer):
         if current_parts:
             rendered = join_rendered_blocks(current_parts)
             if rendered:
-                bundles.append(bundle_current())
+                drafts.append(draft_current())
 
-        return bundles
+        return drafts
 
-    def _direct_body_bundles(self, section: SectionView) -> list[Bundle]:
+    def _direct_body_drafts(self, section: SectionView) -> list[ChunkDraft]:
         """Emit this section's direct body, without topology recursion."""
         node = section.node
         body_tokens = self._view_body_tokens(section)
@@ -443,7 +443,7 @@ class IncrementalCountingMixin(BaseSawyer):
         )
         headings_token_count = self._heading_budget_token_count(node.path)
         return [
-            Bundle(
+            ChunkDraft(
                 entries=[entry],
                 headings=node.path,
                 own_heading=node.path[-1] if node.path else None,
@@ -453,7 +453,7 @@ class IncrementalCountingMixin(BaseSawyer):
             )
         ]
 
-    def _single_subtree_bundle(self, section: SectionView) -> Bundle | None:
+    def _single_subtree_draft(self, section: SectionView) -> ChunkDraft | None:
         if not self._view_can_emit_as_single_chunk(section):
             return None
         structural_root = section
@@ -468,7 +468,7 @@ class IncrementalCountingMixin(BaseSawyer):
         headings_tokens = self._heading_path_token_count(headings)
         subtree_tokens = self._view_subtree_tokens(structural_root)
         token_count = headings_tokens + subtree_tokens
-        return Bundle(
+        return ChunkDraft(
             entries=entries,
             headings=headings,
             own_heading=headings[-1] if headings else None,
@@ -478,7 +478,7 @@ class IncrementalCountingMixin(BaseSawyer):
             split_origin="section",
         )
 
-    def _packable_body_bundle(self, section: SectionView) -> Bundle | None:
+    def _packable_body_draft(self, section: SectionView) -> ChunkDraft | None:
         node = section.node
         body_tokens = self._view_body_tokens(section)
         if not node.blocks or any(
@@ -489,7 +489,7 @@ class IncrementalCountingMixin(BaseSawyer):
         entry = self._entry_from_blocks(
             node.path, node.blocks, body_token_count=body_tokens
         )
-        bundle = Bundle(
+        draft = ChunkDraft(
             entries=[entry],
             headings=node.path,
             own_heading=node.path[-1] if node.path else None,
@@ -498,9 +498,7 @@ class IncrementalCountingMixin(BaseSawyer):
             token_count=headings_tokens + body_tokens,
         )
         return (
-            bundle
-            if self._bundle_budget_tokens(bundle) <= self.ideal_max_tokens
-            else None
+            draft if self._draft_budget_tokens(draft) <= self.ideal_max_tokens else None
         )
 
 

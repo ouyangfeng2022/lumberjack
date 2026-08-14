@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 from lumberjack import Lumberjack
-from lumberjack.feller.docx import DocxFeller
-from lumberjack.sawyer import SiblingSawyer
-from tests.helpers import FIXTURES_DIR, CharacterScaler, saw, sawyer_options
+from lumberjack.parser.docx import DocxParser
+from lumberjack.splitter import SiblingSplitter
+from tests.helpers import FIXTURES_DIR, CharacterTokenizer, saw, splitter_options
 
 FIXTURES_ROOT = FIXTURES_DIR / "docx"
 SAMPLE_DOCX = (FIXTURES_ROOT / "sample.docx").read_bytes()
 
 
 def test_docx_parser_parses_headings() -> None:
-    parser = DocxFeller()
-    doc = parser.fell(SAMPLE_DOCX)
+    parser = DocxParser()
+    doc = parser.parse(SAMPLE_DOCX)
 
     assert doc.title == "Test Document"
     assert len(doc.root.children) >= 1
@@ -22,8 +22,8 @@ def test_docx_parser_parses_headings() -> None:
 
 
 def test_docx_parser_parses_nested_headings() -> None:
-    parser = DocxFeller()
-    doc = parser.fell(SAMPLE_DOCX)
+    parser = DocxParser()
+    doc = parser.parse(SAMPLE_DOCX)
 
     intro = next(c for c in doc.root.children if c.title == "Introduction")
     assert any(c.title == "Background" for c in intro.children)
@@ -31,8 +31,8 @@ def test_docx_parser_parses_nested_headings() -> None:
 
 
 def test_docx_parser_parses_table() -> None:
-    parser = DocxFeller()
-    doc = parser.fell(SAMPLE_DOCX)
+    parser = DocxParser()
+    doc = parser.parse(SAMPLE_DOCX)
 
     all_blocks: list[str] = []
 
@@ -46,8 +46,8 @@ def test_docx_parser_parses_table() -> None:
 
 
 def test_docx_parser_parses_lists() -> None:
-    parser = DocxFeller()
-    doc = parser.fell(SAMPLE_DOCX)
+    parser = DocxParser()
+    doc = parser.parse(SAMPLE_DOCX)
 
     all_blocks: list[str] = []
 
@@ -61,10 +61,10 @@ def test_docx_parser_parses_lists() -> None:
 
 
 def test_docx_parser_block_kinds() -> None:
-    parser = DocxFeller()
+    parser = DocxParser()
     kinds = parser.block_kinds
 
-    assert kinds == DocxFeller.default_block_kinds
+    assert kinds == DocxParser.default_block_kinds
     assert kinds == frozenset(
         {
             "paragraph",
@@ -94,21 +94,21 @@ def test_docx_lumber_bytes_input() -> None:
 
 
 def test_docx_through_splitter() -> None:
-    parser = DocxFeller()
-    doc = parser.fell(SAMPLE_DOCX)
+    parser = DocxParser()
+    doc = parser.parse(SAMPLE_DOCX)
 
-    scaler = CharacterScaler()
-    options = sawyer_options(max_tokens=200, merge_below_ratio=0.1)
-    sawyer = SiblingSawyer(scaler=scaler, **options)
-    chunks = saw(sawyer, doc)
+    tokenizer = CharacterTokenizer()
+    options = splitter_options(max_tokens=200, merge_below_ratio=0.1)
+    splitter = SiblingSplitter(tokenizer=tokenizer, **options)
+    chunks = saw(splitter, doc)
 
     assert len(chunks) >= 1
     assert all(chunk.token_count > 0 for chunk in chunks)
 
 
 def test_docx_parser_section_tree_structure() -> None:
-    parser = DocxFeller()
-    doc = parser.fell(SAMPLE_DOCX)
+    parser = DocxParser()
+    doc = parser.parse(SAMPLE_DOCX)
 
     def check_levels(section):
         for child in section.children:
@@ -119,8 +119,8 @@ def test_docx_parser_section_tree_structure() -> None:
 
 
 def test_docx_parser_paragraphs_have_text() -> None:
-    parser = DocxFeller()
-    doc = parser.fell(SAMPLE_DOCX)
+    parser = DocxParser()
+    doc = parser.parse(SAMPLE_DOCX)
 
     def _check(section):
         for block in section.blocks:

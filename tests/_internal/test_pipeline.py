@@ -1,9 +1,9 @@
-from lumberjack._internal.pipeline import saw_source
+from lumberjack._internal.pipeline import split_source
 
 
 def test_pipeline_applies_merge_below_ratio_to_section_splitter() -> None:
     source = "# A\n\n" + "x " * 200
-    unmerged = saw_source(
+    unmerged = split_source(
         source,
         splitter="exact-section",
         tokenizer="approx",
@@ -11,7 +11,7 @@ def test_pipeline_applies_merge_below_ratio_to_section_splitter() -> None:
         ideal_max_tokens_ratio=0.5,
         merge_below_ratio=0.0,
     )
-    merged = saw_source(
+    merged = split_source(
         source,
         splitter="exact-section",
         tokenizer="approx",

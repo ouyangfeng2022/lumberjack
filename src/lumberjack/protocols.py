@@ -3,41 +3,41 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from .models import Bundle, Log, Tree
+    from .models import ChunkDraft, DocTree, Tree
 
 
-class ScalerProtocol(Protocol):
-    """Measure text units used by sawyers and mills."""
+class TokenizerProtocol(Protocol):
+    """Measure text units used by splitters and finalizers."""
 
     def encode(self, text: str, *, cache=False) -> tuple[int, ...]: ...
 
-    def scale(self, text: str, *, cache=False) -> int: ...
+    def count(self, text: str, *, cache=False) -> int: ...
 
 
-class FellerProtocol(Protocol):
-    """Fell a raw tree into the shared structured log."""
+class ParserProtocol(Protocol):
+    """Parse a raw tree into the shared structured document."""
 
     block_kinds: frozenset[str]
 
-    def fell(self, tree: Tree) -> Log: ...
+    def parse(self, tree: Tree) -> DocTree: ...
 
 
-class SawyerProtocol(Protocol):
-    """Saw a structured log into unfinished bundles."""
+class SplitterProtocol(Protocol):
+    """Split a structured document into unfinished drafts."""
 
     @property
-    def scaler(self) -> ScalerProtocol: ...
+    def tokenizer(self) -> TokenizerProtocol: ...
 
-    def saw(self, log: Log) -> list[Bundle]: ...
-
-
-class SeasonerProtocol(Protocol):
-    """Stabilize rendered bundle text before planing."""
-
-    def season(self, text: str) -> str: ...
+    def split(self, document: DocTree) -> list[ChunkDraft]: ...
 
 
-class PlanerProtocol(Protocol):
-    """Normalize or simplify seasoned text before final chunk creation."""
+class TextNormalizerProtocol(Protocol):
+    """Stabilize rendered draft text before transformation."""
 
-    def plane(self, text: str) -> str: ...
+    def normalize(self, text: str) -> str: ...
+
+
+class TextTransformerProtocol(Protocol):
+    """Normalize or simplify text before final chunk creation."""
+
+    def transform(self, text: str) -> str: ...

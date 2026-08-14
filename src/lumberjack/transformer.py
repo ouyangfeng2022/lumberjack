@@ -4,10 +4,10 @@ import re
 from html.parser import HTMLParser
 
 
-class Planer:
+class TextTransformer:
     """Normalize line endings and block spacing while retaining markup."""
 
-    def plane(self, text: str) -> str:
+    def transform(self, text: str) -> str:
         normalized: list[str] = []
         blank = False
         for line in text.split("\n"):
@@ -20,7 +20,7 @@ class Planer:
         return "\n".join(normalized).strip("\n")
 
 
-class _HTMLTextPlaner(HTMLParser):
+class _HTMLToTextTransformer(HTMLParser):
     _BLOCK_TAGS = frozenset(
         {
             "address",
@@ -69,7 +69,7 @@ class _HTMLTextPlaner(HTMLParser):
         self.parts.append(data)
 
 
-class PlainTextPlaner(Planer):
+class PlainTextTransformer(TextTransformer):
     """Remove common Markdown and HTML surface syntax while retaining readable text."""
 
     _IMAGE_RE = re.compile(r"!\[([^]]*)\]\([^)]*\)")
@@ -82,22 +82,22 @@ class PlainTextPlaner(Planer):
     _STRONG_RE = re.compile(r"(?<!\\)(\*\*|__|~~)(?=\S)(.+?)(?<=\S)\1")
     _EMPHASIS_RE = re.compile(r"(?<![\\\w])([*_])(?=\S)(.+?)(?<=\S)\1(?!\w)")
 
-    def plane(self, text: str) -> str:
+    def transform(self, text: str) -> str:
         text = self._FENCE_RE.sub(lambda match: match.group(1), text)
         text = self._IMAGE_RE.sub(lambda match: match.group(1), text)
         text = self._LINK_RE.sub(lambda match: match.group(1), text)
         if self._HTML_RE.search(text):
-            html_planer = _HTMLTextPlaner()
-            html_planer.feed(text)
-            html_planer.close()
-            text = "".join(html_planer.parts)
+            html_transformer = _HTMLToTextTransformer()
+            html_transformer.feed(text)
+            html_transformer.close()
+            text = "".join(html_transformer.parts)
         text = self._HEADING_RE.sub("", text)
         text = self._QUOTE_RE.sub("", text)
         text = self._LIST_RE.sub("", text)
         text = self._STRONG_RE.sub(lambda match: match.group(2), text)
         text = self._EMPHASIS_RE.sub(lambda match: match.group(2), text)
         text = text.replace("`", "")
-        return super().plane(text)
+        return super().transform(text)
 
 
-__all__ = ["PlainTextPlaner", "Planer"]
+__all__ = ["PlainTextTransformer", "TextTransformer"]

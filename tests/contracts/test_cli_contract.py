@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from lumberjack._internal.pipeline import BUILTIN_SAWYER_NAMES
+from lumberjack._internal.pipeline import BUILTIN_SPLITTER_NAMES
 from lumberjack.cli import build_parser
 
 
@@ -21,7 +21,7 @@ def test_cli_public_defaults_and_choices() -> None:
         "transformers",
     )
     assert _action(parser, "splitter").default == "sibling"
-    assert set(_action(parser, "splitter").choices or ()) == set(BUILTIN_SAWYER_NAMES)
+    assert set(_action(parser, "splitter").choices or ()) == set(BUILTIN_SPLITTER_NAMES)
     assert _action(parser, "max_tokens").default == 1200
     assert _action(parser, "ideal_max_tokens_ratio").default == 0.8
     assert _action(parser, "merge_below_ratio").default == 0.125

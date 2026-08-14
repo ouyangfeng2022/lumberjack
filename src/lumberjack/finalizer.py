@@ -4,21 +4,25 @@ from collections.abc import Iterable
 
 from ._internal.rendering import RENDER_SEPARATOR, join_rendered_blocks
 from .models import (
-    Bundle,
     Chunk,
+    ChunkDraft,
+    DocTree,
     Entry,
     HeadingPath,
-    Log,
     common_heading_path,
     render_heading_path,
 )
-from .planer import Planer
-from .protocols import PlanerProtocol, ScalerProtocol, SeasonerProtocol
-from .seasoner import Seasoner
+from .normalizer import TextNormalizer
+from .protocols import (
+    TextNormalizerProtocol,
+    TextTransformerProtocol,
+    TokenizerProtocol,
+)
+from .transformer import TextTransformer
 
 
-def render_bundle_body(entries: list[Entry], external_headings: HeadingPath) -> str:
-    """Render a bundle body while keeping its external headings as metadata."""
+def render_draft_body(entries: list[Entry], external_headings: HeadingPath) -> str:
+    """Render a draft body while keeping its external headings as metadata."""
     parts: list[str] = []
     previous_headings = external_headings
     for entry in entries:
@@ -38,72 +42,70 @@ def render_bundle_body(entries: list[Entry], external_headings: HeadingPath) -> 
     return join_rendered_blocks(parts)
 
 
-class Mill:
-    """Season, plane, measure, and finish bundles into chunks."""
+class ChunkFinalizer:
+    """Normalize, transform, measure, and finish drafts into chunks."""
 
     def __init__(
         self,
-        scaler: ScalerProtocol,
+        tokenizer: TokenizerProtocol,
         *,
-        seasoner: SeasonerProtocol | None = None,
-        planer: PlanerProtocol | None = None,
+        normalizer: TextNormalizerProtocol | None = None,
+        transformer: TextTransformerProtocol | None = None,
         skip_empty_sections: bool = True,
     ) -> None:
-        self.scaler = scaler
-        self.seasoner = seasoner or Seasoner()
-        self.planer = planer or Planer()
+        self.tokenizer = tokenizer
+        self.normalizer = normalizer or TextNormalizer()
+        self.transformer = transformer or TextTransformer()
         self.skip_empty_sections = skip_empty_sections
 
-    def mill(self, log: Log, bundles: Iterable[Bundle]) -> list[Chunk]:
+    def finalize(self, document: DocTree, drafts: Iterable[ChunkDraft]) -> list[Chunk]:
         finished: list[Chunk] = []
-        for bundle in bundles:
-            body = render_bundle_body(bundle.entries, bundle.headings)
-            body = self.planer.plane(self.seasoner.season(body))
+        for draft in drafts:
+            body = render_draft_body(draft.entries, draft.headings)
+            body = self.transformer.transform(self.normalizer.normalize(body))
             if self.skip_empty_sections and not body.strip():
                 continue
 
-            heading_text = render_heading_path(bundle.headings)
-            headings_token_count = self.scaler.scale(heading_text, cache=True)
-            body_token_count = self.scaler.scale(body, cache=True)
+            heading_text = render_heading_path(draft.headings)
+            headings_token_count = self.tokenizer.count(heading_text, cache=True)
+            body_token_count = self.tokenizer.count(body, cache=True)
             token_count = (
                 headings_token_count
-                + self.scaler.scale(RENDER_SEPARATOR, cache=True)
+                + self.tokenizer.count(RENDER_SEPARATOR, cache=True)
                 + body_token_count
             )
             ancestor_headings = (
-                bundle.headings[:-1]
-                if bundle.own_heading is not None
-                else bundle.headings
+                draft.headings[:-1] if draft.own_heading is not None else draft.headings
             )
             finished.append(
                 Chunk(
                     chunk_id=f"chunk-{len(finished) + 1:04d}",
-                    chunk_type=bundle.chunk_type,
+                    chunk_type=draft.chunk_type,
                     body=body,
                     token_count=token_count,
                     estimated_token_count=(
                         token_count
-                        if bundle.counting_mode == "exact"
-                        else bundle.token_count
+                        if draft.counting_mode == "exact"
+                        else draft.token_count
                     ),
                     headings_token_count=headings_token_count,
                     body_token_count=body_token_count,
                     ancestor_headings=ancestor_headings,
-                    own_heading=bundle.own_heading,
+                    own_heading=draft.own_heading,
                     section_level=max(
                         (
                             level
-                            for entry in bundle.entries
+                            for entry in draft.entries
                             for level, _ in entry.headings
                         ),
                         default=0,
                     ),
-                    document_title=log.title,
-                    document_path=log.source_path,
+                    document_title=document.title,
+                    document_path=document.source_path,
                     start_line=min(
                         (
                             entry.start_line
-                            for entry in bundle.entries
+                            for entry in draft.entries
                             if entry.start_line is not None
                         ),
                         default=None,
@@ -111,7 +113,7 @@ class Mill:
                     end_line=max(
                         (
                             entry.end_line
-                            for entry in bundle.entries
+                            for entry in draft.entries
                             if entry.end_line is not None
                         ),
                         default=None,
@@ -121,4 +123,4 @@ class Mill:
         return finished
 
 
-__all__ = ["Mill", "render_bundle_body"]
+__all__ = ["ChunkFinalizer", "render_draft_body"]

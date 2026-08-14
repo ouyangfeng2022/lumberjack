@@ -19,8 +19,8 @@ from .plugins import brackets_math_plugin
 if TYPE_CHECKING:
     from markdown_it.token import Token
 
-from ...models import DocumentBlock, DocumentInline, Log, SectionNode, Tree
-from ...protocols import FellerProtocol
+from ...models import DocTree, DocumentBlock, DocumentInline, SectionNode, Tree
+from ...protocols import ParserProtocol
 
 LINK_REFERENCE_DEFINITION_RE = re.compile(r"^[ ]{0,3}\[([^\]]+)\]:")
 
@@ -58,7 +58,7 @@ def is_tight_list(tokens: list[Token], start: int, end: int) -> bool:
 class MarkdownBlockContext:
     """Context passed to custom Markdown block handlers."""
 
-    feller: MarkdownItFeller
+    parser: MarkdownItParser
     tokens: list[Token]
     index: int
     source_lines: list[str]
@@ -323,7 +323,7 @@ class InlineNormalizer:
         return node.text
 
 
-class MarkdownItFeller(FellerProtocol):
+class MarkdownItParser(ParserProtocol):
     """Parse Markdown with markdown-it-py and normalize tokens into lumberjack's document model."""
 
     # Token-type → DocumentBlock.kind mapping for simple (non-container) blocks.
@@ -451,7 +451,7 @@ class MarkdownItFeller(FellerProtocol):
         return token_type_to_kind, handlers
 
     def _compute_block_kinds(self) -> frozenset[str]:
-        """Compute block kinds from this feller's active rules and extensions."""
+        """Compute block kinds from this parser's active rules and extensions."""
         active_rules = self._parser.get_active_rules().get("block", [])
         kinds: set[str] = set()
         for rule in active_rules:
@@ -473,7 +473,7 @@ class MarkdownItFeller(FellerProtocol):
 
     @property
     def block_kinds(self) -> frozenset[str]:
-        """Block kinds this feller instance can produce, based on active rules."""
+        """Block kinds this parser instance can produce, based on active rules."""
         return self._block_kinds
 
     def __init__(
@@ -500,15 +500,15 @@ class MarkdownItFeller(FellerProtocol):
             self._parser.disable("lheading")
         self._block_kinds = self._compute_block_kinds()
 
-    def fell(
+    def parse(
         self,
         tree: Tree | str,
         *,
         document_title: str | None = None,
         metadata_overrides: dict[str, object] | None = None,
         source_path: str | Path | None = None,
-    ) -> Log:
-        """Parse raw Markdown text into a ``Log`` with section tree and reference definitions.
+    ) -> DocTree:
+        """Parse raw Markdown text into a ``DocTree`` with section tree and reference definitions.
 
         Args:
             data: Raw Markdown text to parse.
@@ -530,7 +530,7 @@ class MarkdownItFeller(FellerProtocol):
             )
         data = tree.source
         if not isinstance(data, str):
-            msg = f"MarkdownFeller.fell expects Tree[str], got {type(data).__name__}"
+            msg = f"MarkdownParser.parse expects Tree[str], got {type(data).__name__}"
             raise TypeError(msg)
 
         metadata = dict(tree.metadata_overrides)
@@ -576,7 +576,7 @@ class MarkdownItFeller(FellerProtocol):
         )
         root.title = final_title
 
-        return Log(
+        return DocTree(
             title=final_title,
             source=data,
             root=root,
@@ -828,7 +828,7 @@ class MarkdownItFeller(FellerProtocol):
 
             block, next_index = handler(
                 MarkdownBlockContext(
-                    feller=self,
+                    parser=self,
                     tokens=tokens,
                     index=index,
                     source_lines=source_lines,
@@ -1030,4 +1030,4 @@ class MarkdownItFeller(FellerProtocol):
         return fallback
 
 
-MarkdownFeller = MarkdownItFeller
+MarkdownParser = MarkdownItParser

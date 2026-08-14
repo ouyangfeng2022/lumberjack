@@ -6,48 +6,48 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from ..block import BlockOption
-from ..feller import AutoFeller
-from ..mill import Mill
+from ..finalizer import ChunkFinalizer
 from ..models import Chunk, InputFormat, Tree
-from ..sawyer import (
-    ExactSectionSawyer,
-    ExactSiblingSawyer,
-    ExactSubtreeSawyer,
-    SectionSawyer,
-    SiblingSawyer,
-    SubtreeSawyer,
+from ..parser import AutoParser
+from ..splitter import (
+    ExactSectionSplitter,
+    ExactSiblingSplitter,
+    ExactSubtreeSplitter,
+    SectionSplitter,
+    SiblingSplitter,
+    SubtreeSplitter,
 )
-from ..scaler import (
-    ApproxByteScaler,
-    TiktokenScaler,
-    TransformersScaler,
+from ..tokenizer import (
+    ApproxByteTokenizer,
+    TiktokenTokenizer,
+    TransformersTokenizer,
 )
 
-_SAWYERS = {
-    "sibling": SiblingSawyer,
-    "incremental-sibling": SiblingSawyer,
-    "exact-sibling": ExactSiblingSawyer,
-    "subtree": SubtreeSawyer,
-    "incremental-subtree": SubtreeSawyer,
-    "exact-subtree": ExactSubtreeSawyer,
-    "section": SectionSawyer,
-    "incremental-section": SectionSawyer,
-    "exact-section": ExactSectionSawyer,
+_SPLITTERS = {
+    "sibling": SiblingSplitter,
+    "incremental-sibling": SiblingSplitter,
+    "exact-sibling": ExactSiblingSplitter,
+    "subtree": SubtreeSplitter,
+    "incremental-subtree": SubtreeSplitter,
+    "exact-subtree": ExactSubtreeSplitter,
+    "section": SectionSplitter,
+    "incremental-section": SectionSplitter,
+    "exact-section": ExactSectionSplitter,
 }
 
 
-def _scaler(name: str):
+def _tokenizer(name: str):
     normalized = name.strip().lower()
     if normalized == "approx":
-        return ApproxByteScaler()
+        return ApproxByteTokenizer()
     if normalized == "tiktoken":
-        return TiktokenScaler()
+        return TiktokenTokenizer()
     if normalized == "transformers":
-        return TransformersScaler()
+        return TransformersTokenizer()
     raise ValueError(f"Unsupported tokenizer: {name}")
 
 
-def saw_source(
+def split_source(
     source: str | bytes | Path,
     *,
     format: InputFormat = "auto",
@@ -65,8 +65,8 @@ def saw_source(
     block_options: Iterable[BlockOption] | None = None,
 ) -> list[Chunk]:
     """Run the configurable built-in pipeline for non-Python interfaces."""
-    feller_impl = AutoFeller()
-    log = feller_impl.fell(
+    parser_impl = AutoParser()
+    document = parser_impl.parse(
         Tree(
             source=source,
             format=format,
@@ -75,9 +75,9 @@ def saw_source(
             source_path=source_path,
         )
     )
-    scaler_impl = _scaler(tokenizer)
-    normalized_sawyer = splitter.strip().lower()
-    if normalized_sawyer not in _SAWYERS:
+    tokenizer_impl = _tokenizer(tokenizer)
+    normalized_splitter = splitter.strip().lower()
+    if normalized_splitter not in _SPLITTERS:
         raise ValueError(f"Unsupported splitter: {splitter}")
     common = {
         "max_tokens": max_tokens,
@@ -87,32 +87,34 @@ def saw_source(
         "max_heading_level": max_heading_level,
         "block_options": block_options,
     }
-    if normalized_sawyer in {"sibling", "incremental-sibling"}:
-        sawyer_impl = SiblingSawyer(
-            scaler_impl, merge_below_ratio=merge_below_ratio, **common
+    if normalized_splitter in {"sibling", "incremental-sibling"}:
+        splitter_impl = SiblingSplitter(
+            tokenizer_impl, merge_below_ratio=merge_below_ratio, **common
         )
-    elif normalized_sawyer == "exact-sibling":
-        sawyer_impl = ExactSiblingSawyer(
-            scaler_impl, merge_below_ratio=merge_below_ratio, **common
+    elif normalized_splitter == "exact-sibling":
+        splitter_impl = ExactSiblingSplitter(
+            tokenizer_impl, merge_below_ratio=merge_below_ratio, **common
         )
-    elif normalized_sawyer in {"subtree", "incremental-subtree"}:
-        sawyer_impl = SubtreeSawyer(
-            scaler_impl, merge_below_ratio=merge_below_ratio, **common
+    elif normalized_splitter in {"subtree", "incremental-subtree"}:
+        splitter_impl = SubtreeSplitter(
+            tokenizer_impl, merge_below_ratio=merge_below_ratio, **common
         )
-    elif normalized_sawyer == "exact-subtree":
-        sawyer_impl = ExactSubtreeSawyer(
-            scaler_impl, merge_below_ratio=merge_below_ratio, **common
+    elif normalized_splitter == "exact-subtree":
+        splitter_impl = ExactSubtreeSplitter(
+            tokenizer_impl, merge_below_ratio=merge_below_ratio, **common
         )
-    elif normalized_sawyer in {"section", "incremental-section"}:
-        sawyer_impl = SectionSawyer(
-            scaler_impl, merge_below_ratio=merge_below_ratio, **common
+    elif normalized_splitter in {"section", "incremental-section"}:
+        splitter_impl = SectionSplitter(
+            tokenizer_impl, merge_below_ratio=merge_below_ratio, **common
         )
     else:
-        sawyer_impl = ExactSectionSawyer(
-            scaler_impl, merge_below_ratio=merge_below_ratio, **common
+        splitter_impl = ExactSectionSplitter(
+            tokenizer_impl, merge_below_ratio=merge_below_ratio, **common
         )
-    bundles = sawyer_impl.saw(log)
-    return Mill(scaler_impl, skip_empty_sections=skip_empty_sections).mill(log, bundles)
+    drafts = splitter_impl.split(document)
+    return ChunkFinalizer(
+        tokenizer_impl, skip_empty_sections=skip_empty_sections
+    ).finalize(document, drafts)
 
 
-BUILTIN_SAWYER_NAMES = tuple(_SAWYERS)
+BUILTIN_SPLITTER_NAMES = tuple(_SPLITTERS)

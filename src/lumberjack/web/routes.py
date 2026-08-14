@@ -12,9 +12,9 @@ from lumberjack._internal.options import (
     parse_block_config_json,
     parse_block_config_mapping,
 )
-from lumberjack._internal.pipeline import saw_source
+from lumberjack._internal.pipeline import split_source
 from lumberjack.block import BlockOption
-from lumberjack.feller import InputFormat
+from lumberjack.parser import InputFormat
 
 router = APIRouter()
 
@@ -102,7 +102,7 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
     block_options = _parse_block_configs(payload.block_configs)
 
     try:
-        chunks = saw_source(
+        chunks = split_source(
             payload.text,
             format=payload.input_format,
             max_tokens=payload.max_tokens,
@@ -161,14 +161,14 @@ async def split_file(
     )
 
     if fmt == "docx":
-        content = raw  # preserve binary input for the felling stage
+        content = raw  # preserve binary input for the parseing stage
     else:
         content = raw.decode("utf-8")
 
     block_options = _parse_form_block_configs(block_configs)
 
     try:
-        chunks = saw_source(
+        chunks = split_source(
             content,
             format=cast(InputFormat, fmt),
             document_title=file.filename,

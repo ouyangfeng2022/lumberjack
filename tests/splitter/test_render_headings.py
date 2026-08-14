@@ -6,7 +6,6 @@ from typing import Any
 
 import pytest
 
-from lumberjack.feller.markdown.feller import MarkdownFeller
 from lumberjack.models import (
     Chunk,
     Entry,
@@ -14,34 +13,35 @@ from lumberjack.models import (
     complete_heading_path,
     render_heading_path,
 )
-from lumberjack.sawyer import (
-    ExactSectionSawyer,
-    ExactSiblingSawyer,
-    ExactSubtreeSawyer,
-    IncrementalSectionSawyer,
-    IncrementalSiblingSawyer,
-    IncrementalSubtreeSawyer,
+from lumberjack.parser.markdown.parser import MarkdownParser
+from lumberjack.splitter import (
+    ExactSectionSplitter,
+    ExactSiblingSplitter,
+    ExactSubtreeSplitter,
+    IncrementalSectionSplitter,
+    IncrementalSiblingSplitter,
+    IncrementalSubtreeSplitter,
 )
-from lumberjack.sawyer.base import BaseSawyer
-from tests.helpers import CharacterScaler, saw
+from lumberjack.splitter.base import BaseSplitter
+from tests.helpers import CharacterTokenizer, saw
 
 ALL_SPLITTERS = (
-    ExactSiblingSawyer,
-    IncrementalSiblingSawyer,
-    ExactSubtreeSawyer,
-    IncrementalSubtreeSawyer,
-    ExactSectionSawyer,
-    IncrementalSectionSawyer,
+    ExactSiblingSplitter,
+    IncrementalSiblingSplitter,
+    ExactSubtreeSplitter,
+    IncrementalSubtreeSplitter,
+    ExactSectionSplitter,
+    IncrementalSectionSplitter,
 )
 
 
-class FloorTenScaler:
-    """Non-additive scaler that makes incremental join error observable."""
+class FloorTenTokenizer:
+    """Non-additive tokenizer that makes incremental join error observable."""
 
     def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
         return tuple(range(len(text) // 10))
 
-    def scale(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
+    def count(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
         return len(text) // 10
 
 
@@ -57,7 +57,7 @@ def test_complete_heading_path_appends_optional_own_heading() -> None:
 
 
 def _split(
-    splitter_class: type[BaseSawyer],
+    splitter_class: type[BaseSplitter],
     source: str,
     *,
     max_tokens: int = 1000,
@@ -69,13 +69,13 @@ def _split(
         "heading_sensitive": heading_sensitive,
     }
     options["merge_below_ratio"] = 0.0
-    log = MarkdownFeller().fell(source, document_title="test.md")
-    return saw(splitter_class(CharacterScaler(), **options), log)
+    document = MarkdownParser().parse(source, document_title="test.md")
+    return saw(splitter_class(CharacterTokenizer(), **options), document)
 
 
 @pytest.mark.parametrize("splitter_class", ALL_SPLITTERS)
 def test_single_section_externalizes_complete_heading_path(
-    splitter_class: type[BaseSawyer],
+    splitter_class: type[BaseSplitter],
 ) -> None:
     chunks = _split(splitter_class, "# Root\n\nBody.")
 
@@ -89,9 +89,9 @@ def test_single_section_externalizes_complete_heading_path(
 
 @pytest.mark.parametrize("splitter_class", ALL_SPLITTERS)
 def test_final_token_fields_are_exact_and_additive(
-    splitter_class: type[BaseSawyer],
+    splitter_class: type[BaseSplitter],
 ) -> None:
-    scaler = CharacterScaler()
+    tokenizer = CharacterTokenizer()
     chunks = _split(
         splitter_class,
         "# Root\n\n## Scope\n\nAlpha.\n\n### Detail\n\nBeta.",
@@ -102,10 +102,12 @@ def test_final_token_fields_are_exact_and_additive(
         heading_text = render_heading_path(
             complete_heading_path(chunk.ancestor_headings, chunk.own_heading)
         )
-        assert chunk.headings_token_count == scaler.scale(heading_text)
-        assert chunk.body_token_count == scaler.scale(chunk.body)
+        assert chunk.headings_token_count == tokenizer.count(heading_text)
+        assert chunk.body_token_count == tokenizer.count(chunk.body)
         assert chunk.token_count == (
-            chunk.headings_token_count + scaler.scale("\n\n") + chunk.body_token_count
+            chunk.headings_token_count
+            + tokenizer.count("\n\n")
+            + chunk.body_token_count
         )
         if splitter_class.__name__.startswith("Exact"):
             assert chunk.estimated_token_count == chunk.token_count
@@ -114,22 +116,22 @@ def test_final_token_fields_are_exact_and_additive(
 @pytest.mark.parametrize(
     "splitter_class",
     (
-        IncrementalSiblingSawyer,
-        IncrementalSubtreeSawyer,
-        IncrementalSectionSawyer,
+        IncrementalSiblingSplitter,
+        IncrementalSubtreeSplitter,
+        IncrementalSectionSplitter,
     ),
 )
 def test_incremental_finalization_preserves_split_time_estimate(
-    splitter_class: type[BaseSawyer],
+    splitter_class: type[BaseSplitter],
 ) -> None:
-    document = MarkdownFeller().fell("# H\n\naaaaa\n\nbbbbb")
+    document = MarkdownParser().parse("# H\n\naaaaa\n\nbbbbb")
     options: dict[str, Any] = {
         "max_tokens": 100,
         "ideal_max_tokens_ratio": 1.0,
     }
     options["merge_below_ratio"] = 0.0
 
-    chunk = saw(splitter_class(FloorTenScaler(), **options), document)[0]
+    chunk = saw(splitter_class(FloorTenTokenizer(), **options), document)[0]
 
     assert chunk.headings_token_count == 0
     assert chunk.body_token_count == 1
@@ -139,10 +141,10 @@ def test_incremental_finalization_preserves_split_time_estimate(
 
 @pytest.mark.parametrize(
     "splitter_class",
-    (ExactSiblingSawyer, IncrementalSiblingSawyer),
+    (ExactSiblingSplitter, IncrementalSiblingSplitter),
 )
 def test_parent_subtree_keeps_parent_as_own_and_children_in_body(
-    splitter_class: type[BaseSawyer],
+    splitter_class: type[BaseSplitter],
 ) -> None:
     chunks = _split(
         splitter_class,
@@ -158,10 +160,10 @@ def test_parent_subtree_keeps_parent_as_own_and_children_in_body(
 
 @pytest.mark.parametrize(
     "splitter_class",
-    (ExactSiblingSawyer, IncrementalSiblingSawyer),
+    (ExactSiblingSplitter, IncrementalSiblingSplitter),
 )
 def test_merged_root_siblings_have_no_own_heading(
-    splitter_class: type[BaseSawyer],
+    splitter_class: type[BaseSplitter],
 ) -> None:
     chunks = _split(
         splitter_class,
@@ -177,7 +179,7 @@ def test_merged_root_siblings_have_no_own_heading(
 
 @pytest.mark.parametrize("splitter_class", ALL_SPLITTERS)
 def test_fragmented_section_repeats_metadata_but_not_heading_in_body(
-    splitter_class: type[BaseSawyer],
+    splitter_class: type[BaseSplitter],
 ) -> None:
     source = "# Root\n\n" + "\n\n".join(
         f"paragraph-{index}-" + "x" * 20 for index in range(4)
@@ -193,7 +195,7 @@ def test_fragmented_section_repeats_metadata_but_not_heading_in_body(
 
 @pytest.mark.parametrize("splitter_class", ALL_SPLITTERS)
 def test_heading_sensitive_controls_budget_not_rendering(
-    splitter_class: type[BaseSawyer],
+    splitter_class: type[BaseSplitter],
 ) -> None:
     source = "# Very Long Heading Path\n\n" + "\n\n".join(
         f"paragraph-{index}-" + "x" * 19 for index in range(3)
@@ -211,7 +213,7 @@ def test_heading_sensitive_controls_budget_not_rendering(
 
 @pytest.mark.parametrize("splitter_class", ALL_SPLITTERS)
 def test_heading_only_section_is_kept_when_empty_sections_are_enabled(
-    splitter_class: type[BaseSawyer],
+    splitter_class: type[BaseSplitter],
 ) -> None:
     options: dict[str, Any] = {
         "max_tokens": 100,
@@ -221,9 +223,9 @@ def test_heading_only_section_is_kept_when_empty_sections_are_enabled(
     }
     if "Section" not in splitter_class.__name__:
         options["merge_below_ratio"] = 0.0
-    document = MarkdownFeller().fell("# Empty", document_title="test.md")
+    document = MarkdownParser().parse("# Empty", document_title="test.md")
 
-    chunks = saw(splitter_class(CharacterScaler(), **options), document)
+    chunks = saw(splitter_class(CharacterTokenizer(), **options), document)
 
     assert len(chunks) == 1
     assert chunks[0].own_heading == (1, "Empty")
@@ -233,7 +235,7 @@ def test_heading_only_section_is_kept_when_empty_sections_are_enabled(
 
 @pytest.mark.parametrize("splitter_class", ALL_SPLITTERS)
 def test_oversized_external_heading_is_kept_intact(
-    splitter_class: type[BaseSawyer],
+    splitter_class: type[BaseSplitter],
 ) -> None:
     chunks = _split(
         splitter_class,
@@ -249,7 +251,7 @@ def test_oversized_external_heading_is_kept_intact(
 
 
 def test_incremental_does_not_full_recount_candidate_bodies() -> None:
-    class GuardedIncrementalSiblingSawyer(IncrementalSiblingSawyer):
+    class GuardedIncrementalSiblingSplitter(IncrementalSiblingSplitter):
         def _rendered_token_count(
             self,
             entries: list[Entry],
@@ -260,7 +262,7 @@ def test_incremental_does_not_full_recount_candidate_bodies() -> None:
             raise AssertionError("incremental budget path must not recount candidates")
 
     chunks = _split(
-        GuardedIncrementalSiblingSawyer,
+        GuardedIncrementalSiblingSplitter,
         "# Root\n\n## A\n\nAlpha.\n\n## B\n\nBeta.",
     )
 

@@ -16,7 +16,7 @@ InputFormat: TypeAlias = Literal["auto", "markdown", "html", "docx"]
 
 @dataclass(slots=True, frozen=True)
 class Tree:
-    """Raw document and provenance waiting to be felled into a structured log."""
+    """Raw document and provenance waiting to be parsed into a structured document."""
 
     source: str | bytes | Path
     format: InputFormat = "auto"
@@ -27,7 +27,7 @@ class Tree:
 
 @dataclass(slots=True, frozen=True)
 class DocumentInline:
-    """Format-neutral inline node normalized by an input feller.
+    """Format-neutral inline node normalized by an input parser.
 
     Attributes:
         kind: Inline node type (e.g. ``"text"``, ``"link"``, ``"code_inline"``,
@@ -51,7 +51,7 @@ class DocumentBlock:
         kind: Block type (e.g. ``"paragraph"``, ``"heading"``, ``"code_fence"``,
             ``"blockquote"``, ``"list"``, ``"list_item"``, ``"table"``,
             ``"html_block"``, ``"math_block"``).
-        text: Canonical rendered text consumed by sawyers. Markdown input is
+        text: Canonical rendered text consumed by splitters. Markdown input is
             normalized Markdown; HTML and DOCX input is converted to the same
             Markdown-like representation. It is not guaranteed to be a source
             slice.
@@ -110,14 +110,14 @@ class SectionNode:
 
 
 @dataclass(slots=True, frozen=True)
-class Log:
+class DocTree:
     """Parsed document with a normalized section tree, source, and metadata.
 
     Attributes:
         title: Document title.  Priority: user-provided ``document_title``,
             then front matter ``title`` field, then first level-1 heading,
             then ``"Anonymous"``.
-        source: Original text for Markdown and HTML inputs. Binary fellers may
+        source: Original text for Markdown and HTML inputs. Binary parsers may
             leave this empty or provide a normalized textual representation.
         root: Root section node of the heading tree.
         source_path: Original file path or caller-supplied source provenance.
@@ -144,11 +144,11 @@ class Chunk:
             ``"code_fence"``, ``"document"``).
         body: Rendered chunk body. Ancestor and own headings are never rendered
             here; headings needed to represent merged internal sections remain.
-        token_count: Sum of heading tokens, ``scaler.scale("\n\n")``, and
+        token_count: Sum of heading tokens, ``tokenizer.count("\n\n")``, and
             body tokens.
         estimated_token_count: Split-time running estimate (additive + separator-delta
             window). ``token_count`` is the authoritative final total. The two
-            may differ slightly for incremental sawyers due to join approximations.
+            may differ slightly for incremental splitters due to join approximations.
         headings_token_count: Token count of the canonical Markdown rendering of
             the complete heading path.
         body_token_count: Token count of ``body``.
@@ -255,8 +255,8 @@ class Entry:
 
 
 @dataclass(slots=True)
-class Bundle:
-    """Intermediate lumber bundle holding grouped entries and a token estimate.
+class ChunkDraft:
+    """Intermediate split result holding grouped entries and a token estimate.
 
     Args:
         entries: List of entries to be merged into the chunk, with heading context and body.
@@ -270,8 +270,8 @@ class Bundle:
         headings_token_count: The token count for the chunk's full heading path.
         body_token_count: The token count for the chunk body (sum of entry body_token_count plus separator deltas).
         token_count: Split-time sum of heading and body tokens.
-        split_origin: The saw cut that produced this bundle, for debugging/analysis.
-        chunk_type: The bundled content type (e.g. "paragraph", "code_block"), used for metadata.
+        split_origin: The split operation that produced this draft, for debugging/analysis.
+        chunk_type: The draft content type (e.g. "paragraph", "code_block"), used for metadata.
 
     """
 

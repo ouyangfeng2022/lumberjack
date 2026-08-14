@@ -1,4 +1,4 @@
-"""Public document fellers and automatic format selection."""
+"""Public document parsers and automatic format selection."""
 
 from __future__ import annotations
 
@@ -8,10 +8,10 @@ from pathlib import Path
 from typing import Literal
 from zipfile import BadZipFile, ZipFile
 
-from ..models import InputFormat, Log, Tree
-from .docx import DocxFeller
-from .html import HTMLFeller
-from .markdown import MarkdownFeller
+from ..models import DocTree, InputFormat, Tree
+from .docx import DocxParser
+from .html import HTMLParser
+from .markdown import MarkdownParser
 
 DetectedFormat = Literal["markdown", "html", "docx"]
 _VALID_FORMATS = frozenset({"auto", "markdown", "html", "docx"})
@@ -46,12 +46,12 @@ def _is_docx(data: bytes) -> bool:
     return "[Content_Types].xml" in names and "word/document.xml" in names
 
 
-class AutoFeller:
-    """Select a built-in feller from tree provenance or content."""
+class AutoParser:
+    """Select a built-in parser from tree provenance or content."""
 
     block_kinds = frozenset()
 
-    def fell(
+    def parse(
         self,
         tree: Tree | str | bytes | Path,
         *,
@@ -59,7 +59,7 @@ class AutoFeller:
         document_title: str | None = None,
         metadata_overrides: dict[str, object] | None = None,
         source_path: str | Path | None = None,
-    ) -> Log:
+    ) -> DocTree:
         if not isinstance(tree, Tree):
             tree = Tree(
                 source=tree,
@@ -78,7 +78,7 @@ class AutoFeller:
         normalized_path = (
             str(resolved_source_path) if resolved_source_path is not None else None
         )
-        felled_tree = Tree(
+        parsed_tree = Tree(
             source=data,
             format=format,
             document_title=tree.document_title,
@@ -89,7 +89,7 @@ class AutoFeller:
         if format == "docx":
             if isinstance(data, str):
                 raise TypeError("DOCX input must be bytes or a pathlib.Path")
-            return DocxFeller().fell(felled_tree)
+            return DocxParser().parse(parsed_tree)
 
         if isinstance(data, bytes):
             try:
@@ -100,8 +100,8 @@ class AutoFeller:
                 ) from exc
         else:
             text = data
-        feller = HTMLFeller() if format == "html" else MarkdownFeller()
-        return feller.fell(
+        parser = HTMLParser() if format == "html" else MarkdownParser()
+        return parser.parse(
             Tree(
                 source=text,
                 format=format,
@@ -136,4 +136,4 @@ class AutoFeller:
         return "html" if _HTML_START_RE.match(text) else "markdown"
 
 
-__all__ = ["AutoFeller", "InputFormat"]
+__all__ = ["AutoParser", "InputFormat"]

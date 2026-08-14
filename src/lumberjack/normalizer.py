@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 
-class Seasoner:
+class TextNormalizer:
     """Conservatively stabilize text without removing document markup."""
 
-    def season(self, text: str) -> str:
+    def normalize(self, text: str) -> str:
         return (
             text.replace("\r\n", "\n")
             .replace("\r", "\n")
@@ -13,4 +13,4 @@ class Seasoner:
         )
 
 
-__all__ = ["Seasoner"]
+__all__ = ["TextNormalizer"]

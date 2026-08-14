@@ -5,19 +5,25 @@ from pathlib import Path
 
 import lumberjack
 from lumberjack import Lumberjack, Tree
-from lumberjack.feller import AutoFeller, DocxFeller, HTMLFeller, MarkdownFeller
-from lumberjack.models import Bundle, Chunk, DocumentBlock, DocumentInline, Log
-from lumberjack.planer import PlainTextPlaner, Planer
-from lumberjack.protocols import (
-    FellerProtocol,
-    PlanerProtocol,
-    SawyerProtocol,
-    ScalerProtocol,
-    SeasonerProtocol,
+from lumberjack.models import (
+    Chunk,
+    ChunkDraft,
+    DocTree,
+    DocumentBlock,
+    DocumentInline,
 )
-from lumberjack.sawyer import ExactSiblingSawyer, SiblingSawyer
-from lumberjack.scaler import ApproxByteScaler
-from lumberjack.seasoner import Seasoner
+from lumberjack.normalizer import TextNormalizer
+from lumberjack.parser import AutoParser, DocxParser, HTMLParser, MarkdownParser
+from lumberjack.protocols import (
+    ParserProtocol,
+    SplitterProtocol,
+    TextNormalizerProtocol,
+    TextTransformerProtocol,
+    TokenizerProtocol,
+)
+from lumberjack.splitter import ExactSiblingSplitter, SiblingSplitter
+from lumberjack.tokenizer import ApproxByteTokenizer
+from lumberjack.transformer import PlainTextTransformer, TextTransformer
 
 
 def test_top_level_exports_lumberjack_and_tree() -> None:
@@ -27,20 +33,20 @@ def test_top_level_exports_lumberjack_and_tree() -> None:
 
 
 def test_public_lumber_pipeline_components() -> None:
-    assert AutoFeller and MarkdownFeller and HTMLFeller and DocxFeller
-    assert SiblingSawyer and ExactSiblingSawyer and ApproxByteScaler
-    assert Seasoner and Planer and PlainTextPlaner
-    assert Log and Bundle and Chunk and DocumentBlock and DocumentInline
-    assert FellerProtocol and SawyerProtocol and ScalerProtocol
-    assert SeasonerProtocol and PlanerProtocol
+    assert AutoParser and MarkdownParser and HTMLParser and DocxParser
+    assert SiblingSplitter and ExactSiblingSplitter and ApproxByteTokenizer
+    assert TextNormalizer and TextTransformer and PlainTextTransformer
+    assert DocTree and ChunkDraft and Chunk and DocumentBlock and DocumentInline
+    assert ParserProtocol and SplitterProtocol and TokenizerProtocol
+    assert TextNormalizerProtocol and TextTransformerProtocol
 
 
 def test_removed_component_packages_do_not_exist() -> None:
     package_root = Path(lumberjack.__file__).parent
     assert not (package_root / "core").exists()
-    assert not (package_root / "parser").exists()
-    assert not (package_root / "splitter").exists()
-    assert not (package_root / "tokenizer.py").exists()
+    assert not (package_root / "feller").exists()
+    assert not (package_root / "sawyer").exists()
+    assert not (package_root / "scaler.py").exists()
 
 
 def test_chunk_serialization_fields() -> None:
