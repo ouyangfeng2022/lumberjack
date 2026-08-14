@@ -8,10 +8,9 @@ class Planer:
     """Normalize line endings and block spacing while retaining markup."""
 
     def plane(self, text: str) -> str:
-        lines = [line.rstrip() for line in text.split("\n")]
         normalized: list[str] = []
         blank = False
-        for line in lines:
+        for line in text.split("\n"):
             if line:
                 normalized.append(line)
                 blank = False

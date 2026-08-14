@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added the real `Mill`, `Seasoner`, and `Planer` stages. Sawyer implementations now return unfinished `Bundle` objects; `Mill` renders and post-processes them, performs authoritative final measurement, and produces `Chunk` objects.
-- Added opt-in `PlainTextPlaner` for removing common Markdown and HTML surface syntax. The default Seasoner and Planer only normalize line endings, BOM/NUL characters, trailing whitespace, and repeated blank separators.
+- Added opt-in `PlainTextPlaner` for removing common Markdown and HTML surface syntax. The default Seasoner and Planer only normalize line endings, BOM/NUL characters, and repeated blank separators.
 
 ### Changed
 
@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SectionSawyer` applies `merge_below_ratio` bottom-up to adjacent same-heading text tails produced while sawing oversized blocks, without subtree collapse or non-text bundle merging.
 - **Breaking:** Chunk headings are now separated into `ancestor_headings` and an optional singular `own_heading`; external headings are never rendered in `body`, while headings for merged internal sections remain in the body.
 - **Breaking:** Replaced `render_headings` with `heading_sensitive`, which controls whether external heading tokens count toward saw budgets. Chunks now report separate `headings_token_count` and `body_token_count`; `token_count` also includes `scaler.scale("\n\n")` for the separator between them.
+
+### Fixed
+
+- Default Markdown post-processing now preserves trailing whitespace, including hard line breaks and whitespace in fenced code blocks.
 
 ## [0.3.0] - 2026-07-22
 

@@ -27,7 +27,13 @@ def test_seasoner_and_planer_are_lossless_for_markup() -> None:
     seasoned = Seasoner().season(text)
     planed = Planer().plane(seasoned)
 
-    assert planed == "# Title\n\n**bold**"
+    assert planed == "# Title\n\n**bold**  "
+
+
+def test_planer_preserves_markdown_hard_breaks_and_code_whitespace() -> None:
+    text = "First line  \nSecond line\n\n```text\nvalue  \n```"
+
+    assert Planer().plane(text) == text
 
 
 def test_plain_text_planer_is_explicit_and_preserves_readable_content() -> None:
