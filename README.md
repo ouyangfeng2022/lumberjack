@@ -1,208 +1,136 @@
+<p align="center">
+  <img src="assets/lumberjack-logo.svg" width="160" alt="Lumberjack logo: an axe, document, trees, and a tree ring" />
+</p>
+
 # Lumberjack
 
-Structure-aware Markdown, HTML, and DOCX lumbering for RAG preprocessing.
+**Turn long, structured documents into retrieval-ready chunks without losing
+their context.**
 
-Lumberjack models document processing as a real lumber pipeline:
+Lumberjack is a Python library and CLI for preparing documentation, reports,
+and knowledge-base content for RAG. It reads a document's structure, keeps
+headings with the text they introduce, respects tables and code blocks, and
+splits only when a chunk exceeds its token budget.
 
-```text
-Document -> Parser.parse() -> DocTree -> Splitter.split() -> ChunkDraft[]
-     -> ChunkFinalizer.finalize() -> TextNormalizer -> TextTransformer -> Chunk[]
-```
+[中文说明](README.zh-CN.md)
 
-## Installation
+## Why Lumberjack?
+
+Plain-text splitters cut at character or token boundaries. That can detach an
+answer from its section title, split a table in the middle, or join unrelated
+topics merely because they happen to be adjacent.
+
+Lumberjack works from a normalized document tree instead:
+
+- **Keep useful context.** Chunks carry their heading path and source metadata.
+- **Honor document structure.** Headings, paragraphs, lists, tables, and fenced
+  code are handled as document blocks rather than as unstructured text.
+- **Use the budget efficiently.** The default splitter uses inexpensive running
+  estimates while packing sections, then produces an authoritative final token
+  count.
+- **Choose the shape of a chunk.** Pack sibling sections, retain whole
+  subtrees, or split direct section bodies—without changing the input format.
+
+Markdown, HTML, and DOCX are currently supported.
+
+## Install
 
 ```bash
 pip install lumberjack
 
-# Optional tokenizers, DOCX, and Web API support
+# Optional exact tokenizers, DOCX support, and the Web API
 pip install "lumberjack[tokenizers,docx,web]"
 ```
 
-Python 3.10 or newer is required.
+Lumberjack requires Python 3.10 or newer.
 
-## Main API
+## Quick start
 
-The package root exposes `Lumberjack` and `Document`:
+Pass document content, bytes, or a `Path` to `Lumberjack.saw()`:
 
 ```python
 from pathlib import Path
 
-from lumberjack import Lumberjack, Document
+from lumberjack import Lumberjack
 
 jack = Lumberjack(max_tokens=1200)
+chunks = jack.saw(Path("handbook.md"))
 
-# Raw values are wrapped into Document automatically.
-chunks = jack.saw(Path("guide.md"))
+for chunk in chunks:
+    print(chunk.own_heading, chunk.body, chunk.token_count)
+```
 
-# Document carries format, title, metadata, and source provenance explicitly.
-chunks = jack.saw(
-    Document(
-        source=markdown_text,
-        format="markdown",
-        document_title="Guide",
-        metadata_overrides={"tenant": "docs"},
-        source_path="imports/guide.md",
-    )
+For in-memory content, pass a string directly. A plain string is always treated
+as content, never as a filesystem path:
+
+```python
+chunks = Lumberjack(max_tokens=500).saw(
+    "# Deployment\n\nDeploy the service with the approved release workflow."
 )
 ```
 
-`Lumberjack()` defaults to `AutoParser`, `ApproxByteTokenizer`, incremental
-`SiblingSplitter`, `TextNormalizer`, `TextTransformer`, and `ChunkFinalizer`. The same tokenizer instance is used for
-split-budget estimates and final counts.
+Each result is a `Chunk` dataclass. Its `body` contains the rendered content;
+`ancestor_headings` and `own_heading` preserve the section context;
+`token_count` is the final count after output processing. Document title, source
+path, and line ranges are also retained when available.
 
-## Component pipeline
-
-```python
-from pathlib import Path
-
-from lumberjack.block import BlockConfig, BlockKind, MarkdownTableConfig
-from lumberjack.parser import AutoParser
-from lumberjack.finalizer import ChunkFinalizer
-from lumberjack.models import Document
-from lumberjack.splitter import SiblingSplitter
-from lumberjack.tokenizer import TiktokenTokenizer
-
-tokenizer = TiktokenTokenizer(model="gpt-4o-mini")
-parser = AutoParser()
-splitter = SiblingSplitter(
-    tokenizer,
-    max_tokens=1200,
-    block_options=[
-        MarkdownTableConfig(isolated=True, max_tokens=500),
-        BlockConfig(BlockKind.CODE_FENCE, split=False),
-    ],
-)
-finalize = ChunkFinalizer(tokenizer)
-
-document = parser.parse(Document(Path("guide.md")))
-drafts = splitter.split(document)
-chunks = finalize.finalize(document, drafts)
-```
-
-Public components:
-
-- `lumberjack.parser`: `AutoParser`, `MarkdownParser`, `HTMLParser`, and
-  `DocxParser` turn `Document` into the shared `DocTree` structure.
-- `lumberjack.tokenizer`: `ApproxByteTokenizer`, `TiktokenTokenizer`, and
-  `TransformersTokenizer` implement `encode()` and `count()`.
-- `lumberjack.splitter`: incremental `SiblingSplitter`, `SubtreeSplitter`, and
-  `SectionSplitter`, plus explicit `Exact*Splitter` implementations, produce `ChunkDraft`.
-- `lumberjack.finalizer`: `ChunkFinalizer` renders, processes, recounts, and finishes `Chunk`.
-- `lumberjack.normalizer` and `lumberjack.transformer`: built-in post-processing stages.
-- `lumberjack.models` and `lumberjack.protocols`: shared state and extension contracts.
-
-The removed `feller`, `sawyer`, and `scaler` modules are not compatibility paths.
-`parser`, `splitter`, and `tokenizer` are the supported public component namespaces.
-
-## Parsers and DocTree
-
-`AutoParser` detects input in this order:
-
-1. A `Path` or `Document.source_path` suffix.
-2. The DOCX ZIP structure.
-3. A leading HTML doctype or structural tag.
-4. Markdown as the fallback.
-
-A plain string is content, never an implicit filesystem path. Each format-specific
-parser also accepts a raw text/bytes convenience value:
-
-```python
-from lumberjack.parser import MarkdownParser
-
-document = MarkdownParser(disable_lheading=False).parse(
-    markdown_text,
-    document_title="Guide",
-    metadata_overrides={"tenant": "docs"},
-    source_path="imports/guide.md",
-)
-```
-
-`DocTree.metadata` contains semantic metadata; `DocTree.source_path` independently records
-provenance and becomes `Chunk.document_path`.
-
-## Splitters and ChunkDrafts
-
-Splitters accept the same budget and block options as the previous splitting pipeline:
-
-```python
-from lumberjack.splitter import SiblingSplitter
-
-splitter = SiblingSplitter(
-    tokenizer,
-    max_tokens=1200,
-    ideal_max_tokens_ratio=0.8,
-    merge_below_ratio=0.125,
-    skip_empty_sections=True,
-    heading_sensitive=True,
-    max_heading_level=None,
-)
-
-drafts = splitter.split(document)
-```
-
-- `SiblingSplitter` greedily packs adjacent sibling sections.
-- `SubtreeSplitter` first collapses a fitting subtree, then falls back to sections.
-- `SectionSplitter` emits direct section bodies recursively without subtree collapse.
-- `Exact*Splitter` recount rendered candidates at every budget decision; unprefixed
-  splitters use incremental estimates.
-
-`ChunkDraft.token_count` is the split-time footprint. `ChunkFinalizer` writes it to
-`Chunk.estimated_token_count` for incremental splitters and performs the authoritative
-final recount after text processing. Exact splitters produce equal estimated and final
-counts.
-
-## Seasoning, planing, and finalizeing
-
-The default `TextNormalizer` normalizes CRLF/CR to LF and removes BOM/NUL characters.
-The default `TextTransformer` trims line endings and collapses repeated blank separators without
-removing Markdown syntax.
-
-`PlainTextTransformer` is an explicit opt-in for removing common Markdown/HTML surface
-formatting while retaining readable content, code text, and block separation:
-
-```python
-from lumberjack import Lumberjack
-from lumberjack.transformer import PlainTextTransformer
-
-jack = Lumberjack(transformer=PlainTextTransformer())
-chunks = jack.saw(markdown_text)
-```
-
-Custom `ParserProtocol`, `TokenizerProtocol`, `SplitterProtocol`, `TextNormalizerProtocol`, and
-`TextTransformerProtocol` implementations can be injected through `Lumberjack(...)`.
-
-## Typed block configuration
-
-Python `block_options` accepts a sequence of `BlockConfig`, `MarkdownTableConfig`,
-`HTMLTableConfig`, or `CustomBlockConfig`. Duplicate kinds and non-positive budgets are
-rejected at construction time.
-
-## CLI and Web API
-
-The integration protocols intentionally retain their established domain-oriented names:
+## Use it from the command line
 
 ```bash
-lumber guide.md --max-tokens 1200
-lumber guide.md --tokenizer tiktoken --splitter sibling
-lumber guide.md --splitter exact-sibling
-lumber report.docx --input-format docx
+# Format is inferred from the file extension.
+lumber handbook.md --max-tokens 1200
+
+# Select a tokenizer or a splitter when needed.
+lumber report.docx --input-format docx --tokenizer tiktoken --splitter subtree
+
+# JSON chunks are written to standard output.
+lumber page.html --input-format html --splitter exact-sibling
+```
+
+The CLI emits JSON, so it can feed an indexing or ingestion job directly.
+
+## Pick a splitting strategy
+
+| Strategy | Best when you want |
+| --- | --- |
+| `sibling` (default) | Well-filled chunks that pack adjacent sibling sections while retaining their shared context. |
+| `subtree` | A complete section subtree to stay together whenever it fits the budget. |
+| `section` | Each section's direct body to be handled independently. |
+
+The default strategies use incremental estimates for fast budget decisions.
+Use `exact-sibling`, `exact-subtree`, or `exact-section` when every split-time
+decision must recount the rendered candidate exactly. All chunks receive a
+final authoritative count.
+
+See [splitter strategies](docs/splitter-strategies.md) for practical strategy
+examples.
+
+## Web API
+
+Install the `web` extra, then start the service:
+
+```bash
 lumberjack-serve --reload
 ```
 
-- `POST /lumber/api/split/text`
-- `POST /lumber/api/split/file`
+It provides `POST /lumber/api/split/text` for pasted Markdown or HTML and
+`POST /lumber/api/split/file` for uploaded Markdown, HTML, and DOCX files. Both
+return the same serialized chunk shape as the Python API and CLI.
 
-CLI and Web fields remain `tokenizer` and `splitter`; the private integration adapter
-translates them to Tokenizer and Splitter implementations. CLI output and Web responses retain
-the existing serialized `Chunk` schema.
+## Customize when you need to
+
+The defaults are intended to be usable as-is. For advanced pipelines, you can
+provide your own parser, tokenizer, splitter, normalizer, or transformer to
+`Lumberjack(...)`. Built-in splitters accept typed `block_options` so tables,
+code fences, and custom block kinds can have their own isolation and budget
+policies. The public
+extension points live under `lumberjack.parser`, `lumberjack.tokenizer`,
+`lumberjack.splitter`, `lumberjack.block`, and `lumberjack.protocols`.
 
 ## Development
 
 ```bash
 uv sync --group dev --group test --extra tokenizers --extra docx --extra web
-UV_CACHE_DIR=/tmp/uvcache uv run ty check .
-UV_CACHE_DIR=/tmp/uvcache uv run ruff check
-UV_CACHE_DIR=/tmp/uvcache uv run ruff format --check
 UV_CACHE_DIR=/tmp/uvcache uv run pytest
 ```
 
