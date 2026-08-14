@@ -56,7 +56,8 @@ Create a branch for your work. Use a descriptive name with one of these prefixes
 
 - `feat/` — new feature
 - `fix/` — bug fix
-- `docs/` — documentation only
+- `docs/` — public documentation only; private planning notes belong in the
+  ignored `internal_docs/` directory
 - `refactor/` — code restructuring without behavior change
 - `test/` — test additions or fixes
 

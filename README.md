@@ -4,6 +4,10 @@
 
 # Lumberjack
 
+[![PyPI](https://img.shields.io/pypi/v/lumberjack.svg)](https://pypi.org/project/lumberjack/)
+[![Python](https://img.shields.io/pypi/pyversions/lumberjack.svg)](https://pypi.org/project/lumberjack/)
+[![CI](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml/badge.svg)](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml)
+
 **Turn long, structured documents into retrieval-ready chunks without losing
 their context.**
 

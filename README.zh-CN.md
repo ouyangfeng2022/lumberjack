@@ -4,6 +4,10 @@
 
 # Lumberjack
 
+[![PyPI](https://img.shields.io/pypi/v/lumberjack.svg)](https://pypi.org/project/lumberjack/)
+[![Python](https://img.shields.io/pypi/pyversions/lumberjack.svg)](https://pypi.org/project/lumberjack/)
+[![CI](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml/badge.svg)](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml)
+
 **把长篇结构化文档切成适合检索的 Chunk，同时保留回答问题所需的上下文。**
 
 Lumberjack 是用于 RAG 的 Python 库和 CLI。它理解文档结构，把标题与其正文关联起来，
@@ -88,7 +92,7 @@ CLI 输出 JSON，可直接接入索引或入库任务。
 默认策略使用增量估算来快速做预算决策。若每次拆分决策都必须精确重计渲染结果，请使用
 `exact-sibling`、`exact-subtree` 或 `exact-section`。无论何种策略，最终 Chunk 都会有权威计数。
 
-具体的策略示例请见[分割策略说明](docs/splitter-strategies.md)。
+具体的策略示例请见[分割策略说明](docs/splitter-strategies.zh-CN.md)。
 
 ## Web API
 

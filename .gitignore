@@ -23,8 +23,8 @@ src/lumberjack/web/static/
 data/
 output/
 
-# Local documentation
-docs/
+# Private development documentation
+internal_docs/
 
 # Tool caches
 .ruff_cache/
