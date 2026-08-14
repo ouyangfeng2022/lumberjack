@@ -41,6 +41,17 @@ def test_public_lumber_pipeline_components() -> None:
     assert TextNormalizerProtocol and TextTransformerProtocol
 
 
+def test_lumberjack_defaults_use_the_incremental_sibling_pipeline() -> None:
+    pipeline = Lumberjack()
+
+    assert isinstance(pipeline.tokenizer, ApproxByteTokenizer)
+    assert isinstance(pipeline.parser, AutoParser)
+    assert isinstance(pipeline.splitter, SiblingSplitter)
+    assert pipeline.splitter.max_tokens == 1200
+    assert pipeline.splitter.skip_empty_sections is True
+    assert pipeline.finalizer.skip_empty_sections is True
+
+
 def test_removed_component_packages_do_not_exist() -> None:
     package_root = Path(lumberjack.__file__).parent
     assert not (package_root / "core").exists()

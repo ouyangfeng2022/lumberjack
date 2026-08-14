@@ -21,11 +21,23 @@ def test_cli_public_defaults_and_choices() -> None:
         "transformers",
     )
     assert _action(parser, "splitter").default == "sibling"
-    assert set(_action(parser, "splitter").choices or ()) == set(BUILTIN_SPLITTER_NAMES)
+    assert set(_action(parser, "splitter").choices or ()) == {
+        "sibling",
+        "incremental-sibling",
+        "exact-sibling",
+        "subtree",
+        "incremental-subtree",
+        "exact-subtree",
+        "section",
+        "incremental-section",
+        "exact-section",
+    }
+    assert set(BUILTIN_SPLITTER_NAMES) == set(_action(parser, "splitter").choices or ())
     assert _action(parser, "max_tokens").default == 1200
     assert _action(parser, "ideal_max_tokens_ratio").default == 0.8
     assert _action(parser, "merge_below_ratio").default == 0.125
     assert _action(parser, "heading_sensitive").default is True
+    assert "render_headings" not in {action.dest for action in parser._actions}
 
 
 def test_cli_help_assigns_counting_mode_to_splitter() -> None:
