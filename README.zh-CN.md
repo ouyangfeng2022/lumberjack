@@ -3,7 +3,7 @@
 面向 RAG 预处理的结构感知 Markdown、HTML 与 DOCX 文档伐木流水线。
 
 ```text
-Tree -> Parser.parse() -> DocTree -> Splitter.split() -> ChunkDraft[]
+Document -> Parser.parse() -> DocTree -> Splitter.split() -> ChunkDraft[]
      -> ChunkFinalizer.finalize() -> TextNormalizer -> TextTransformer -> Chunk[]
 ```
 
@@ -20,21 +20,21 @@ pip install "lumberjack[tokenizers,docx,web]"
 
 ## 主 API
 
-包顶层只暴露 `Lumberjack` 与 `Tree`：
+包顶层只暴露 `Lumberjack` 与 `Document`：
 
 ```python
 from pathlib import Path
 
-from lumberjack import Lumberjack, Tree
+from lumberjack import Lumberjack, Document
 
 jack = Lumberjack(max_tokens=1200)
 
-# 原始值会被自动包成 Tree。
+# 原始值会被自动包成 Document。
 chunks = jack.saw(Path("guide.md"))
 
-# Tree 显式携带格式、标题、元数据和来源信息。
+# Document 显式携带格式、标题、元数据和来源信息。
 chunks = jack.saw(
-    Tree(
+    Document(
         source=markdown_text,
         format="markdown",
         document_title="Guide",
@@ -56,7 +56,7 @@ from pathlib import Path
 from lumberjack.block import BlockConfig, BlockKind, MarkdownTableConfig
 from lumberjack.parser import AutoParser
 from lumberjack.finalizer import ChunkFinalizer
-from lumberjack.models import Tree
+from lumberjack.models import Document
 from lumberjack.splitter import SiblingSplitter
 from lumberjack.tokenizer import TiktokenTokenizer
 
@@ -72,7 +72,7 @@ splitter = SiblingSplitter(
 )
 finalize = ChunkFinalizer(tokenizer)
 
-document = parser.parse(Tree(Path("guide.md")))
+document = parser.parse(Document(Path("guide.md")))
 drafts = splitter.split(document)
 chunks = finalize.finalize(document, drafts)
 ```
@@ -80,7 +80,7 @@ chunks = finalize.finalize(document, drafts)
 公共组件：
 
 - `lumberjack.parser`：`AutoParser`、`MarkdownParser`、`HTMLParser` 与
-  `DocxParser`，负责把 `Tree` 砍成统一的 `DocTree`。
+  `DocxParser`，负责把 `Document` 砍成统一的 `DocTree`。
 - `lumberjack.tokenizer`：`ApproxByteTokenizer`、`TiktokenTokenizer` 与
   `TransformersTokenizer`，提供 `encode()` 和 `count()`。
 - `lumberjack.splitter`：默认增量式的 `SiblingSplitter`、`SubtreeSplitter`、
@@ -95,7 +95,7 @@ chunks = finalize.finalize(document, drafts)
 
 `AutoParser` 按以下顺序推断输入格式：
 
-1. `Path` 或 `Tree.source_path` 的文件后缀。
+1. `Path` 或 `Document.source_path` 的文件后缀。
 2. DOCX ZIP 结构。
 3. 文本开头的 HTML doctype 或结构化标签。
 4. 回退为 Markdown。

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ..block import BlockOption
 from ..finalizer import ChunkFinalizer
-from ..models import Chunk, InputFormat, Tree
+from ..models import Chunk, Document, InputFormat
 from ..parser import AutoParser
 from ..splitter import (
     ExactSectionSplitter,
@@ -67,7 +67,7 @@ def split_source(
     """Run the configurable built-in pipeline for non-Python interfaces."""
     parser_impl = AutoParser()
     document = parser_impl.parse(
-        Tree(
+        Document(
             source=source,
             format=format,
             document_title=document_title,

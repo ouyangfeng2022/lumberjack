@@ -1,4 +1,4 @@
 from .lumberjack import Lumberjack
-from .models import Tree
+from .models import Document
 
-__all__ = ["Lumberjack", "Tree"]
+__all__ = ["Document", "Lumberjack"]

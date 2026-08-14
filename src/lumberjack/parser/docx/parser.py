@@ -11,7 +11,9 @@ from ...models import (
     DocumentBlock,
     DocumentInline,
     SectionNode,
-    Tree,
+)
+from ...models import (
+    Document as SourceDocument,
 )
 from ...protocols import ParserProtocol
 
@@ -188,7 +190,7 @@ class DocxParser(ParserProtocol):
 
     def parse(
         self,
-        tree: Tree | bytes,
+        document: SourceDocument | bytes,
         *,
         document_title: str | None = None,
         metadata_overrides: dict[str, object] | None = None,
@@ -202,24 +204,24 @@ class DocxParser(ParserProtocol):
             metadata_overrides: Semantic metadata that overrides DOCX core properties.
             source_path: Optional source provenance stored separately from metadata.
         """
-        from docx import Document
+        from docx import Document as create_docx_document
 
-        if not isinstance(tree, Tree):
-            tree = Tree(
-                tree,
+        if not isinstance(document, SourceDocument):
+            document = SourceDocument(
+                document,
                 format="docx",
                 document_title=document_title,
                 metadata_overrides=dict(metadata_overrides or {}),
                 source_path=source_path,
             )
-        data = tree.source
+        data = document.source
         if not isinstance(data, bytes | bytearray):
-            msg = f"DocxParser.parse expects Tree[bytes], got {type(data).__name__}"
+            msg = f"DocxParser.parse expects Document[bytes], got {type(data).__name__}"
             raise TypeError(msg)
 
-        metadata = dict(tree.metadata_overrides)
+        metadata = dict(document.metadata_overrides)
 
-        doc = Document(BytesIO(data))
+        doc = create_docx_document(BytesIO(data))
 
         # Extract core properties as metadata
         core_props = doc.core_properties
@@ -360,14 +362,16 @@ class DocxParser(ParserProtocol):
                         )
                     )
 
-        final_title = self._resolve_document_title(tree.document_title, doc, root)
+        final_title = self._resolve_document_title(document.document_title, doc, root)
         root.title = final_title
 
         return DocTree(
             title=final_title,
             source="",
             root=root,
-            source_path=str(tree.source_path) if tree.source_path is not None else None,
+            source_path=(
+                str(document.source_path) if document.source_path is not None else None
+            ),
             metadata=metadata,
         )
 

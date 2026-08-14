@@ -4,7 +4,7 @@ from dataclasses import fields
 from pathlib import Path
 
 import lumberjack
-from lumberjack import Lumberjack, Tree
+from lumberjack import Document, Lumberjack
 from lumberjack.models import (
     Chunk,
     ChunkDraft,
@@ -26,9 +26,9 @@ from lumberjack.tokenizer import ApproxByteTokenizer
 from lumberjack.transformer import PlainTextTransformer, TextTransformer
 
 
-def test_top_level_exports_lumberjack_and_tree() -> None:
-    assert lumberjack.__all__ == ["Lumberjack", "Tree"]
-    assert Lumberjack and Tree
+def test_top_level_exports_lumberjack_and_document() -> None:
+    assert lumberjack.__all__ == ["Document", "Lumberjack"]
+    assert Lumberjack and Document
     assert not hasattr(lumberjack, "lumber")
 
 

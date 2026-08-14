@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Breaking:** Replaced the top-level `lumber()` function with `Lumberjack(...).saw(...)` and the explicit `Tree -> DocTree -> ChunkDraft -> Chunk` pipeline. The package root now exports only `Lumberjack` and `Tree`.
+- **Breaking:** Replaced the top-level `lumber()` function with `Lumberjack(...).saw(...)` and the explicit `Document -> DocTree -> ChunkDraft -> Chunk` pipeline. The package root now exports only `Lumberjack` and `Document`.
 - **Breaking:** Replaced lumber-themed component names with `Parser.parse()`, `Tokenizer.count()`, and `Splitter.split()`. The old `lumberjack.feller`, `lumberjack.sawyer`, and `lumberjack.scaler` paths are removed without compatibility aliases.
 - CLI and Web request fields remain `tokenizer` and `splitter`; their private adapter now maps those integration names to Tokenizer and Splitter implementations.
 - `SectionSplitter` applies `merge_below_ratio` bottom-up to adjacent same-heading text tails produced while splitting oversized blocks, without subtree collapse or non-text draft merging.

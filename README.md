@@ -5,7 +5,7 @@ Structure-aware Markdown, HTML, and DOCX lumbering for RAG preprocessing.
 Lumberjack models document processing as a real lumber pipeline:
 
 ```text
-Tree -> Parser.parse() -> DocTree -> Splitter.split() -> ChunkDraft[]
+Document -> Parser.parse() -> DocTree -> Splitter.split() -> ChunkDraft[]
      -> ChunkFinalizer.finalize() -> TextNormalizer -> TextTransformer -> Chunk[]
 ```
 
@@ -22,21 +22,21 @@ Python 3.10 or newer is required.
 
 ## Main API
 
-The package root exposes `Lumberjack` and `Tree`:
+The package root exposes `Lumberjack` and `Document`:
 
 ```python
 from pathlib import Path
 
-from lumberjack import Lumberjack, Tree
+from lumberjack import Lumberjack, Document
 
 jack = Lumberjack(max_tokens=1200)
 
-# Raw values are wrapped into Tree automatically.
+# Raw values are wrapped into Document automatically.
 chunks = jack.saw(Path("guide.md"))
 
-# Tree carries format, title, metadata, and source provenance explicitly.
+# Document carries format, title, metadata, and source provenance explicitly.
 chunks = jack.saw(
-    Tree(
+    Document(
         source=markdown_text,
         format="markdown",
         document_title="Guide",
@@ -58,7 +58,7 @@ from pathlib import Path
 from lumberjack.block import BlockConfig, BlockKind, MarkdownTableConfig
 from lumberjack.parser import AutoParser
 from lumberjack.finalizer import ChunkFinalizer
-from lumberjack.models import Tree
+from lumberjack.models import Document
 from lumberjack.splitter import SiblingSplitter
 from lumberjack.tokenizer import TiktokenTokenizer
 
@@ -74,7 +74,7 @@ splitter = SiblingSplitter(
 )
 finalize = ChunkFinalizer(tokenizer)
 
-document = parser.parse(Tree(Path("guide.md")))
+document = parser.parse(Document(Path("guide.md")))
 drafts = splitter.split(document)
 chunks = finalize.finalize(document, drafts)
 ```
@@ -82,7 +82,7 @@ chunks = finalize.finalize(document, drafts)
 Public components:
 
 - `lumberjack.parser`: `AutoParser`, `MarkdownParser`, `HTMLParser`, and
-  `DocxParser` turn `Tree` into the shared `DocTree` structure.
+  `DocxParser` turn `Document` into the shared `DocTree` structure.
 - `lumberjack.tokenizer`: `ApproxByteTokenizer`, `TiktokenTokenizer`, and
   `TransformersTokenizer` implement `encode()` and `count()`.
 - `lumberjack.splitter`: incremental `SiblingSplitter`, `SubtreeSplitter`, and
@@ -98,7 +98,7 @@ The removed `feller`, `sawyer`, and `scaler` modules are not compatibility paths
 
 `AutoParser` detects input in this order:
 
-1. A `Path` or `Tree.source_path` suffix.
+1. A `Path` or `Document.source_path` suffix.
 2. The DOCX ZIP structure.
 3. A leading HTML doctype or structural tag.
 4. Markdown as the fallback.

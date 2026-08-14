@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 from zipfile import BadZipFile, ZipFile
 
-from ..models import DocTree, InputFormat, Tree
+from ..models import DocTree, Document, InputFormat
 from .docx import DocxParser
 from .html import HTMLParser
 from .markdown import MarkdownParser
@@ -47,42 +47,42 @@ def _is_docx(data: bytes) -> bool:
 
 
 class AutoParser:
-    """Select a built-in parser from tree provenance or content."""
+    """Select a built-in parser from document provenance or content."""
 
     block_kinds = frozenset()
 
     def parse(
         self,
-        tree: Tree | str | bytes | Path,
+        document: Document | str | bytes | Path,
         *,
         format: InputFormat = "auto",
         document_title: str | None = None,
         metadata_overrides: dict[str, object] | None = None,
         source_path: str | Path | None = None,
     ) -> DocTree:
-        if not isinstance(tree, Tree):
-            tree = Tree(
-                source=tree,
+        if not isinstance(document, Document):
+            document = Document(
+                source=document,
                 format=format,
                 document_title=document_title,
                 metadata_overrides=dict(metadata_overrides or {}),
                 source_path=source_path,
             )
-        source = tree.source
-        source_path = tree.source_path
-        if tree.format not in _VALID_FORMATS:
-            raise ValueError(f"Unsupported input format: {tree.format}")
+        source = document.source
+        source_path = document.source_path
+        if document.format not in _VALID_FORMATS:
+            raise ValueError(f"Unsupported input format: {document.format}")
         resolved_source_path = Path(source) if isinstance(source, Path) else source_path
         data = source.read_bytes() if isinstance(source, Path) else source
-        format = self._detect_format(data, resolved_source_path, tree.format)
+        format = self._detect_format(data, resolved_source_path, document.format)
         normalized_path = (
             str(resolved_source_path) if resolved_source_path is not None else None
         )
-        parsed_tree = Tree(
+        parsed_tree = Document(
             source=data,
             format=format,
-            document_title=tree.document_title,
-            metadata_overrides=dict(tree.metadata_overrides),
+            document_title=document.document_title,
+            metadata_overrides=dict(document.metadata_overrides),
             source_path=normalized_path,
         )
 
@@ -102,11 +102,11 @@ class AutoParser:
             text = data
         parser = HTMLParser() if format == "html" else MarkdownParser()
         return parser.parse(
-            Tree(
+            Document(
                 source=text,
                 format=format,
-                document_title=tree.document_title,
-                metadata_overrides=dict(tree.metadata_overrides),
+                document_title=document.document_title,
+                metadata_overrides=dict(document.metadata_overrides),
                 source_path=normalized_path,
             )
         )

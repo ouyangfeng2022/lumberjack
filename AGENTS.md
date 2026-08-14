@@ -61,7 +61,7 @@ uv run python xxx.py
 Core pipeline:
 
 ```
-Tree -> Parser.parse() -> DocTree -> Splitter.split() -> ChunkDraft[]
+Document -> Parser.parse() -> DocTree -> Splitter.split() -> ChunkDraft[]
      -> ChunkFinalizer.finalize() -> TextNormalizer -> TextTransformer -> Chunk[]
 ```
 
@@ -72,7 +72,7 @@ Main components:
 ### Shared public modules
 
 - **Models**: `src/lumberjack/models.py`
-  - `Tree` — raw input plus format, title, metadata overrides, and provenance
+  - `Document` — raw input plus format, title, metadata overrides, and provenance
   - `DocumentInline`, `DocumentBlock`, `SectionNode`, `DocTree` — shared across formats
   - `ChunkDraft` — internal output of sawing; `Chunk` — final output of finalizeing
 - **Protocols**: `src/lumberjack/protocols.py`
@@ -129,7 +129,7 @@ Format-specific parsers — each turns one input format into the shared `DocTree
 
 ### Public API
 
-- `src/lumberjack/__init__.py` — exports only `Lumberjack` and `Tree`
+- `src/lumberjack/__init__.py` — exports only `Lumberjack` and `Document`
 - `src/lumberjack/parser/` — `AutoParser`, concrete parsers, and Markdown plugin extensions
 - `src/lumberjack/splitter/` — default incremental splitters and explicit `Exact*Splitter` classes
 - `src/lumberjack/tokenizer.py` — tokenizer implementations
@@ -261,7 +261,7 @@ When a change warrants a changelog entry, do it in the same commit (or PR) as th
 
 ```
 src/lumberjack/
-    __init__.py                     # Public API: Lumberjack, Tree
+    __init__.py                     # Public API: Lumberjack, Document
     lumberjack.py                   # Full pipeline orchestrator
     cli.py                          # CLI orchestration
     block.py                        # Public block kinds and typed configuration

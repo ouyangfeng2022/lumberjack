@@ -15,7 +15,7 @@ InputFormat: TypeAlias = Literal["auto", "markdown", "html", "docx"]
 
 
 @dataclass(slots=True, frozen=True)
-class Tree:
+class Document:
     """Raw document and provenance waiting to be parsed into a structured document."""
 
     source: str | bytes | Path

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from lumberjack import Lumberjack, Tree
+from lumberjack import Document, Lumberjack
 from lumberjack.finalizer import ChunkFinalizer
 from lumberjack.models import ChunkDraft, DocTree, Entry, SectionNode
 from lumberjack.normalizer import TextNormalizer
@@ -12,8 +12,8 @@ from lumberjack.transformer import PlainTextTransformer, TextTransformer
 
 
 def test_tree_log_draft_chunk_pipeline_is_explicit() -> None:
-    tree = Tree("# Guide\n\nBody", format="markdown")
-    document = MarkdownParser().parse(tree)
+    source_document = Document("# Guide\n\nBody", format="markdown")
+    document = MarkdownParser().parse(source_document)
     drafts = Lumberjack().splitter.split(document)
     chunks = ChunkFinalizer(ApproxByteTokenizer()).finalize(document, drafts)
 
@@ -50,7 +50,7 @@ def test_plain_text_transformer_is_explicit_and_preserves_readable_content() -> 
 
 def test_lumberjack_calls_custom_stages_in_order() -> None:
     calls: list[str] = []
-    document = DocTree(title="T", source="", root=SectionNode(level=0, title="T"))
+    doc_tree = DocTree(title="T", source="", root=SectionNode(level=0, title="T"))
     draft = ChunkDraft(
         entries=[Entry(headings=(), body=" body ", start_line=1, end_line=1)],
         headings=(),
@@ -63,10 +63,10 @@ def test_lumberjack_calls_custom_stages_in_order() -> None:
     class Parser:
         block_kinds = frozenset({"paragraph"})
 
-        def parse(self, tree: Tree) -> DocTree:
-            del tree
+        def parse(self, document: Document) -> DocTree:
+            del document
             calls.append("parse")
-            return document
+            return doc_tree
 
     class Splitter:
         tokenizer = ApproxByteTokenizer()
@@ -93,7 +93,7 @@ def test_lumberjack_calls_custom_stages_in_order() -> None:
         transformer=TextTransformer(),
     )
 
-    chunks = jack.saw(Tree("ignored"))
+    chunks = jack.saw(Document("ignored"))
 
     assert calls == ["parse", "split", "normalize", "transform"]
     assert chunks[0].body == "BODY"

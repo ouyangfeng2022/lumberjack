@@ -19,7 +19,7 @@ from .plugins import brackets_math_plugin
 if TYPE_CHECKING:
     from markdown_it.token import Token
 
-from ...models import DocTree, DocumentBlock, DocumentInline, SectionNode, Tree
+from ...models import DocTree, Document, DocumentBlock, DocumentInline, SectionNode
 from ...protocols import ParserProtocol
 
 LINK_REFERENCE_DEFINITION_RE = re.compile(r"^[ ]{0,3}\[([^\]]+)\]:")
@@ -502,7 +502,7 @@ class MarkdownItParser(ParserProtocol):
 
     def parse(
         self,
-        tree: Tree | str,
+        document: Document | str,
         *,
         document_title: str | None = None,
         metadata_overrides: dict[str, object] | None = None,
@@ -520,20 +520,22 @@ class MarkdownItParser(ParserProtocol):
         Raises:
             TypeError: If ``data`` is not a ``str``.
         """
-        if not isinstance(tree, Tree):
-            tree = Tree(
-                tree,
+        if not isinstance(document, Document):
+            document = Document(
+                document,
                 format="markdown",
                 document_title=document_title,
                 metadata_overrides=dict(metadata_overrides or {}),
                 source_path=source_path,
             )
-        data = tree.source
+        data = document.source
         if not isinstance(data, str):
-            msg = f"MarkdownParser.parse expects Tree[str], got {type(data).__name__}"
+            msg = (
+                f"MarkdownParser.parse expects Document[str], got {type(data).__name__}"
+            )
             raise TypeError(msg)
 
-        metadata = dict(tree.metadata_overrides)
+        metadata = dict(document.metadata_overrides)
 
         env: dict[str, Any] = {}
         tokens = self._parser.parse(data, env)
@@ -572,7 +574,7 @@ class MarkdownItParser(ParserProtocol):
                 metadata.setdefault(key, value)
 
         final_title = self._resolve_document_title(
-            tree.document_title, fm_metadata, root
+            document.document_title, fm_metadata, root
         )
         root.title = final_title
 
@@ -580,7 +582,9 @@ class MarkdownItParser(ParserProtocol):
             title=final_title,
             source=data,
             root=root,
-            source_path=str(tree.source_path) if tree.source_path is not None else None,
+            source_path=(
+                str(document.source_path) if document.source_path is not None else None
+            ),
             metadata=metadata,
             reference_definitions=self._extract_reference_definitions(
                 env, source_lines

@@ -10,7 +10,7 @@ from typing import Any, ClassVar
 
 from lumberjack.block import BlockKind
 
-from ...models import DocTree, DocumentBlock, DocumentInline, SectionNode, Tree
+from ...models import DocTree, Document, DocumentBlock, DocumentInline, SectionNode
 from ...protocols import ParserProtocol
 
 
@@ -437,7 +437,7 @@ class HTMLParser(ParserProtocol):
 
     def parse(
         self,
-        tree: Tree | str,
+        document: Document | str,
         *,
         document_title: str | None = None,
         metadata_overrides: dict[str, object] | None = None,
@@ -455,23 +455,25 @@ class HTMLParser(ParserProtocol):
         Raises:
             TypeError: If ``data`` is not a ``str``.
         """
-        if not isinstance(tree, Tree):
-            tree = Tree(
-                tree,
+        if not isinstance(document, Document):
+            document = Document(
+                document,
                 format="html",
                 document_title=document_title,
                 metadata_overrides=dict(metadata_overrides or {}),
                 source_path=source_path,
             )
-        data = tree.source
+        data = document.source
         if not isinstance(data, str):
-            msg = f"HTMLParser.parse expects Tree[str], got {type(data).__name__}"
+            msg = f"HTMLParser.parse expects Document[str], got {type(data).__name__}"
             raise TypeError(msg)
 
         builder = _HTMLDocumentBuilder(
             source=data,
-            document_title=tree.document_title,
-            metadata_overrides=tree.metadata_overrides,
-            source_path=str(tree.source_path) if tree.source_path is not None else None,
+            document_title=document.document_title,
+            metadata_overrides=document.metadata_overrides,
+            source_path=(
+                str(document.source_path) if document.source_path is not None else None
+            ),
         )
         return builder.build()

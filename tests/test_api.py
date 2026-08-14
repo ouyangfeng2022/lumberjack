@@ -6,7 +6,7 @@ from typing import cast
 import pytest
 
 import lumberjack
-from lumberjack import Lumberjack, Tree
+from lumberjack import Document, Lumberjack
 from lumberjack.block import (
     BlockConfig,
     BlockKind,
@@ -25,8 +25,8 @@ MARKDOWN_PATH = FIXTURES / "markdown" / "sample.md"
 DOCX_PATH = FIXTURES / "docx" / "sample.docx"
 
 
-def test_package_exports_lumberjack_and_tree_at_top_level() -> None:
-    assert lumberjack.__all__ == ["Lumberjack", "Tree"]
+def test_package_exports_lumberjack_and_document_at_top_level() -> None:
+    assert lumberjack.__all__ == ["Document", "Lumberjack"]
 
 
 def test_lumberjack_saw_splits_markdown() -> None:
@@ -126,7 +126,7 @@ def test_auto_parser_forced_format_skips_inference() -> None:
 
 def test_auto_parser_rejects_invalid_format() -> None:
     with pytest.raises(ValueError, match="Unsupported input format"):
-        AutoParser().parse(Tree("body", format=cast(InputFormat, "xml")))
+        AutoParser().parse(Document("body", format=cast(InputFormat, "xml")))
 
 
 def test_auto_parser_rejects_non_utf8_non_docx_bytes() -> None:

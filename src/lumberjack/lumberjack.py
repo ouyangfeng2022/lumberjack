@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from .finalizer import ChunkFinalizer
-from .models import Chunk, InputFormat, Tree
+from .models import Chunk, Document, InputFormat
 from .normalizer import TextNormalizer
 from .parser import AutoParser
 from .protocols import (
@@ -20,7 +20,7 @@ from .transformer import TextTransformer
 
 
 class Lumberjack:
-    """Orchestrate the complete tree-to-chunks lumber pipeline."""
+    """Orchestrate the complete document-to-chunks pipeline."""
 
     def __init__(
         self,
@@ -55,7 +55,7 @@ class Lumberjack:
 
     def saw(
         self,
-        tree: Tree | str | bytes | Path,
+        document: Document | str | bytes | Path,
         *,
         format: InputFormat = "auto",
         document_title: str | None = None,
@@ -63,17 +63,17 @@ class Lumberjack:
         source_path: str | Path | None = None,
     ) -> list[Chunk]:
         """Parse, split, and finalize one raw document into final chunks."""
-        if not isinstance(tree, Tree):
-            tree = Tree(
-                source=tree,
+        if not isinstance(document, Document):
+            document = Document(
+                source=document,
                 format=format,
                 document_title=document_title,
                 metadata_overrides=dict(metadata_overrides or {}),
                 source_path=source_path,
             )
-        document = self.parser.parse(tree)
-        drafts = self.splitter.split(document)
-        return self.finalizer.finalize(document, drafts)
+        doc_tree = self.parser.parse(document)
+        drafts = self.splitter.split(doc_tree)
+        return self.finalizer.finalize(doc_tree, drafts)
 
 
 __all__ = ["Lumberjack"]

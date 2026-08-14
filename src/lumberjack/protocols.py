@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from .models import ChunkDraft, DocTree, Tree
+    from .models import ChunkDraft, DocTree, Document
 
 
 class TokenizerProtocol(Protocol):
@@ -15,11 +15,11 @@ class TokenizerProtocol(Protocol):
 
 
 class ParserProtocol(Protocol):
-    """Parse a raw tree into the shared structured document."""
+    """Parse a raw document into the shared structured representation."""
 
     block_kinds: frozenset[str]
 
-    def parse(self, tree: Tree) -> DocTree: ...
+    def parse(self, document: Document) -> DocTree: ...
 
 
 class SplitterProtocol(Protocol):

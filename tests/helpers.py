@@ -12,7 +12,7 @@ from lumberjack.block import (
     MarkdownTableConfig,
 )
 from lumberjack.finalizer import ChunkFinalizer
-from lumberjack.models import Chunk, DocTree, InputFormat, Tree
+from lumberjack.models import Chunk, DocTree, Document, InputFormat
 from lumberjack.splitter import (
     ExactSectionSplitter,
     ExactSiblingSplitter,
@@ -52,7 +52,7 @@ def parse(
     source_path: str | Path | None = None,
 ) -> DocTree:
     return parser.parse(
-        Tree(
+        Document(
             source=source,
             format=format,
             document_title=document_title,
