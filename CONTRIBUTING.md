@@ -47,7 +47,7 @@ Contributions of all sizes are welcome — bug reports, bug fixes, new features,
 
    ```bash
    cd lumberjack_webui
-   npm ci
+   bun install --frozen-lockfile
    ```
 
 ### Branch naming
@@ -90,8 +90,8 @@ For the frontend (`lumberjack_webui/`):
 
 ```bash
 cd lumberjack_webui
-npm run lint    # eslint
-npm run build   # tsc -b type check + vite build
+bun run lint    # eslint
+bun run build   # tsc -b type check + vite build
 ```
 
 ## Testing

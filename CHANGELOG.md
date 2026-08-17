@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** `Lumberjack.saw()` and the private CLI/Web pipeline now return `SplitResult` instead of a bare chunk list. CLI and Web JSON responses include document `metadata` and `reference_definitions`.
 - Web requests reuse expensive tokenizer model backends while retaining an independent LRU text cache for each request.
 - Oversized-text fallback uses bounded prefix searches and avoids packing fallback levels containing an already-oversized atomic part.
+- Wheel and source distributions do not bundle the Web UI's static build output (`lumberjack/web/static`); build it from `lumberjack_webui/` when serving the UI locally. The Docker image builds the frontend in its own stage and is unaffected.
+- The Web UI toolchain now uses bun instead of npm: `lumberjack_webui/bun.lock` replaces `package-lock.json`, and CI, the Docker build, and documentation run frontend commands with bun (`bun install --frozen-lockfile`, `bun run lint`, `bun run build`).
 
 ### Fixed
 

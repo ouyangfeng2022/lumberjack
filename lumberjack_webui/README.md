@@ -14,19 +14,19 @@ Lumberjack 的 Web 前端，提供可视化的 Markdown 文档拆分界面。
 cd lumberjack_webui
 
 # 安装依赖
-npm install
+bun install
 
 # 启动开发服务器（默认 localhost:5173，代理 /lumber -> localhost:8000）
-npm run dev
+bun run dev
 
 # 生产构建（输出到 ../src/lumberjack/web/static/）
-npm run build
+bun run build
 
 # 预览生产构建
-npm run preview
+bun run preview
 
 # 代码检查
-npm run lint
+bun run lint
 ```
 
 开发时需要同时启动后端服务：
@@ -95,4 +95,4 @@ lumberjack_webui/
 
 ## 构建 & 部署
 
-`npm run build` 将产物输出到 `../src/lumberjack/web/static/`，后端 `lumberjack-serve` 会自动托管该目录。生产环境只需启动后端即可同时提供 API 和前端页面。
+`bun run build` 将产物输出到 `../src/lumberjack/web/static/`，后端 `lumberjack-serve` 会自动托管该目录。生产环境只需启动后端即可同时提供 API 和前端页面。

@@ -34,7 +34,7 @@ def distributions() -> tuple[Path, Path]:
     return wheel, sdist
 
 
-def test_wheel_contains_typed_package_and_web_assets(
+def test_wheel_contains_typed_package_without_web_assets(
     distributions: tuple[Path, Path],
 ) -> None:
     wheel, _ = distributions
@@ -47,8 +47,9 @@ def test_wheel_contains_typed_package_and_web_assets(
         metadata = archive.read(metadata_name).decode("utf-8")
 
     assert "lumberjack/py.typed" in names
-    assert "lumberjack/web/static/index.html" in names
-    assert any(name.startswith("lumberjack/web/static/assets/") for name in names)
+    # The Web UI's static assets are git-ignored build outputs and are
+    # deliberately not bundled; deployments build them from lumberjack_webui/.
+    assert not any(name.startswith("lumberjack/web/static") for name in names)
     for extra in ("tokenizers", "docx", "web", "all"):
         assert f"Provides-Extra: {extra}" in metadata
 
@@ -62,6 +63,11 @@ def test_sdist_excludes_local_and_frontend_development_outputs(
         names = archive.getnames()
 
     assert any(name.endswith("/src/lumberjack/py.typed") for name in names)
-    assert any(name.endswith("/src/lumberjack/web/static/index.html") for name in names)
-    forbidden_parts = ("/lumberjack_webui/", "/node_modules/", "/data/", "/output/")
+    forbidden_parts = (
+        "/lumberjack_webui/",
+        "/node_modules/",
+        "/data/",
+        "/output/",
+        "/lumberjack/web/static/",
+    )
     assert not any(part in name for name in names for part in forbidden_parts)

@@ -72,14 +72,8 @@ source = "vcs"
 [tool.hatch.build.targets.wheel]
 packages = ["src/lumberjack"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"src/lumberjack/web/static" = "lumberjack/web/static"
-
 [tool.hatch.build.targets.sdist]
 exclude = ["lumberjack_webui/", "script/", "assets/"]
-
-[tool.hatch.build.targets.sdist.force-include]
-"src/lumberjack/web/static" = "src/lumberjack/web/static"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

@@ -26,17 +26,6 @@ jobs:
           python-version: "3.10"
           enable-cache: true
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: lumberjack_webui/package-lock.json
-
-      - name: Build web assets for the distribution
-        run: npm ci && npm run build
-        working-directory: lumberjack_webui
-
       - name: Build wheel and source distribution
         run: uv build --out-dir "$RUNNER_TEMP/dist"
 

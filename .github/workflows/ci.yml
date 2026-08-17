@@ -58,21 +58,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: lumberjack_webui/package-lock.json
+          bun-version: 1.x
+          cache: true
 
       - name: Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
         working-directory: lumberjack_webui
 
       - name: Lint
-        run: npm run lint
+        run: bun run lint
         working-directory: lumberjack_webui
 
       - name: Build (includes tsc type check)
-        run: npm run build
+        run: bun run build
         working-directory: lumberjack_webui

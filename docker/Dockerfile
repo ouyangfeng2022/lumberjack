@@ -17,7 +17,7 @@ FROM --platform=$BUILDPLATFORM oven/bun:1 AS frontend-builder
 WORKDIR /app
 
 # Copy frontend source and lockfile
-COPY lumberjack_webui/package.json lumberjack_webui/package-lock.json ./lumberjack_webui/
+COPY lumberjack_webui/package.json lumberjack_webui/bun.lock ./lumberjack_webui/
 
 # Install frontend dependencies
 RUN --mount=type=cache,target=/root/.bun/install/cache \

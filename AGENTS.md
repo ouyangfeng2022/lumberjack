@@ -40,6 +40,9 @@ uv run lumberjack-serve --reload
 # Run web server (production)
 uv run lumberjack-serve --host 0.0.0.0 --port 8000
 
+# Frontend (bun only; from lumberjack_webui/)
+# bun install --frozen-lockfile && bun run lint && bun run build
+
 # Run tests
 uv run pytest
 uv run pytest tests/parser/markdown/test_markdown_parser.py
