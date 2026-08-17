@@ -8,6 +8,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient, Response
 
+import lumberjack.web.routes as web_routes
 from lumberjack.tokenizer import ApproxByteTokenizer, TiktokenTokenizer
 from lumberjack.web import create_app
 
@@ -54,6 +55,8 @@ def test_split_with_text(client: ASGITestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["document"] == "Hello"
+    assert body["metadata"] == {}
+    assert body["reference_definitions"] == {}
     assert body["chunk_count"] >= 1
     assert len(body["chunks"]) == body["chunk_count"]
     chunk = body["chunks"][0]
@@ -200,6 +203,86 @@ def test_split_no_input(client: ASGITestClient) -> None:
     assert response.status_code == 422
     body = response.json()
     assert "detail" in body
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("max_tokens", 0),
+        ("ideal_max_tokens_ratio", 0),
+        ("ideal_max_tokens_ratio", 1.1),
+        ("merge_below_ratio", -0.1),
+        ("merge_below_ratio", 1),
+        ("max_heading_level", -1),
+    ],
+)
+def test_split_text_rejects_invalid_budget_options(
+    client: ASGITestClient,
+    field: str,
+    value: int | float,
+) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={"text": "Body", field: value},
+    )
+
+    assert response.status_code == 422
+
+
+def test_split_file_rejects_invalid_utf8_as_client_error(
+    client: ASGITestClient,
+) -> None:
+    response = client.post(
+        "/lumber/api/split/file",
+        files={"file": ("bad.md", io.BytesIO(b"\xff"), "text/markdown")},
+    )
+
+    assert response.status_code == 400
+
+
+def test_split_hides_unexpected_internal_error_details(
+    client: ASGITestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*args, **kwargs):
+        del args, kwargs
+        raise RuntimeError("private implementation detail")
+
+    monkeypatch.setattr(web_routes, "split_source", fail)
+    response = client.post(
+        "/lumber/api/split/text",
+        json={"text": "Body"},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal split pipeline error"
+
+
+def test_split_file_keeps_title_when_no_chunks(client: ASGITestClient) -> None:
+    response = client.post(
+        "/lumber/api/split/file",
+        files={"file": ("empty.md", io.BytesIO(b""), "text/markdown")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["document"] == "empty.md"
+    assert response.json()["chunks"] == []
+
+
+def test_split_text_returns_document_metadata_and_references(
+    client: ASGITestClient,
+) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={"text": "---\nauthor: Ada\n---\n\n# Guide\n\n[ref]: /target"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["metadata"]["author"] == "Ada"
+    assert body["reference_definitions"] == {
+        "ref": {"destination": "/target", "title": ""}
+    }
 
 
 def test_split_with_options(client: ASGITestClient) -> None:

@@ -106,7 +106,7 @@ def main() -> None:
         json_config=args.block_config_json,
     )
 
-    chunks = split_source(
+    result = split_source(
         input_path,
         format=cast(InputFormat, input_format),
         max_tokens=args.max_tokens,
@@ -121,9 +121,11 @@ def main() -> None:
 
     payload = json.dumps(
         {
-            "document": chunks[0].document_title if chunks else "Anonymous",
-            "chunk_count": len(chunks),
-            "chunks": [asdict(chunk) for chunk in chunks],
+            "document": result.document.title,
+            "metadata": result.document.metadata,
+            "reference_definitions": result.document.reference_definitions,
+            "chunk_count": len(result.chunks),
+            "chunks": [asdict(chunk) for chunk in result.chunks],
         },
         ensure_ascii=False,
         indent=2,
@@ -131,7 +133,7 @@ def main() -> None:
 
     if args.output:
         Path(args.output).write_text(payload, encoding="utf-8")
-        print(f"Wrote {len(chunks)} chunks to {args.output}")
+        print(f"Wrote {len(result.chunks)} chunks to {args.output}")
     else:
         print(payload)
 

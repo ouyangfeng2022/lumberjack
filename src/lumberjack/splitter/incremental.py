@@ -39,7 +39,11 @@ class IncrementalCountingMixin(BaseSplitter):
 
     def _draft_budget_tokens(self, draft: ChunkDraft) -> int:
         """Running estimate selected by the heading-sensitivity policy."""
-        return draft.token_count if self.heading_sensitive else draft.body_token_count
+        return (
+            draft.token_count
+            if self.heading_sensitive
+            else self._body_budget_tokens(draft)
+        )
 
     def _count_once(self, text: str) -> int:
         """Count an atomic measurement once during the incremental pre-pass."""
@@ -119,7 +123,7 @@ class IncrementalCountingMixin(BaseSplitter):
             own_heading=own_heading,
             headings_token_count=headings_token_count,
             body_token_count=body_token_count,
-            token_count=headings_token_count + body_token_count,
+            token_count=self._chunk_token_count(headings_token_count, body_token_count),
             split_origin="merge",
             chunk_type=left_draft.chunk_type,
         )
@@ -198,17 +202,15 @@ class IncrementalCountingMixin(BaseSplitter):
             self._heading_path_token_count(headings) if node.level > 0 else 0
         )
         budgeted_heading_tokens = prefix_tokens if self.heading_sensitive else 0
+        fixed_tokens = budgeted_heading_tokens + self.separator_token_count
         budget_limit = (
             self.max_tokens
-            if (
-                self.heading_sensitive
-                and budgeted_heading_tokens >= self.ideal_max_tokens
-            )
+            if self.heading_sensitive and fixed_tokens >= self.ideal_max_tokens
             else max_tokens
         )
-        body_budget = max(0, budget_limit - budgeted_heading_tokens)
+        body_budget = max(0, budget_limit - fixed_tokens)
 
-        if budgeted_heading_tokens >= self.max_tokens or not blocks:
+        if fixed_tokens >= self.max_tokens or not blocks:
             entry = self._entry_from_blocks(
                 headings, blocks, body_token_count=body_tokens
             )
@@ -219,7 +221,9 @@ class IncrementalCountingMixin(BaseSplitter):
                     own_heading=node.path[-1] if node.path else None,
                     headings_token_count=prefix_tokens,
                     body_token_count=entry.body_token_count,
-                    token_count=prefix_tokens + entry.body_token_count,
+                    token_count=self._chunk_token_count(
+                        prefix_tokens, entry.body_token_count
+                    ),
                     split_origin="fragment",
                 )
             ]
@@ -241,7 +245,7 @@ class IncrementalCountingMixin(BaseSplitter):
                 end_line=current_end_line,
                 body_token_count=current_body_tokens,
             )
-            token_count = prefix_tokens + current_body_tokens
+            token_count = self._chunk_token_count(prefix_tokens, current_body_tokens)
             return ChunkDraft(
                 entries=[entry],
                 headings=headings,
@@ -284,7 +288,9 @@ class IncrementalCountingMixin(BaseSplitter):
                                 own_heading=headings[-1] if headings else None,
                                 headings_token_count=prefix_tokens,
                                 body_token_count=piece_tokens,
-                                token_count=prefix_tokens + piece_tokens,
+                                token_count=self._chunk_token_count(
+                                    prefix_tokens, piece_tokens
+                                ),
                                 split_origin="text_piece",
                                 chunk_type=block.kind,
                             )
@@ -305,7 +311,9 @@ class IncrementalCountingMixin(BaseSplitter):
                             own_heading=headings[-1] if headings else None,
                             headings_token_count=prefix_tokens,
                             body_token_count=block_tokens,
-                            token_count=prefix_tokens + block_tokens,
+                            token_count=self._chunk_token_count(
+                                prefix_tokens, block_tokens
+                            ),
                             split_origin="fragment",
                             chunk_type=block.kind,
                         )
@@ -378,7 +386,9 @@ class IncrementalCountingMixin(BaseSplitter):
                         own_heading=headings[-1] if headings else None,
                         headings_token_count=prefix_tokens,
                         body_token_count=block_tokens,
-                        token_count=prefix_tokens + block_tokens,
+                        token_count=self._chunk_token_count(
+                            prefix_tokens, block_tokens
+                        ),
                         split_origin="fragment",
                         chunk_type="paragraph",
                     )
@@ -405,7 +415,9 @@ class IncrementalCountingMixin(BaseSplitter):
                         own_heading=headings[-1] if headings else None,
                         headings_token_count=prefix_tokens,
                         body_token_count=piece_tokens,
-                        token_count=prefix_tokens + piece_tokens,
+                        token_count=self._chunk_token_count(
+                            prefix_tokens, piece_tokens
+                        ),
                         split_origin="text_piece",
                         chunk_type="paragraph",
                     )
@@ -430,6 +442,7 @@ class IncrementalCountingMixin(BaseSplitter):
         body_budget = max(
             0,
             self.ideal_max_tokens
+            - self.separator_token_count
             - (
                 self._heading_path_token_count(node.path)
                 if self.heading_sensitive
@@ -449,7 +462,7 @@ class IncrementalCountingMixin(BaseSplitter):
                 own_heading=node.path[-1] if node.path else None,
                 headings_token_count=headings_token_count,
                 body_token_count=body_tokens,
-                token_count=headings_token_count + body_tokens,
+                token_count=self._chunk_token_count(headings_token_count, body_tokens),
             )
         ]
 
@@ -467,7 +480,7 @@ class IncrementalCountingMixin(BaseSplitter):
         headings = structural_root.node.path
         headings_tokens = self._heading_path_token_count(headings)
         subtree_tokens = self._view_subtree_tokens(structural_root)
-        token_count = headings_tokens + subtree_tokens
+        token_count = self._chunk_token_count(headings_tokens, subtree_tokens)
         return ChunkDraft(
             entries=entries,
             headings=headings,
@@ -495,7 +508,7 @@ class IncrementalCountingMixin(BaseSplitter):
             own_heading=node.path[-1] if node.path else None,
             headings_token_count=headings_tokens,
             body_token_count=body_tokens,
-            token_count=headings_tokens + body_tokens,
+            token_count=self._chunk_token_count(headings_tokens, body_tokens),
         )
         return (
             draft if self._draft_budget_tokens(draft) <= self.ideal_max_tokens else None

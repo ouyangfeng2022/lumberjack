@@ -58,25 +58,28 @@ from pathlib import Path
 from lumberjack import Lumberjack
 
 jack = Lumberjack(max_tokens=1200)
-chunks = jack.saw(Path("handbook.md"))
+result = jack.saw(Path("handbook.md"))
 
-for chunk in chunks:
+for chunk in result.chunks:
     print(chunk.own_heading, chunk.body, chunk.token_count)
+
+print(result.document.metadata)
 ```
 
 For in-memory content, pass a string directly. A plain string is always treated
 as content, never as a filesystem path:
 
 ```python
-chunks = Lumberjack(max_tokens=500).saw(
+result = Lumberjack(max_tokens=500).saw(
     "# Deployment\n\nDeploy the service with the approved release workflow."
 )
 ```
 
-Each result is a `Chunk` dataclass. Its `body` contains the rendered content;
+`Lumberjack.saw()` returns a `SplitResult` containing the parsed `DocTree` and
+the final `chunks`. Each chunk is a `Chunk` dataclass whose `body` contains the rendered content;
 `ancestor_headings` and `own_heading` preserve the section context;
 `token_count` is the final count after output processing. Document title, source
-path, and line ranges are also retained when available.
+path, metadata, reference definitions, and line ranges are retained when available.
 
 ## Use it from the command line
 

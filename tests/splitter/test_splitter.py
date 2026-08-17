@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from lumberjack.block import BlockConfig, BlockKind
 from lumberjack.models import ChunkDraft, Entry, complete_heading_path
 from lumberjack.parser.markdown.parser import MarkdownParser
@@ -534,7 +536,7 @@ def test_splitter_measures_section_token_counts_bottom_up() -> None:
     assert not hasattr(document.root.children[0], "subtree_token_count")
     assert len(chunks) == 1
     assert chunks[0].body == "Body"
-    assert chunks[0].estimated_token_count == len("# ABody")
+    assert chunks[0].estimated_token_count == len("# A\n\nBody")
     assert chunks[0].token_count == len("# A\n\nBody")
 
 
@@ -554,6 +556,29 @@ def test_splitter_splits_when_rendered_heading_budget_is_tight() -> None:
     assert len(chunks) == 2
     assert "".join(chunk.body for chunk in chunks) == "Body"
     assert all(chunk.token_count <= splitter.max_tokens for chunk in chunks)
+
+
+@pytest.mark.parametrize(
+    "splitter_class", [SiblingSplitter, IncrementalSiblingSplitter]
+)
+def test_splitter_reserves_external_heading_separator(
+    splitter_class,
+) -> None:
+    document = MarkdownParser().parse("# A\n\nBody")
+    splitter = splitter_class(
+        tokenizer=CharacterTokenizer(),
+        **splitter_options(
+            max_tokens=7,
+            ideal_max_tokens_ratio=1,
+            merge_below_ratio=0.0,
+            block_options={},
+        ),
+    )
+
+    chunks = saw(splitter, document)
+
+    assert [chunk.body for chunk in chunks] == ["Bo", "dy"]
+    assert all(chunk.token_count == 7 for chunk in chunks)
 
 
 def test_estimated_tokens_do_not_include_trailing_separator_for_last_block() -> None:
@@ -589,7 +614,7 @@ def test_estimated_tokens_do_not_use_tail_window_between_blocks() -> None:
     chunks = saw(splitter, document)
 
     assert len(chunks) == 1
-    assert chunks[0].estimated_token_count == chunks[0].token_count - len("\n\n")
+    assert chunks[0].estimated_token_count == chunks[0].token_count
     assert f"{long_block}\n\n" in tokenizer.counted
     assert f"{long_block[-64:]}\n\n" not in tokenizer.counted
 
@@ -638,7 +663,7 @@ def test_entry_merge_uses_tail_window_only_between_entry_groups() -> None:
 
     merged = splitter._merge_drafts(left, right)
 
-    assert merged.token_count == len("# A") + len(long_body + "\n\nb")
+    assert merged.token_count == len("# A\n\n") + len(long_body + "\n\nb")
     assert f"{long_body}\n\n" not in tokenizer.counted
     assert f"{long_body[-8:]}\n\n" in tokenizer.counted
 
@@ -870,8 +895,8 @@ def test_merge_below_ratio_does_not_merge_past_rendered_budget() -> None:
 
     chunks = saw(splitter, document)
 
-    assert [chunk.token_count for chunk in chunks] == [62, 11]
-    assert chunks[1].body == "x x\n\ny"
+    assert [chunk.token_count for chunk in chunks] == [60, 13]
+    assert chunks[1].body == "x x x\n\ny"
     assert all(chunk.estimated_token_count <= 62 for chunk in chunks)
 
 
@@ -1012,13 +1037,14 @@ def test_splitter_can_split_oversized_lists_by_default() -> None:
     chunks = saw(splitter, document)
 
     assert [chunk.body for chunk in chunks] == [
-        "- alpha alpha alpha",
-        "alpha",
+        "- alpha alpha",
+        "alpha alpha",
         "- beta beta beta",
         "beta",
-        "- gamma gamma gamma",
-        "gamma",
+        "- gamma gamma",
+        "gamma gamma",
     ]
+    assert all(chunk.token_count <= 20 for chunk in chunks)
     assert all(chunk.body_token_count <= 20 for chunk in chunks)
     assert all(chunk.estimated_token_count <= 22 for chunk in chunks)
 
@@ -1194,13 +1220,16 @@ def test_splitter_can_split_oversized_code_fences_when_enabled() -> None:
 
     chunks = saw(splitter, document)
 
-    assert [chunk.body for chunk in chunks] == [
-        '```python\nprint("alpha")\n```',
-        '```python\nprint("beta")\n```',
-        '```python\nprint("gamma")\n```',
-    ]
-    assert all(chunk.body_token_count <= 28 for chunk in chunks)
-    assert all(chunk.estimated_token_count <= 30 for chunk in chunks)
+    prefix = "```python\n"
+    suffix = "\n```"
+    assert all(chunk.body.startswith(prefix) for chunk in chunks)
+    assert all(chunk.body.endswith(suffix) for chunk in chunks)
+    assert (
+        "".join(chunk.body[len(prefix) : -len(suffix)] for chunk in chunks)
+        == document.root.blocks[0].attrs["literal"]
+    )
+    assert all(chunk.token_count <= 28 for chunk in chunks)
+    assert all(chunk.estimated_token_count <= 28 for chunk in chunks)
 
 
 def test_splitter_never_splits_oversized_urls() -> None:

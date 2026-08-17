@@ -184,6 +184,14 @@ class Chunk:
     end_line: int | None = None
 
 
+@dataclass(slots=True, frozen=True)
+class SplitResult:
+    """Document-level result of one complete splitting pipeline run."""
+
+    document: DocTree
+    chunks: list[Chunk]
+
+
 def render_heading_path(path: HeadingPath) -> str:
     """Render a full heading breadcrumb path as nested Markdown headings."""
 
@@ -254,6 +262,27 @@ class Entry:
     body_token_count: int = 0
 
 
+def render_draft_body(entries: list[Entry], external_headings: HeadingPath) -> str:
+    """Render draft entries while keeping external headings as metadata."""
+    parts: list[str] = []
+    previous_headings = external_headings
+    for entry in entries:
+        shared = common_heading_path((previous_headings, entry.headings))
+        if len(shared) < len(external_headings):
+            shared = external_headings
+        relative_headings = entry.headings[len(shared) :]
+        entry_parts: list[str] = []
+        if relative_headings:
+            entry_parts.append(render_heading_path(relative_headings))
+        if entry.body:
+            entry_parts.append(entry.body)
+        rendered = join_rendered_blocks(entry_parts)
+        if rendered:
+            parts.append(rendered)
+        previous_headings = entry.headings
+    return join_rendered_blocks(parts)
+
+
 @dataclass(slots=True)
 class ChunkDraft:
     """Intermediate split result holding grouped entries and a token estimate.
@@ -269,7 +298,8 @@ class ChunkDraft:
 
         headings_token_count: The token count for the chunk's full heading path.
         body_token_count: The token count for the chunk body (sum of entry body_token_count plus separator deltas).
-        token_count: Split-time sum of heading and body tokens.
+        token_count: Split-time sum of heading tokens, the external-heading
+            separator, and body tokens.
         split_origin: The split operation that produced this draft, for debugging/analysis.
         chunk_type: The draft content type (e.g. "paragraph", "code_block"), used for metadata.
 

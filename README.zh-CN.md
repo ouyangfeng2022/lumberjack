@@ -48,23 +48,26 @@ from pathlib import Path
 from lumberjack import Lumberjack
 
 jack = Lumberjack(max_tokens=1200)
-chunks = jack.saw(Path("handbook.md"))
+result = jack.saw(Path("handbook.md"))
 
-for chunk in chunks:
+for chunk in result.chunks:
     print(chunk.own_heading, chunk.body, chunk.token_count)
+
+print(result.document.metadata)
 ```
 
 内存中的内容可直接传入字符串。普通字符串始终表示内容，不会被当作文件路径：
 
 ```python
-chunks = Lumberjack(max_tokens=500).saw(
+result = Lumberjack(max_tokens=500).saw(
     "# Deployment\n\nDeploy the service with the approved release workflow."
 )
 ```
 
-每个结果都是 `Chunk` dataclass：`body` 是渲染后的正文；`ancestor_headings` 与
+`Lumberjack.saw()` 返回 `SplitResult`，其中包含解析后的 `DocTree` 和最终 `chunks`。
+每个 chunk 都是 `Chunk` dataclass：`body` 是渲染后的正文；`ancestor_headings` 与
 `own_heading` 保留 section 上下文；`token_count` 是输出处理后的最终计数。标题、来源路径和
-行号范围也会在可用时保留。
+行号范围会在可用时保留，文档 metadata 与 Markdown 引用定义可从 `result.document` 获取。
 
 ## 命令行使用
 

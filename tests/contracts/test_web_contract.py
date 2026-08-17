@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import inspect
 
-from lumberjack.web.routes import ChunkResponse, TextSplitRequest, split_file
+from lumberjack.web.routes import (
+    ChunkResponse,
+    SplitResponse,
+    TextSplitRequest,
+    split_file,
+)
 
 
 def test_text_request_defaults() -> None:
@@ -37,6 +42,16 @@ def test_chunk_response_fields_match_serialized_chunk() -> None:
         "document_path",
         "start_line",
         "end_line",
+    ]
+
+
+def test_split_response_preserves_document_level_fields() -> None:
+    assert list(SplitResponse.model_fields) == [
+        "document",
+        "metadata",
+        "reference_definitions",
+        "chunk_count",
+        "chunks",
     ]
 
 

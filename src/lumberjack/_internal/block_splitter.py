@@ -95,7 +95,7 @@ class BlockSplitter:
         literal = str(block.attrs.get("literal") or "")
         open_fence = f"```{info}".rstrip()
         close_fence = "```"
-        empty_render = f"{open_fence}\n{close_fence}"
+        empty_render = f"{open_fence}\n\n{close_fence}"
         wrapper_tokens = self.tokenizer.count(empty_render, cache=True)
         if wrapper_tokens >= max_tokens:
             return [(block.text, self.tokenizer.count(block.text, cache=True))]
@@ -346,13 +346,12 @@ class BlockSplitter:
         *,
         max_tokens: int,
     ) -> list[tuple[str, int]]:
-        # TODO: optimize
         text_tokens = self.tokenizer.count(text, cache=True)
         if text_tokens <= max_tokens:
             return [(text, text_tokens)]
 
         if any(
-            self.tokenizer.count(m.group(0)) > max_tokens
+            self.tokenizer.count(m.group(0), cache=True) > max_tokens
             for m in PROTECTED_SPAN_RE.finditer(text)
         ):
             return [(text, text_tokens)]
@@ -360,37 +359,55 @@ class BlockSplitter:
         for separator in ("\n\n", "\n"):
             parts = [part.strip() for part in text.split(separator) if part.strip()]
             if len(parts) > 1:
-                packed = self.pack_parts(
+                packed = self._pack_fitting_parts(
                     parts,
                     max_tokens,
                     separator=separator,
                 )
-                if all(tokens <= max_tokens for _, tokens in packed):
+                if packed is not None:
                     return packed
 
         sentence_parts = [
             part.strip() for part in SENTENCE_BREAK_RE.split(text) if part.strip()
         ]
         if len(sentence_parts) > 1:
-            packed = self.pack_parts(
+            packed = self._pack_fitting_parts(
                 sentence_parts,
                 max_tokens,
                 separator=" ",
             )
-            if all(tokens <= max_tokens for _, tokens in packed):
+            if packed is not None:
                 return packed
 
         word_parts = [part for part in text.split(" ") if part]
         if len(word_parts) > 1:
-            packed = self.pack_parts(
+            packed = self._pack_fitting_parts(
                 word_parts,
                 max_tokens,
                 separator=" ",
             )
-            if all(tokens <= max_tokens for _, tokens in packed):
+            if packed is not None:
                 return packed
 
         return self.hard_split(text, max_tokens)
+
+    def _pack_fitting_parts(
+        self,
+        parts: list[str],
+        max_tokens: int,
+        *,
+        separator: str,
+    ) -> list[tuple[str, int]] | None:
+        """Pack one fallback level only when every atomic part fits."""
+        part_token_counts = [self.tokenizer.count(part, cache=True) for part in parts]
+        if any(tokens > max_tokens for tokens in part_token_counts):
+            return None
+        return self.pack_parts(
+            parts,
+            max_tokens,
+            separator=separator,
+            part_token_counts=part_token_counts,
+        )
 
     def pack_parts(
         self,
@@ -398,12 +415,16 @@ class BlockSplitter:
         max_tokens: int,
         *,
         separator: str,
+        part_token_counts: list[int] | None = None,
     ) -> list[tuple[str, int]]:
+        if part_token_counts is not None and len(part_token_counts) != len(parts):
+            raise ValueError("part_token_counts must match parts")
+
         packed: list[tuple[str, int]] = []
         current_parts: list[str] = []
         current_joined = ""
         current_tokens = 0
-        for part in parts:
+        for index, part in enumerate(parts):
             candidate_text = (
                 current_joined + separator + part if current_joined else part
             )
@@ -412,7 +433,11 @@ class BlockSplitter:
                 packed.append((current_joined, current_tokens))
                 current_parts = [part]
                 current_joined = part
-                current_tokens = self.tokenizer.count(part, cache=True)
+                current_tokens = (
+                    part_token_counts[index]
+                    if part_token_counts is not None
+                    else self.tokenizer.count(part, cache=True)
+                )
             else:
                 current_parts.append(part)
                 current_joined = candidate_text
@@ -426,21 +451,54 @@ class BlockSplitter:
         text: str,
         max_tokens: int,
     ) -> list[tuple[str, int]]:
-        parts: list[str] = []
-        current = ""
-        for character in text:
-            candidate = f"{current}{character}"
-            if current and self.tokenizer.count(candidate) > max_tokens:
-                parts.append(current)
-                current = character
-            else:
-                current = candidate
-        if current:
-            parts.append(current)
+        """Split with bounded prefix searches instead of growing recounts."""
         result: list[tuple[str, int]] = []
-        for part in parts:
-            stripped = part.strip()
-            if not stripped:
-                continue
-            result.append((stripped, self.tokenizer.count(stripped, cache=True)))
+        start = 0
+
+        while start < len(text):
+            lower = start
+            step = 1
+            upper = min(len(text), start + step)
+
+            while upper < len(text):
+                if self.tokenizer.count(text[start:upper], cache=True) > max_tokens:
+                    break
+                lower = upper
+                step *= 2
+                upper = min(len(text), start + step)
+
+            if upper == len(text) and (
+                self.tokenizer.count(text[start:upper], cache=True) <= max_tokens
+            ):
+                lower = upper
+
+            if lower == start and (
+                self.tokenizer.count(text[start : start + 1], cache=True) > max_tokens
+            ):
+                lower = start + 1
+
+            if lower < upper and lower < len(text):
+                left = max(start + 1, lower + 1)
+                right = upper
+                best = lower
+                while left <= right:
+                    middle = (left + right) // 2
+                    if (
+                        self.tokenizer.count(text[start:middle], cache=True)
+                        <= max_tokens
+                    ):
+                        best = middle
+                        left = middle + 1
+                    else:
+                        right = middle - 1
+                lower = best
+
+            if lower == start:
+                lower = start + 1
+
+            piece = text[start:lower].strip()
+            if piece:
+                result.append((piece, self.tokenizer.count(piece, cache=True)))
+            start = lower
+
         return result

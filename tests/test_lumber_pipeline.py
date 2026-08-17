@@ -93,10 +93,11 @@ def test_lumberjack_calls_custom_stages_in_order() -> None:
         transformer=TextTransformer(),
     )
 
-    chunks = jack.saw(Document("ignored"))
+    result = jack.saw(Document("ignored"))
 
     assert calls == ["parse", "split", "normalize", "transform"]
-    assert chunks[0].body == "BODY"
+    assert result.document is doc_tree
+    assert result.chunks[0].body == "BODY"
 
 
 def test_lumberjack_rejects_a_splitter_using_a_different_tokenizer() -> None:

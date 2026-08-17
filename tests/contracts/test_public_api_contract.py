@@ -11,6 +11,7 @@ from lumberjack.models import (
     DocTree,
     DocumentBlock,
     DocumentInline,
+    SplitResult,
 )
 from lumberjack.normalizer import TextNormalizer
 from lumberjack.parser import AutoParser, DocxParser, HTMLParser, MarkdownParser
@@ -37,6 +38,7 @@ def test_public_lumber_pipeline_components() -> None:
     assert SiblingSplitter and ExactSiblingSplitter and ApproxByteTokenizer
     assert TextNormalizer and TextTransformer and PlainTextTransformer
     assert DocTree and ChunkDraft and Chunk and DocumentBlock and DocumentInline
+    assert SplitResult
     assert ParserProtocol and SplitterProtocol and TokenizerProtocol
     assert TextNormalizerProtocol and TextTransformerProtocol
 

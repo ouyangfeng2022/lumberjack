@@ -2,14 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from ._internal.rendering import RENDER_SEPARATOR, join_rendered_blocks
+from ._internal.rendering import RENDER_SEPARATOR
 from .models import (
     Chunk,
     ChunkDraft,
     DocTree,
-    Entry,
-    HeadingPath,
-    common_heading_path,
+    render_draft_body,
     render_heading_path,
 )
 from .normalizer import TextNormalizer
@@ -19,27 +17,6 @@ from .protocols import (
     TokenizerProtocol,
 )
 from .transformer import TextTransformer
-
-
-def render_draft_body(entries: list[Entry], external_headings: HeadingPath) -> str:
-    """Render a draft body while keeping its external headings as metadata."""
-    parts: list[str] = []
-    previous_headings = external_headings
-    for entry in entries:
-        shared = common_heading_path((previous_headings, entry.headings))
-        if len(shared) < len(external_headings):
-            shared = external_headings
-        relative_headings = entry.headings[len(shared) :]
-        entry_parts: list[str] = []
-        if relative_headings:
-            entry_parts.append(render_heading_path(relative_headings))
-        if entry.body:
-            entry_parts.append(entry.body)
-        rendered = join_rendered_blocks(entry_parts)
-        if rendered:
-            parts.append(rendered)
-        previous_headings = entry.headings
-    return join_rendered_blocks(parts)
 
 
 class ChunkFinalizer:

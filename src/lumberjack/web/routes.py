@@ -12,11 +12,12 @@ from lumberjack._internal.options import (
     parse_block_config_json,
     parse_block_config_mapping,
 )
-from lumberjack._internal.pipeline import split_source
+from lumberjack._internal.pipeline import TokenizerRegistry, split_source
 from lumberjack.block import BlockOption
 from lumberjack.parser import InputFormat
 
 router = APIRouter()
+_TOKENIZERS = TokenizerRegistry()
 
 TokenizerName = Literal["approx", "tiktoken", "transformers"]
 SplitterName = Literal[
@@ -35,9 +36,9 @@ SplitterName = Literal[
 class TextSplitRequest(BaseModel):
     text: str
     input_format: Literal["markdown", "html"] = "markdown"
-    max_tokens: int = 1200
-    ideal_max_tokens_ratio: float = 0.8
-    merge_below_ratio: float = 0.125
+    max_tokens: int = PydanticField(1200, gt=0)
+    ideal_max_tokens_ratio: float = PydanticField(0.8, gt=0, le=1)
+    merge_below_ratio: float = PydanticField(0.125, ge=0, lt=1)
     skip_empty_sections: bool = True
     heading_sensitive: bool = True
     block_configs: dict[str, Any] | None = None
@@ -52,7 +53,7 @@ class TextSplitRequest(BaseModel):
             "incremental measurement; exact-* names fully recount candidates."
         ),
     )
-    max_heading_level: int | None = None
+    max_heading_level: int | None = PydanticField(None, ge=0)
 
 
 class ChunkResponse(BaseModel):
@@ -74,8 +75,16 @@ class ChunkResponse(BaseModel):
 
 class SplitResponse(BaseModel):
     document: str
+    metadata: dict[str, Any]
+    reference_definitions: dict[str, dict[str, str]]
     chunk_count: int
     chunks: list[ChunkResponse]
+
+
+def _pipeline_http_error(error: Exception) -> HTTPException:
+    if isinstance(error, (ImportError, UnicodeDecodeError, ValueError)):
+        return HTTPException(status_code=400, detail=str(error))
+    return HTTPException(status_code=500, detail="Internal split pipeline error")
 
 
 def _parse_block_configs(
@@ -102,7 +111,7 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
     block_options = _parse_block_configs(payload.block_configs)
 
     try:
-        chunks = split_source(
+        result = split_source(
             payload.text,
             format=payload.input_format,
             max_tokens=payload.max_tokens,
@@ -111,17 +120,19 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
             skip_empty_sections=payload.skip_empty_sections,
             heading_sensitive=payload.heading_sensitive,
             block_options=block_options,
-            tokenizer=payload.tokenizer,
+            tokenizer=_TOKENIZERS.create(payload.tokenizer),
             splitter=payload.splitter,
             max_heading_level=payload.max_heading_level,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise _pipeline_http_error(e) from e
 
     return SplitResponse(
-        document=chunks[0].document_title if chunks else "Anonymous",
-        chunk_count=len(chunks),
-        chunks=[ChunkResponse(**asdict(c)) for c in chunks],
+        document=result.document.title,
+        metadata=result.document.metadata,
+        reference_definitions=result.document.reference_definitions,
+        chunk_count=len(result.chunks),
+        chunks=[ChunkResponse(**asdict(c)) for c in result.chunks],
     )
 
 
@@ -129,9 +140,9 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
 async def split_file(
     file: UploadFile = File(...),  # noqa: B008
     input_format: Literal["auto", "markdown", "html", "docx"] = Form("auto"),
-    max_tokens: int = Form(1200),
-    ideal_max_tokens_ratio: float = Form(0.8),
-    merge_below_ratio: float = Form(0.125),
+    max_tokens: int = Form(1200, gt=0),
+    ideal_max_tokens_ratio: float = Form(0.8, gt=0, le=1),
+    merge_below_ratio: float = Form(0.125, ge=0, lt=1),
     skip_empty_sections: bool = Form(True),
     heading_sensitive: bool = Form(True),
     block_configs: str = Form(""),
@@ -145,7 +156,7 @@ async def split_file(
             "incremental measurement; exact-* names fully recount candidates."
         ),
     ),
-    max_heading_level: int | None = Form(None),
+    max_heading_level: int | None = Form(None, ge=0),
 ) -> SplitResponse:
     """Split an uploaded file (Markdown, HTML, or DOCX) into chunks.
 
@@ -160,15 +171,14 @@ async def split_file(
         else detect_format_from_filename(file.filename or "")
     )
 
-    if fmt == "docx":
-        content = raw  # preserve binary input for the parseing stage
-    else:
-        content = raw.decode("utf-8")
-
     block_options = _parse_form_block_configs(block_configs)
 
     try:
-        chunks = split_source(
+        if fmt == "docx":
+            content = raw
+        else:
+            content = raw.decode("utf-8")
+        result = split_source(
             content,
             format=cast(InputFormat, fmt),
             document_title=file.filename,
@@ -179,15 +189,17 @@ async def split_file(
             skip_empty_sections=skip_empty_sections,
             heading_sensitive=heading_sensitive,
             block_options=block_options,
-            tokenizer=tokenizer,
+            tokenizer=_TOKENIZERS.create(tokenizer),
             splitter=splitter,
             max_heading_level=max_heading_level,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise _pipeline_http_error(e) from e
 
     return SplitResponse(
-        document=chunks[0].document_title if chunks else "Anonymous",
-        chunk_count=len(chunks),
-        chunks=[ChunkResponse(**asdict(c)) for c in chunks],
+        document=result.document.title,
+        metadata=result.document.metadata,
+        reference_definitions=result.document.reference_definitions,
+        chunk_count=len(result.chunks),
+        chunks=[ChunkResponse(**asdict(c)) for c in result.chunks],
     )

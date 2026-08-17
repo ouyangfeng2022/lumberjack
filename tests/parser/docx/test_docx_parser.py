@@ -79,18 +79,18 @@ def test_docx_parser_block_kinds() -> None:
 
 
 def test_docx_lumber_integration() -> None:
-    chunks = Lumberjack(max_tokens=500).saw(
+    result = Lumberjack(max_tokens=500).saw(
         FIXTURES_ROOT / "sample.docx",
     )
-    assert len(chunks) >= 1
-    assert chunks[0].document_title == "Test Document"
-    assert all(chunk.body for chunk in chunks)
+    assert len(result.chunks) >= 1
+    assert result.document.title == "Test Document"
+    assert all(chunk.body for chunk in result.chunks)
 
 
 def test_docx_lumber_bytes_input() -> None:
-    chunks = Lumberjack(max_tokens=500).saw(SAMPLE_DOCX, format="docx")
-    assert len(chunks) >= 1
-    assert chunks[0].document_title == "Test Document"
+    result = Lumberjack(max_tokens=500).saw(SAMPLE_DOCX, format="docx")
+    assert len(result.chunks) >= 1
+    assert result.document.title == "Test Document"
 
 
 def test_docx_through_splitter() -> None:

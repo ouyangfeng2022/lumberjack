@@ -25,9 +25,12 @@ Tokenizer choice and counting mode are independent: for example,
 Chunks retain `ancestor_headings` and `own_heading` as metadata. The
 `heading_sensitive` option controls whether external heading-path tokens count
 toward the splitter's budget; it does not remove the returned heading metadata.
+Budget calculations include the tokenized blank-line separator between the
+external heading path and body, matching final chunk counts.
 
 Oversized text falls back from paragraph breaks to line breaks, sentences,
 words, and finally hard splits. Fenced code blocks remain intact by default.
+Explicitly non-splittable blocks and protected URL spans may exceed the budget.
 The default `merge_below_ratio` of `0.125` lets the sibling and subtree
 splitters merge a small same-heading text tail when the merged result fits; set
 it to `0` to disable this behavior. The section splitter does not collapse

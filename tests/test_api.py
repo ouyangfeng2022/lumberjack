@@ -30,16 +30,16 @@ def test_package_exports_lumberjack_and_document_at_top_level() -> None:
 
 
 def test_lumberjack_saw_splits_markdown() -> None:
-    chunks = Lumberjack(max_tokens=100).saw("# Guide\n\nHello world")
-    assert chunks
-    assert chunks[0].document_title == "Guide"
-    assert "Hello world" in chunks[0].body
+    result = Lumberjack(max_tokens=100).saw("# Guide\n\nHello world")
+    assert result.document.title == "Guide"
+    assert result.chunks
+    assert "Hello world" in result.chunks[0].body
 
 
 def test_lumberjack_auto_detects_path_and_sets_document_path() -> None:
-    chunks = Lumberjack(max_tokens=500).saw(MARKDOWN_PATH)
-    assert chunks
-    assert all(chunk.document_path == str(MARKDOWN_PATH) for chunk in chunks)
+    result = Lumberjack(max_tokens=500).saw(MARKDOWN_PATH)
+    assert result.chunks
+    assert all(chunk.document_path == str(MARKDOWN_PATH) for chunk in result.chunks)
 
 
 @pytest.mark.parametrize(
@@ -76,10 +76,10 @@ def test_auto_parser_detects_docx_path_and_metadata_override() -> None:
 
 
 def test_lumberjack_accepts_docx_bytes() -> None:
-    chunks = Lumberjack(max_tokens=500).saw(DOCX_PATH.read_bytes())
-    assert chunks
-    assert chunks[0].document_title == "Test Document"
-    assert any("Introduction" in chunk.body for chunk in chunks)
+    result = Lumberjack(max_tokens=500).saw(DOCX_PATH.read_bytes())
+    assert result.chunks
+    assert result.document.title == "Test Document"
+    assert any("Introduction" in chunk.body for chunk in result.chunks)
 
 
 def test_auto_parser_treats_string_as_content_not_path(tmp_path: Path) -> None:

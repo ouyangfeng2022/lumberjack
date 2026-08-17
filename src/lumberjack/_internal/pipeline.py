@@ -1,14 +1,24 @@
-"""Private adapter shared by the CLI and Web API."""
+"""Private pipeline assembly shared by Python, CLI, and Web interfaces."""
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
 
 from ..block import BlockOption
 from ..finalizer import ChunkFinalizer
-from ..models import Chunk, Document, InputFormat
+from ..models import Document, InputFormat, SplitResult
+from ..normalizer import TextNormalizer
 from ..parser import AutoParser
+from ..protocols import (
+    ParserProtocol,
+    SplitterProtocol,
+    TextNormalizerProtocol,
+    TextTransformerProtocol,
+    TokenizerProtocol,
+)
 from ..splitter import (
     ExactSectionSplitter,
     ExactSiblingSplitter,
@@ -22,6 +32,7 @@ from ..tokenizer import (
     TiktokenTokenizer,
     TransformersTokenizer,
 )
+from ..transformer import TextTransformer
 
 _SPLITTERS = {
     "sibling": SiblingSplitter,
@@ -36,15 +47,124 @@ _SPLITTERS = {
 }
 
 
-def _tokenizer(name: str):
-    normalized = name.strip().lower()
+class TokenizerRegistry:
+    """Reuse expensive tokenizer backends while keeping text caches isolated."""
+
+    def __init__(self) -> None:
+        self._templates: dict[str, TiktokenTokenizer | TransformersTokenizer] = {}
+        self._lock = Lock()
+
+    def create(self, name: str) -> TokenizerProtocol:
+        normalized = name.strip().lower()
+        if normalized == "approx":
+            return ApproxByteTokenizer()
+        if normalized not in {"tiktoken", "transformers"}:
+            raise ValueError(f"Unsupported tokenizer: {name}")
+
+        with self._lock:
+            template = self._templates.get(normalized)
+            if template is None:
+                template = (
+                    TiktokenTokenizer()
+                    if normalized == "tiktoken"
+                    else TransformersTokenizer()
+                )
+                self._templates[normalized] = template
+        return template.with_fresh_cache()
+
+
+def _tokenizer(selection: TokenizerProtocol | str | None) -> TokenizerProtocol:
+    if selection is None:
+        return ApproxByteTokenizer()
+    if not isinstance(selection, str):
+        return selection
+    normalized = selection.strip().lower()
     if normalized == "approx":
         return ApproxByteTokenizer()
     if normalized == "tiktoken":
         return TiktokenTokenizer()
     if normalized == "transformers":
         return TransformersTokenizer()
-    raise ValueError(f"Unsupported tokenizer: {name}")
+    raise ValueError(f"Unsupported tokenizer: {selection}")
+
+
+@dataclass(slots=True)
+class Pipeline:
+    """Resolved components for one reusable document pipeline."""
+
+    tokenizer: TokenizerProtocol
+    parser: ParserProtocol
+    splitter: SplitterProtocol
+    finalizer: ChunkFinalizer
+
+    def run(self, document: Document) -> SplitResult:
+        doc_tree = self.parser.parse(document)
+        drafts = self.splitter.split(doc_tree)
+        chunks = self.finalizer.finalize(doc_tree, drafts)
+        return SplitResult(document=doc_tree, chunks=chunks)
+
+
+def build_pipeline(
+    *,
+    tokenizer: TokenizerProtocol | str | None = None,
+    parser: ParserProtocol | None = None,
+    splitter: SplitterProtocol | str | None = None,
+    normalizer: TextNormalizerProtocol | None = None,
+    transformer: TextTransformerProtocol | None = None,
+    max_tokens: int = 1200,
+    ideal_max_tokens_ratio: float = 0.8,
+    merge_below_ratio: float = 0.125,
+    skip_empty_sections: bool = True,
+    heading_sensitive: bool = True,
+    max_heading_level: int | None = None,
+    block_options: Iterable[BlockOption] | None = None,
+) -> Pipeline:
+    """Validate selections and assemble the canonical component pipeline."""
+    if tokenizer is None and splitter is not None and not isinstance(splitter, str):
+        tokenizer_impl = splitter.tokenizer
+    else:
+        tokenizer_impl = _tokenizer(tokenizer)
+
+    if splitter is None:
+        splitter_name = "sibling"
+    elif isinstance(splitter, str):
+        splitter_name = splitter.strip().lower()
+    else:
+        splitter_name = None
+
+    if splitter_name is not None:
+        splitter_class = _SPLITTERS.get(splitter_name)
+        if splitter_class is None:
+            raise ValueError(f"Unsupported splitter: {splitter}")
+        splitter_impl = splitter_class(
+            tokenizer_impl,
+            max_tokens=max_tokens,
+            ideal_max_tokens_ratio=ideal_max_tokens_ratio,
+            merge_below_ratio=merge_below_ratio,
+            skip_empty_sections=skip_empty_sections,
+            heading_sensitive=heading_sensitive,
+            max_heading_level=max_heading_level,
+            block_options=block_options,
+        )
+    else:
+        assert splitter is not None and not isinstance(splitter, str)
+        splitter_impl = splitter
+        if splitter_impl.tokenizer is not tokenizer_impl:
+            raise ValueError(
+                "splitter and finalizer must share the same tokenizer instance"
+            )
+
+    return Pipeline(
+        tokenizer=tokenizer_impl,
+        parser=parser if parser is not None else AutoParser(),
+        splitter=splitter_impl,
+        finalizer=ChunkFinalizer(
+            tokenizer_impl,
+            normalizer=normalizer if normalizer is not None else TextNormalizer(),
+            transformer=(transformer if transformer is not None else TextTransformer()),
+            skip_empty_sections=skip_empty_sections,
+        ),
+    )
 
 
 def split_source(
@@ -54,8 +174,8 @@ def split_source(
     document_title: str | None = None,
     metadata_overrides: Mapping[str, object] | None = None,
     source_path: str | Path | None = None,
-    tokenizer: str = "approx",
-    splitter: str = "sibling",
+    tokenizer: TokenizerProtocol | str = "approx",
+    splitter: SplitterProtocol | str = "sibling",
     max_tokens: int = 1200,
     ideal_max_tokens_ratio: float = 0.8,
     merge_below_ratio: float = 0.125,
@@ -63,10 +183,20 @@ def split_source(
     heading_sensitive: bool = True,
     max_heading_level: int | None = None,
     block_options: Iterable[BlockOption] | None = None,
-) -> list[Chunk]:
+) -> SplitResult:
     """Run the configurable built-in pipeline for non-Python interfaces."""
-    parser_impl = AutoParser()
-    document = parser_impl.parse(
+    pipeline = build_pipeline(
+        tokenizer=tokenizer,
+        splitter=splitter,
+        max_tokens=max_tokens,
+        ideal_max_tokens_ratio=ideal_max_tokens_ratio,
+        merge_below_ratio=merge_below_ratio,
+        skip_empty_sections=skip_empty_sections,
+        heading_sensitive=heading_sensitive,
+        max_heading_level=max_heading_level,
+        block_options=block_options,
+    )
+    return pipeline.run(
         Document(
             source=source,
             format=format,
@@ -75,46 +205,14 @@ def split_source(
             source_path=source_path,
         )
     )
-    tokenizer_impl = _tokenizer(tokenizer)
-    normalized_splitter = splitter.strip().lower()
-    if normalized_splitter not in _SPLITTERS:
-        raise ValueError(f"Unsupported splitter: {splitter}")
-    common = {
-        "max_tokens": max_tokens,
-        "ideal_max_tokens_ratio": ideal_max_tokens_ratio,
-        "skip_empty_sections": skip_empty_sections,
-        "heading_sensitive": heading_sensitive,
-        "max_heading_level": max_heading_level,
-        "block_options": block_options,
-    }
-    if normalized_splitter in {"sibling", "incremental-sibling"}:
-        splitter_impl = SiblingSplitter(
-            tokenizer_impl, merge_below_ratio=merge_below_ratio, **common
-        )
-    elif normalized_splitter == "exact-sibling":
-        splitter_impl = ExactSiblingSplitter(
-            tokenizer_impl, merge_below_ratio=merge_below_ratio, **common
-        )
-    elif normalized_splitter in {"subtree", "incremental-subtree"}:
-        splitter_impl = SubtreeSplitter(
-            tokenizer_impl, merge_below_ratio=merge_below_ratio, **common
-        )
-    elif normalized_splitter == "exact-subtree":
-        splitter_impl = ExactSubtreeSplitter(
-            tokenizer_impl, merge_below_ratio=merge_below_ratio, **common
-        )
-    elif normalized_splitter in {"section", "incremental-section"}:
-        splitter_impl = SectionSplitter(
-            tokenizer_impl, merge_below_ratio=merge_below_ratio, **common
-        )
-    else:
-        splitter_impl = ExactSectionSplitter(
-            tokenizer_impl, merge_below_ratio=merge_below_ratio, **common
-        )
-    drafts = splitter_impl.split(document)
-    return ChunkFinalizer(
-        tokenizer_impl, skip_empty_sections=skip_empty_sections
-    ).finalize(document, drafts)
 
 
 BUILTIN_SPLITTER_NAMES = tuple(_SPLITTERS)
+
+__all__ = [
+    "BUILTIN_SPLITTER_NAMES",
+    "Pipeline",
+    "TokenizerRegistry",
+    "build_pipeline",
+    "split_source",
+]

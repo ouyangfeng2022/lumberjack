@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added the real `ChunkFinalizer`, `TextNormalizer`, and `TextTransformer` stages. Splitter implementations now return unfinished `ChunkDraft` objects; `ChunkFinalizer` renders and post-processes them, performs authoritative final measurement, and produces `Chunk` objects.
 - Added opt-in `PlainTextTransformer` for removing common Markdown and HTML surface syntax. The default TextNormalizer and TextTransformer only normalize line endings, BOM/NUL characters, and repeated blank separators.
+- Added `SplitResult`, which returns the parsed `DocTree` together with final chunks so document metadata and Markdown reference definitions remain available after splitting.
 
 ### Changed
 
@@ -20,10 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SectionSplitter` applies `merge_below_ratio` bottom-up to adjacent same-heading text tails produced while splitting oversized blocks, without subtree collapse or non-text draft merging.
 - **Breaking:** Chunk headings are now separated into `ancestor_headings` and an optional singular `own_heading`; external headings are never rendered in `body`, while headings for merged internal sections remain in the body.
 - **Breaking:** Replaced `render_headings` with `heading_sensitive`, which controls whether external heading tokens count toward split budgets. Chunks now report separate `headings_token_count` and `body_token_count`; `token_count` also includes `tokenizer.count("\n\n")` for the separator between them.
+- **Breaking:** `Lumberjack.saw()` and the private CLI/Web pipeline now return `SplitResult` instead of a bare chunk list. CLI and Web JSON responses include document `metadata` and `reference_definitions`.
+- Web requests reuse expensive tokenizer model backends while retaining an independent LRU text cache for each request.
+- Oversized-text fallback uses bounded prefix searches and avoids packing fallback levels containing an already-oversized atomic part.
 
 ### Fixed
 
 - Default Markdown post-processing now preserves trailing whitespace, including hard line breaks and whitespace in fenced code blocks.
+- Split-time budgets now include the tokenized separator between external headings and chunk bodies, matching final `Chunk.token_count` calculations.
+- Web budget parameters now have request-boundary validation, and invalid input or unavailable requested tokenizer dependencies return client errors instead of internal-server details.
 
 ## [0.3.0] - 2026-07-22
 

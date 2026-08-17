@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from lumberjack.block import BlockKind, BlockOption, normalize_block_options
 
 from .._internal.block_splitter import BlockSplitter
-from .._internal.rendering import join_rendered_blocks
+from .._internal.rendering import RENDER_SEPARATOR, join_rendered_blocks
 from ..models import (
     ChunkDraft,
     DocTree,
@@ -15,6 +15,7 @@ from ..models import (
     HeadingPath,
     SectionNode,
     common_heading_path,
+    render_draft_body,
     render_heading_path,
 )
 from ..protocols import TokenizerProtocol
@@ -60,6 +61,7 @@ class BaseSplitter:
         self.heading_sensitive = heading_sensitive
         self.max_heading_level = max_heading_level
         self.block_options = normalize_block_options(block_options)
+        self.separator_token_count = self.tokenizer.count(RENDER_SEPARATOR, cache=True)
         self.standalone_kinds = frozenset(
             kind for kind, config in self.block_options.items() if config.isolated
         )
@@ -81,36 +83,6 @@ class BaseSplitter:
             return 0
         return self.tokenizer.count(render_heading_path(path), cache=True)
 
-    def _render_body(
-        self,
-        entries: list[Entry],
-        *,
-        external_headings: HeadingPath,
-    ) -> str:
-        """Render entries into Markdown body content."""
-        if not entries:
-            return ""
-
-        parts: list[str] = []
-        previous_headings = external_headings
-        for entry in entries:
-            shared_headings = common_heading_path((previous_headings, entry.headings))
-            if len(shared_headings) < len(external_headings):
-                shared_headings = external_headings
-            relative_headings = entry.headings[len(shared_headings) :]
-
-            entry_parts: list[str] = []
-            if relative_headings:
-                entry_parts.append(render_heading_path(relative_headings))
-            if entry.body:
-                entry_parts.append(entry.body)
-            rendered = join_rendered_blocks(entry_parts)
-            if rendered:
-                parts.append(rendered)
-            previous_headings = entry.headings
-
-        return join_rendered_blocks(parts)
-
     def _rendered_token_count(
         self,
         entries: list[Entry],
@@ -121,8 +93,20 @@ class BaseSplitter:
         if external_headings is None:
             external_headings = common_heading_path(entry.headings for entry in entries)
         return self.tokenizer.count(
-            self._render_body(entries, external_headings=external_headings), cache=True
+            render_draft_body(entries, external_headings), cache=True
         )
+
+    def _chunk_token_count(
+        self,
+        headings_token_count: int,
+        body_token_count: int,
+    ) -> int:
+        """Return the canonical separated-heading chunk token count."""
+        return headings_token_count + self.separator_token_count + body_token_count
+
+    def _body_budget_tokens(self, draft: ChunkDraft) -> int:
+        """Return body plus the mandatory external-heading separator cost."""
+        return self.separator_token_count + draft.body_token_count
 
     def _heading_budget_token_count(self, path: HeadingPath) -> int:
         """Canonical Markdown token count for a draft's external heading path."""

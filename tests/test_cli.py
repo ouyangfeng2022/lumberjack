@@ -34,4 +34,6 @@ def test_cli_validates_block_configs_against_detected_html_format(
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["document"] == "Guide"
+    assert payload["metadata"] == {}
+    assert payload["reference_definitions"] == {}
     assert payload["chunk_count"] >= 1

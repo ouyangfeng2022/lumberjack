@@ -310,12 +310,12 @@ class TestComponentTokenizerSelection:
     def test_minimal_lumber_uses_approx(self) -> None:
         from lumberjack import Lumberjack
 
-        chunks = Lumberjack().saw("# T\n\nbody\n")
-        assert chunks
-        assert chunks[0].token_count == (
-            chunks[0].headings_token_count
+        result = Lumberjack().saw("# T\n\nbody\n")
+        assert result.chunks
+        assert result.chunks[0].token_count == (
+            result.chunks[0].headings_token_count
             + create_tokenizer("approx").count("\n\n", cache=True)
-            + chunks[0].body_token_count
+            + result.chunks[0].body_token_count
         )
 
     def test_manual_pipeline_accepts_tiktoken(self, _local_tiktoken) -> None:

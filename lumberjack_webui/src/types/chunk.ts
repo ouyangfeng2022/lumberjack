@@ -17,6 +17,11 @@ export interface ChunkData {
 
 export interface SplitResponse {
   document: string;
+  metadata: Record<string, unknown>;
+  reference_definitions: Record<
+    string,
+    { destination: string; title: string }
+  >;
   chunk_count: number;
   chunks: ChunkData[];
 }

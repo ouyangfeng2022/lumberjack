@@ -54,7 +54,7 @@ from lumberjack.tokenizer import ApproxByteTokenizer
 tokenizer = ApproxByteTokenizer()
 parser = MarkdownItParser(plugins=(tasklists_plugin,))
 document = parser.parse("- [x] done", document_title="tasks.md")
-drafts = SiblingSplitter(tokenizer).saw(document)
+drafts = SiblingSplitter(tokenizer).split(document)
 chunks = ChunkFinalizer(tokenizer).finalize(document, drafts)
 ```
 
