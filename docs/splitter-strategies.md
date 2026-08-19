@@ -1,5 +1,7 @@
 # Splitter strategies
 
+[中文](splitter-strategies.zh-CN.md)
+
 Lumberjack supports Markdown, HTML, and DOCX through the same `DocTree` and
 offers three structure-aware splitters. Each splitter respects `max_tokens` and
 uses the configured tokenizer for final chunk counts.

@@ -1,0 +1,82 @@
+site_name: Lumberjack
+site_description: Structure-aware Markdown, HTML, and DOCX chunking for RAG preprocessing.
+site_url: https://ouyangfeng2022.github.io/lumberjack/
+repo_url: https://github.com/ouyangfeng2022/lumberjack
+repo_name: ouyangfeng2022/lumberjack
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.footer
+    - navigation.indexes
+    - navigation.sections
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: green
+      accent: lime
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: green
+      accent: lime
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - tables
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: false
+            separate_signature: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Installation: getting-started/installation.md
+      - Quickstart: getting-started/quickstart.md
+  - Concepts:
+      - Pipeline and rendering: concepts/pipeline.md
+      - Splitting and counting: concepts/splitting.md
+      - Splitter strategies: splitter-strategies.md
+      - Chunks and provenance: concepts/chunks.md
+  - Guides:
+      - Configuration: guides/configuration.md
+      - Custom components: guides/custom-components.md
+  - Reference:
+      - Python API: reference/python.md
+      - CLI: reference/cli.md
+      - Web API: reference/web-api.md
+  - 中文:
+      - 首页: zh-CN/index.md
+      - 快速入门:
+          - 安装: zh-CN/getting-started/installation.md
+          - 快速开始: zh-CN/getting-started/quickstart.md
+      - 核心概念:
+          - 流水线与规范化渲染: zh-CN/concepts/pipeline.md
+          - 拆分与计量: zh-CN/concepts/splitting.md
+          - Splitter 策略: splitter-strategies.zh-CN.md
+          - Chunk 与来源信息: zh-CN/concepts/chunks.md
+      - 指南:
+          - 配置: zh-CN/guides/configuration.md
+          - 自定义组件: zh-CN/guides/custom-components.md
+      - 参考:
+          - Python API: zh-CN/reference/python.md
+          - CLI: zh-CN/reference/cli.md
+          - Web API: zh-CN/reference/web-api.md

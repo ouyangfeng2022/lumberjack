@@ -511,14 +511,14 @@ class MarkdownItParser(ParserProtocol):
         """Parse raw Markdown text into a ``DocTree`` with section tree and reference definitions.
 
         Args:
-            data: Raw Markdown text to parse.
+            document: A ``Document`` or raw Markdown text to parse.
             document_title: Optional override for the document title.
             metadata_overrides: Semantic metadata that overrides values parsed
                 from front matter.
             source_path: Optional source provenance stored separately from metadata.
 
         Raises:
-            TypeError: If ``data`` is not a ``str``.
+            TypeError: If the resolved document source is not a ``str``.
         """
         if not isinstance(document, Document):
             document = Document(

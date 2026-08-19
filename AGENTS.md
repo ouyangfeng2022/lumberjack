@@ -242,6 +242,64 @@ In short: if a user reading the changelog would not care about the change, it do
 
 Package versions are managed by Git tags through `hatch-vcs` (`dynamic = ["version"]` with `[tool.hatch.version] source = "vcs"` in `pyproject.toml`). Do not maintain a separate hard-coded package version unless the versioning strategy is deliberately changed.
 
+### PyPI release runbook
+
+The PyPI distribution is **`lumberjack-py`**. Keep the Python import package
+(`lumberjack`) and CLI commands (`lumber`, `lumberjack-serve`) unchanged. Update
+the distribution name consistently in `pyproject.toml`, README install commands,
+badges, TestPyPI/PyPI URLs, extras' self-reference, artifact tests, and
+`CHANGELOG.md`.
+
+One-time remote configuration:
+
+- Create PyPI and TestPyPI **pending trusted publishers** for `lumberjack-py`.
+  Both use owner `ouyangfeng2022`, repository `lumberjack`; PyPI uses
+  `release.yml` / `pypi`, and TestPyPI uses `test-release.yml` / `testpypi`.
+- The GitHub `pypi` environment must permit only `v*` tags. The `testpypi`
+  environment must permit `main` and `v*` tags, because its workflow is
+  manually dispatched.
+- Never store a long-lived PyPI token. The workflows use OIDC
+  (`id-token: write`) and upload/download the built distributions as artifacts.
+
+Release procedure:
+
+1. Complete the normal verification: `uv run ty check .`, `uv run ruff check .`,
+   `uv run ruff format --check .`, `uv run pytest -q`, frontend lint/build, then
+   `uv build`, `twine check`, and distribution-content tests.
+2. Move user-visible `CHANGELOG.md` entries from `Unreleased` into the intended
+   stable version section. Commit and push the release preparation.
+3. Test first on TestPyPI with an annotated RC tag such as `v0.4.0rc1`; manually
+   dispatch `test-release.yml` using that tag. Install the exact candidate from
+   TestPyPI in a new virtual environment and verify the import, `lumber --help`,
+   and a basic `Lumberjack().saw()` call.
+4. Do **not** put the RC and stable tag on the same commit. With `hatch-vcs`, a
+   stable tag sharing a commit with `vX.Y.ZrcN` can build the RC version instead.
+   Create a distinct release commit (an intentional empty release commit is
+   acceptable) before annotating and pushing the stable `vX.Y.Z` tag.
+5. `release.yml` accepts only stable `vX.Y.Z` tags, verifies that wheel metadata
+   equals the tag version, runs full CI and package smoke tests, publishes to
+   PyPI, and creates the GitHub Release. Do not create a stable tag until the
+   TestPyPI candidate has been accepted.
+6. After publish, install `lumberjack-py==X.Y.Z` from production PyPI in a new
+   virtual environment and repeat the import/CLI/basic-split smoke test. Verify
+   the PyPI project page and GitHub Release assets.
+
+Troubleshooting learned from the first release:
+
+- A TestPyPI upload from an untagged branch produces a Hatch VCS local version
+  such as `0.3.1.dev13+g<sha>`; PyPI/TestPyPI rejects local version identifiers.
+  Use an RC tag instead.
+- A deployment rejection from `testpypi` can mean the environment allows only
+  tags while `test-release.yml` was dispatched from `main`; add the `main`
+  branch policy only to `testpypi`, never to production `pypi`.
+- The publish job intentionally has no checkout. GitHub Release creation must
+  not use `gh release create --verify-tag`, which requires a local `.git`
+  directory. `gh release create "$GITHUB_REF_NAME" dist/* --generate-notes`
+  works with the remote tag and downloaded artifacts.
+- GitHub preserves failed deployment records from earlier attempts. Historical
+  failures do not negate a later successful PyPI upload or GitHub Release;
+  inspect each deployment's linked workflow step before acting.
+
 Before every code push, decide whether the change set requires a version update:
 
 - If the push is ordinary development work, no tag is required; `hatch-vcs` will expose a `.devN` version after the latest tag.

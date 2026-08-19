@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added a MkDocs Material documentation site with getting-started, concepts,
+  configuration, custom-component, CLI, Web API, and generated Python API
+  reference pages.
+
+### Changed
+
+- Streamlined the English and Chinese READMEs around installation, a first split,
+  splitter selection, and links to the complete documentation.
+
 ## [0.4.0] - 2026-08-19
 
 ### Added

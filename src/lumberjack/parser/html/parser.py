@@ -446,14 +446,14 @@ class HTMLParser(ParserProtocol):
         """Parse raw HTML text into a ``DocTree``.
 
         Args:
-            data: Raw HTML source.
+            document: A ``Document`` or raw HTML source.
             document_title: Optional override for the document title.
             metadata_overrides: Semantic metadata that overrides values parsed
                 from HTML metadata tags.
             source_path: Optional source provenance stored separately from metadata.
 
         Raises:
-            TypeError: If ``data`` is not a ``str``.
+            TypeError: If the resolved document source is not a ``str``.
         """
         if not isinstance(document, Document):
             document = Document(

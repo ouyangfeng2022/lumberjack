@@ -44,7 +44,7 @@ all = ["lumberjack-py[tokenizers,docx,web]"]
 
 [project.urls]
 Homepage = "https://github.com/ouyangfeng2022/lumberjack"
-Documentation = "https://github.com/ouyangfeng2022/lumberjack#readme"
+Documentation = "https://ouyangfeng2022.github.io/lumberjack/"
 Changelog = "https://github.com/ouyangfeng2022/lumberjack/blob/main/CHANGELOG.md"
 Source = "https://github.com/ouyangfeng2022/lumberjack"
 Repository = "https://github.com/ouyangfeng2022/lumberjack"
@@ -61,6 +61,7 @@ dev = [
     "ty>=0.0.51",
 ]
 test = ["pytest>=8.0.0", "httpx>=0.28.0"]
+docs = ["mkdocs-material>=9.6", "mkdocstrings[python]>=0.30"]
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

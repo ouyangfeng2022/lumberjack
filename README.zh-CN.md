@@ -6,123 +6,95 @@
 
 [![PyPI](https://img.shields.io/pypi/v/lumberjack-py.svg)](https://pypi.org/project/lumberjack-py/)
 [![Python](https://img.shields.io/pypi/pyversions/lumberjack-py.svg)](https://pypi.org/project/lumberjack-py/)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-4051b5)](https://ouyangfeng2022.github.io/lumberjack/)
 [![CI](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml/badge.svg)](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml)
 
-**把长篇结构化文档切成适合检索的 Chunk，同时保留回答问题所需的上下文。**
+**把 Markdown、HTML 和 DOCX 切成适合检索的 Chunk，同时保留文档结构与标题上下文。**
 
-Lumberjack 是用于 RAG 的 Python 库和 CLI。它理解文档结构，把标题与其正文关联起来，
-尊重表格和代码块，并只在超出 token 预算时拆分文档。
+Lumberjack 是用于 RAG 预处理的 Python 库和 CLI。它先读取文档树而不是直接切纯文本，保留标题与来源元数据，尊重表格和围栏代码块；只要内容可安全拆分，就会让 Chunk 保持在 token 预算内。
 
-[English README](README.md)
+[English README](README.md) · [中文文档站](https://ouyangfeng2022.github.io/lumberjack/zh-CN/) · [PyPI](https://pypi.org/project/lumberjack-py/)
 
 ## 为什么使用 Lumberjack？
 
-朴素文本分割器只按字符或 token 边界切分：标题可能和正文分离，表格可能被从中间截断，
-相邻但无关的主题也可能被拼到同一个 Chunk。Lumberjack 则基于统一的文档树工作：
-
-- **保留上下文。** 每个 Chunk 都携带标题路径和来源元数据。
-- **尊重结构。** 标题、段落、列表、表格和围栏代码块会作为文档块处理，而不是无结构文本。
-- **更有效地使用预算。** 默认 splitter 在打包 section 时使用低成本的增量估算，最后再给出权威 token 计数。
-- **按需要组织 Chunk。** 可以打包同级 section、优先保留完整子树，或单独处理 section 的直接正文。
-
-当前支持 Markdown、HTML 和 DOCX。
+- **上下文不会丢失。** Chunk 将标题元数据与正文分开保存，检索时仍可还原答案所属章节。
+- **先理解结构。** Markdown、HTML 和 DOCX 会先转成统一、格式中立的 `DocTree`。
+- **预算更实用。** 默认 splitter 用快速增量估算规划，最后记录权威 token 计数。
+- **Chunk 形状可选。** 可打包同级章节、优先保留子树，或独立处理每个章节的直接正文。
 
 ## 安装
 
 ```bash
 pip install lumberjack-py
 
-# 可选的精确 tokenizer、DOCX 支持和 Web API
+# 精确 tokenizer、DOCX 支持和 Web API
 pip install "lumberjack-py[tokenizers,docx,web]"
 ```
 
 需要 Python 3.10 或更高版本。
 
-## 快速开始
-
-把文档内容、bytes 或 `Path` 传给 `Lumberjack.saw()`：
+## 第一次拆分
 
 ```python
-from pathlib import Path
-
 from lumberjack import Lumberjack
 
-jack = Lumberjack(max_tokens=1200)
-result = jack.saw(Path("handbook.md"))
+result = Lumberjack(max_tokens=500).saw("""
+# 部署
+
+通过已批准的发布流程部署服务。
+
+## 回滚
+
+健康检查通过前，请保留上一个镜像。
+""")
 
 for chunk in result.chunks:
     print(chunk.own_heading, chunk.body, chunk.token_count)
-
-print(result.document.metadata)
 ```
 
-内存中的内容可直接传入字符串。普通字符串始终表示内容，不会被当作文件路径：
+`result.document` 包含解析后的 `DocTree`、标题、metadata 和来源信息；每个 `Chunk` 包含正文、最终 `token_count`、标题上下文，以及可用时的来源行号。文件输入、输出处理和可选依赖请见[五分钟入门](https://ouyangfeng2022.github.io/lumberjack/zh-CN/getting-started/quickstart/)。
 
-```python
-result = Lumberjack(max_tokens=500).saw(
-    "# Deployment\n\nDeploy the service with the approved release workflow."
-)
-```
-
-`Lumberjack.saw()` 返回 `SplitResult`，其中包含解析后的 `DocTree` 和最终 `chunks`。
-每个 chunk 都是 `Chunk` dataclass：`body` 是渲染后的正文；`ancestor_headings` 与
-`own_heading` 保留 section 上下文；`token_count` 是输出处理后的最终计数。标题、来源路径和
-行号范围会在可用时保留，文档 metadata 与 Markdown 引用定义可从 `result.document` 获取。
-
-## 命令行使用
+## 使用 CLI
 
 ```bash
-# 根据文件后缀推断格式。
+# 根据后缀推断 Markdown、HTML 或 DOCX。
 lumber handbook.md --max-tokens 1200
 
-# 按需选择 tokenizer 或 splitter。
-lumber report.docx --input-format docx --tokenizer tiktoken --splitter subtree
-
-# JSON Chunk 输出到标准输出。
-lumber page.html --input-format html --splitter exact-sibling
+# 输出适合入库任务消费的 JSON。
+lumber report.docx --tokenizer tiktoken --splitter subtree > chunks.json
 ```
 
-CLI 输出 JSON，可直接接入索引或入库任务。
+完整参数与默认值请见 [CLI 参考](https://ouyangfeng2022.github.io/lumberjack/zh-CN/reference/cli/)。
 
-## 选择分割策略
+## 选择 splitter
 
-| 策略 | 适合的需求 |
+| Splitter | 适用场景 |
 | --- | --- |
-| `sibling`（默认） | 尽量填满 Chunk，同时打包相邻的同级 section 并保留共享上下文。 |
-| `subtree` | 只要预算允许，就让完整的 section 子树保持在一起。 |
-| `section` | 独立处理每个 section 的直接正文。 |
+| `sibling`（默认） | 希望尽量填满 Chunk，并允许相邻同级章节共享上下文。 |
+| `subtree` | 只要预算允许，就让完整的章节子树保持在一起。 |
+| `section` | 需要独立考虑每个章节的直接正文。 |
 
-默认策略使用增量估算来快速做预算决策。若每次拆分决策都必须精确重计渲染结果，请使用
-`exact-sibling`、`exact-subtree` 或 `exact-section`。无论何种策略，最终 Chunk 都会有权威计数。
+| 计量模式 | 行为 |
+| --- | --- |
+| 无前缀 / `incremental-*` | 规划时快速增量估算，最终仍给出权威计数。 |
+| `exact-*` | 规划时对每个渲染候选项完整重计。 |
 
-具体的策略示例请见[分割策略说明](docs/splitter-strategies.zh-CN.md)。
+Tokenizer 与计量模式互不绑定，例如 `tiktoken` 可配合 `incremental-sibling`。生产环境调优前，请先阅读 [splitter 选择指南](https://ouyangfeng2022.github.io/lumberjack/zh-CN/concepts/splitting/)。
 
 ## Web API
-
-安装 `web` extra 后启动服务：
 
 ```bash
 lumberjack-serve --reload
 ```
 
-服务提供 `POST /lumber/api/split/text`，用于粘贴 Markdown 或 HTML；还提供
-`POST /lumber/api/split/file`，用于上传 Markdown、HTML 或 DOCX。两者返回的序列化 Chunk
-结构与 Python API 和 CLI 一致。
+安装 `web` extra 后，服务提供 `POST /lumber/api/split/text`（Markdown/HTML JSON）和 `POST /lumber/api/split/file`（上传 Markdown、HTML 或 DOCX）。运行时可从 [`/docs`](http://127.0.0.1:9612/docs) 打开 FastAPI 的交互式 OpenAPI 文档。
 
-## 需要时再定制
+## 深入了解
 
-默认配置可以直接使用。高级流水线可以向 `Lumberjack(...)` 注入自己的 parser、tokenizer、
-splitter、normalizer 或 transformer。内置 splitter 接受类型安全的 `block_options`，可为表格、
-代码围栏和自定义 block kind 设置隔离与预算策略。公开扩展点位于 `lumberjack.parser`、`lumberjack.tokenizer`、
-`lumberjack.splitter`、`lumberjack.block` 和 `lumberjack.protocols`。
+- [核心概念](https://ouyangfeng2022.github.io/lumberjack/zh-CN/concepts/pipeline/) — `Document` 到 `Chunk`、渲染、预算和来源 metadata。
+- [配置指南](https://ouyangfeng2022.github.io/lumberjack/zh-CN/guides/configuration/) — block 策略与预算控制。
+- [自定义组件](https://ouyangfeng2022.github.io/lumberjack/zh-CN/guides/custom-components/) — parser、tokenizer、splitter 与后处理阶段。
+- [Python API 参考](https://ouyangfeng2022.github.io/lumberjack/zh-CN/reference/python/)
+- [参与贡献](CONTRIBUTING.md) · [安全策略](SECURITY.md) · [许可证](LICENSE)
 
-## 开发
-
-```bash
-uv sync --group dev --group test --extra tokenizers --extra docx --extra web
-UV_CACHE_DIR=/tmp/uvcache uv run pytest
-```
-
-## 许可证
-
-MIT
+Benchmark 报告仍在建设中；项目不会发布未经验证的质量或性能结论。

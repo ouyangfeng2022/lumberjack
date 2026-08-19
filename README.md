@@ -6,141 +6,95 @@
 
 [![PyPI](https://img.shields.io/pypi/v/lumberjack-py.svg)](https://pypi.org/project/lumberjack-py/)
 [![Python](https://img.shields.io/pypi/pyversions/lumberjack-py.svg)](https://pypi.org/project/lumberjack-py/)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-4051b5)](https://ouyangfeng2022.github.io/lumberjack/)
 [![CI](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml/badge.svg)](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml)
 
-**Turn long, structured documents into retrieval-ready chunks without losing
-their context.**
+**Turn Markdown, HTML, and DOCX into retrieval-ready chunks without losing their structure or heading context.**
 
-Lumberjack is a Python library and CLI for preparing documentation, reports,
-and knowledge-base content for RAG. It reads a document's structure, keeps
-headings with the text they introduce, respects tables and code blocks, and
-splits only when a chunk exceeds its token budget.
+Lumberjack is a Python library and CLI for RAG preprocessing. It reads a document tree instead of cutting plain text, preserves headings and source metadata, respects tables and fenced code, and keeps every chunk within a token budget whenever its content can be split safely.
 
-[中文说明](README.zh-CN.md)
+[中文说明](README.zh-CN.md) · [Documentation](https://ouyangfeng2022.github.io/lumberjack/) · [PyPI](https://pypi.org/project/lumberjack-py/)
 
 ## Why Lumberjack?
 
-Plain-text splitters cut at character or token boundaries. That can detach an
-answer from its section title, split a table in the middle, or join unrelated
-topics merely because they happen to be adjacent.
-
-Lumberjack works from a normalized document tree instead:
-
-- **Keep useful context.** Chunks carry their heading path and source metadata.
-- **Honor document structure.** Headings, paragraphs, lists, tables, and fenced
-  code are handled as document blocks rather than as unstructured text.
-- **Use the budget efficiently.** The default splitter uses inexpensive running
-  estimates while packing sections, then produces an authoritative final token
-  count.
-- **Choose the shape of a chunk.** Pack sibling sections, retain whole
-  subtrees, or split direct section bodies—without changing the input format.
-
-Markdown, HTML, and DOCX are currently supported.
+- **Context survives splitting.** Chunks separate heading metadata from body content, so retrieval can retain the section that introduced an answer.
+- **Document structure comes first.** Markdown, HTML, and DOCX become one format-neutral `DocTree` before splitting.
+- **Budgets are practical.** The default splitter plans with fast incremental estimates, then records an authoritative final token count.
+- **Topology is your choice.** Pack sibling sections, preserve subtrees, or process each section body independently.
 
 ## Install
 
 ```bash
 pip install lumberjack-py
 
-# Optional exact tokenizers, DOCX support, and the Web API
+# Exact tokenizers, DOCX support, and the Web API
 pip install "lumberjack-py[tokenizers,docx,web]"
 ```
 
-Lumberjack requires Python 3.10 or newer.
+Requires Python 3.10 or newer.
 
-## Quick start
-
-Pass document content, bytes, or a `Path` to `Lumberjack.saw()`:
+## Split your first document
 
 ```python
-from pathlib import Path
-
 from lumberjack import Lumberjack
 
-jack = Lumberjack(max_tokens=1200)
-result = jack.saw(Path("handbook.md"))
+result = Lumberjack(max_tokens=500).saw("""
+# Deployment
+
+Deploy the service through the approved release workflow.
+
+## Rollback
+
+Keep the previous image available until health checks pass.
+""")
 
 for chunk in result.chunks:
     print(chunk.own_heading, chunk.body, chunk.token_count)
-
-print(result.document.metadata)
 ```
 
-For in-memory content, pass a string directly. A plain string is always treated
-as content, never as a filesystem path:
+`result.document` contains the parsed `DocTree`, title, metadata, and source provenance. Each `Chunk` includes its body, final `token_count`, heading context, and source line range when available. See the [five-minute guide](https://ouyangfeng2022.github.io/lumberjack/getting-started/quickstart/) for file inputs, output handling, and optional dependencies.
 
-```python
-result = Lumberjack(max_tokens=500).saw(
-    "# Deployment\n\nDeploy the service with the approved release workflow."
-)
-```
-
-`Lumberjack.saw()` returns a `SplitResult` containing the parsed `DocTree` and
-the final `chunks`. Each chunk is a `Chunk` dataclass whose `body` contains the rendered content;
-`ancestor_headings` and `own_heading` preserve the section context;
-`token_count` is the final count after output processing. Document title, source
-path, metadata, reference definitions, and line ranges are retained when available.
-
-## Use it from the command line
+## Use the CLI
 
 ```bash
-# Format is inferred from the file extension.
+# Infer Markdown, HTML, or DOCX from the file extension.
 lumber handbook.md --max-tokens 1200
 
-# Select a tokenizer or a splitter when needed.
-lumber report.docx --input-format docx --tokenizer tiktoken --splitter subtree
-
-# JSON chunks are written to standard output.
-lumber page.html --input-format html --splitter exact-sibling
+# Emit JSON suitable for an ingestion job.
+lumber report.docx --tokenizer tiktoken --splitter subtree > chunks.json
 ```
 
-The CLI emits JSON, so it can feed an indexing or ingestion job directly.
+The [CLI reference](https://ouyangfeng2022.github.io/lumberjack/reference/cli/) lists every option and its default.
 
-## Pick a splitting strategy
+## Choose a splitter
 
-| Strategy | Best when you want |
+| Splitter | Choose it when you need |
 | --- | --- |
-| `sibling` (default) | Well-filled chunks that pack adjacent sibling sections while retaining their shared context. |
-| `subtree` | A complete section subtree to stay together whenever it fits the budget. |
-| `section` | Each section's direct body to be handled independently. |
+| `sibling` (default) | Well-filled chunks that may pack adjacent sibling sections with shared context. |
+| `subtree` | A whole section subtree to stay together whenever it fits. |
+| `section` | Each section's direct body to be considered independently. |
 
-The default strategies use incremental estimates for fast budget decisions.
-Use `exact-sibling`, `exact-subtree`, or `exact-section` when every split-time
-decision must recount the rendered candidate exactly. All chunks receive a
-final authoritative count.
+| Counting mode | Behavior |
+| --- | --- |
+| Unprefixed / `incremental-*` | Fast running estimates while planning, followed by a final authoritative count. |
+| `exact-*` | Fully recount each rendered candidate during planning. |
 
-See [splitter strategies](docs/splitter-strategies.md) for practical strategy
-examples.
+Tokenizer choice and counting mode are independent. For example, `tiktoken` works with `incremental-sibling`. Read the [splitter decision guide](https://ouyangfeng2022.github.io/lumberjack/concepts/splitting/) before tuning a production pipeline.
 
 ## Web API
-
-Install the `web` extra, then start the service:
 
 ```bash
 lumberjack-serve --reload
 ```
 
-It provides `POST /lumber/api/split/text` for pasted Markdown or HTML and
-`POST /lumber/api/split/file` for uploaded Markdown, HTML, and DOCX files. Both
-return the same serialized chunk shape as the Python API and CLI.
+With the `web` extra installed, the service exposes `POST /lumber/api/split/text` for Markdown/HTML JSON requests and `POST /lumber/api/split/file` for uploaded Markdown, HTML, and DOCX. FastAPI serves interactive OpenAPI documentation at [`/docs`](http://127.0.0.1:9612/docs) while the server is running.
 
-## Customize when you need to
+## Learn more
 
-The defaults are intended to be usable as-is. For advanced pipelines, you can
-provide your own parser, tokenizer, splitter, normalizer, or transformer to
-`Lumberjack(...)`. Built-in splitters accept typed `block_options` so tables,
-code fences, and custom block kinds can have their own isolation and budget
-policies. The public
-extension points live under `lumberjack.parser`, `lumberjack.tokenizer`,
-`lumberjack.splitter`, `lumberjack.block`, and `lumberjack.protocols`.
+- [Core concepts](https://ouyangfeng2022.github.io/lumberjack/concepts/pipeline/) — `Document` to `Chunk`, rendering, budgets, and source metadata.
+- [Configuration guide](https://ouyangfeng2022.github.io/lumberjack/guides/configuration/) — block policies and budget controls.
+- [Custom components](https://ouyangfeng2022.github.io/lumberjack/guides/custom-components/) — parsers, tokenizers, splitters, and post-processing stages.
+- [Python API reference](https://ouyangfeng2022.github.io/lumberjack/reference/python/)
+- [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [License](LICENSE)
 
-## Development
-
-```bash
-uv sync --group dev --group test --extra tokenizers --extra docx --extra web
-UV_CACHE_DIR=/tmp/uvcache uv run pytest
-```
-
-## License
-
-MIT
+Benchmark reporting is under construction; this project does not make unverified quality or performance claims.

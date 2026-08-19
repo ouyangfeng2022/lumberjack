@@ -199,7 +199,7 @@ class DocxParser(ParserProtocol):
         """Parse DOCX binary data into a DocTree.
 
         Args:
-            data: Raw DOCX file content.
+            document: A ``Document`` or raw DOCX file content.
             document_title: Optional override for the document title.
             metadata_overrides: Semantic metadata that overrides DOCX core properties.
             source_path: Optional source provenance stored separately from metadata.

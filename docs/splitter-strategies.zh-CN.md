@@ -1,5 +1,7 @@
 # Splitter 策略
 
+[English](splitter-strategies.md)
+
 Lumberjack 会先将 Markdown、HTML 或 DOCX 解析为统一的 `DocTree`，再按结构和
 `max_tokens` 预算进行拆分。
 
