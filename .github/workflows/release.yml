@@ -16,8 +16,8 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(a[0-9]+|b[0-9]+|rc[0-9]+|\.post[0-9]+)?$ ]]; then
-            echo "::error::Release tag '$RELEASE_TAG' must use v<MAJOR>.<MINOR>.<PATCH> with an optional PEP 440 pre-release suffix."
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Production release tag '$RELEASE_TAG' must use stable v<MAJOR>.<MINOR>.<PATCH> format."
             exit 1
           fi
 
