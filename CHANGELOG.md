@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-19
+
 ### Added
 
 - Added the real `ChunkFinalizer`, `TextNormalizer`, and `TextTransformer` stages. Splitter implementations now return unfinished `ChunkDraft` objects; `ChunkFinalizer` renders and post-processes them, performs authoritative final measurement, and produces `Chunk` objects.
@@ -15,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- PyPI distribution name is now `lumberjack-py`; Python imports and CLI commands remain `lumberjack` and `lumber`.
 - **Breaking:** Replaced the top-level `lumber()` function with `Lumberjack(...).saw(...)` and the explicit `Document -> DocTree -> ChunkDraft -> Chunk` pipeline. The package root now exports only `Lumberjack` and `Document`.
 - **Breaking:** Replaced lumber-themed component names with `Parser.parse()`, `Tokenizer.count()`, and `Splitter.split()`. The old `lumberjack.feller`, `lumberjack.sawyer`, and `lumberjack.scaler` paths are removed without compatibility aliases.
 - CLI and Web request fields remain `tokenizer` and `splitter`; their private adapter now maps those integration names to Tokenizer and Splitter implementations.

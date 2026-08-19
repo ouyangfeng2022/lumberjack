@@ -4,8 +4,8 @@
 
 # Lumberjack
 
-[![PyPI](https://img.shields.io/pypi/v/lumberjack.svg)](https://pypi.org/project/lumberjack/)
-[![Python](https://img.shields.io/pypi/pyversions/lumberjack.svg)](https://pypi.org/project/lumberjack/)
+[![PyPI](https://img.shields.io/pypi/v/lumberjack-py.svg)](https://pypi.org/project/lumberjack-py/)
+[![Python](https://img.shields.io/pypi/pyversions/lumberjack-py.svg)](https://pypi.org/project/lumberjack-py/)
 [![CI](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml/badge.svg)](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml)
 
 **Turn long, structured documents into retrieval-ready chunks without losing
@@ -40,10 +40,10 @@ Markdown, HTML, and DOCX are currently supported.
 ## Install
 
 ```bash
-pip install lumberjack
+pip install lumberjack-py
 
 # Optional exact tokenizers, DOCX support, and the Web API
-pip install "lumberjack[tokenizers,docx,web]"
+pip install "lumberjack-py[tokenizers,docx,web]"
 ```
 
 Lumberjack requires Python 3.10 or newer.

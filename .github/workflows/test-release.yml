@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: testpypi
-      url: https://test.pypi.org/project/lumberjack/
+      url: https://test.pypi.org/project/lumberjack-py/
     permissions:
       id-token: write
 

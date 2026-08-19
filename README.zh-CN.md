@@ -4,8 +4,8 @@
 
 # Lumberjack
 
-[![PyPI](https://img.shields.io/pypi/v/lumberjack.svg)](https://pypi.org/project/lumberjack/)
-[![Python](https://img.shields.io/pypi/pyversions/lumberjack.svg)](https://pypi.org/project/lumberjack/)
+[![PyPI](https://img.shields.io/pypi/v/lumberjack-py.svg)](https://pypi.org/project/lumberjack-py/)
+[![Python](https://img.shields.io/pypi/pyversions/lumberjack-py.svg)](https://pypi.org/project/lumberjack-py/)
 [![CI](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml/badge.svg)](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml)
 
 **把长篇结构化文档切成适合检索的 Chunk，同时保留回答问题所需的上下文。**
@@ -30,10 +30,10 @@ Lumberjack 是用于 RAG 的 Python 库和 CLI。它理解文档结构，把标�
 ## 安装
 
 ```bash
-pip install lumberjack
+pip install lumberjack-py
 
 # 可选的精确 tokenizer、DOCX 支持和 Web API
-pip install "lumberjack[tokenizers,docx,web]"
+pip install "lumberjack-py[tokenizers,docx,web]"
 ```
 
 需要 Python 3.10 或更高版本。

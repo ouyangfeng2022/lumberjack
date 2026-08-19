@@ -1,5 +1,5 @@
 [project]
-name = "lumberjack"
+name = "lumberjack-py"
 dynamic = ["version"]
 description = "Structure-aware Markdown, HTML, and DOCX lumber pipeline for RAG preprocessing"
 readme = "README.md"
@@ -40,7 +40,7 @@ web = [
     "uvicorn>=0.34.0",
     "python-multipart>=0.0.18",
 ]
-all = ["lumberjack[tokenizers,docx,web]"]
+all = ["lumberjack-py[tokenizers,docx,web]"]
 
 [project.urls]
 Homepage = "https://github.com/ouyangfeng2022/lumberjack"

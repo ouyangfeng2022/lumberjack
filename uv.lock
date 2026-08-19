@@ -350,7 +350,7 @@ wheels = [
 ]
 
 [[package]]
-name = "lumberjack"
+name = "lumberjack-py"
 source = { editable = "." }
 dependencies = [
     { name = "markdown-it-py", extra = ["linkify", "plugins"] },

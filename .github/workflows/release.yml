@@ -8,7 +8,21 @@ permissions:
   contents: read
 
 jobs:
+  validate-release-tag:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate release tag format
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(a[0-9]+|b[0-9]+|rc[0-9]+|\.post[0-9]+)?$ ]]; then
+            echo "::error::Release tag '$RELEASE_TAG' must use v<MAJOR>.<MINOR>.<PATCH> with an optional PEP 440 pre-release suffix."
+            exit 1
+          fi
+
   verify:
+    needs: validate-release-tag
     uses: ./.github/workflows/ci.yml
 
   package:
@@ -20,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/lumberjack
+      url: https://pypi.org/p/lumberjack-py
     permissions:
       contents: write
       id-token: write
@@ -31,6 +45,17 @@ jobs:
         with:
           name: python-distributions
           path: dist
+
+      - name: Verify distribution version matches tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          expected_version="${RELEASE_TAG#v}"
+          actual_version="$(unzip -p dist/*.whl '*/METADATA' | sed -n 's/^Version: //p' | head -n 1)"
+          if [[ "$actual_version" != "$expected_version" ]]; then
+            echo "::error::Wheel version '$actual_version' does not match tag '$RELEASE_TAG'."
+            exit 1
+          fi
 
       - name: Publish to PyPI with Trusted Publishing
         uses: pypa/gh-action-pypi-publish@release/v1

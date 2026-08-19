@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import tarfile
 import zipfile
+from email import message_from_string
 from pathlib import Path
 
 import pytest
@@ -24,11 +25,11 @@ def distributions() -> tuple[Path, Path]:
     wheel = Path(os.environ.get("LUMBERJACK_WHEEL", ""))
     sdist = Path(os.environ.get("LUMBERJACK_SDIST", ""))
     if not wheel.name:
-        wheels = list(directory.glob("lumberjack-*.whl"))
+        wheels = list(directory.glob("lumberjack_py-*.whl"))
         assert len(wheels) == 1, f"expected one wheel in {directory}, found {wheels}"
         wheel = wheels[0]
     if not sdist.name:
-        sdists = list(directory.glob("lumberjack-*.tar.gz"))
+        sdists = list(directory.glob("lumberjack_py-*.tar.gz"))
         assert len(sdists) == 1, f"expected one sdist in {directory}, found {sdists}"
         sdist = sdists[0]
     return wheel, sdist
@@ -50,8 +51,40 @@ def test_wheel_contains_typed_package_without_web_assets(
     # The Web UI's static assets are git-ignored build outputs and are
     # deliberately not bundled; deployments build them from lumberjack_webui/.
     assert not any(name.startswith("lumberjack/web/static") for name in names)
-    for extra in ("tokenizers", "docx", "web", "all"):
-        assert f"Provides-Extra: {extra}" in metadata
+    package_metadata = message_from_string(metadata)
+    assert set(package_metadata.get_all("Provides-Extra", [])) == {
+        "all",
+        "docx",
+        "tokenizers",
+        "web",
+    }
+
+    requirements = set(package_metadata.get_all("Requires-Dist", []))
+    requirements_by_extra = {
+        extra: {
+            requirement.partition(";")[0].strip()
+            for requirement in requirements
+            if requirement.endswith(f"extra == '{extra}'")
+        }
+        for extra in ("tokenizers", "docx", "web", "all")
+    }
+    assert requirements_by_extra["tokenizers"] == {
+        "cachetools>=7.1.1",
+        "tiktoken>=0.9.0",
+        "transformers>=4.41.0",
+    }
+    assert requirements_by_extra["docx"] == {"python-docx>=1.1.0"}
+    assert requirements_by_extra["web"] == {
+        "fastapi>=0.115.0",
+        "python-multipart>=0.0.18",
+        "starlette<1.0.0",
+        "uvicorn>=0.34.0",
+    }
+    assert requirements_by_extra["all"] == (
+        requirements_by_extra["tokenizers"]
+        | requirements_by_extra["docx"]
+        | requirements_by_extra["web"]
+    )
 
 
 def test_sdist_excludes_local_and_frontend_development_outputs(
