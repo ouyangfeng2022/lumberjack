@@ -79,7 +79,7 @@ def test_lumberjack_accepts_docx_bytes() -> None:
     result = Lumberjack(max_tokens=500).saw(DOCX_PATH.read_bytes())
     assert result.chunks
     assert result.document.title == "Test Document"
-    assert any("Introduction" in chunk.body for chunk in result.chunks)
+    assert any(chunk.own_heading == (1, "Introduction") for chunk in result.chunks)
 
 
 def test_auto_parser_treats_string_as_content_not_path(tmp_path: Path) -> None:

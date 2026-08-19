@@ -6,9 +6,9 @@ Every splitter consumes the same `DocTree`, but it chooses a different document 
 
 | Splitter | Topology |
 | --- | --- |
-| `SiblingSplitter` / `sibling` | Packs adjacent sibling sections that fit, retaining their shared context. This is the default. |
+| `SiblingSplitter` / `sibling` | Packs adjacent sibling sections that fit, retaining their shared context. |
 | `SubtreeSplitter` / `subtree` | Keeps a complete section subtree intact whenever it fits, then falls back within the section. |
-| `SectionSplitter` / `section` | Processes each section's direct body independently; it does not collapse subtrees. |
+| `SectionSplitter` / `section` | Processes each section's direct body independently; it does not collapse subtrees. This is the default. |
 
 ## Exact and incremental planning
 

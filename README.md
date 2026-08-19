@@ -70,9 +70,9 @@ The [CLI reference](https://ouyangfeng2022.github.io/lumberjack/reference/cli/) 
 
 | Splitter | Choose it when you need |
 | --- | --- |
-| `sibling` (default) | Well-filled chunks that may pack adjacent sibling sections with shared context. |
+| `sibling` | Well-filled chunks that may pack adjacent sibling sections with shared context. |
 | `subtree` | A whole section subtree to stay together whenever it fits. |
-| `section` | Each section's direct body to be considered independently. |
+| `section` (default) | Each section's direct body to be considered independently. |
 
 | Counting mode | Behavior |
 | --- | --- |

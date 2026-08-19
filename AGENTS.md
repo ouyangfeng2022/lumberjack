@@ -171,14 +171,15 @@ Implemented in `src/lumberjack/cli.py`.
 - Output format: JSON only
 - Tokenizers (engine): `approx`, `tiktoken`, `transformers`
 - Exact vs incremental counting is a property of the splitter class, not the tokenizer. CLI/Web retain their existing `splitter` and `tokenizer` field names as an integration protocol.
-- Splitter choices: `sibling` (default, incremental), `subtree` (incremental), `section` (incremental), `exact-sibling`, `incremental-sibling`, `exact-subtree`, `incremental-subtree`, `exact-section`, `incremental-section`
+- Splitter choices: `sibling` (incremental), `subtree` (incremental), `section` (default, incremental), `exact-sibling`, `incremental-sibling`, `exact-subtree`, `incremental-subtree`, `exact-section`, `incremental-section`
 - `--block-config KIND[:isolated][:nosplit][:TOKENS]` per-block-kind config; repeatable
 - JSON output serializes dataclasses with `dataclasses.asdict`
 
 ## Splitting Rules
 
 - Whole document is kept as one chunk when it already fits the budget
-- `SiblingSplitter` (default): merges adjacent sibling sections when they fit within `max_tokens`
+- `SiblingSplitter`: merges adjacent sibling sections when they fit within `max_tokens`
+- `SectionSplitter` (default): handles each section's direct body independently without collapsing subtrees
 - `SubtreeSplitter`: subtree-first collapse. `SectionSplitter`: always per-heading with no subtree-collapse.
 - Tail-fragment merging (`merge_below_ratio`, default `0.125`): bottom-up, merges same-heading adjacent `paragraph` chunks whose tail is below `int(max_tokens * ratio)` tokens, when the merged result fits `max_tokens`. Disabled when `ratio == 0`. In the `section` splitter this runs only within each section's direct-body drafts, so it cannot collapse subtrees or merge non-text block chunks.
 - Text fallback order is paragraph break -> line break -> sentence -> word -> hard split

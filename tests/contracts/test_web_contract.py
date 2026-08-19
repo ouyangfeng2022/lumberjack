@@ -15,7 +15,7 @@ def test_text_request_defaults() -> None:
 
     assert fields["input_format"].default == "markdown"
     assert fields["tokenizer"].default == "approx"
-    assert fields["splitter"].default == "sibling"
+    assert fields["splitter"].default == "section"
     assert fields["max_tokens"].default == 1200
     assert fields["ideal_max_tokens_ratio"].default == 0.8
     assert fields["merge_below_ratio"].default == 0.125
@@ -60,7 +60,7 @@ def test_file_request_defaults() -> None:
 
     assert parameters["input_format"].default.default == "auto"
     assert parameters["tokenizer"].default.default == "approx"
-    assert parameters["splitter"].default.default == "sibling"
+    assert parameters["splitter"].default.default == "section"
     assert parameters["max_tokens"].default.default == 1200
     assert parameters["ideal_max_tokens_ratio"].default.default == 0.8
     assert parameters["merge_below_ratio"].default.default == 0.125

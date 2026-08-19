@@ -20,7 +20,7 @@ def test_cli_public_defaults_and_choices() -> None:
         "tiktoken",
         "transformers",
     )
-    assert _action(parser, "splitter").default == "sibling"
+    assert _action(parser, "splitter").default == "section"
     assert set(_action(parser, "splitter").choices or ()) == {
         "sibling",
         "incremental-sibling",

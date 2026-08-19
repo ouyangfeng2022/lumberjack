@@ -12,7 +12,7 @@ lumber INPUT [OPTIONS]
 | --- | --- | --- |
 | `--input-format` | `auto` | `auto`, `markdown`, `html`, or `docx`. Auto detects a file extension. |
 | `--tokenizer` | `approx` | `approx`, `tiktoken`, or `transformers`; controls encoding and token counting only. |
-| `--splitter` | `sibling` | Structure topology and counting mode. See [splitting](../concepts/splitting.md). |
+| `--splitter` | `section` | Structure topology and counting mode. See [splitting](../concepts/splitting.md). |
 | `--max-tokens` | `1200` | Maximum tokens per chunk. |
 | `--ideal-max-tokens-ratio` | `0.8` | Preferred split budget divided by `max_tokens`. |
 | `--merge-below-ratio` | `0.125` | Same-heading tail merge threshold in `[0.0, 1.0)`; `0` disables it. |

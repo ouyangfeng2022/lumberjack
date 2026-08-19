@@ -47,7 +47,7 @@ class TextSplitRequest(BaseModel):
         description="Tokenizer engine used only to encode and count text.",
     )
     splitter: SplitterName = PydanticField(
-        "sibling",
+        "section",
         description=(
             "Splitter topology and counting mode. Unprefixed names use "
             "incremental measurement; exact-* names fully recount candidates."
@@ -150,7 +150,7 @@ async def split_file(
         "approx", description="Tokenizer engine used only to encode and count text."
     ),
     splitter: SplitterName = Form(  # noqa: B008
-        "sibling",
+        "section",
         description=(
             "Splitter topology and counting mode. Unprefixed names use "
             "incremental measurement; exact-* names fully recount candidates."
