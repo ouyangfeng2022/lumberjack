@@ -22,6 +22,41 @@ Lumberjack 是用于 RAG 预处理的 Python 库和 CLI。它先读取文档树�
 - **预算更实用。** 默认 splitter 用快速增量估算规划，最后记录权威 token 计数。
 - **Chunk 形状可选。** 可打包同级章节、优先保留子树，或独立处理每个章节的直接正文。
 
+## 输入格式：当前与规划
+
+下表的“规划中”是设计承诺，不是可安装功能承诺：在某个发行版将其标为“已支持”前，
+请不要把它传给 `format`，也不要依赖自动格式检测。
+
+| 格式族 | 格式 | 状态 | 目标结构模型 |
+| --- | --- | --- | --- |
+| 标记文档 | Markdown（`.md`、`.markdown`）、HTML（`.html`、`.htm`） | 已支持 | 标题、块、表格、列表、代码和来源行号。 |
+| 文字处理文档 | DOCX（`.docx`） | 已支持 | 标题样式、段落、表格、列表和文档属性。 |
+| 纯文本与富文本 | TXT、文本日志、RTF | 规划中 | 有序段落/行；不虚构标题层级。 |
+| OpenDocument 与旧式文字处理 | ODT、DOC | 规划中 | 在源格式提供时保留标题与内容块。 |
+| 电子表格与分隔数据 | XLSX、XLS、ODS、CSV、TSV | 规划中 | schema/表头加原子行或可配置行组；一行中的单元格必须能追溯到该行。 |
+| 半结构化数据 | JSON、JSONL、XML、YAML、TOML | 规划中 | 对象、记录、数组和路径，而不是人为制造文档标题。 |
+| 分析与数据库导出 | Parquet、Avro、ORC、SQLite/SQL dump | 规划中 | 表、record batch、schema 和查询/表来源信息。 |
+| 源代码与 Notebook | Python、JavaScript/TypeScript、Java、C/C++、Go、Rust、Jupyter Notebook（`.ipynb`） | 规划中 | 文件、符号、注释、cell 和与语言相关的代码块。 |
+| 演示文稿与电子书 | PPTX、PPT、ODP、EPUB | 规划中 | 幻灯片/页面、标题、备注和有序内容块。 |
+| 邮件与归档 | EML、MSG、MBOX | 规划中 | 邮件头、正文、附件和会话来源信息。 |
+| PDF 与图像 | PDF、PNG、JPG/JPEG、TIFF、WebP | 规划中 | 可用时使用原生 PDF 文本/版面；否则使用 OCR/版面块和页级来源信息。 |
+
+平面数据是一级设计场景，而不是伪装成标题树。CSV、TSV、JSONL、Parquet 和以记录为中心的
+JSON 将使用有序的 record/row 单元，并保留 schema 与字段路径 provenance。基于标题的策略，
+例如同级 section 打包，对这些输入没有意义；其 adapter 必须选择面向 row/record 的打包，
+在配置要求时保留完整的 protected row，并报告行号、列名、JSON path、页码或 sheet 等逻辑位置。
+这只是规划行为，当前三个 parser 尚未实现。
+
+## 查看流水线的每一步
+
+当前 `Lumberjack.saw()` 返回 `SplitResult(document, chunks)`；需要中间 `DocTree` 或
+`ChunkDraft` 时，集成方可分别调用公开的 parser、splitter 和 finalizer。
+
+规划中的 pipeline trace API 会通过一个稳定结果公开每个内置和可选解析阶段：原始
+`Document`、抽取结果（例如 OCR/版面）、规范化 `DocTree`、`ChunkDraft`、渲染文本、
+规范化/转换后的文本和最终 `Chunk`。MinerU、Docling、PaddleOCR-VL、dots.mocr 等 PDF
+视觉 parser 将作为可选集成，而不是核心依赖，并会保留页码、bounding box 和 parser provenance。
+
 ## 安装
 
 ```bash
@@ -57,7 +92,7 @@ for chunk in result.chunks:
 ## 使用 CLI
 
 ```bash
-# 根据后缀推断 Markdown、HTML 或 DOCX。
+# 根据后缀推断已支持的 Markdown、HTML 或 DOCX。
 lumber handbook.md --max-tokens 1200
 
 # 输出适合入库任务消费的 JSON。
@@ -87,7 +122,7 @@ Tokenizer 与计量模式互不绑定，例如 `tiktoken` 可配合 `incremental
 lumberjack-serve --reload
 ```
 
-安装 `web` extra 后，服务提供 `POST /lumber/api/split/text`（Markdown/HTML JSON）和 `POST /lumber/api/split/file`（上传 Markdown、HTML 或 DOCX）。运行时可从 [`/docs`](http://127.0.0.1:9612/docs) 打开 FastAPI 的交互式 OpenAPI 文档。
+安装 `web` extra 后，服务提供 `POST /lumber/api/split/text`（Markdown/HTML JSON）和 `POST /lumber/api/split/file`（上传 Markdown、HTML 或 DOCX）。上表“规划中”的格式目前不接受。运行时可从 [`/docs`](http://127.0.0.1:9612/docs) 打开 FastAPI 的交互式 OpenAPI 文档。
 
 ## 深入了解
 

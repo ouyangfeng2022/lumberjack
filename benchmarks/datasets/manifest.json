@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "dataset_version": "2026.08.19",
+  "license": "CC0-1.0",
+  "documents": [
+    {
+      "id": "technical-01",
+      "path": "corpus/technical-01.md",
+      "scenario": "technical",
+      "license": "CC0-1.0",
+      "required_content": ["API contract", "Configuration"],
+      "protected_content": []
+    },
+    {
+      "id": "table-01",
+      "path": "corpus/table-01.md",
+      "scenario": "tables",
+      "license": "CC0-1.0",
+      "required_content": ["| Name | Value |", "alpha"],
+      "protected_content": ["| Name | Value |\n| --- | --- |\n| alpha | one |\n| beta | two |"]
+    },
+    {
+      "id": "code-01",
+      "path": "corpus/code-01.md",
+      "scenario": "code_formula",
+      "license": "CC0-1.0",
+      "required_content": ["def add", "E = mc^2"],
+      "protected_content": ["```python\ndef add(left: int, right: int) -> int:\n    return left + right\n```"]
+    },
+    {
+      "id": "short-sections-01",
+      "path": "corpus/short-sections-01.md",
+      "scenario": "short_sections",
+      "license": "CC0-1.0",
+      "required_content": ["One", "Five"],
+      "protected_content": []
+    },
+    {
+      "id": "paragraph-01",
+      "path": "corpus/paragraph-01.md",
+      "scenario": "long_paragraph",
+      "license": "CC0-1.0",
+      "required_content": ["fallback order", "sentence boundary"],
+      "protected_content": []
+    },
+    {
+      "id": "mixed-01",
+      "path": "corpus/mixed-01.md",
+      "scenario": "mixed_language",
+      "license": "CC0-1.0",
+      "required_content": ["中文段落", "English paragraph"],
+      "protected_content": []
+    }
+  ]
+}

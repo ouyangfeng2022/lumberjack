@@ -319,6 +319,13 @@ When a change warrants a changelog entry, do it in the same commit (or PR) as th
 5. Stage the code change **and** the `CHANGELOG.md` update together.
 6. Commit (and, if applicable, push/PR) both in the same change set.
 
+### Branch workflow
+
+`main` is the production deployment branch. Create feature branches from `dev`
+and merge ordinary development work back into `dev`; promote tested `dev`
+changes to `main` through a separate release/deployment PR. Do not directly
+push ordinary work to `main`.
+
 ## Code Organization
 
 ```

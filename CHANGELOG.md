@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added a reproducible benchmark MVP with a versioned public corpus, quality
+  and performance metrics, raw-result JSON, and optional competitor adapters.
 - Added a MkDocs Material documentation site with getting-started, concepts,
   configuration, custom-component, CLI, Web API, and generated Python API
   reference pages.

@@ -22,6 +22,48 @@ Lumberjack is a Python library and CLI for RAG preprocessing. It reads a documen
 - **Budgets are practical.** The default splitter plans with fast incremental estimates, then records an authoritative final token count.
 - **Topology is your choice.** Pack sibling sections, preserve subtrees, or process each section body independently.
 
+## Input formats: now and planned
+
+Lumberjack currently supports the formats below. A “planned” entry is a design
+commitment, not an installation promise: do not pass it to `format` or rely on
+automatic detection until it is marked supported in a release.
+
+| Format family | Formats | Status | Intended structural model |
+| --- | --- | --- | --- |
+| Markup documents | Markdown (`.md`, `.markdown`), HTML (`.html`, `.htm`) | Supported | Headings, blocks, tables, lists, code, and source lines. |
+| Word-processing documents | DOCX (`.docx`) | Supported | Heading styles, paragraphs, tables, lists, and document properties. |
+| Plain and rich text | TXT, text logs, RTF | Planned | Ordered paragraphs/lines; no invented heading hierarchy. |
+| OpenDocument and legacy word processing | ODT, DOC | Planned | Headings and blocks when the source format exposes them. |
+| Spreadsheets and delimited data | XLSX, XLS, ODS, CSV, TSV | Planned | Schema/header plus atomic rows or configurable row groups; cells in a row must stay attributable to that row. |
+| Semi-structured data | JSON, JSONL, XML, YAML, TOML | Planned | Objects, records, arrays, and paths—not artificial document headings. |
+| Analytical and database exports | Parquet, Avro, ORC, SQLite/SQL dumps | Planned | Tables, record batches, schemas, and query/table provenance. |
+| Source code and notebooks | Python, JavaScript/TypeScript, Java, C/C++, Go, Rust, Jupyter notebooks (`.ipynb`) | Planned | Files, symbols, comments, cells, and language-aware code blocks. |
+| Presentations and ebooks | PPTX, PPT, ODP, EPUB | Planned | Slides/pages, titles, notes, and ordered content blocks. |
+| Messages and archives | EML, MSG, MBOX | Planned | Message headers, body, attachments, and thread provenance. |
+| PDFs and images | PDF, PNG, JPG/JPEG, TIFF, WebP | Planned | Native PDF text/layout where available; OCR/layout blocks and page provenance otherwise. |
+
+Flat data is a first-class design case, not a disguised heading tree. CSV,
+TSV, JSONL, Parquet, and record-oriented JSON will use ordered record/row units
+with schema and field-path provenance. Heading-oriented policies such as
+sibling section packing are not meaningful for those inputs; their adapters
+must select row/record-aware packing, preserve complete protected rows when
+configured, and report logical locations such as row number, column name, JSON
+path, page, or sheet. This behavior is planned; it is not implemented by the
+current three parsers.
+
+## Inspect every pipeline stage
+
+Today, `Lumberjack.saw()` returns `SplitResult(document, chunks)`, and the
+public parser, splitter, and finalizer can be called individually when an
+integration needs an intermediate `DocTree` or `ChunkDraft`.
+
+The planned pipeline trace API will make every built-in and optional parsing
+stage inspectable through one stable result: raw `Document`, extraction output
+(for example OCR/layout), normalized `DocTree`, `ChunkDraft`s, rendered text,
+normalized/transformed text, and final `Chunk`s. Visual PDF parsers such as
+MinerU, Docling, PaddleOCR-VL, and dots.mocr will be optional integrations—not
+core dependencies—and will retain page, bounding-box, and parser provenance.
+
 ## Install
 
 ```bash
@@ -57,7 +99,7 @@ for chunk in result.chunks:
 ## Use the CLI
 
 ```bash
-# Infer Markdown, HTML, or DOCX from the file extension.
+# Infer supported Markdown, HTML, or DOCX from the file extension.
 lumber handbook.md --max-tokens 1200
 
 # Emit JSON suitable for an ingestion job.
@@ -87,7 +129,7 @@ Tokenizer choice and counting mode are independent. For example, `tiktoken` work
 lumberjack-serve --reload
 ```
 
-With the `web` extra installed, the service exposes `POST /lumber/api/split/text` for Markdown/HTML JSON requests and `POST /lumber/api/split/file` for uploaded Markdown, HTML, and DOCX. FastAPI serves interactive OpenAPI documentation at [`/docs`](http://127.0.0.1:9612/docs) while the server is running.
+With the `web` extra installed, the service exposes `POST /lumber/api/split/text` for Markdown/HTML JSON requests and `POST /lumber/api/split/file` for uploaded Markdown, HTML, and DOCX. The planned formats above are not accepted yet. FastAPI serves interactive OpenAPI documentation at [`/docs`](http://127.0.0.1:9612/docs) while the server is running.
 
 ## Learn more
 
