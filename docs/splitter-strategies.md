@@ -8,9 +8,9 @@ uses the configured tokenizer for final chunk counts.
 
 | Strategy | Use it when |
 | --- | --- |
-| `sibling` (default) | You want well-filled chunks and can pack adjacent sibling sections with shared context. |
+| `sibling` | You want well-filled chunks and can pack adjacent sibling sections with shared context. |
 | `subtree` | You prefer to retain an entire section subtree whenever it fits the budget. |
-| `section` | You need each section's direct body handled independently. |
+| `section` (default) | You need each section's direct body handled independently. |
 
 ## Counting modes
 

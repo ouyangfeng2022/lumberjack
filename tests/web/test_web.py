@@ -122,6 +122,7 @@ def test_split_text_serializes_merged_siblings_without_own_heading(
         json={
             "text": "# First\n\nOne.\n\n# Second\n\nTwo.",
             "max_tokens": 500,
+            "splitter": "sibling",
         },
     )
 
@@ -161,8 +162,8 @@ def test_split_text_accepts_max_heading_level(client: ASGITestClient) -> None:
 
     assert response.status_code == 200
     chunk = response.json()["chunks"][0]
-    assert chunk["ancestor_headings"] == []
-    assert chunk["own_heading"] == [1, "Parent"]
+    assert chunk["ancestor_headings"] == [[1, "Parent"]]
+    assert chunk["own_heading"] == [2, "Child"]
     assert chunk["section_level"] == 2
     assert "### Detail" in chunk["body"]
 
@@ -177,8 +178,8 @@ def test_split_file_accepts_max_heading_level(client: ASGITestClient) -> None:
 
     assert response.status_code == 200
     chunk = response.json()["chunks"][0]
-    assert chunk["ancestor_headings"] == []
-    assert chunk["own_heading"] == [1, "Parent"]
+    assert chunk["ancestor_headings"] == [[1, "Parent"]]
+    assert chunk["own_heading"] == [2, "Child"]
     assert chunk["section_level"] == 2
     assert "### Detail" in chunk["body"]
 
@@ -316,9 +317,9 @@ def test_split_ignores_legacy_render_common_headings_form_field(
 
     assert response.status_code == 200
     chunk = response.json()["chunks"][0]
-    assert chunk["ancestor_headings"] == []
-    assert chunk["own_heading"] == [1, "Parent"]
-    assert chunk["body"] == "## Child\n\nChild body."
+    assert chunk["ancestor_headings"] == [[1, "Parent"]]
+    assert chunk["own_heading"] == [2, "Child"]
+    assert chunk["body"] == "Child body."
 
 
 def test_unprefixed_api_path_is_not_registered(client: ASGITestClient) -> None:

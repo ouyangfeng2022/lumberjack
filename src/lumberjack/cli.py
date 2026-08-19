@@ -39,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--splitter",
         choices=BUILTIN_SPLITTER_NAMES,
-        default="sibling",
+        default="section",
         help=(
             "Splitter implementation. 'sibling'/'subtree'/'section' default "
             "to incremental counting; use 'exact-*' for full recounting."

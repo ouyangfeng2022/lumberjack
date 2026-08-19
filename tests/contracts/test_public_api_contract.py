@@ -22,7 +22,7 @@ from lumberjack.protocols import (
     TextTransformerProtocol,
     TokenizerProtocol,
 )
-from lumberjack.splitter import ExactSiblingSplitter, SiblingSplitter
+from lumberjack.splitter import ExactSiblingSplitter, SectionSplitter, SiblingSplitter
 from lumberjack.tokenizer import ApproxByteTokenizer
 from lumberjack.transformer import PlainTextTransformer, TextTransformer
 
@@ -43,12 +43,12 @@ def test_public_lumber_pipeline_components() -> None:
     assert TextNormalizerProtocol and TextTransformerProtocol
 
 
-def test_lumberjack_defaults_use_the_incremental_sibling_pipeline() -> None:
+def test_lumberjack_defaults_use_the_incremental_section_pipeline() -> None:
     pipeline = Lumberjack()
 
     assert isinstance(pipeline.tokenizer, ApproxByteTokenizer)
     assert isinstance(pipeline.parser, AutoParser)
-    assert isinstance(pipeline.splitter, SiblingSplitter)
+    assert isinstance(pipeline.splitter, SectionSplitter)
     assert pipeline.splitter.max_tokens == 1200
     assert pipeline.splitter.skip_empty_sections is True
     assert pipeline.finalizer.skip_empty_sections is True

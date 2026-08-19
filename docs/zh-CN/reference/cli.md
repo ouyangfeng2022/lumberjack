@@ -12,7 +12,7 @@ lumber INPUT [OPTIONS]
 | --- | --- | --- |
 | `--input-format` | `auto` | `auto`、`markdown`、`html` 或 `docx`；自动模式按扩展名判断。 |
 | `--tokenizer` | `approx` | `approx`、`tiktoken` 或 `transformers`；只负责编码和 token 计数。 |
-| `--splitter` | `sibling` | 文档拓扑与计量模式，见[拆分与计量](../concepts/splitting.md)。 |
+| `--splitter` | `section` | 文档拓扑与计量模式，见[拆分与计量](../concepts/splitting.md)。 |
 | `--max-tokens` | `1200` | 每个 Chunk 的最大 token 数。 |
 | `--ideal-max-tokens-ratio` | `0.8` | 首选拆分预算与 `max_tokens` 的比值。 |
 | `--merge-below-ratio` | `0.125` | `[0.0, 1.0)` 内的同标题尾段合并阈值；`0` 表示关闭。 |

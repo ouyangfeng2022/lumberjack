@@ -126,7 +126,7 @@ def build_pipeline(
         tokenizer_impl = _tokenizer(tokenizer)
 
     if splitter is None:
-        splitter_name = "sibling"
+        splitter_name = "section"
     elif isinstance(splitter, str):
         splitter_name = splitter.strip().lower()
     else:
@@ -175,7 +175,7 @@ def split_source(
     metadata_overrides: Mapping[str, object] | None = None,
     source_path: str | Path | None = None,
     tokenizer: TokenizerProtocol | str = "approx",
-    splitter: SplitterProtocol | str = "sibling",
+    splitter: SplitterProtocol | str = "section",
     max_tokens: int = 1200,
     ideal_max_tokens_ratio: float = 0.8,
     merge_below_ratio: float = 0.125,

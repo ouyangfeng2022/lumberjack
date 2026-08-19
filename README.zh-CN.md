@@ -70,9 +70,9 @@ lumber report.docx --tokenizer tiktoken --splitter subtree > chunks.json
 
 | Splitter | 适用场景 |
 | --- | --- |
-| `sibling`（默认） | 希望尽量填满 Chunk，并允许相邻同级章节共享上下文。 |
+| `sibling` | 希望尽量填满 Chunk，并允许相邻同级章节共享上下文。 |
 | `subtree` | 只要预算允许，就让完整的章节子树保持在一起。 |
-| `section` | 需要独立考虑每个章节的直接正文。 |
+| `section`（默认） | 需要独立考虑每个章节的直接正文。 |
 
 | 计量模式 | 行为 |
 | --- | --- |

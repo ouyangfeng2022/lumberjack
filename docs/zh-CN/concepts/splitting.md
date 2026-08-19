@@ -6,9 +6,9 @@
 
 | Splitter | 拓扑 |
 | --- | --- |
-| `SiblingSplitter` / `sibling` | 打包能放下的相邻同级章节，并保留它们的共享上下文。这是默认策略。 |
+| `SiblingSplitter` / `sibling` | 打包能放下的相邻同级章节，并保留它们的共享上下文。 |
 | `SubtreeSplitter` / `subtree` | 预算允许时保留完整章节子树；无法容纳时才在章节内部回退。 |
-| `SectionSplitter` / `section` | 独立处理每个章节的直接正文；不会折叠子树。 |
+| `SectionSplitter` / `section` | 独立处理每个章节的直接正文；不会折叠子树。这是默认策略。 |
 
 ## 精确与增量规划
 
