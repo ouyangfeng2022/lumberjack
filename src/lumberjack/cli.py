@@ -8,7 +8,8 @@ from typing import cast
 
 from ._internal.formats import detect_format
 from ._internal.options import parse_cli_block_configs
-from ._internal.pipeline import BUILTIN_SPLITTER_NAMES, split_source
+from ._internal.pipeline import BUILTIN_SPLITTER_NAMES, split_source, trace_source
+from ._internal.trace import TRACE_STAGES, TraceStage, select_trace_stages
 from .block import BlockKind
 from .parser import InputFormat
 
@@ -16,14 +17,22 @@ from .parser import InputFormat
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser with all split options."""
     parser = argparse.ArgumentParser(
-        description="Markdown / HTML / DOCX document splitter"
+        description="Markdown, HTML, DOCX, text, CSV/TSV, JSONL, and log document splitter"
     )
-    parser.add_argument(
-        "input", help="Path to a Markdown (.md), HTML (.html), or DOCX (.docx) file"
-    )
+    parser.add_argument("input", help="Path to a supported document file")
     parser.add_argument(
         "--input-format",
-        choices=("auto", "markdown", "html", "docx"),
+        choices=(
+            "auto",
+            "markdown",
+            "html",
+            "docx",
+            "text",
+            "log",
+            "csv",
+            "tsv",
+            "jsonl",
+        ),
         default="auto",
         help="Input format (default: auto-detect from file extension)",
     )
@@ -42,7 +51,8 @@ def build_parser() -> argparse.ArgumentParser:
         default="section",
         help=(
             "Splitter implementation. 'sibling'/'subtree'/'section' default "
-            "to incremental counting; use 'exact-*' for full recounting."
+            "to incremental counting; use 'exact-*' for full recounting. "
+            "Use 'record' for CSV/TSV, JSONL, and log files."
         ),
     )
     parser.add_argument(
@@ -90,6 +100,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Structured per-block-kind config JSON. Overrides --block-config "
         "for matching kinds.",
     )
+    parser.add_argument(
+        "--trace-stage",
+        action="append",
+        choices=TRACE_STAGES,
+        default=[],
+        help="Include one pipeline trace stage in JSON output; repeatable. "
+        "Default: no trace stages.",
+    )
+    parser.add_argument(
+        "--trace-max-bytes",
+        type=int,
+        default=1_048_576,
+        help="Maximum serialized trace payload size (default: 1048576)",
+    )
     return parser
 
 
@@ -106,26 +130,51 @@ def main() -> None:
         json_config=args.block_config_json,
     )
 
-    result = split_source(
-        input_path,
-        format=cast(InputFormat, input_format),
-        max_tokens=args.max_tokens,
-        ideal_max_tokens_ratio=args.ideal_max_tokens_ratio,
-        merge_below_ratio=args.merge_below_ratio,
-        block_options=block_options,
-        tokenizer=args.tokenizer,
-        splitter=args.splitter,
-        heading_sensitive=args.heading_sensitive,
-        max_heading_level=args.max_heading_level,
-    )
+    trace_payload: dict[str, object] | None = None
+    if args.trace_stage:
+        trace = trace_source(
+            input_path,
+            format=cast(InputFormat, input_format),
+            max_tokens=args.max_tokens,
+            ideal_max_tokens_ratio=args.ideal_max_tokens_ratio,
+            merge_below_ratio=args.merge_below_ratio,
+            block_options=block_options,
+            tokenizer=args.tokenizer,
+            splitter=args.splitter,
+            heading_sensitive=args.heading_sensitive,
+            max_heading_level=args.max_heading_level,
+        )
+        result_document = trace.document
+        result_chunks = trace.chunks
+        trace_payload = select_trace_stages(
+            trace,
+            cast(list[TraceStage], args.trace_stage),
+            max_bytes=args.trace_max_bytes,
+        )
+    else:
+        result = split_source(
+            input_path,
+            format=cast(InputFormat, input_format),
+            max_tokens=args.max_tokens,
+            ideal_max_tokens_ratio=args.ideal_max_tokens_ratio,
+            merge_below_ratio=args.merge_below_ratio,
+            block_options=block_options,
+            tokenizer=args.tokenizer,
+            splitter=args.splitter,
+            heading_sensitive=args.heading_sensitive,
+            max_heading_level=args.max_heading_level,
+        )
+        result_document = result.document
+        result_chunks = result.chunks
 
     payload = json.dumps(
         {
-            "document": result.document.title,
-            "metadata": result.document.metadata,
-            "reference_definitions": result.document.reference_definitions,
-            "chunk_count": len(result.chunks),
-            "chunks": [asdict(chunk) for chunk in result.chunks],
+            "document": result_document.title,
+            "metadata": result_document.metadata,
+            "reference_definitions": result_document.reference_definitions,
+            "chunk_count": len(result_chunks),
+            "chunks": [asdict(chunk) for chunk in result_chunks],
+            **({"trace": trace_payload} if trace_payload is not None else {}),
         },
         ensure_ascii=False,
         indent=2,
@@ -133,7 +182,7 @@ def main() -> None:
 
     if args.output:
         Path(args.output).write_text(payload, encoding="utf-8")
-        print(f"Wrote {len(result.chunks)} chunks to {args.output}")
+        print(f"Wrote {len(result_chunks)} chunks to {args.output}")
     else:
         print(payload)
 

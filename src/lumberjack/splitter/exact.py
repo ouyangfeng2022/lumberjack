@@ -13,6 +13,7 @@ from ..models import (
     SectionNode,
     common_heading_path,
     render_draft_body,
+    source_locations_for_blocks,
 )
 from .base import BaseSplitter
 from .context import ExactCountingContext, SectionView
@@ -29,6 +30,7 @@ class ExactCountingMixin(BaseSplitter):
 
     def split(self, document: DocTree) -> list[ChunkDraft]:
         """Split by walking the raw ``SectionNode`` tree (no pre-measure)."""
+        self._validate_document_topology(document)
         root = ExactCountingContext().prepare(self._root_for_splitting(document))
         drafts = self._post_process_drafts(self._split_section(root))
         for draft in drafts:
@@ -126,6 +128,7 @@ class ExactCountingMixin(BaseSplitter):
                     start_line=self._min_start_lines(section.blocks),
                     end_line=self._max_end_lines(section.blocks),
                     body_token_count=self.tokenizer.count(body, cache=True),
+                    source_locations=source_locations_for_blocks(section.blocks),
                 )
             )
 
@@ -192,6 +195,7 @@ class ExactCountingMixin(BaseSplitter):
                 start_line=block.start_line,
                 end_line=block.end_line,
                 body_token_count=body_tokens,
+                source_locations=block.source_locations,
             )
 
         for block in blocks:
@@ -307,6 +311,7 @@ class ExactCountingMixin(BaseSplitter):
             start_line=self._min_start_lines(node.blocks),
             end_line=self._max_end_lines(node.blocks),
             body_token_count=body_tokens,
+            source_locations=source_locations_for_blocks(node.blocks),
         )
         draft = self._draft_from_entries(
             [entry],

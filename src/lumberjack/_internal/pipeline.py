@@ -9,10 +9,11 @@ from threading import Lock
 
 from ..block import BlockOption
 from ..finalizer import ChunkFinalizer
-from ..models import Document, InputFormat, SplitResult
+from ..models import Document, InputFormat, PipelineTrace, SplitResult
 from ..normalizer import TextNormalizer
 from ..parser import AutoParser
 from ..protocols import (
+    ExtractionParserProtocol,
     ParserProtocol,
     SplitterProtocol,
     TextNormalizerProtocol,
@@ -23,6 +24,7 @@ from ..splitter import (
     ExactSectionSplitter,
     ExactSiblingSplitter,
     ExactSubtreeSplitter,
+    RecordSplitter,
     SectionSplitter,
     SiblingSplitter,
     SubtreeSplitter,
@@ -44,6 +46,7 @@ _SPLITTERS = {
     "section": SectionSplitter,
     "incremental-section": SectionSplitter,
     "exact-section": ExactSectionSplitter,
+    "record": RecordSplitter,
 }
 
 
@@ -98,10 +101,26 @@ class Pipeline:
     finalizer: ChunkFinalizer
 
     def run(self, document: Document) -> SplitResult:
+        trace = self.run_trace(document)
+        return SplitResult(document=trace.document, chunks=list(trace.chunks))
+
+    def run_trace(self, document: Document) -> PipelineTrace:
+        """Run all stages and retain their public intermediate representations."""
+        extraction = (
+            self.parser.extract(document)
+            if isinstance(self.parser, ExtractionParserProtocol)
+            else None
+        )
         doc_tree = self.parser.parse(document)
         drafts = self.splitter.split(doc_tree)
         chunks = self.finalizer.finalize(doc_tree, drafts)
-        return SplitResult(document=doc_tree, chunks=chunks)
+        return PipelineTrace(
+            input=document,
+            extraction=extraction,
+            document=doc_tree,
+            drafts=tuple(drafts),
+            chunks=tuple(chunks),
+        )
 
 
 def build_pipeline(
@@ -136,16 +155,25 @@ def build_pipeline(
         splitter_class = _SPLITTERS.get(splitter_name)
         if splitter_class is None:
             raise ValueError(f"Unsupported splitter: {splitter}")
-        splitter_impl = splitter_class(
-            tokenizer_impl,
-            max_tokens=max_tokens,
-            ideal_max_tokens_ratio=ideal_max_tokens_ratio,
-            merge_below_ratio=merge_below_ratio,
-            skip_empty_sections=skip_empty_sections,
-            heading_sensitive=heading_sensitive,
-            max_heading_level=max_heading_level,
-            block_options=block_options,
-        )
+        if splitter_class is RecordSplitter:
+            splitter_impl = splitter_class(
+                tokenizer_impl,
+                max_tokens=max_tokens,
+                ideal_max_tokens_ratio=ideal_max_tokens_ratio,
+                skip_empty_sections=skip_empty_sections,
+                block_options=block_options,
+            )
+        else:
+            splitter_impl = splitter_class(
+                tokenizer_impl,
+                max_tokens=max_tokens,
+                ideal_max_tokens_ratio=ideal_max_tokens_ratio,
+                merge_below_ratio=merge_below_ratio,
+                skip_empty_sections=skip_empty_sections,
+                heading_sensitive=heading_sensitive,
+                max_heading_level=max_heading_level,
+                block_options=block_options,
+            )
     else:
         assert splitter is not None and not isinstance(splitter, str)
         splitter_impl = splitter
@@ -207,6 +235,46 @@ def split_source(
     )
 
 
+def trace_source(
+    source: str | bytes | Path,
+    *,
+    format: InputFormat = "auto",
+    document_title: str | None = None,
+    metadata_overrides: Mapping[str, object] | None = None,
+    source_path: str | Path | None = None,
+    tokenizer: TokenizerProtocol | str = "approx",
+    splitter: SplitterProtocol | str = "section",
+    max_tokens: int = 1200,
+    ideal_max_tokens_ratio: float = 0.8,
+    merge_below_ratio: float = 0.125,
+    skip_empty_sections: bool = True,
+    heading_sensitive: bool = True,
+    max_heading_level: int | None = None,
+    block_options: Iterable[BlockOption] | None = None,
+) -> PipelineTrace:
+    """Run the configurable pipeline and retain public intermediate stages."""
+    pipeline = build_pipeline(
+        tokenizer=tokenizer,
+        splitter=splitter,
+        max_tokens=max_tokens,
+        ideal_max_tokens_ratio=ideal_max_tokens_ratio,
+        merge_below_ratio=merge_below_ratio,
+        skip_empty_sections=skip_empty_sections,
+        heading_sensitive=heading_sensitive,
+        max_heading_level=max_heading_level,
+        block_options=block_options,
+    )
+    return pipeline.run_trace(
+        Document(
+            source=source,
+            format=format,
+            document_title=document_title,
+            metadata_overrides=dict(metadata_overrides or {}),
+            source_path=source_path,
+        )
+    )
+
+
 BUILTIN_SPLITTER_NAMES = tuple(_SPLITTERS)
 
 __all__ = [
@@ -215,4 +283,5 @@ __all__ = [
     "TokenizerRegistry",
     "build_pipeline",
     "split_source",
+    "trace_source",
 ]

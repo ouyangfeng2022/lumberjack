@@ -2,7 +2,7 @@
 
 [中文](../zh-CN/reference/cli.md)
 
-`lumber` reads one Markdown, HTML, or DOCX file and emits a JSON object to standard output. Use `--output` to write that JSON to a file instead.
+`lumber` reads one supported document file and emits a JSON object to standard output. Use `--output` to write that JSON to a file instead.
 
 ```bash
 lumber INPUT [OPTIONS]
@@ -10,9 +10,9 @@ lumber INPUT [OPTIONS]
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--input-format` | `auto` | `auto`, `markdown`, `html`, or `docx`. Auto detects a file extension. |
+| `--input-format` | `auto` | `auto`, `markdown`, `html`, `docx`, `text`, `log`, `csv`, `tsv`, or `jsonl`. Auto detects a supported file extension. |
 | `--tokenizer` | `approx` | `approx`, `tiktoken`, or `transformers`; controls encoding and token counting only. |
-| `--splitter` | `section` | Structure topology and counting mode. See [splitting](../concepts/splitting.md). |
+| `--splitter` | `section` | Structure topology and counting mode. Use `record` for LOG, CSV/TSV, and JSONL so input records remain atomic. See [splitting](../concepts/splitting.md). |
 | `--max-tokens` | `1200` | Maximum tokens per chunk. |
 | `--ideal-max-tokens-ratio` | `0.8` | Preferred split budget divided by `max_tokens`. |
 | `--merge-below-ratio` | `0.125` | Same-heading tail merge threshold in `[0.0, 1.0)`; `0` disables it. |

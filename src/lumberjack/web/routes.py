@@ -12,8 +12,10 @@ from lumberjack._internal.options import (
     parse_block_config_json,
     parse_block_config_mapping,
 )
-from lumberjack._internal.pipeline import TokenizerRegistry, split_source
+from lumberjack._internal.pipeline import TokenizerRegistry, split_source, trace_source
+from lumberjack._internal.trace import TraceStage, select_trace_stages
 from lumberjack.block import BlockOption
+from lumberjack.models import SourceLocation
 from lumberjack.parser import InputFormat
 
 router = APIRouter()
@@ -30,12 +32,15 @@ SplitterName = Literal[
     "section",
     "exact-section",
     "incremental-section",
+    "record",
 ]
 
 
 class TextSplitRequest(BaseModel):
     text: str
-    input_format: Literal["markdown", "html"] = "markdown"
+    input_format: Literal["markdown", "html", "text", "log", "csv", "tsv", "jsonl"] = (
+        "markdown"
+    )
     max_tokens: int = PydanticField(1200, gt=0)
     ideal_max_tokens_ratio: float = PydanticField(0.8, gt=0, le=1)
     merge_below_ratio: float = PydanticField(0.125, ge=0, lt=1)
@@ -54,6 +59,8 @@ class TextSplitRequest(BaseModel):
         ),
     )
     max_heading_level: int | None = PydanticField(None, ge=0)
+    trace_stages: list[TraceStage] = PydanticField(default_factory=list)
+    trace_max_bytes: int = PydanticField(1_048_576, gt=0, le=10_485_760)
 
 
 class ChunkResponse(BaseModel):
@@ -71,6 +78,8 @@ class ChunkResponse(BaseModel):
     document_path: str | None
     start_line: int | None
     end_line: int | None
+    source_locations: list[SourceLocation]
+    protected: bool
 
 
 class SplitResponse(BaseModel):
@@ -79,6 +88,7 @@ class SplitResponse(BaseModel):
     reference_definitions: dict[str, dict[str, str]]
     chunk_count: int
     chunks: list[ChunkResponse]
+    trace: dict[str, Any] | None = None
 
 
 def _pipeline_http_error(error: Exception) -> HTTPException:
@@ -111,35 +121,64 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
     block_options = _parse_block_configs(payload.block_configs)
 
     try:
-        result = split_source(
-            payload.text,
-            format=payload.input_format,
-            max_tokens=payload.max_tokens,
-            ideal_max_tokens_ratio=payload.ideal_max_tokens_ratio,
-            merge_below_ratio=payload.merge_below_ratio,
-            skip_empty_sections=payload.skip_empty_sections,
-            heading_sensitive=payload.heading_sensitive,
-            block_options=block_options,
-            tokenizer=_TOKENIZERS.create(payload.tokenizer),
-            splitter=payload.splitter,
-            max_heading_level=payload.max_heading_level,
-        )
+        tokenizer = _TOKENIZERS.create(payload.tokenizer)
+        trace_payload: dict[str, object] | None = None
+        if payload.trace_stages:
+            trace = trace_source(
+                payload.text,
+                format=payload.input_format,
+                max_tokens=payload.max_tokens,
+                ideal_max_tokens_ratio=payload.ideal_max_tokens_ratio,
+                merge_below_ratio=payload.merge_below_ratio,
+                skip_empty_sections=payload.skip_empty_sections,
+                heading_sensitive=payload.heading_sensitive,
+                block_options=block_options,
+                tokenizer=tokenizer,
+                splitter=payload.splitter,
+                max_heading_level=payload.max_heading_level,
+            )
+            result_document = trace.document
+            result_chunks = trace.chunks
+            trace_payload = select_trace_stages(
+                trace,
+                payload.trace_stages,
+                max_bytes=payload.trace_max_bytes,
+            )
+        else:
+            result = split_source(
+                payload.text,
+                format=payload.input_format,
+                max_tokens=payload.max_tokens,
+                ideal_max_tokens_ratio=payload.ideal_max_tokens_ratio,
+                merge_below_ratio=payload.merge_below_ratio,
+                skip_empty_sections=payload.skip_empty_sections,
+                heading_sensitive=payload.heading_sensitive,
+                block_options=block_options,
+                tokenizer=tokenizer,
+                splitter=payload.splitter,
+                max_heading_level=payload.max_heading_level,
+            )
+            result_document = result.document
+            result_chunks = result.chunks
     except Exception as e:
         raise _pipeline_http_error(e) from e
 
     return SplitResponse(
-        document=result.document.title,
-        metadata=result.document.metadata,
-        reference_definitions=result.document.reference_definitions,
-        chunk_count=len(result.chunks),
-        chunks=[ChunkResponse(**asdict(c)) for c in result.chunks],
+        document=result_document.title,
+        metadata=result_document.metadata,
+        reference_definitions=result_document.reference_definitions,
+        chunk_count=len(result_chunks),
+        chunks=[ChunkResponse(**asdict(c)) for c in result_chunks],
+        trace=trace_payload,
     )
 
 
 @router.post("/split/file", response_model=SplitResponse)
 async def split_file(
     file: UploadFile = File(...),  # noqa: B008
-    input_format: Literal["auto", "markdown", "html", "docx"] = Form("auto"),
+    input_format: Literal[
+        "auto", "markdown", "html", "docx", "text", "log", "csv", "tsv", "jsonl"
+    ] = Form("auto"),
     max_tokens: int = Form(1200, gt=0),
     ideal_max_tokens_ratio: float = Form(0.8, gt=0, le=1),
     merge_below_ratio: float = Form(0.125, ge=0, lt=1),
@@ -157,12 +196,13 @@ async def split_file(
         ),
     ),
     max_heading_level: int | None = Form(None, ge=0),
+    trace_stages: list[TraceStage] = Form([]),  # noqa: B008
+    trace_max_bytes: int = Form(1_048_576, gt=0, le=10_485_760),
 ) -> SplitResponse:
-    """Split an uploaded file (Markdown, HTML, or DOCX) into chunks.
+    """Split an uploaded supported document file into chunks.
 
     The input format is auto-detected from the file extension when
-    ``input_format`` is ``"auto"``.  Set it to ``"docx"``, ``"html"``,
-    or ``"markdown"`` to override.
+    ``input_format`` is ``"auto"``. Set an explicit format to override.
     """
     raw = await file.read()
     fmt = (
@@ -178,28 +218,57 @@ async def split_file(
             content = raw
         else:
             content = raw.decode("utf-8")
-        result = split_source(
-            content,
-            format=cast(InputFormat, fmt),
-            document_title=file.filename,
-            source_path=file.filename,
-            max_tokens=max_tokens,
-            ideal_max_tokens_ratio=ideal_max_tokens_ratio,
-            merge_below_ratio=merge_below_ratio,
-            skip_empty_sections=skip_empty_sections,
-            heading_sensitive=heading_sensitive,
-            block_options=block_options,
-            tokenizer=_TOKENIZERS.create(tokenizer),
-            splitter=splitter,
-            max_heading_level=max_heading_level,
-        )
+        tokenizer_instance = _TOKENIZERS.create(tokenizer)
+        trace_payload: dict[str, object] | None = None
+        if trace_stages:
+            trace = trace_source(
+                content,
+                format=cast(InputFormat, fmt),
+                document_title=file.filename,
+                source_path=file.filename,
+                max_tokens=max_tokens,
+                ideal_max_tokens_ratio=ideal_max_tokens_ratio,
+                merge_below_ratio=merge_below_ratio,
+                skip_empty_sections=skip_empty_sections,
+                heading_sensitive=heading_sensitive,
+                block_options=block_options,
+                tokenizer=tokenizer_instance,
+                splitter=splitter,
+                max_heading_level=max_heading_level,
+            )
+            result_document = trace.document
+            result_chunks = trace.chunks
+            trace_payload = select_trace_stages(
+                trace,
+                trace_stages,
+                max_bytes=trace_max_bytes,
+            )
+        else:
+            result = split_source(
+                content,
+                format=cast(InputFormat, fmt),
+                document_title=file.filename,
+                source_path=file.filename,
+                max_tokens=max_tokens,
+                ideal_max_tokens_ratio=ideal_max_tokens_ratio,
+                merge_below_ratio=merge_below_ratio,
+                skip_empty_sections=skip_empty_sections,
+                heading_sensitive=heading_sensitive,
+                block_options=block_options,
+                tokenizer=tokenizer_instance,
+                splitter=splitter,
+                max_heading_level=max_heading_level,
+            )
+            result_document = result.document
+            result_chunks = result.chunks
     except Exception as e:
         raise _pipeline_http_error(e) from e
 
     return SplitResponse(
-        document=result.document.title,
-        metadata=result.document.metadata,
-        reference_definitions=result.document.reference_definitions,
-        chunk_count=len(result.chunks),
-        chunks=[ChunkResponse(**asdict(c)) for c in result.chunks],
+        document=result_document.title,
+        metadata=result_document.metadata,
+        reference_definitions=result_document.reference_definitions,
+        chunk_count=len(result_chunks),
+        chunks=[ChunkResponse(**asdict(c)) for c in result_chunks],
+        trace=trace_payload,
     )

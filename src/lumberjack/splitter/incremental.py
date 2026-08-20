@@ -4,10 +4,12 @@ from .._internal.rendering import RENDER_SEPARATOR, join_rendered_blocks
 from ..models import (
     ChunkDraft,
     DocTree,
+    DocumentBlock,
     Entry,
     HeadingPath,
     common_heading_path,
     render_heading_path,
+    source_locations_for_blocks,
 )
 from .base import BaseSplitter
 from .context import IncrementalCountingContext, SectionView
@@ -28,6 +30,7 @@ class IncrementalCountingMixin(BaseSplitter):
 
     def split(self, document: DocTree) -> list[ChunkDraft]:
         """Measure the tree once, then split via the topology's _split_section."""
+        self._validate_document_topology(document)
         self._atomic_token_counts: dict[str, int] = {}
         root = IncrementalCountingContext(self).prepare(
             self._root_for_splitting(document)
@@ -234,6 +237,7 @@ class IncrementalCountingMixin(BaseSplitter):
         current_body_tokens = 0
         current_start_line: int | None = None
         current_end_line: int | None = None
+        current_blocks: list[DocumentBlock] = []
 
         budget = body_budget
 
@@ -244,6 +248,7 @@ class IncrementalCountingMixin(BaseSplitter):
                 start_line=current_start_line,
                 end_line=current_end_line,
                 body_token_count=current_body_tokens,
+                source_locations=source_locations_for_blocks(current_blocks),
             )
             token_count = self._chunk_token_count(prefix_tokens, current_body_tokens)
             return ChunkDraft(
@@ -265,6 +270,7 @@ class IncrementalCountingMixin(BaseSplitter):
                     current_body_tokens = 0
                     current_start_line = None
                     current_end_line = None
+                    current_blocks = []
 
                 block_tokens = self._count_once(block.text)
                 # This draft will only contain this block and headings.
@@ -280,6 +286,7 @@ class IncrementalCountingMixin(BaseSplitter):
                             start_line=block.start_line,
                             end_line=block.end_line,
                             body_token_count=piece_tokens,
+                            source_locations=block.source_locations,
                         )
                         drafts.append(
                             ChunkDraft(
@@ -302,6 +309,7 @@ class IncrementalCountingMixin(BaseSplitter):
                         start_line=block.start_line,
                         end_line=block.end_line,
                         body_token_count=block_tokens,
+                        source_locations=block.source_locations,
                     )
 
                     drafts.append(
@@ -345,6 +353,7 @@ class IncrementalCountingMixin(BaseSplitter):
                 current_body_tokens = 0
                 current_start_line = None
                 current_end_line = None
+                current_blocks = []
                 candidate_body_tokens = block_tokens
 
             if block_tokens <= budget:
@@ -356,6 +365,7 @@ class IncrementalCountingMixin(BaseSplitter):
                 )
                 current_body_tokens = candidate_body_tokens
                 current_joined = candidate_text
+                current_blocks.append(block)
                 if block.start_line is not None and (
                     current_start_line is None or block.start_line < current_start_line
                 ):
@@ -378,6 +388,7 @@ class IncrementalCountingMixin(BaseSplitter):
                     start_line=block.start_line,
                     end_line=block.end_line,
                     body_token_count=block_tokens,
+                    source_locations=block.source_locations,
                 )
                 drafts.append(
                     ChunkDraft(
@@ -398,6 +409,7 @@ class IncrementalCountingMixin(BaseSplitter):
                 current_body_tokens = 0
                 current_start_line = None
                 current_end_line = None
+                current_blocks = []
                 continue
 
             for piece, piece_tokens in block_pieces:
@@ -407,6 +419,7 @@ class IncrementalCountingMixin(BaseSplitter):
                     start_line=block.start_line,
                     end_line=block.end_line,
                     body_token_count=piece_tokens,
+                    source_locations=block.source_locations,
                 )
                 drafts.append(
                     ChunkDraft(

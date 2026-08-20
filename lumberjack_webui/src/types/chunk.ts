@@ -13,6 +13,26 @@ export interface ChunkData {
   document_path: string | null;
   start_line: number | null;
   end_line: number | null;
+  source_locations: SourceLocation[];
+  protected: boolean;
+}
+
+export interface SourceLocation {
+  source: string | null;
+  byte_start: number | null;
+  byte_end: number | null;
+  line_start: number | null;
+  line_end: number | null;
+  page_start: number | null;
+  page_end: number | null;
+  sheet: string | null;
+  row_start: number | null;
+  row_end: number | null;
+  column_start: number | null;
+  column_end: number | null;
+  json_path: string | null;
+  element_id: string | null;
+  bounding_box: [number, number, number, number] | null;
 }
 
 export interface SplitResponse {
@@ -44,7 +64,8 @@ export type SplitterName =
   | 'incremental-subtree'
   | 'section'
   | 'exact-section'
-  | 'incremental-section';
+  | 'incremental-section'
+  | 'record';
 
 export interface SplitOptions {
   max_tokens: number;

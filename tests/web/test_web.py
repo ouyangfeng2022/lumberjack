@@ -67,6 +67,48 @@ def test_split_with_text(client: ASGITestClient) -> None:
     assert "ancestor_headings" in chunk
 
 
+def test_split_text_accepts_jsonl_with_record_splitter(client: ASGITestClient) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={
+            "text": '{"name": "Ada"}\n{"name": "Grace"}',
+            "input_format": "jsonl",
+            "splitter": "record",
+            "max_tokens": 100,
+        },
+    )
+
+    assert response.status_code == 200
+    chunk = response.json()["chunks"][0]
+    assert chunk["chunk_type"] == "record"
+    assert [location["json_path"] for location in chunk["source_locations"]] == [
+        "$[0]",
+        "$[1]",
+    ]
+
+
+def test_split_text_includes_only_requested_bounded_trace_stages(
+    client: ASGITestClient,
+) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={"text": SIMPLE_MD, "trace_stages": ["diagnostics"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["trace"] == {"diagnostics": []}
+
+
+def test_split_text_rejects_trace_above_response_limit(client: ASGITestClient) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={"text": SIMPLE_MD, "trace_stages": ["document"], "trace_max_bytes": 1},
+    )
+
+    assert response.status_code == 400
+    assert "response limit" in response.json()["detail"]
+
+
 def test_split_text_accepts_html_format(client: ASGITestClient) -> None:
     response = client.post(
         "/lumber/api/split/text",

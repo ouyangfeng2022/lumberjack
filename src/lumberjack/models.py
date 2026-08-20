@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from base64 import b64encode
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal, TypeAlias, cast
 
 from lumberjack.block import BlockKind
 
@@ -11,7 +12,86 @@ from ._internal.rendering import join_rendered_blocks
 
 HeadingKey: TypeAlias = tuple[int, str]
 HeadingPath: TypeAlias = tuple[HeadingKey, ...]
-InputFormat: TypeAlias = Literal["auto", "markdown", "html", "docx"]
+InputFormat: TypeAlias = Literal[
+    "auto",
+    "markdown",
+    "html",
+    "docx",
+    "text",
+    "log",
+    "csv",
+    "tsv",
+    "jsonl",
+]
+DocumentTopology: TypeAlias = Literal["hierarchical", "records"]
+BoundingBox: TypeAlias = tuple[float, float, float, float]
+
+
+@dataclass(slots=True, frozen=True)
+class SourceLocation:
+    """A format-neutral, explicitly partial location in an input document.
+
+    A parser sets only the coordinates it can establish faithfully.  For
+    example, Markdown normally provides line ranges, spreadsheet parsers can
+    provide sheet/row/column coordinates, and visual parsers can additionally
+    provide page and bounding-box coordinates.  ``None`` means unavailable;
+    it never means an inferred coordinate.
+    """
+
+    source: str | None = None
+    byte_start: int | None = None
+    byte_end: int | None = None
+    line_start: int | None = None
+    line_end: int | None = None
+    page_start: int | None = None
+    page_end: int | None = None
+    sheet: str | None = None
+    row_start: int | None = None
+    row_end: int | None = None
+    column_start: int | None = None
+    column_end: int | None = None
+    json_path: str | None = None
+    element_id: str | None = None
+    bounding_box: BoundingBox | None = None
+
+    def __post_init__(self) -> None:
+        for start_name, end_name in (
+            ("byte_start", "byte_end"),
+            ("line_start", "line_end"),
+            ("page_start", "page_end"),
+            ("row_start", "row_end"),
+            ("column_start", "column_end"),
+        ):
+            start = getattr(self, start_name)
+            end = getattr(self, end_name)
+            if (start is None) != (end is None):
+                raise ValueError(f"{start_name} and {end_name} must be set together")
+            if start is not None and end is not None and start > end:
+                raise ValueError(f"{start_name} must not exceed {end_name}")
+        if self.bounding_box is not None and len(self.bounding_box) != 4:
+            raise ValueError("bounding_box must contain exactly four coordinates")
+
+
+@dataclass(slots=True, frozen=True)
+class ExtractionResult:
+    """Observable output and diagnostics from an external extraction stage."""
+
+    parser_name: str
+    parser_version: str | None = None
+    raw_output: str | None = None
+    normalized_output: str | None = None
+    locations: tuple[SourceLocation, ...] = ()
+    warnings: tuple[str, ...] = ()
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True, frozen=True)
+class PipelineDiagnostic:
+    """One non-fatal, user-visible diagnostic emitted by a pipeline stage."""
+
+    stage: str
+    message: str
+    location: SourceLocation | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -68,9 +148,21 @@ class DocumentBlock:
     text: str
     start_line: int | None = None
     end_line: int | None = None
+    source_locations: tuple[SourceLocation, ...] = ()
     children: tuple[DocumentBlock, ...] = ()
     inlines: tuple[DocumentInline, ...] = ()
     attrs: dict[str, Any] = field(default_factory=dict)
+
+
+def source_locations_for_blocks(
+    blocks: Iterable[DocumentBlock],
+) -> tuple[SourceLocation, ...]:
+    """Collect parser-defined locations from blocks without changing their order."""
+    return tuple(
+        dict.fromkeys(
+            location for block in blocks for location in block.source_locations
+        )
+    )
 
 
 @dataclass(slots=True)
@@ -95,6 +187,7 @@ class SectionNode:
     children: list[SectionNode] = field(default_factory=list)
     index: int = 0
     start_line: int | None = None
+    source_locations: tuple[SourceLocation, ...] = ()
     title_inlines: tuple[DocumentInline, ...] = ()
 
     @property
@@ -124,6 +217,8 @@ class DocTree:
         metadata: Semantic document metadata parsed from the source and merged
             with caller-provided overrides.
         reference_definitions: Link/image reference definitions (``[label]: url``).
+        topology: Structural semantics of the root. ``"records"`` is a flat,
+            ordered sequence of atomic records rather than a heading tree.
     """
 
     title: str
@@ -132,6 +227,13 @@ class DocTree:
     source_path: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     reference_definitions: dict[str, dict[str, str]] = field(default_factory=dict)
+    topology: DocumentTopology = "hierarchical"
+
+    def __post_init__(self) -> None:
+        if self.topology not in {"hierarchical", "records"}:
+            raise ValueError(f"unsupported document topology: {self.topology!r}")
+        if self.topology == "records" and self.root.children:
+            raise ValueError("record documents cannot contain heading sections")
 
 
 @dataclass(slots=True, frozen=True)
@@ -182,6 +284,8 @@ class Chunk:
     document_path: str | None = None
     start_line: int | None = None
     end_line: int | None = None
+    source_locations: tuple[SourceLocation, ...] = ()
+    protected: bool = False
 
 
 @dataclass(slots=True, frozen=True)
@@ -190,6 +294,51 @@ class SplitResult:
 
     document: DocTree
     chunks: list[Chunk]
+
+
+@dataclass(slots=True, frozen=True)
+class PipelineTrace:
+    """Explicit, complete record of one document's parsing and split stages.
+
+    ``Lumberjack.saw()`` intentionally returns :class:`SplitResult`; callers
+    that need intermediate representations opt into this object via
+    :meth:`Lumberjack.trace`.
+    """
+
+    input: Document
+    extraction: ExtractionResult | None
+    document: DocTree
+    drafts: tuple[ChunkDraft, ...]
+    chunks: tuple[Chunk, ...]
+    diagnostics: tuple[PipelineDiagnostic, ...] = ()
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a JSON-compatible view of this trace.
+
+        Bytes are represented explicitly as a base64 envelope and paths as
+        strings.  The versioned JSON Schema for persisted trace payloads is a
+        later concern; this method keeps the public Python trace inspectable
+        without exposing private implementation objects.
+        """
+        value = _json_value(self)
+        assert isinstance(value, dict)
+        return cast(dict[str, object], value)
+
+
+def _json_value(value: object) -> object:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, bytes):
+        return {"encoding": "base64", "data": b64encode(value).decode("ascii")}
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            item.name: _json_value(getattr(value, item.name)) for item in fields(value)
+        }
+    if isinstance(value, dict):
+        return {str(key): _json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_value(item) for item in value]
+    return value
 
 
 def render_heading_path(path: HeadingPath) -> str:
@@ -260,6 +409,7 @@ class Entry:
     start_line: int | None
     end_line: int | None
     body_token_count: int = 0
+    source_locations: tuple[SourceLocation, ...] = ()
 
 
 def render_draft_body(entries: list[Entry], external_headings: HeadingPath) -> str:
@@ -314,3 +464,4 @@ class ChunkDraft:
     split_origin: Literal["section", "fragment", "text_piece", "merge"] = "section"
     chunk_type: str = "paragraph"
     counting_mode: Literal["incremental", "exact"] = "incremental"
+    protected: bool = False

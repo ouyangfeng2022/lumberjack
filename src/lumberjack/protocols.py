@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from .models import ChunkDraft, DocTree, Document
+    from .models import ChunkDraft, DocTree, Document, ExtractionResult
 
 
 class TokenizerProtocol(Protocol):
@@ -20,6 +20,13 @@ class ParserProtocol(Protocol):
     block_kinds: frozenset[str]
 
     def parse(self, document: Document) -> DocTree: ...
+
+
+@runtime_checkable
+class ExtractionParserProtocol(Protocol):
+    """Optional parser capability for exposing an upstream extraction view."""
+
+    def extract(self, document: Document) -> ExtractionResult | None: ...
 
 
 class SplitterProtocol(Protocol):

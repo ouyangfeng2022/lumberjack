@@ -39,6 +39,7 @@ const zh = {
   opts_splitter_section: '章节切分',
   opts_splitter_exact_section: '章节切分（精确计量）',
   opts_splitter_incremental_section: '章节切分（增量计量）',
+  opts_splitter_record: '记录打包',
   opts_counting_help: 'tokenizer 只负责编码与计数；精确或增量计量由 splitter 决定。',
   opts_tokenizer: '分词器',
   opts_tokenizer_approx: '估算字符',

@@ -22,6 +22,8 @@ def test_text_request_defaults() -> None:
     assert fields["skip_empty_sections"].default is True
     assert fields["heading_sensitive"].default is True
     assert fields["max_heading_level"].default is None
+    assert fields["trace_stages"].default_factory is list
+    assert fields["trace_max_bytes"].default == 1_048_576
     assert "only to encode and count" in (fields["tokenizer"].description or "")
     assert "counting mode" in (fields["splitter"].description or "")
 
@@ -42,6 +44,8 @@ def test_chunk_response_fields_match_serialized_chunk() -> None:
         "document_path",
         "start_line",
         "end_line",
+        "source_locations",
+        "protected",
     ]
 
 
@@ -52,6 +56,7 @@ def test_split_response_preserves_document_level_fields() -> None:
         "reference_definitions",
         "chunk_count",
         "chunks",
+        "trace",
     ]
 
 
@@ -67,3 +72,5 @@ def test_file_request_defaults() -> None:
     assert parameters["skip_empty_sections"].default.default is True
     assert parameters["heading_sensitive"].default.default is True
     assert parameters["max_heading_level"].default.default is None
+    assert parameters["trace_stages"].default.default == []
+    assert parameters["trace_max_bytes"].default.default == 1_048_576

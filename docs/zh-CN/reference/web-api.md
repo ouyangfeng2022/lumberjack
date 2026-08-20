@@ -15,10 +15,12 @@ lumberjack-serve --reload
 
 | Endpoint | 输入 |
 | --- | --- |
-| `POST /lumber/api/split/text` | JSON：`text`、`input_format`（`markdown` 或 `html`）以及拆分选项。 |
-| `POST /lumber/api/split/file` | multipart form：`file`、`input_format`（`auto`、`markdown`、`html` 或 `docx`）以及拆分选项。 |
+| `POST /lumber/api/split/text` | JSON：`text`、`input_format`（`markdown`、`html`、`text`、`log`、`csv`、`tsv` 或 `jsonl`）以及拆分选项。 |
+| `POST /lumber/api/split/file` | multipart form：`file`、`input_format`（`auto`、`markdown`、`html`、`docx`、`text`、`log`、`csv`、`tsv` 或 `jsonl`）以及拆分选项。 |
 
 两个 endpoint 都会返回 `document`、`metadata`、`reference_definitions`、`chunk_count`，以及与 Python `Chunk` model 对应的序列化 `chunks`。
+
+LOG、CSV/TSV 和 JSONL 输入请使用 `splitter: "record"`。它只打包完整记录；单条记录超过预算时会标记为 `protected`，不会拆开。
 
 ```bash
 curl -X POST http://127.0.0.1:9612/lumber/api/split/text \

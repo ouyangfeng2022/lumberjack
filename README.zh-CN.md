@@ -9,7 +9,7 @@
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-4051b5)](https://ouyangfeng2022.github.io/lumberjack/)
 [![CI](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml/badge.svg)](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml)
 
-**把 Markdown、HTML 和 DOCX 切成适合检索的 Chunk，同时保留文档结构与标题上下文。**
+**把文档和扁平记录切成适合检索的 Chunk，同时保留结构与来源信息。**
 
 Lumberjack 是用于 RAG 预处理的 Python 库和 CLI。它先读取文档树而不是直接切纯文本，保留标题与来源元数据，尊重表格和围栏代码块；只要内容可安全拆分，就会让 Chunk 保持在 token 预算内。
 
@@ -18,7 +18,7 @@ Lumberjack 是用于 RAG 预处理的 Python 库和 CLI。它先读取文档树�
 ## 为什么使用 Lumberjack？
 
 - **上下文不会丢失。** Chunk 将标题元数据与正文分开保存，检索时仍可还原答案所属章节。
-- **先理解结构。** Markdown、HTML 和 DOCX 会先转成统一、格式中立的 `DocTree`。
+- **结构语义准确。** Markdown/HTML/DOCX 使用标题树；CSV/TSV、JSONL 和日志保持有序记录，不伪造章节。
 - **预算更实用。** 默认 splitter 用快速增量估算规划，最后记录权威 token 计数。
 - **Chunk 形状可选。** 可打包同级章节、优先保留子树，或独立处理每个章节的直接正文。
 
@@ -31,10 +31,10 @@ Lumberjack 是用于 RAG 预处理的 Python 库和 CLI。它先读取文档树�
 | --- | --- | --- | --- |
 | 标记文档 | Markdown（`.md`、`.markdown`）、HTML（`.html`、`.htm`） | 已支持 | 标题、块、表格、列表、代码和来源行号。 |
 | 文字处理文档 | DOCX（`.docx`） | 已支持 | 标题样式、段落、表格、列表和文档属性。 |
-| 纯文本与富文本 | TXT、文本日志、RTF | 规划中 | 有序段落/行；不虚构标题层级。 |
+| 纯文本与富文本 | TXT（`.txt`、`.text`）、文本日志（`.log`） | 已支持 | TXT 使用段落/行；日志是原子有序记录。RTF 仍在规划中。 |
 | OpenDocument 与旧式文字处理 | ODT、DOC | 规划中 | 在源格式提供时保留标题与内容块。 |
-| 电子表格与分隔数据 | XLSX、XLS、ODS、CSV、TSV | 规划中 | schema/表头加原子行或可配置行组；一行中的单元格必须能追溯到该行。 |
-| 半结构化数据 | JSON、JSONL、XML、YAML、TOML | 规划中 | 对象、记录、数组和路径，而不是人为制造文档标题。 |
+| 电子表格与分隔数据 | CSV（`.csv`）、TSV（`.tsv`） | 已支持 | 表头 schema 加原子行，并保留行/列来源。XLSX、XLS 和 ODS 仍在规划中。 |
+| 半结构化数据 | JSONL（`.jsonl`、`.ndjson`） | 已支持 | 每条记录保留规范 JSON、来源行和 JSON 路径。JSON、XML、YAML 和 TOML 仍在规划中。 |
 | 分析与数据库导出 | Parquet、Avro、ORC、SQLite/SQL dump | 规划中 | 表、record batch、schema 和查询/表来源信息。 |
 | 源代码与 Notebook | Python、JavaScript/TypeScript、Java、C/C++、Go、Rust、Jupyter Notebook（`.ipynb`） | 规划中 | 文件、符号、注释、cell 和与语言相关的代码块。 |
 | 演示文稿与电子书 | PPTX、PPT、ODP、EPUB | 规划中 | 幻灯片/页面、标题、备注和有序内容块。 |
@@ -92,8 +92,11 @@ for chunk in result.chunks:
 ## 使用 CLI
 
 ```bash
-# 根据后缀推断已支持的 Markdown、HTML 或 DOCX。
+# 根据后缀推断已支持的格式。
 lumber handbook.md --max-tokens 1200
+
+# CSV 行保持原子记录（TSV、JSONL 和日志同样使用）。
+lumber people.csv --splitter record --max-tokens 1200
 
 # 输出适合入库任务消费的 JSON。
 lumber report.docx --tokenizer tiktoken --splitter subtree > chunks.json
@@ -122,7 +125,7 @@ Tokenizer 与计量模式互不绑定，例如 `tiktoken` 可配合 `incremental
 lumberjack-serve --reload
 ```
 
-安装 `web` extra 后，服务提供 `POST /lumber/api/split/text`（Markdown/HTML JSON）和 `POST /lumber/api/split/file`（上传 Markdown、HTML 或 DOCX）。上表“规划中”的格式目前不接受。运行时可从 [`/docs`](http://127.0.0.1:9612/docs) 打开 FastAPI 的交互式 OpenAPI 文档。
+安装 `web` extra 后，服务提供 `POST /lumber/api/split/text`（UTF-8 Markdown、HTML、TXT、LOG、CSV/TSV、JSONL）和 `POST /lumber/api/split/file`（前述格式及 DOCX）。LOG、CSV/TSV、JSONL 需选择 `splitter: "record"`。上表其余“规划中”的格式目前不接受。运行时可从 [`/docs`](http://127.0.0.1:9612/docs) 打开 FastAPI 的交互式 OpenAPI 文档。
 
 ## 深入了解
 

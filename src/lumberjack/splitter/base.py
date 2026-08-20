@@ -17,6 +17,7 @@ from ..models import (
     common_heading_path,
     render_draft_body,
     render_heading_path,
+    source_locations_for_blocks,
 )
 from ..protocols import TokenizerProtocol
 from .context import SectionView
@@ -39,6 +40,8 @@ class BaseSplitter:
     independent of both topology and counting strategy: tokenizer/options
     wiring, rendering helpers, and small-draft merging.
     """
+
+    supported_topologies = frozenset({"hierarchical"})
 
     def __init__(
         self,
@@ -117,6 +120,14 @@ class BaseSplitter:
         if self.max_heading_level is None:
             return document.root
         return self._limit_heading_depth(document.root, self.max_heading_level)
+
+    def _validate_document_topology(self, document: DocTree) -> None:
+        if document.topology not in self.supported_topologies:
+            supported = ", ".join(sorted(self.supported_topologies))
+            raise ValueError(
+                f"{type(self).__name__} supports only {supported} topology; "
+                f"got {document.topology!r}"
+            )
 
     def _limit_heading_depth(
         self,
@@ -256,6 +267,7 @@ class BaseSplitter:
             start_line=min(start_lines) if start_lines else None,
             end_line=max(end_lines) if end_lines else None,
             body_token_count=body_token_count,
+            source_locations=source_locations_for_blocks(blocks),
         )
 
     def _entry_group_tail(self, entries: list[Entry]) -> str:

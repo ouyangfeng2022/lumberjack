@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added explicit `Lumberjack.trace()` pipeline traces, format-neutral source
+  locations, optional parser extraction results, and source-location metadata
+  on chunks across Python, CLI, and Web outputs.
+- Added `DocTreeBuilder` for supported construction of hierarchical or flat
+  parser output without requiring synthetic headings, plus explicit record
+  topology and `RecordSplitter` for atomic row/record packing.
+- Added UTF-8 TXT/LOG, CSV/TSV, and JSONL parsing with explicit row, line, and
+  JSON-path provenance. Use the `record` splitter for LOG, CSV/TSV, and JSONL
+  inputs so records remain atomic.
 - Added a reproducible benchmark MVP with a versioned public corpus, quality
   and performance metrics, raw-result JSON, and optional competitor adapters.
 - Added a MkDocs Material documentation site with getting-started, concepts,

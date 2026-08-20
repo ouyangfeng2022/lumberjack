@@ -9,7 +9,7 @@
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-4051b5)](https://ouyangfeng2022.github.io/lumberjack/)
 [![CI](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml/badge.svg)](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml)
 
-**Turn Markdown, HTML, and DOCX into retrieval-ready chunks without losing their structure or heading context.**
+**Turn documents and flat records into retrieval-ready chunks with structure and provenance intact.**
 
 Lumberjack is a Python library and CLI for RAG preprocessing. It reads a document tree instead of cutting plain text, preserves headings and source metadata, respects tables and fenced code, and keeps every chunk within a token budget whenever its content can be split safely.
 
@@ -18,7 +18,7 @@ Lumberjack is a Python library and CLI for RAG preprocessing. It reads a documen
 ## Why Lumberjack?
 
 - **Context survives splitting.** Chunks separate heading metadata from body content, so retrieval can retain the section that introduced an answer.
-- **Document structure comes first.** Markdown, HTML, and DOCX become one format-neutral `DocTree` before splitting.
+- **Structure stays honest.** Markdown/HTML/DOCX become heading trees; CSV/TSV, JSONL, and logs remain ordered records rather than fabricated sections.
 - **Budgets are practical.** The default splitter plans with fast incremental estimates, then records an authoritative final token count.
 - **Topology is your choice.** Pack sibling sections, preserve subtrees, or process each section body independently.
 
@@ -32,10 +32,10 @@ automatic detection until it is marked supported in a release.
 | --- | --- | --- | --- |
 | Markup documents | Markdown (`.md`, `.markdown`), HTML (`.html`, `.htm`) | Supported | Headings, blocks, tables, lists, code, and source lines. |
 | Word-processing documents | DOCX (`.docx`) | Supported | Heading styles, paragraphs, tables, lists, and document properties. |
-| Plain and rich text | TXT, text logs, RTF | Planned | Ordered paragraphs/lines; no invented heading hierarchy. |
+| Plain and rich text | TXT (`.txt`, `.text`), text logs (`.log`) | Supported | TXT paragraphs/lines; logs are atomic ordered records. RTF remains planned. |
 | OpenDocument and legacy word processing | ODT, DOC | Planned | Headings and blocks when the source format exposes them. |
-| Spreadsheets and delimited data | XLSX, XLS, ODS, CSV, TSV | Planned | Schema/header plus atomic rows or configurable row groups; cells in a row must stay attributable to that row. |
-| Semi-structured data | JSON, JSONL, XML, YAML, TOML | Planned | Objects, records, arrays, and paths—not artificial document headings. |
+| Spreadsheets and delimited data | CSV (`.csv`), TSV (`.tsv`) | Supported | Header schema plus atomic rows with row/column provenance. XLSX, XLS, and ODS remain planned. |
+| Semi-structured data | JSONL (`.jsonl`, `.ndjson`) | Supported | One canonical JSON value per record with source line and JSON-path provenance. JSON, XML, YAML, and TOML remain planned. |
 | Analytical and database exports | Parquet, Avro, ORC, SQLite/SQL dumps | Planned | Tables, record batches, schemas, and query/table provenance. |
 | Source code and notebooks | Python, JavaScript/TypeScript, Java, C/C++, Go, Rust, Jupyter notebooks (`.ipynb`) | Planned | Files, symbols, comments, cells, and language-aware code blocks. |
 | Presentations and ebooks | PPTX, PPT, ODP, EPUB | Planned | Slides/pages, titles, notes, and ordered content blocks. |
@@ -99,8 +99,11 @@ for chunk in result.chunks:
 ## Use the CLI
 
 ```bash
-# Infer supported Markdown, HTML, or DOCX from the file extension.
+# Infer a supported format from the file extension.
 lumber handbook.md --max-tokens 1200
+
+# Preserve CSV rows as atomic records (also use this for TSV, JSONL, and logs).
+lumber people.csv --splitter record --max-tokens 1200
 
 # Emit JSON suitable for an ingestion job.
 lumber report.docx --tokenizer tiktoken --splitter subtree > chunks.json
@@ -129,7 +132,7 @@ Tokenizer choice and counting mode are independent. For example, `tiktoken` work
 lumberjack-serve --reload
 ```
 
-With the `web` extra installed, the service exposes `POST /lumber/api/split/text` for Markdown/HTML JSON requests and `POST /lumber/api/split/file` for uploaded Markdown, HTML, and DOCX. The planned formats above are not accepted yet. FastAPI serves interactive OpenAPI documentation at [`/docs`](http://127.0.0.1:9612/docs) while the server is running.
+With the `web` extra installed, the service exposes `POST /lumber/api/split/text` for UTF-8 Markdown, HTML, TXT, LOG, CSV/TSV, and JSONL requests, and `POST /lumber/api/split/file` for those formats plus DOCX. Select `splitter: "record"` for LOG, CSV/TSV, and JSONL. The remaining planned formats above are not accepted yet. FastAPI serves interactive OpenAPI documentation at [`/docs`](http://127.0.0.1:9612/docs) while the server is running.
 
 ## Learn more
 

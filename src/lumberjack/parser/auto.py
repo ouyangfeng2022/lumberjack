@@ -10,11 +10,16 @@ from zipfile import BadZipFile, ZipFile
 
 from ..models import DocTree, Document, InputFormat
 from .docx import DocxParser
+from .flat import DelimitedTextParser, JSONLinesParser, LogParser, TextParser
 from .html import HTMLParser
 from .markdown import MarkdownParser
 
-DetectedFormat = Literal["markdown", "html", "docx"]
-_VALID_FORMATS = frozenset({"auto", "markdown", "html", "docx"})
+DetectedFormat = Literal[
+    "markdown", "html", "docx", "text", "log", "csv", "tsv", "jsonl"
+]
+_VALID_FORMATS = frozenset(
+    {"auto", "markdown", "html", "docx", "text", "log", "csv", "tsv", "jsonl"}
+)
 _HTML_START_RE = re.compile(
     r"^\s*(?:<!doctype\s+html\b|<(?:html|head|body|main|article|section|div|"
     r"h[1-6]|p|table|ul|ol|blockquote|pre)\b)",
@@ -32,6 +37,16 @@ def _format_from_suffix(path: str | Path | None) -> DetectedFormat | None:
         return "html"
     if suffix in {".md", ".markdown"}:
         return "markdown"
+    if suffix in {".txt", ".text"}:
+        return "text"
+    if suffix == ".log":
+        return "log"
+    if suffix == ".csv":
+        return "csv"
+    if suffix == ".tsv":
+        return "tsv"
+    if suffix in {".jsonl", ".ndjson"}:
+        return "jsonl"
     return None
 
 
@@ -96,11 +111,19 @@ class AutoParser:
                 text = data.decode("utf-8")
             except UnicodeDecodeError as exc:
                 raise ValueError(
-                    "Non-DOCX bytes must contain valid UTF-8 Markdown or HTML text"
+                    "Non-DOCX bytes must contain valid UTF-8 text"
                 ) from exc
         else:
             text = data
-        parser = HTMLParser() if format == "html" else MarkdownParser()
+        parser = {
+            "html": HTMLParser(),
+            "markdown": MarkdownParser(),
+            "text": TextParser(),
+            "log": LogParser(),
+            "csv": DelimitedTextParser(delimiter=","),
+            "tsv": DelimitedTextParser(delimiter="\t"),
+            "jsonl": JSONLinesParser(),
+        }[format]
         return parser.parse(
             Document(
                 source=text,

@@ -7,6 +7,7 @@ from .models import (
     Chunk,
     ChunkDraft,
     DocTree,
+    SourceLocation,
     render_draft_body,
     render_heading_path,
 )
@@ -54,6 +55,36 @@ class ChunkFinalizer:
             ancestor_headings = (
                 draft.headings[:-1] if draft.own_heading is not None else draft.headings
             )
+            start_line = min(
+                (
+                    entry.start_line
+                    for entry in draft.entries
+                    if entry.start_line is not None
+                ),
+                default=None,
+            )
+            end_line = max(
+                (
+                    entry.end_line
+                    for entry in draft.entries
+                    if entry.end_line is not None
+                ),
+                default=None,
+            )
+            locations = _unique_locations(
+                location
+                for entry in draft.entries
+                for location in entry.source_locations
+            )
+            if not locations and start_line is not None and end_line is not None:
+                locations = (
+                    SourceLocation(
+                        source=document.source_path,
+                        line_start=start_line,
+                        line_end=end_line,
+                    ),
+                )
+
             finished.append(
                 Chunk(
                     chunk_id=f"chunk-{len(finished) + 1:04d}",
@@ -79,25 +110,20 @@ class ChunkFinalizer:
                     ),
                     document_title=document.title,
                     document_path=document.source_path,
-                    start_line=min(
-                        (
-                            entry.start_line
-                            for entry in draft.entries
-                            if entry.start_line is not None
-                        ),
-                        default=None,
-                    ),
-                    end_line=max(
-                        (
-                            entry.end_line
-                            for entry in draft.entries
-                            if entry.end_line is not None
-                        ),
-                        default=None,
-                    ),
+                    start_line=start_line,
+                    end_line=end_line,
+                    source_locations=locations,
+                    protected=draft.protected,
                 )
             )
         return finished
+
+
+def _unique_locations(
+    locations: Iterable[SourceLocation],
+) -> tuple[SourceLocation, ...]:
+    """Deduplicate locations without changing parser-defined order."""
+    return tuple(dict.fromkeys(locations))
 
 
 __all__ = ["ChunkFinalizer", "render_draft_body"]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import cast
 
@@ -14,9 +15,16 @@ from lumberjack.block import (
     HTMLTableConfig,
     MarkdownTableConfig,
 )
-from lumberjack.models import InputFormat
-from lumberjack.parser import AutoParser, MarkdownParser
-from lumberjack.splitter import ExactSiblingSplitter, SiblingSplitter
+from lumberjack.models import (
+    DocTree,
+    DocumentBlock,
+    ExtractionResult,
+    InputFormat,
+    SectionNode,
+    SourceLocation,
+)
+from lumberjack.parser import AutoParser, DocTreeBuilder, MarkdownParser
+from lumberjack.splitter import ExactSiblingSplitter, RecordSplitter, SiblingSplitter
 from lumberjack.tokenizer import ApproxByteTokenizer
 from tests.helpers import FIXTURES_DIR, saw
 
@@ -34,6 +42,161 @@ def test_lumberjack_saw_splits_markdown() -> None:
     assert result.document.title == "Guide"
     assert result.chunks
     assert "Hello world" in result.chunks[0].body
+
+
+def test_lumberjack_trace_exposes_pipeline_stages_and_source_locations() -> None:
+    trace = Lumberjack(max_tokens=100).trace("# Guide\n\nHello world")
+
+    assert trace.input.source == "# Guide\n\nHello world"
+    assert trace.extraction is None
+    assert trace.document.title == "Guide"
+    assert trace.drafts
+    assert trace.chunks[0].source_locations == (
+        SourceLocation(line_start=3, line_end=3),
+    )
+    assert json.loads(json.dumps(trace.to_dict()))["chunks"][0]["source_locations"] == [
+        {
+            "source": None,
+            "byte_start": None,
+            "byte_end": None,
+            "line_start": 3,
+            "line_end": 3,
+            "page_start": None,
+            "page_end": None,
+            "sheet": None,
+            "row_start": None,
+            "row_end": None,
+            "column_start": None,
+            "column_end": None,
+            "json_path": None,
+            "element_id": None,
+            "bounding_box": None,
+        }
+    ]
+
+
+def test_lumberjack_trace_preserves_parser_defined_source_locations() -> None:
+    location = SourceLocation(page_start=2, page_end=2, element_id="p-17")
+
+    class LocatedParser:
+        block_kinds = frozenset({"paragraph"})
+
+        def parse(self, document: Document) -> DocTree:
+            del document
+            root = SectionNode(level=0, title="")
+            root.add_block(
+                DocumentBlock(
+                    kind="paragraph",
+                    text="Extracted content",
+                    source_locations=(location,),
+                )
+            )
+            return DocTree(title="Located", source="", root=root)
+
+        def extract(self, document: Document) -> ExtractionResult:
+            del document
+            return ExtractionResult(
+                parser_name="located",
+                parser_version="test",
+                raw_output="raw extraction",
+                normalized_output="Extracted content",
+                locations=(location,),
+            )
+
+    trace = Lumberjack(parser=LocatedParser(), max_tokens=100).trace("input")
+
+    assert trace.chunks[0].source_locations == (location,)
+    assert trace.extraction is not None
+    assert trace.extraction.parser_name == "located"
+
+
+def test_doc_tree_builder_supports_flat_records_without_synthetic_headings() -> None:
+    location = SourceLocation(sheet="Sales", row_start=2, row_end=2)
+    document = (
+        DocTreeBuilder(title="Rows", topology="records", block_kinds=["tabular_row"])
+        .add_record("Ada,42", kind="tabular_row", locations=[location])
+        .build()
+    )
+
+    assert document.root.children == []
+    assert document.topology == "records"
+    assert document.root.blocks[0].kind == "tabular_row"
+    assert document.root.blocks[0].source_locations == (location,)
+
+
+def test_doc_tree_builder_adds_field_values_without_synthetic_headings() -> None:
+    document = (
+        DocTreeBuilder(block_kinds=["field_value"])
+        .add_field_value(
+            "status",
+            "active",
+            locations=[SourceLocation(json_path="$.status")],
+        )
+        .build()
+    )
+
+    assert document.root.children == []
+    assert document.root.blocks[0].text == "status: active"
+    assert document.root.blocks[0].attrs == {"field": "status", "value": "active"}
+
+
+def test_doc_tree_builder_rejects_records_without_record_provenance() -> None:
+    builder = DocTreeBuilder(topology="records", block_kinds=["record"])
+
+    with pytest.raises(ValueError, match="record locations must include"):
+        builder.add_record("missing provenance", locations=[SourceLocation()])
+
+
+def test_record_splitter_packs_rows_without_heading_context() -> None:
+    document = (
+        DocTreeBuilder(title="Rows", topology="records", block_kinds=["tabular_row"])
+        .add_record(
+            "Ada,42",
+            kind="tabular_row",
+            locations=[SourceLocation(row_start=2, row_end=2)],
+        )
+        .add_record(
+            "Grace,37",
+            kind="tabular_row",
+            locations=[SourceLocation(row_start=3, row_end=3)],
+        )
+        .build()
+    )
+
+    chunks = saw(RecordSplitter(ApproxByteTokenizer(), max_tokens=100), document)
+
+    assert len(chunks) == 1
+    assert chunks[0].ancestor_headings == ()
+    assert chunks[0].own_heading is None
+    assert chunks[0].protected is False
+    assert [location.row_start for location in chunks[0].source_locations] == [2, 3]
+
+
+def test_hierarchical_splitters_reject_record_documents() -> None:
+    document = (
+        DocTreeBuilder(title="Rows", topology="records", block_kinds=["record"])
+        .add_record("one", locations=[SourceLocation(json_path="$.items[0]")])
+        .build()
+    )
+
+    with pytest.raises(ValueError, match="supports only hierarchical topology"):
+        SiblingSplitter(ApproxByteTokenizer()).split(document)
+
+
+def test_record_splitter_reports_an_oversized_atomic_record_as_protected() -> None:
+    document = (
+        DocTreeBuilder(title="Rows", topology="records", block_kinds=["record"])
+        .add_record(
+            "x" * 100,
+            locations=[SourceLocation(json_path="$.items[0]")],
+        )
+        .build()
+    )
+
+    chunk = saw(RecordSplitter(ApproxByteTokenizer(), max_tokens=10), document)[0]
+
+    assert chunk.protected is True
+    assert chunk.token_count > 10
 
 
 def test_lumberjack_auto_detects_path_and_sets_document_path() -> None:

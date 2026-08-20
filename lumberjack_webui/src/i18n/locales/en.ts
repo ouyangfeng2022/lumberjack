@@ -39,6 +39,7 @@ const en = {
   opts_splitter_section: 'Section',
   opts_splitter_exact_section: 'Section (exact)',
   opts_splitter_incremental_section: 'Section (incremental)',
+  opts_splitter_record: 'Record packing',
   opts_counting_help: 'Tokenizers encode and count text; the splitter selects exact or incremental measurement.',
   opts_tokenizer: 'Tokenizer',
   opts_tokenizer_approx: 'Approx',

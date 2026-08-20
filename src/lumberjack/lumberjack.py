@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from ._internal.pipeline import build_pipeline
-from .models import Document, InputFormat, SplitResult
+from .models import Document, InputFormat, PipelineTrace, SplitResult
 from .protocols import (
     ParserProtocol,
     SplitterProtocol,
@@ -61,6 +61,26 @@ class Lumberjack:
                 source_path=source_path,
             )
         return self._pipeline.run(document)
+
+    def trace(
+        self,
+        document: Document | str | bytes | Path,
+        *,
+        format: InputFormat = "auto",
+        document_title: str | None = None,
+        metadata_overrides: Mapping[str, object] | None = None,
+        source_path: str | Path | None = None,
+    ) -> PipelineTrace:
+        """Run one document and return explicit parser, splitter, and finalizer views."""
+        if not isinstance(document, Document):
+            document = Document(
+                source=document,
+                format=format,
+                document_title=document_title,
+                metadata_overrides=dict(metadata_overrides or {}),
+                source_path=source_path,
+            )
+        return self._pipeline.run_trace(document)
 
 
 __all__ = ["Lumberjack"]
