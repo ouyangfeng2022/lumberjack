@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import csv
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+from importlib import import_module
 from pathlib import Path
 from typing import ClassVar, Literal
+from xml.etree import ElementTree
 
-from ..models import DocTree, Document, InputFormat, SourceLocation
-from .builder import DocTreeBuilder
+import yaml
+
+from ...models import DocTree, Document, InputFormat, SourceLocation
+from ..builder import DocTreeBuilder
 
 
 def _document(
@@ -323,4 +327,215 @@ class JSONLinesParser:
         return builder.build()
 
 
-__all__ = ["DelimitedTextParser", "JSONLinesParser", "LogParser", "TextParser"]
+def _json_path(path: str, key: object) -> str:
+    return f"{path}[{json.dumps(str(key), ensure_ascii=False)}]"
+
+
+def _scalar_records(value: object, path: str = "$") -> Iterable[tuple[str, object]]:
+    if isinstance(value, Mapping):
+        if not value:
+            yield path, value
+        for key, child in value.items():
+            yield from _scalar_records(child, _json_path(path, key))
+        return
+    if isinstance(value, list):
+        if not value:
+            yield path, value
+        for index, child in enumerate(value):
+            yield from _scalar_records(child, f"{path}[{index}]")
+        return
+    yield path, value
+
+
+def _value_type(value: object) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, Mapping):
+        return "object"
+    return type(value).__name__
+
+
+class _StructuredDataParser:
+    """Base parser that emits scalar values as ordered, path-aware records."""
+
+    format: ClassVar[Literal["json", "toml", "yaml"]]
+    default_block_kinds: ClassVar[frozenset[str]] = frozenset({"record"})
+
+    @property
+    def block_kinds(self) -> frozenset[str]:
+        return self.default_block_kinds
+
+    def load(self, source: str) -> object:
+        raise NotImplementedError
+
+    def parse(
+        self,
+        document: Document | str,
+        *,
+        document_title: str | None = None,
+        metadata_overrides: dict[str, object] | None = None,
+        source_path: str | Path | None = None,
+    ) -> DocTree:
+        source_document = _document(
+            document,
+            format=self.format,
+            document_title=document_title,
+            metadata_overrides=metadata_overrides,
+            source_path=source_path,
+        )
+        try:
+            value = self.load(_text(source_document))
+        except (json.JSONDecodeError, yaml.YAMLError) as exc:
+            raise ValueError(f"Invalid {self.format.upper()} input: {exc}") from exc
+        builder = _builder(source_document, topology="records", kinds=self.block_kinds)
+        for index, (path, scalar) in enumerate(_scalar_records(value)):
+            rendered = json.dumps(
+                scalar,
+                ensure_ascii=False,
+                sort_keys=True,
+                default=str,
+                separators=(", ", ": "),
+            )
+            builder.add_record(
+                f"{path}: {rendered}",
+                locations=(
+                    SourceLocation(
+                        source=_source_path(source_document),
+                        json_path=path,
+                    ),
+                ),
+                attrs={
+                    "record_index": index,
+                    "path": path,
+                    "value": scalar,
+                    "value_type": _value_type(scalar),
+                },
+            )
+        return builder.build()
+
+
+class JSONParser(_StructuredDataParser):
+    """Parse JSON into scalar records with JSON-path provenance."""
+
+    format: ClassVar[Literal["json"]] = "json"
+
+    def load(self, source: str) -> object:
+        return json.loads(source)
+
+
+class YAMLParser(_StructuredDataParser):
+    """Parse YAML into scalar records with key-path provenance."""
+
+    format: ClassVar[Literal["yaml"]] = "yaml"
+
+    def load(self, source: str) -> object:
+        return yaml.safe_load(source)
+
+
+class TOMLParser(_StructuredDataParser):
+    """Parse TOML into scalar records with key-path provenance."""
+
+    format: ClassVar[Literal["toml"]] = "toml"
+
+    def load(self, source: str) -> object:
+        try:
+            tomllib = import_module("tomllib")
+        except ModuleNotFoundError:
+            try:
+                tomllib = import_module("tomli")
+            except ModuleNotFoundError as exc:
+                raise ImportError(
+                    "TOML support on Python 3.10 requires 'tomli'. "
+                    "Install lumberjack-py[toml]."
+                ) from exc
+        return tomllib.loads(source)
+
+
+def _tag_name(tag: str) -> str:
+    return tag.rsplit("}", maxsplit=1)[-1]
+
+
+class XMLParser:
+    """Parse XML leaf elements as ordered records with element-path provenance."""
+
+    default_block_kinds: ClassVar[frozenset[str]] = frozenset({"record"})
+
+    @property
+    def block_kinds(self) -> frozenset[str]:
+        return self.default_block_kinds
+
+    def parse(
+        self,
+        document: Document | str,
+        *,
+        document_title: str | None = None,
+        metadata_overrides: dict[str, object] | None = None,
+        source_path: str | Path | None = None,
+    ) -> DocTree:
+        source_document = _document(
+            document,
+            format="xml",
+            document_title=document_title,
+            metadata_overrides=metadata_overrides,
+            source_path=source_path,
+        )
+        try:
+            root = ElementTree.fromstring(_text(source_document))
+        except ElementTree.ParseError as exc:
+            raise ValueError(f"Invalid XML input: {exc}") from exc
+
+        builder = _builder(source_document, topology="records", kinds=self.block_kinds)
+        record_index = 0
+
+        def visit(element: ElementTree.Element, path: str) -> None:
+            nonlocal record_index
+            children = list(element)
+            if children:
+                counts: dict[str, int] = {}
+                for child in children:
+                    name = _tag_name(child.tag)
+                    counts[name] = counts.get(name, 0) + 1
+                    visit(child, f"{path}/{name}[{counts[name]}]")
+                return
+            text = (element.text or "").strip()
+            builder.add_record(
+                f"{path}: {text}",
+                locations=(
+                    SourceLocation(
+                        source=_source_path(source_document), element_id=path
+                    ),
+                ),
+                attrs={
+                    "record_index": record_index,
+                    "path": path,
+                    "tag": _tag_name(element.tag),
+                    "attributes": dict(element.attrib),
+                    "value_type": "string",
+                },
+            )
+            record_index += 1
+
+        visit(root, f"/{_tag_name(root.tag)}[1]")
+        return builder.build()
+
+
+__all__ = [
+    "DelimitedTextParser",
+    "JSONLinesParser",
+    "JSONParser",
+    "LogParser",
+    "TOMLParser",
+    "TextParser",
+    "XMLParser",
+    "YAMLParser",
+]

@@ -87,6 +87,23 @@ def test_split_text_accepts_jsonl_with_record_splitter(client: ASGITestClient) -
     ]
 
 
+def test_split_text_accepts_json_with_record_splitter(client: ASGITestClient) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={
+            "text": '{"service": {"port": 8080}}',
+            "input_format": "json",
+            "splitter": "record",
+            "max_tokens": 100,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["chunks"][0]["source_locations"][0]["json_path"] == (
+        '$["service"]["port"]'
+    )
+
+
 def test_split_text_includes_only_requested_bounded_trace_stages(
     client: ASGITestClient,
 ) -> None:

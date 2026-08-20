@@ -289,7 +289,7 @@ def test_auto_parser_forced_format_skips_inference() -> None:
 
 def test_auto_parser_rejects_invalid_format() -> None:
     with pytest.raises(ValueError, match="Unsupported input format"):
-        AutoParser().parse(Document("body", format=cast(InputFormat, "xml")))
+        AutoParser().parse(Document("body", format=cast(InputFormat, "rtf")))
 
 
 def test_auto_parser_rejects_non_utf8_non_docx_bytes() -> None:

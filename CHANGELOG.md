@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added UTF-8 TXT/LOG, CSV/TSV, and JSONL parsing with explicit row, line, and
   JSON-path provenance. Use the `record` splitter for LOG, CSV/TSV, and JSONL
   inputs so records remain atomic.
+- Added JSON, YAML, and XML parsing as ordered scalar or leaf-element records
+  with key or element paths and scalar-type metadata.
+- Added optional XLSX parsing with sheet, row, column, and header provenance;
+  install the `spreadsheets` extra to enable it.
 - Added a reproducible benchmark MVP with a versioned public corpus, quality
   and performance metrics, raw-result JSON, and optional competitor adapters.
 - Added a MkDocs Material documentation site with getting-started, concepts,

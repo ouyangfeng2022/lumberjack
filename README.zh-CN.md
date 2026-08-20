@@ -33,10 +33,10 @@ Lumberjack 是用于 RAG 预处理的 Python 库和 CLI。它先读取文档树�
 | 文字处理文档 | DOCX（`.docx`） | 已支持 | 标题样式、段落、表格、列表和文档属性。 |
 | 纯文本与富文本 | TXT（`.txt`、`.text`）、文本日志（`.log`） | 已支持 | TXT 使用段落/行；日志是原子有序记录。RTF 仍在规划中。 |
 | OpenDocument 与旧式文字处理 | ODT、DOC | 规划中 | 在源格式提供时保留标题与内容块。 |
-| 电子表格与分隔数据 | CSV（`.csv`）、TSV（`.tsv`） | 已支持 | 表头 schema 加原子行，并保留行/列来源。XLSX、XLS 和 ODS 仍在规划中。 |
-| 半结构化数据 | JSONL（`.jsonl`、`.ndjson`） | 已支持 | 每条记录保留规范 JSON、来源行和 JSON 路径。JSON、XML、YAML 和 TOML 仍在规划中。 |
-| 分析与数据库导出 | Parquet、Avro、ORC、SQLite/SQL dump | 规划中 | 表、record batch、schema 和查询/表来源信息。 |
-| 源代码与 Notebook | Python、JavaScript/TypeScript、Java、C/C++、Go、Rust、Jupyter Notebook（`.ipynb`） | 规划中 | 文件、符号、注释、cell 和与语言相关的代码块。 |
+| 电子表格与分隔数据 | CSV（`.csv`）、TSV（`.tsv`）、XLSX（`.xlsx`，`spreadsheets` extra） | 已支持 | 表头 schema 加原子行，并保留 sheet/行/列来源。XLS 和 ODS 仍在规划中。 |
+| 半结构化数据 | JSON（`.json`）、JSONL（`.jsonl`、`.ndjson`）、XML（`.xml`）、YAML（`.yaml`、`.yml`）、TOML（`.toml`） | 已支持 | 保留标量 key path、记录行和 XML 叶子元素路径；均为有序记录。 |
+| 分析与数据库导出 | SQLite（`.sqlite`、`.sqlite3`、`.db`）、SQL dump（`.sql`） | 已支持 | SQLite 表/行来源和有序 SQL 语句。Parquet、Avro、ORC 已延后。 |
+| 源代码与 Notebook | Python（`.py`）、JavaScript（`.js`）、TypeScript（`.ts`、`.tsx`）、Jupyter Notebook（`.ipynb`） | 已支持 | 符号、代码记录、cell、语言和来源位置；其他语言已延后。 |
 | 演示文稿与电子书 | PPTX、PPT、ODP、EPUB | 规划中 | 幻灯片/页面、标题、备注和有序内容块。 |
 | 邮件与归档 | EML、MSG、MBOX | 规划中 | 邮件头、正文、附件和会话来源信息。 |
 | PDF 与图像 | PDF、PNG、JPG/JPEG、TIFF、WebP | 规划中 | 可用时使用原生 PDF 文本/版面；否则使用 OCR/版面块和页级来源信息。 |
@@ -62,8 +62,8 @@ JSON 将使用有序的 record/row 单元，并保留 schema 与字段路径 pro
 ```bash
 pip install lumberjack-py
 
-# 精确 tokenizer、DOCX 支持和 Web API
-pip install "lumberjack-py[tokenizers,docx,web]"
+# 精确 tokenizer、DOCX/XLSX 支持和 Web API
+pip install "lumberjack-py[tokenizers,docx,spreadsheets,web]"
 ```
 
 需要 Python 3.10 或更高版本。
@@ -125,7 +125,7 @@ Tokenizer 与计量模式互不绑定，例如 `tiktoken` 可配合 `incremental
 lumberjack-serve --reload
 ```
 
-安装 `web` extra 后，服务提供 `POST /lumber/api/split/text`（UTF-8 Markdown、HTML、TXT、LOG、CSV/TSV、JSONL）和 `POST /lumber/api/split/file`（前述格式及 DOCX）。LOG、CSV/TSV、JSONL 需选择 `splitter: "record"`。上表其余“规划中”的格式目前不接受。运行时可从 [`/docs`](http://127.0.0.1:9612/docs) 打开 FastAPI 的交互式 OpenAPI 文档。
+安装 `web` extra 后，服务提供 `POST /lumber/api/split/text`（UTF-8 Markdown、HTML、TXT、LOG、CSV/TSV、JSON/JSONL、XML、YAML）和 `POST /lumber/api/split/file`（前述格式及 DOCX、XLSX；XLSX 需安装 `spreadsheets`）。LOG、CSV/TSV/XLSX、JSON/JSONL、XML、YAML 需选择 `splitter: "record"`。上表其余“规划中”的格式目前不接受。运行时可从 [`/docs`](http://127.0.0.1:9612/docs) 打开 FastAPI 的交互式 OpenAPI 文档。
 
 ## 深入了解
 

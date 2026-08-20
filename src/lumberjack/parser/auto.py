@@ -9,16 +9,67 @@ from typing import Literal
 from zipfile import BadZipFile, ZipFile
 
 from ..models import DocTree, Document, InputFormat
+from .code import NotebookParser, SourceCodeParser, SQLParser
 from .docx import DocxParser
-from .flat import DelimitedTextParser, JSONLinesParser, LogParser, TextParser
 from .html import HTMLParser
 from .markdown import MarkdownParser
+from .records import (
+    DelimitedTextParser,
+    JSONLinesParser,
+    JSONParser,
+    LogParser,
+    TextParser,
+    TOMLParser,
+    XMLParser,
+    YAMLParser,
+)
+from .sqlite import SQLiteParser
+from .xlsx import XlsxParser
 
 DetectedFormat = Literal[
-    "markdown", "html", "docx", "text", "log", "csv", "tsv", "jsonl"
+    "markdown",
+    "html",
+    "docx",
+    "text",
+    "log",
+    "csv",
+    "tsv",
+    "json",
+    "jsonl",
+    "xml",
+    "yaml",
+    "xlsx",
+    "toml",
+    "sqlite",
+    "sql",
+    "python",
+    "javascript",
+    "typescript",
+    "notebook",
 ]
 _VALID_FORMATS = frozenset(
-    {"auto", "markdown", "html", "docx", "text", "log", "csv", "tsv", "jsonl"}
+    {
+        "auto",
+        "markdown",
+        "html",
+        "docx",
+        "text",
+        "log",
+        "csv",
+        "tsv",
+        "json",
+        "jsonl",
+        "xml",
+        "yaml",
+        "xlsx",
+        "toml",
+        "sqlite",
+        "sql",
+        "python",
+        "javascript",
+        "typescript",
+        "notebook",
+    }
 )
 _HTML_START_RE = re.compile(
     r"^\s*(?:<!doctype\s+html\b|<(?:html|head|body|main|article|section|div|"
@@ -47,6 +98,28 @@ def _format_from_suffix(path: str | Path | None) -> DetectedFormat | None:
         return "tsv"
     if suffix in {".jsonl", ".ndjson"}:
         return "jsonl"
+    if suffix == ".json":
+        return "json"
+    if suffix == ".xml":
+        return "xml"
+    if suffix in {".yaml", ".yml"}:
+        return "yaml"
+    if suffix == ".xlsx":
+        return "xlsx"
+    if suffix == ".toml":
+        return "toml"
+    if suffix in {".sqlite", ".sqlite3", ".db"}:
+        return "sqlite"
+    if suffix == ".sql":
+        return "sql"
+    if suffix == ".py":
+        return "python"
+    if suffix in {".js", ".mjs", ".cjs"}:
+        return "javascript"
+    if suffix in {".ts", ".tsx"}:
+        return "typescript"
+    if suffix == ".ipynb":
+        return "notebook"
     return None
 
 
@@ -106,6 +179,16 @@ class AutoParser:
                 raise TypeError("DOCX input must be bytes or a pathlib.Path")
             return DocxParser().parse(parsed_tree)
 
+        if format == "xlsx":
+            if isinstance(data, str):
+                raise TypeError("XLSX input must be bytes or a pathlib.Path")
+            return XlsxParser().parse(parsed_tree)
+
+        if format == "sqlite":
+            if isinstance(data, str):
+                raise TypeError("SQLite input must be bytes or a pathlib.Path")
+            return SQLiteParser().parse(parsed_tree)
+
         if isinstance(data, bytes):
             try:
                 text = data.decode("utf-8")
@@ -122,7 +205,16 @@ class AutoParser:
             "log": LogParser(),
             "csv": DelimitedTextParser(delimiter=","),
             "tsv": DelimitedTextParser(delimiter="\t"),
+            "json": JSONParser(),
             "jsonl": JSONLinesParser(),
+            "xml": XMLParser(),
+            "yaml": YAMLParser(),
+            "toml": TOMLParser(),
+            "sql": SQLParser(),
+            "python": SourceCodeParser(language="python"),
+            "javascript": SourceCodeParser(language="javascript"),
+            "typescript": SourceCodeParser(language="typescript"),
+            "notebook": NotebookParser(),
         }[format]
         return parser.parse(
             Document(

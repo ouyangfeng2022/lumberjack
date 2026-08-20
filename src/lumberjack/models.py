@@ -21,7 +21,18 @@ InputFormat: TypeAlias = Literal[
     "log",
     "csv",
     "tsv",
+    "json",
     "jsonl",
+    "xml",
+    "yaml",
+    "xlsx",
+    "toml",
+    "sqlite",
+    "sql",
+    "python",
+    "javascript",
+    "typescript",
+    "notebook",
 ]
 DocumentTopology: TypeAlias = Literal["hierarchical", "records"]
 BoundingBox: TypeAlias = tuple[float, float, float, float]

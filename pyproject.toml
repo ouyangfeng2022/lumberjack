@@ -40,7 +40,11 @@ web = [
     "uvicorn>=0.34.0",
     "python-multipart>=0.0.18",
 ]
-all = ["lumberjack-py[tokenizers,docx,web]"]
+all = ["lumberjack-py[tokenizers,docx,web,spreadsheets,toml]"]
+spreadsheets = [
+    "openpyxl>=3.1",
+]
+toml = ["tomli>=2.0; python_version < '3.11'"]
 
 [project.urls]
 Homepage = "https://github.com/ouyangfeng2022/lumberjack"

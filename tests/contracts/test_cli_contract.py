@@ -23,7 +23,18 @@ def test_cli_public_defaults_and_choices() -> None:
         "log",
         "csv",
         "tsv",
+        "json",
         "jsonl",
+        "xml",
+        "yaml",
+        "xlsx",
+        "toml",
+        "sqlite",
+        "sql",
+        "python",
+        "javascript",
+        "typescript",
+        "notebook",
     }
     assert _action(parser, "tokenizer").default == "approx"
     assert _action(parser, "tokenizer").choices == (

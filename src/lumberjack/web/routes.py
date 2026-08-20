@@ -38,9 +38,24 @@ SplitterName = Literal[
 
 class TextSplitRequest(BaseModel):
     text: str
-    input_format: Literal["markdown", "html", "text", "log", "csv", "tsv", "jsonl"] = (
-        "markdown"
-    )
+    input_format: Literal[
+        "markdown",
+        "html",
+        "text",
+        "log",
+        "csv",
+        "tsv",
+        "json",
+        "jsonl",
+        "xml",
+        "yaml",
+        "toml",
+        "sql",
+        "python",
+        "javascript",
+        "typescript",
+        "notebook",
+    ] = "markdown"
     max_tokens: int = PydanticField(1200, gt=0)
     ideal_max_tokens_ratio: float = PydanticField(0.8, gt=0, le=1)
     merge_below_ratio: float = PydanticField(0.125, ge=0, lt=1)
@@ -177,7 +192,26 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
 async def split_file(
     file: UploadFile = File(...),  # noqa: B008
     input_format: Literal[
-        "auto", "markdown", "html", "docx", "text", "log", "csv", "tsv", "jsonl"
+        "auto",
+        "markdown",
+        "html",
+        "docx",
+        "text",
+        "log",
+        "csv",
+        "tsv",
+        "json",
+        "jsonl",
+        "xml",
+        "yaml",
+        "xlsx",
+        "toml",
+        "sqlite",
+        "sql",
+        "python",
+        "javascript",
+        "typescript",
+        "notebook",
     ] = Form("auto"),
     max_tokens: int = Form(1200, gt=0),
     ideal_max_tokens_ratio: float = Form(0.8, gt=0, le=1),
@@ -214,7 +248,7 @@ async def split_file(
     block_options = _parse_form_block_configs(block_configs)
 
     try:
-        if fmt == "docx":
+        if fmt in {"docx", "sqlite", "xlsx"}:
             content = raw
         else:
             content = raw.decode("utf-8")

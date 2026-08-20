@@ -25,9 +25,18 @@ from lumberjack.parser import (
     DocxParser,
     HTMLParser,
     JSONLinesParser,
+    JSONParser,
     LogParser,
     MarkdownParser,
+    NotebookParser,
+    SourceCodeParser,
+    SQLiteParser,
+    SQLParser,
     TextParser,
+    TOMLParser,
+    XlsxParser,
+    XMLParser,
+    YAMLParser,
 )
 from lumberjack.protocols import (
     ExtractionParserProtocol,
@@ -63,6 +72,15 @@ def test_public_lumber_pipeline_components() -> None:
         and LogParser
         and DelimitedTextParser
         and JSONLinesParser
+        and JSONParser
+        and XMLParser
+        and YAMLParser
+        and XlsxParser
+        and TOMLParser
+        and NotebookParser
+        and SQLParser
+        and SourceCodeParser
+        and SQLiteParser
         and DocTreeBuilder
     )
     assert (

@@ -34,10 +34,10 @@ automatic detection until it is marked supported in a release.
 | Word-processing documents | DOCX (`.docx`) | Supported | Heading styles, paragraphs, tables, lists, and document properties. |
 | Plain and rich text | TXT (`.txt`, `.text`), text logs (`.log`) | Supported | TXT paragraphs/lines; logs are atomic ordered records. RTF remains planned. |
 | OpenDocument and legacy word processing | ODT, DOC | Planned | Headings and blocks when the source format exposes them. |
-| Spreadsheets and delimited data | CSV (`.csv`), TSV (`.tsv`) | Supported | Header schema plus atomic rows with row/column provenance. XLSX, XLS, and ODS remain planned. |
-| Semi-structured data | JSONL (`.jsonl`, `.ndjson`) | Supported | One canonical JSON value per record with source line and JSON-path provenance. JSON, XML, YAML, and TOML remain planned. |
-| Analytical and database exports | Parquet, Avro, ORC, SQLite/SQL dumps | Planned | Tables, record batches, schemas, and query/table provenance. |
-| Source code and notebooks | Python, JavaScript/TypeScript, Java, C/C++, Go, Rust, Jupyter notebooks (`.ipynb`) | Planned | Files, symbols, comments, cells, and language-aware code blocks. |
+| Spreadsheets and delimited data | CSV (`.csv`), TSV (`.tsv`), XLSX (`.xlsx`, `spreadsheets` extra) | Supported | Header schema plus atomic rows with sheet/row/column provenance. XLS and ODS remain planned. |
+| Semi-structured data | JSON (`.json`), JSONL (`.jsonl`, `.ndjson`), XML (`.xml`), YAML (`.yaml`, `.yml`), TOML (`.toml`) | Supported | Scalar key paths, record lines, and XML leaf-element paths; all remain ordered records. |
+| Analytical and database exports | SQLite (`.sqlite`, `.sqlite3`, `.db`), SQL dump (`.sql`) | Supported | SQLite table/row provenance and ordered SQL statements. Parquet, Avro, and ORC are deferred. |
+| Source code and notebooks | Python (`.py`), JavaScript (`.js`), TypeScript (`.ts`, `.tsx`), Jupyter notebooks (`.ipynb`) | Supported | Symbols, code records, cells, language, and source locations. Other languages are deferred. |
 | Presentations and ebooks | PPTX, PPT, ODP, EPUB | Planned | Slides/pages, titles, notes, and ordered content blocks. |
 | Messages and archives | EML, MSG, MBOX | Planned | Message headers, body, attachments, and thread provenance. |
 | PDFs and images | PDF, PNG, JPG/JPEG, TIFF, WebP | Planned | Native PDF text/layout where available; OCR/layout blocks and page provenance otherwise. |
@@ -69,8 +69,8 @@ core dependencies—and will retain page, bounding-box, and parser provenance.
 ```bash
 pip install lumberjack-py
 
-# Exact tokenizers, DOCX support, and the Web API
-pip install "lumberjack-py[tokenizers,docx,web]"
+# Exact tokenizers, DOCX/XLSX support, and the Web API
+pip install "lumberjack-py[tokenizers,docx,spreadsheets,web]"
 ```
 
 Requires Python 3.10 or newer.
@@ -132,7 +132,7 @@ Tokenizer choice and counting mode are independent. For example, `tiktoken` work
 lumberjack-serve --reload
 ```
 
-With the `web` extra installed, the service exposes `POST /lumber/api/split/text` for UTF-8 Markdown, HTML, TXT, LOG, CSV/TSV, and JSONL requests, and `POST /lumber/api/split/file` for those formats plus DOCX. Select `splitter: "record"` for LOG, CSV/TSV, and JSONL. The remaining planned formats above are not accepted yet. FastAPI serves interactive OpenAPI documentation at [`/docs`](http://127.0.0.1:9612/docs) while the server is running.
+With the `web` extra installed, the service exposes `POST /lumber/api/split/text` for UTF-8 Markdown, HTML, TXT, LOG, CSV/TSV, JSON/JSONL, XML, and YAML requests, and `POST /lumber/api/split/file` for those formats plus DOCX and XLSX (install `spreadsheets` for XLSX). Select `splitter: "record"` for LOG, CSV/TSV/XLSX, JSON/JSONL, XML, and YAML. The remaining planned formats above are not accepted yet. FastAPI serves interactive OpenAPI documentation at [`/docs`](http://127.0.0.1:9612/docs) while the server is running.
 
 ## Learn more
 

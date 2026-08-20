@@ -3,9 +3,32 @@ from __future__ import annotations
 from pathlib import Path
 
 SUPPORTED_FORMATS = frozenset(
-    {"auto", "markdown", "html", "docx", "text", "log", "csv", "tsv", "jsonl"}
+    {
+        "auto",
+        "markdown",
+        "html",
+        "docx",
+        "text",
+        "log",
+        "csv",
+        "tsv",
+        "json",
+        "jsonl",
+        "xml",
+        "yaml",
+        "xlsx",
+        "toml",
+        "sqlite",
+        "sql",
+        "python",
+        "javascript",
+        "typescript",
+        "notebook",
+    }
 )
-TEXT_FORMATS = frozenset({"markdown", "html", "text", "log", "csv", "tsv", "jsonl"})
+TEXT_FORMATS = frozenset(
+    {"markdown", "html", "text", "log", "csv", "tsv", "json", "jsonl", "xml", "yaml"}
+)
 
 
 def detect_format(source: str | bytes | Path, format: str) -> str:
@@ -41,6 +64,28 @@ def detect_format_from_filename(filename: str) -> str:
         return "tsv"
     if suffix in {".jsonl", ".ndjson"}:
         return "jsonl"
+    if suffix == ".json":
+        return "json"
+    if suffix == ".xml":
+        return "xml"
+    if suffix in {".yaml", ".yml"}:
+        return "yaml"
+    if suffix == ".xlsx":
+        return "xlsx"
+    if suffix == ".toml":
+        return "toml"
+    if suffix in {".sqlite", ".sqlite3", ".db"}:
+        return "sqlite"
+    if suffix == ".sql":
+        return "sql"
+    if suffix == ".py":
+        return "python"
+    if suffix in {".js", ".mjs", ".cjs"}:
+        return "javascript"
+    if suffix in {".ts", ".tsx"}:
+        return "typescript"
+    if suffix == ".ipynb":
+        return "notebook"
     if suffix in {".txt", ".text"}:
         return "text"
     return "markdown"

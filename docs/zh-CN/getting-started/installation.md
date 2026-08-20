@@ -14,6 +14,7 @@ pip install lumberjack-py
 | --- | --- | --- |
 | 精确/模型 tokenizer | `pip install "lumberjack-py[tokenizers]"` | `tiktoken`、`transformers` 和 token 缓存 |
 | DOCX 输入 | `pip install "lumberjack-py[docx]"` | `python-docx` |
+| XLSX 输入 | `pip install "lumberjack-py[spreadsheets]"` | `openpyxl` |
 | Web 服务 | `pip install "lumberjack-py[web]"` | FastAPI、Uvicorn 和 multipart 支持 |
 | 全部功能 | `pip install "lumberjack-py[all]"` | 所有可选功能 |
 

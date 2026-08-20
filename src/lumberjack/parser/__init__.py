@@ -2,8 +2,8 @@
 
 from .auto import AutoParser, InputFormat
 from .builder import DocTreeBuilder
+from .code import NotebookParser, SourceCodeParser, SQLParser
 from .docx import DocxParser
-from .flat import DelimitedTextParser, JSONLinesParser, LogParser, TextParser
 from .html import HTMLParser
 from .markdown import (
     MarkdownBlockContext,
@@ -12,6 +12,18 @@ from .markdown import (
     MarkdownItParser,
     MarkdownParser,
 )
+from .records import (
+    DelimitedTextParser,
+    JSONLinesParser,
+    JSONParser,
+    LogParser,
+    TextParser,
+    TOMLParser,
+    XMLParser,
+    YAMLParser,
+)
+from .sqlite import SQLiteParser
+from .xlsx import XlsxParser
 
 __all__ = [
     "AutoParser",
@@ -21,11 +33,20 @@ __all__ = [
     "HTMLParser",
     "InputFormat",
     "JSONLinesParser",
+    "JSONParser",
     "LogParser",
     "MarkdownBlockContext",
     "MarkdownBlockHandler",
     "MarkdownBlockSpec",
     "MarkdownItParser",
     "MarkdownParser",
+    "NotebookParser",
+    "SQLParser",
+    "SQLiteParser",
+    "SourceCodeParser",
+    "TOMLParser",
     "TextParser",
+    "XMLParser",
+    "XlsxParser",
+    "YAMLParser",
 ]
