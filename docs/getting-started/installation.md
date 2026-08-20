@@ -15,6 +15,7 @@ Install only the optional features your application needs:
 | Exact/model tokenizers | `pip install "lumberjack-py[tokenizers]"` | `tiktoken`, `transformers`, and token caches |
 | DOCX input | `pip install "lumberjack-py[docx]"` | `python-docx` |
 | XLSX input | `pip install "lumberjack-py[spreadsheets]"` | `openpyxl` |
+| Syntax-aware code input | `pip install "lumberjack-py[code-parsing]"` | Tree-sitter grammars for Python, JS/TS, Bash, C/C++, C#, Go, Java, Kotlin, Lua, PHP, Ruby, Rust, Swift, and Zig |
 | Web service | `pip install "lumberjack-py[web]"` | FastAPI, Uvicorn, multipart support |
 | Everything | `pip install "lumberjack-py[all]"` | All optional features |
 

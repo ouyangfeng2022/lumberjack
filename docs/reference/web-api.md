@@ -15,8 +15,8 @@ The service publishes interactive OpenAPI documentation at [`http://127.0.0.1:96
 
 | Endpoint | Input |
 | --- | --- |
-| `POST /lumber/api/split/text` | JSON containing `text` and `input_format` (`markdown`, `html`, `text`, `log`, `csv`, `tsv`, `json`, `jsonl`, `xml`, or `yaml`) plus split options. |
-| `POST /lumber/api/split/file` | Multipart form with `file`, `input_format` (`auto`, `markdown`, `html`, `docx`, `text`, `log`, `csv`, `tsv`, `json`, `jsonl`, `xml`, `yaml`, or `xlsx`), plus split options. XLSX requires the `spreadsheets` extra. |
+| `POST /lumber/api/split/text` | JSON containing text-compatible formats and split options, including all supported code formats: Python, JavaScript/TypeScript, Bash, C/C++, C#, Go, Java, Kotlin, Lua, PHP, Ruby, Rust, Swift, and Zig. |
+| `POST /lumber/api/split/file` | Multipart form with `file`, any supported `input_format`, and split options. XLSX requires `spreadsheets`; syntax-aware code parsing requires `code-parsing`. |
 
 Both endpoints return `document`, `metadata`, `reference_definitions`, `chunk_count`, and serialized `chunks` matching the Python `Chunk` model.
 

@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with key or element paths and scalar-type metadata.
 - Added optional XLSX parsing with sheet, row, column, and header provenance;
   install the `spreadsheets` extra to enable it.
+- Added optional Tree-sitter source parsing for Python, JavaScript/TypeScript,
+  Bash, C/C++, C#, Go, Java, Kotlin, Lua, PHP, Ruby, Rust, Swift, and Zig
+  declarations, including byte and line provenance and recovery from malformed
+  source; install the `code-parsing` extra to enable it.
 - Added a reproducible benchmark MVP with a versioned public corpus, quality
   and performance metrics, raw-result JSON, and optional competitor adapters.
 - Added a MkDocs Material documentation site with getting-started, concepts,

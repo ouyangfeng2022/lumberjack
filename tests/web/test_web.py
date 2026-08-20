@@ -104,6 +104,21 @@ def test_split_text_accepts_json_with_record_splitter(client: ASGITestClient) ->
     )
 
 
+def test_split_text_accepts_registered_code_format(client: ASGITestClient) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={
+            "text": "func Run() {}",
+            "input_format": "go",
+            "splitter": "record",
+            "max_tokens": 100,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["chunks"][0]["chunk_type"] == "record"
+
+
 def test_split_text_includes_only_requested_bounded_trace_stages(
     client: ASGITestClient,
 ) -> None:

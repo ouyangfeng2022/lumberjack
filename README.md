@@ -37,7 +37,7 @@ automatic detection until it is marked supported in a release.
 | Spreadsheets and delimited data | CSV (`.csv`), TSV (`.tsv`), XLSX (`.xlsx`, `spreadsheets` extra) | Supported | Header schema plus atomic rows with sheet/row/column provenance. XLS and ODS remain planned. |
 | Semi-structured data | JSON (`.json`), JSONL (`.jsonl`, `.ndjson`), XML (`.xml`), YAML (`.yaml`, `.yml`), TOML (`.toml`) | Supported | Scalar key paths, record lines, and XML leaf-element paths; all remain ordered records. |
 | Analytical and database exports | SQLite (`.sqlite`, `.sqlite3`, `.db`), SQL dump (`.sql`) | Supported | SQLite table/row provenance and ordered SQL statements. Parquet, Avro, and ORC are deferred. |
-| Source code and notebooks | Python (`.py`), JavaScript (`.js`), TypeScript (`.ts`, `.tsx`), Jupyter notebooks (`.ipynb`) | Supported | Symbols, code records, cells, language, and source locations. Other languages are deferred. |
+| Source code and notebooks | Python, JavaScript/TypeScript, Bash, C/C++, C#, Go, Java, Kotlin, Lua, PHP, Ruby, Rust, Swift, Zig, and Jupyter notebooks | Supported | Install `code-parsing` for Tree-sitter declaration boundaries, syntax-error recovery, and source locations. Other languages are deferred. |
 | Presentations and ebooks | PPTX, PPT, ODP, EPUB | Planned | Slides/pages, titles, notes, and ordered content blocks. |
 | Messages and archives | EML, MSG, MBOX | Planned | Message headers, body, attachments, and thread provenance. |
 | PDFs and images | PDF, PNG, JPG/JPEG, TIFF, WebP | Planned | Native PDF text/layout where available; OCR/layout blocks and page provenance otherwise. |
@@ -69,8 +69,8 @@ core dependencies—and will retain page, bounding-box, and parser provenance.
 ```bash
 pip install lumberjack-py
 
-# Exact tokenizers, DOCX/XLSX support, and the Web API
-pip install "lumberjack-py[tokenizers,docx,spreadsheets,web]"
+# Exact tokenizers, DOCX/XLSX, Tree-sitter code parsing, and the Web API
+pip install "lumberjack-py[tokenizers,docx,spreadsheets,code-parsing,web]"
 ```
 
 Requires Python 3.10 or newer.

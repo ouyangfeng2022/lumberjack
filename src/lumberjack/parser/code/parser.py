@@ -6,10 +6,11 @@ import ast
 import json
 import re
 from pathlib import Path
-from typing import ClassVar, Literal
+from typing import ClassVar
 
 from ...models import DocTree, Document, InputFormat, SourceLocation
 from ..builder import DocTreeBuilder
+from .tree_sitter import CodeLanguage, extract_top_level_symbols
 
 
 def _document(
@@ -106,13 +107,16 @@ _SYMBOL_RE = re.compile(
 
 
 class SourceCodeParser:
-    """Parse source files into symbol-aware records without treating code as prose."""
+    """Parse source files into symbol-aware records without treating code as prose.
+
+    When the ``code-parsing`` extra is installed, Tree-sitter selects top-level
+    declarations and retains valid results from malformed source. Otherwise,
+    Python uses ``ast`` and JavaScript/TypeScript use the built-in fallback.
+    """
 
     block_kinds: ClassVar[frozenset[str]] = frozenset({"record"})
 
-    def __init__(
-        self, *, language: Literal["python", "javascript", "typescript"]
-    ) -> None:
+    def __init__(self, *, language: CodeLanguage) -> None:
         self.language = language
 
     def parse(
@@ -132,7 +136,33 @@ class SourceCodeParser:
         )
         source = _text(source_document)
         builder = _builder(source_document)
-        if self.language == "python":
+        syntax_symbols = extract_top_level_symbols(source, self.language)
+        if syntax_symbols is not None:
+            for index, symbol in enumerate(syntax_symbols):
+                builder.add_record(
+                    symbol.text,
+                    locations=(
+                        SourceLocation(
+                            source=str(source_document.source_path)
+                            if source_document.source_path
+                            else None,
+                            byte_start=symbol.start_byte,
+                            byte_end=symbol.end_byte,
+                            line_start=symbol.line_start,
+                            line_end=symbol.line_end,
+                            element_id=f"symbol:{symbol.name}",
+                        ),
+                    ),
+                    attrs={
+                        "symbol": symbol.name,
+                        "symbol_type": symbol.kind,
+                        "language": self.language,
+                        "symbol_index": index,
+                        "syntax_parser": "tree-sitter",
+                        "has_syntax_error": symbol.has_syntax_error,
+                    },
+                )
+        elif self.language == "python":
             try:
                 tree = ast.parse(source)
             except SyntaxError as exc:

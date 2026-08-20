@@ -10,7 +10,7 @@ lumber INPUT [OPTIONS]
 
 | 参数 | 默认值 | 含义 |
 | --- | --- | --- |
-| `--input-format` | `auto` | `auto`、`markdown`、`html`、`docx`、`text`、`log`、`csv`、`tsv`、`json`、`jsonl`、`xml`、`yaml` 或 `xlsx`；自动模式按支持的扩展名判断。 |
+| `--input-format` | `auto` | 所有文档列出的输入格式，包括 `sql`、`sqlite`、`notebook`，以及 `python`、`javascript`、`typescript`、`bash`、`c`、`cpp`、`csharp`、`go`、`java`、`kotlin`、`lua`、`php`、`ruby`、`rust`、`swift`、`zig` 等代码格式；自动模式按支持的扩展名判断。语法感知代码解析需要 `code-parsing`。 |
 | `--tokenizer` | `approx` | `approx`、`tiktoken` 或 `transformers`；只负责编码和 token 计数。 |
 | `--splitter` | `section` | 文档拓扑与计量模式；LOG、CSV/TSV、JSON/JSONL、XML 和 YAML 请使用 `record`，以保持输入记录的原子性，见[拆分与计量](../concepts/splitting.md)。 |
 | `--max-tokens` | `1200` | 每个 Chunk 的最大 token 数。 |

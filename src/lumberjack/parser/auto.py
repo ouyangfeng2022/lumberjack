@@ -10,6 +10,7 @@ from zipfile import BadZipFile, ZipFile
 
 from ..models import DocTree, Document, InputFormat
 from .code import NotebookParser, SourceCodeParser, SQLParser
+from .code.tree_sitter import CodeLanguage
 from .docx import DocxParser
 from .html import HTMLParser
 from .markdown import MarkdownParser
@@ -45,6 +46,19 @@ DetectedFormat = Literal[
     "python",
     "javascript",
     "typescript",
+    "bash",
+    "c",
+    "cpp",
+    "csharp",
+    "go",
+    "java",
+    "kotlin",
+    "lua",
+    "php",
+    "ruby",
+    "rust",
+    "swift",
+    "zig",
     "notebook",
 ]
 _VALID_FORMATS = frozenset(
@@ -68,6 +82,19 @@ _VALID_FORMATS = frozenset(
         "python",
         "javascript",
         "typescript",
+        "bash",
+        "c",
+        "cpp",
+        "csharp",
+        "go",
+        "java",
+        "kotlin",
+        "lua",
+        "php",
+        "ruby",
+        "rust",
+        "swift",
+        "zig",
         "notebook",
     }
 )
@@ -120,6 +147,29 @@ def _format_from_suffix(path: str | Path | None) -> DetectedFormat | None:
         return "typescript"
     if suffix == ".ipynb":
         return "notebook"
+    code_suffixes: dict[str, CodeLanguage] = {
+        ".sh": "bash",
+        ".bash": "bash",
+        ".c": "c",
+        ".h": "c",
+        ".cc": "cpp",
+        ".cpp": "cpp",
+        ".cxx": "cpp",
+        ".hpp": "cpp",
+        ".cs": "csharp",
+        ".go": "go",
+        ".java": "java",
+        ".kt": "kotlin",
+        ".kts": "kotlin",
+        ".lua": "lua",
+        ".php": "php",
+        ".rb": "ruby",
+        ".rs": "rust",
+        ".swift": "swift",
+        ".zig": "zig",
+    }
+    if suffix in code_suffixes:
+        return code_suffixes[suffix]
     return None
 
 
@@ -211,9 +261,27 @@ class AutoParser:
             "yaml": YAMLParser(),
             "toml": TOMLParser(),
             "sql": SQLParser(),
-            "python": SourceCodeParser(language="python"),
-            "javascript": SourceCodeParser(language="javascript"),
-            "typescript": SourceCodeParser(language="typescript"),
+            **{
+                language: SourceCodeParser(language=language)
+                for language in (
+                    "python",
+                    "javascript",
+                    "typescript",
+                    "bash",
+                    "c",
+                    "cpp",
+                    "csharp",
+                    "go",
+                    "java",
+                    "kotlin",
+                    "lua",
+                    "php",
+                    "ruby",
+                    "rust",
+                    "swift",
+                    "zig",
+                )
+            },
             "notebook": NotebookParser(),
         }[format]
         return parser.parse(

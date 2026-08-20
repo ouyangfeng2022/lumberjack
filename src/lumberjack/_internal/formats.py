@@ -23,11 +23,54 @@ SUPPORTED_FORMATS = frozenset(
         "python",
         "javascript",
         "typescript",
+        "bash",
+        "c",
+        "cpp",
+        "csharp",
+        "go",
+        "java",
+        "kotlin",
+        "lua",
+        "php",
+        "ruby",
+        "rust",
+        "swift",
+        "zig",
         "notebook",
     }
 )
 TEXT_FORMATS = frozenset(
-    {"markdown", "html", "text", "log", "csv", "tsv", "json", "jsonl", "xml", "yaml"}
+    {
+        "markdown",
+        "html",
+        "text",
+        "log",
+        "csv",
+        "tsv",
+        "json",
+        "jsonl",
+        "xml",
+        "yaml",
+        "toml",
+        "sql",
+        "python",
+        "javascript",
+        "typescript",
+        "bash",
+        "c",
+        "cpp",
+        "csharp",
+        "go",
+        "java",
+        "kotlin",
+        "lua",
+        "php",
+        "ruby",
+        "rust",
+        "swift",
+        "zig",
+        "notebook",
+    }
 )
 
 
@@ -84,6 +127,29 @@ def detect_format_from_filename(filename: str) -> str:
         return "javascript"
     if suffix in {".ts", ".tsx"}:
         return "typescript"
+    code_suffixes = {
+        ".sh": "bash",
+        ".bash": "bash",
+        ".c": "c",
+        ".h": "c",
+        ".cc": "cpp",
+        ".cpp": "cpp",
+        ".cxx": "cpp",
+        ".hpp": "cpp",
+        ".cs": "csharp",
+        ".go": "go",
+        ".java": "java",
+        ".kt": "kotlin",
+        ".kts": "kotlin",
+        ".lua": "lua",
+        ".php": "php",
+        ".rb": "ruby",
+        ".rs": "rust",
+        ".swift": "swift",
+        ".zig": "zig",
+    }
+    if suffix in code_suffixes:
+        return code_suffixes[suffix]
     if suffix == ".ipynb":
         return "notebook"
     if suffix in {".txt", ".text"}:
