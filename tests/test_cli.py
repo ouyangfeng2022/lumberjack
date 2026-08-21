@@ -4,7 +4,10 @@ import json
 import sys
 from pathlib import Path
 
-from lumberjack.cli import main
+import pytest
+
+from lumberjack.block import MarkdownTableConfig
+from lumberjack.cli import _parse_cli_block_options, build_parser, main
 
 
 def test_cli_validates_block_configs_against_detected_html_format(
@@ -25,8 +28,8 @@ def test_cli_validates_block_configs_against_detected_html_format(
             str(html_path),
             "--max-tokens",
             "500",
-            "--block-config",
-            "html_table:isolated",
+            "--block.html_table.isolated",
+            "true",
         ],
     )
 
@@ -37,6 +40,49 @@ def test_cli_validates_block_configs_against_detected_html_format(
     assert payload["metadata"] == {}
     assert payload["reference_definitions"] == {}
     assert payload["chunk_count"] >= 1
+
+
+def test_cli_parses_dotted_block_options_and_uses_last_value() -> None:
+    args = build_parser().parse_args(
+        [
+            "guide.md",
+            "--block.table.max-tokens",
+            "500",
+            "--block.table.split",
+            "false",
+            "--block.table.repeat-header",
+            "false",
+            "--block.table.max-tokens",
+            "600",
+            "--block.code_fence.isolated",
+            "true",
+        ]
+    )
+
+    configs = {str(config.kind): config for config in _parse_cli_block_options(args)}
+
+    table = configs["table"]
+    assert isinstance(table, MarkdownTableConfig)
+    assert table.max_tokens == 600
+    assert table.split is False
+    assert table.repeat_header is False
+    assert table.isolated is False
+    assert configs["code_fence"].isolated is True
+    assert configs["code_fence"].split is True
+
+
+def test_cli_block_options_reject_invalid_values_and_legacy_flags() -> None:
+    parser = build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["guide.md", "--block.table.split", "yes"])
+    zero_budget = parser.parse_args(
+        ["guide.md", "--block.table.isolated", "true", "--block.table.max-tokens", "0"]
+    )
+    with pytest.raises(ValueError, match="positive integer"):
+        _parse_cli_block_options(zero_budget)
+    with pytest.raises(SystemExit):
+        parser.parse_args(["guide.md", "--block-config", "table:500"])
 
 
 def test_cli_includes_only_requested_bounded_trace_stages(
@@ -83,3 +129,22 @@ def test_cli_auto_detects_csv_with_explicit_record_splitter(
         2,
         3,
     ]
+
+
+def test_cli_directory_emits_jsonl_and_keeps_progress_off_stdout(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    (tmp_path / "a.md").write_text("# A", encoding="utf-8")
+    (tmp_path / "b.md").write_text("# B", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["lumber", str(tmp_path)])
+
+    main()
+
+    captured = capsys.readouterr()
+    records = [json.loads(line) for line in captured.out.splitlines()]
+    assert [record["status"] for record in records] == ["success", "success"]
+    assert all(
+        record["result"]["schema_version"] == "lumberjack.chunk.v1"
+        for record in records
+    )
+    assert "processed" in captured.err

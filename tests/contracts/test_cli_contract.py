@@ -86,5 +86,10 @@ def test_cli_help_assigns_counting_mode_to_splitter() -> None:
     assert "Counting mode is selected by --splitter" in help_text
     assert "unprefixed names use incremental counting" in normalized_help
     assert "--token-counter" not in help_text
-    assert "recursive" not in help_text
+    assert "--recursive" in help_text
+    assert "--jsonl" in help_text
     assert "--trace-stage" in help_text
+    assert "--block.table.max-tokens" in help_text
+    assert "--block.table.repeat-header" in help_text
+    assert "--block-config" not in help_text
+    assert "--block-config-json" not in help_text

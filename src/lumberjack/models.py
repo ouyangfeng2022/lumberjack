@@ -321,6 +321,24 @@ class SplitResult:
 
 
 @dataclass(slots=True, frozen=True)
+class DocumentResult:
+    """One streaming batch outcome, retaining its caller-visible input identifier.
+
+    Batches are intentionally sequential: parser, splitter, and tokenizer instances
+    are reused, while non-thread-safe component implementations remain safe.  A
+    failed document has ``result is None`` and a printable ``error``.
+    """
+
+    input_id: str
+    result: SplitResult | None = None
+    error: str | None = None
+
+    def __post_init__(self) -> None:
+        if (self.result is None) == (self.error is None):
+            raise ValueError("DocumentResult needs exactly one of result or error")
+
+
+@dataclass(slots=True, frozen=True)
 class PipelineTrace:
     """Explicit, complete record of one document's parsing and split stages.
 

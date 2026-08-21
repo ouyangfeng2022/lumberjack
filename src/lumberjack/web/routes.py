@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import Any, Literal, cast
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -17,6 +16,7 @@ from lumberjack._internal.trace import TraceStage, select_trace_stages
 from lumberjack.block import BlockOption
 from lumberjack.models import SourceLocation
 from lumberjack.parser import InputFormat
+from lumberjack.serialization import CHUNK_SCHEMA_VERSION, chunk_to_dict
 
 router = APIRouter()
 _TOKENIZERS = TokenizerRegistry()
@@ -111,6 +111,7 @@ class ChunkResponse(BaseModel):
 
 
 class SplitResponse(BaseModel):
+    schema_version: str
     document: str
     metadata: dict[str, Any]
     reference_definitions: dict[str, dict[str, str]]
@@ -192,11 +193,12 @@ async def split_text(payload: TextSplitRequest) -> SplitResponse:
         raise _pipeline_http_error(e) from e
 
     return SplitResponse(
+        schema_version=CHUNK_SCHEMA_VERSION,
         document=result_document.title,
         metadata=result_document.metadata,
         reference_definitions=result_document.reference_definitions,
         chunk_count=len(result_chunks),
-        chunks=[ChunkResponse(**asdict(c)) for c in result_chunks],
+        chunks=[ChunkResponse(**chunk_to_dict(c)) for c in result_chunks],
         trace=trace_payload,
     )
 
@@ -325,10 +327,11 @@ async def split_file(
         raise _pipeline_http_error(e) from e
 
     return SplitResponse(
+        schema_version=CHUNK_SCHEMA_VERSION,
         document=result_document.title,
         metadata=result_document.metadata,
         reference_definitions=result_document.reference_definitions,
         chunk_count=len(result_chunks),
-        chunks=[ChunkResponse(**asdict(c)) for c in result_chunks],
+        chunks=[ChunkResponse(**chunk_to_dict(c)) for c in result_chunks],
         trace=trace_payload,
     )

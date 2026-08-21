@@ -11,6 +11,7 @@ from lumberjack.models import (
     DocTree,
     DocumentBlock,
     DocumentInline,
+    DocumentResult,
     ExtractionResult,
     PipelineDiagnostic,
     PipelineTrace,
@@ -91,7 +92,7 @@ def test_public_lumber_pipeline_components() -> None:
     )
     assert TextNormalizer and TextTransformer and PlainTextTransformer
     assert DocTree and ChunkDraft and Chunk and DocumentBlock and DocumentInline
-    assert SplitResult
+    assert SplitResult and DocumentResult
     assert SourceLocation and ExtractionResult and PipelineDiagnostic and PipelineTrace
     assert (
         ParserProtocol

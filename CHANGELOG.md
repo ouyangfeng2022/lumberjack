@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added versioned v1 JSON schemas and shared serializers for chunks and document
+  trees. CLI and Web split results now include `schema_version`.
+- Added streaming `Lumberjack.saw_many()` with per-document success or failure
+  records, plus directory/glob JSONL CLI processing and safe output-directory
+  writes.
 - Added explicit `Lumberjack.trace()` pipeline traces, format-neutral source
   locations, optional parser extraction results, and source-location metadata
   on chunks across Python, CLI, and Web outputs.
@@ -34,6 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking:** Replaced the CLI `--block-config` and `--block-config-json`
+  options with explicit hierarchical settings such as
+  `--block.table.max-tokens 500` and `--block.table.split false`.
 - **Breaking:** The default splitter is now `section` across the Python API, CLI, and Web API. Select `sibling` explicitly when adjacent sibling sections should be packed together.
 - Streamlined the English and Chinese READMEs around installation, a first split,
   splitter selection, and links to the complete documentation.

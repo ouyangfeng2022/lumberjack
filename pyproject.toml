@@ -83,7 +83,7 @@ dev = [
     "ruff>=0.15.6",
     "ty>=0.0.51",
 ]
-test = ["pytest>=8.0.0", "httpx>=0.28.0"]
+test = ["pytest>=8.0.0", "httpx>=0.28.0", "jsonschema>=4.23.0"]
 docs = ["mkdocs-material>=9.6", "mkdocstrings[python]>=0.30"]
 benchmark = [
     "chonkie>=1.0",
@@ -101,6 +101,9 @@ source = "vcs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lumberjack"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"schemas" = "lumberjack/schemas"
 
 [tool.hatch.build.targets.sdist]
 exclude = ["lumberjack_webui/", "script/", "assets/"]

@@ -1698,6 +1698,7 @@ docs = [
 ]
 test = [
     { name = "httpx" },
+    { name = "jsonschema" },
     { name = "pytest" },
 ]
 
@@ -1779,6 +1780,7 @@ docs = [
 ]
 test = [
     { name = "httpx", specifier = ">=0.28.0" },
+    { name = "jsonschema", specifier = ">=4.23.0" },
     { name = "pytest", specifier = ">=8.0.0" },
 ]
 

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lumberjack-py.dev/schemas/chunk-v1.schema.json",
+  "title": "Lumberjack chunk result v1",
+  "type": "object",
+  "required": ["schema_version", "document", "metadata", "reference_definitions", "chunk_count", "chunks"],
+  "properties": {
+    "schema_version": {"const": "lumberjack.chunk.v1"},
+    "document": {"type": "string"},
+    "metadata": {"type": "object"},
+    "reference_definitions": {"type": "object"},
+    "chunk_count": {"type": "integer", "minimum": 0},
+    "chunks": {"type": "array", "items": {"$ref": "#/$defs/chunk"}},
+    "trace": {"type": "object"}
+  },
+  "$defs": {
+    "location": {"type": "object", "properties": {"source": {"type": ["string", "null"]}, "byte_start": {"type": ["integer", "null"]}, "byte_end": {"type": ["integer", "null"]}, "line_start": {"type": ["integer", "null"]}, "line_end": {"type": ["integer", "null"]}, "page_start": {"type": ["integer", "null"]}, "page_end": {"type": ["integer", "null"]}, "sheet": {"type": ["string", "null"]}, "row_start": {"type": ["integer", "null"]}, "row_end": {"type": ["integer", "null"]}, "column_start": {"type": ["integer", "null"]}, "column_end": {"type": ["integer", "null"]}, "json_path": {"type": ["string", "null"]}, "element_id": {"type": ["string", "null"]}, "bounding_box": {"type": ["array", "null"], "items": {"type": "number"}, "minItems": 4, "maxItems": 4}}, "additionalProperties": false},
+    "heading": {"type": "array", "prefixItems": [{"type": "integer"}, {"type": "string"}], "items": false},
+    "chunk": {"type": "object", "required": ["chunk_id", "chunk_type", "body", "token_count", "estimated_token_count", "headings_token_count", "body_token_count", "ancestor_headings", "own_heading", "section_level", "document_title", "document_path", "start_line", "end_line", "source_locations", "protected"], "properties": {"chunk_id": {"type": "string"}, "chunk_type": {"type": "string"}, "body": {"type": "string"}, "token_count": {"type": "integer"}, "estimated_token_count": {"type": "integer"}, "headings_token_count": {"type": "integer"}, "body_token_count": {"type": "integer"}, "ancestor_headings": {"type": "array", "items": {"$ref": "#/$defs/heading"}}, "own_heading": {"anyOf": [{"$ref": "#/$defs/heading"}, {"type": "null"}]}, "section_level": {"type": "integer"}, "document_title": {"type": "string"}, "document_path": {"type": ["string", "null"]}, "start_line": {"type": ["integer", "null"]}, "end_line": {"type": ["integer", "null"]}, "source_locations": {"type": "array", "items": {"$ref": "#/$defs/location"}}, "protected": {"type": "boolean"}}, "additionalProperties": false}
+  },
+  "additionalProperties": false
+}

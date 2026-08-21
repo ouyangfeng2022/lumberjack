@@ -51,6 +51,7 @@ def test_chunk_response_fields_match_serialized_chunk() -> None:
 
 def test_split_response_preserves_document_level_fields() -> None:
     assert list(SplitResponse.model_fields) == [
+        "schema_version",
         "document",
         "metadata",
         "reference_definitions",

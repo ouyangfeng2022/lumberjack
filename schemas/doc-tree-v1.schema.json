@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lumberjack-py.dev/schemas/doc-tree-v1.schema.json",
+  "title": "Lumberjack document tree v1",
+  "type": "object",
+  "required": ["schema_version", "title", "source", "root", "metadata", "reference_definitions", "topology"],
+  "properties": {"schema_version": {"const": "lumberjack.doc-tree.v1"}, "title": {"type": "string"}, "source": {"type": "string"}, "source_path": {"type": ["string", "null"]}, "metadata": {"type": "object"}, "reference_definitions": {"type": "object"}, "topology": {"enum": ["hierarchical", "records"]}, "root": {"type": "object"}},
+  "additionalProperties": false
+}
