@@ -172,7 +172,7 @@ Implemented in `src/lumberjack/cli.py`.
 - Tokenizers (engine): `approx`, `tiktoken`, `transformers`
 - Exact vs incremental counting is a property of the splitter class, not the tokenizer. CLI/Web retain their existing `splitter` and `tokenizer` field names as an integration protocol.
 - Splitter choices: `sibling` (incremental), `subtree` (incremental), `section` (default, incremental), `exact-sibling`, `incremental-sibling`, `exact-subtree`, `incremental-subtree`, `exact-section`, `incremental-section`
-- `--block-config KIND[:isolated][:nosplit][:TOKENS]` per-block-kind config; repeatable
+- `--block KIND:SETTING,...` per-block-kind config; repeatable across kinds
 - JSON output serializes dataclasses with `dataclasses.asdict`
 
 ## Splitting Rules

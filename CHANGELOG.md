@@ -39,9 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Breaking:** Replaced the CLI `--block-config` and `--block-config-json`
-  options with explicit hierarchical settings such as
-  `--block.table.max-tokens 500` and `--block.table.split false`.
+- **Breaking:** Consolidated CLI block configuration into the repeatable compact
+  `--block KIND:SETTING,...` option, and grouped generated CLI help by task.
 - **Breaking:** The default splitter is now `section` across the Python API, CLI, and Web API. Select `sibling` explicitly when adjacent sibling sections should be packed together.
 - Streamlined the English and Chinese READMEs around installation, a first split,
   splitter selection, and links to the complete documentation.

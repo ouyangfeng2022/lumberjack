@@ -11,13 +11,12 @@ from ._internal.formats import detect_format
 from ._internal.options import parse_block_config_mapping
 from ._internal.pipeline import BUILTIN_SPLITTER_NAMES, split_source, trace_source
 from ._internal.trace import TRACE_STAGES, TraceStage, select_trace_stages
-from .block import BlockKind, BlockOption
+from .block import BlockOption
 from .models import SplitResult
 from .parser import InputFormat
 from .serialization import split_result_to_dict
 
-_COMMON_BLOCK_FIELDS = ("isolated", "split", "max_tokens")
-_TABLE_BLOCK_FIELDS = (*_COMMON_BLOCK_FIELDS, "repeat_header")
+_BLOCK_FIELDS = frozenset({"isolated", "split", "max_tokens", "repeat_header"})
 
 
 def _parse_bool(value: str) -> bool:
@@ -29,45 +28,46 @@ def _parse_bool(value: str) -> bool:
     raise argparse.ArgumentTypeError("must be true or false")
 
 
-def _block_option_dest(kind: BlockKind, field: str) -> str:
-    return f"block_{kind.value}_{field}"
+def _parse_block_argument(value: str) -> tuple[str, dict[str, object]]:
+    """Parse ``KIND:KEY=VALUE,...`` into one external block mapping."""
+    kind, separator, settings = value.partition(":")
+    kind = kind.strip().lower()
+    if not kind or not separator or not settings.strip():
+        raise argparse.ArgumentTypeError("expected KIND:KEY=VALUE[,KEY=VALUE...]")
 
-
-def _add_block_config_arguments(parser: argparse._ActionsContainer) -> None:
-    """Register explicit dotted block configuration options."""
-    for kind in BlockKind:
-        fields = (
-            _TABLE_BLOCK_FIELDS
-            if kind in {BlockKind.TABLE, BlockKind.HTML_TABLE}
-            else _COMMON_BLOCK_FIELDS
-        )
-        for field in fields:
-            option = f"--block.{kind.value}.{field.replace('_', '-')}"
-            parser.add_argument(
-                option,
-                dest=_block_option_dest(kind, field),
-                default=None,
-                type=int if field == "max_tokens" else _parse_bool,
-                metavar="TOKENS" if field == "max_tokens" else "BOOL",
-                help=f"Set {kind.value}.{field.replace('_', '-')}",
+    config: dict[str, object] = {}
+    for assignment in settings.split(","):
+        key, equals, raw_value = assignment.partition("=")
+        field = key.strip().lower().replace("-", "_")
+        if not equals or not field or not raw_value.strip():
+            raise argparse.ArgumentTypeError(
+                f"invalid block setting {assignment!r}; expected KEY=VALUE"
             )
+        if field not in _BLOCK_FIELDS:
+            valid = ", ".join(sorted(name.replace("_", "-") for name in _BLOCK_FIELDS))
+            raise argparse.ArgumentTypeError(
+                f"unknown block setting {key!r}; valid settings: {valid}"
+            )
+        if field in config:
+            raise argparse.ArgumentTypeError(f"duplicate block setting: {key!r}")
+        if field == "max_tokens":
+            try:
+                config[field] = int(raw_value)
+            except ValueError as error:
+                raise argparse.ArgumentTypeError(
+                    "max-tokens must be an integer"
+                ) from error
+        else:
+            config[field] = _parse_bool(raw_value.strip())
+    return kind, config
 
 
 def _parse_cli_block_options(args: argparse.Namespace) -> list[BlockOption]:
     raw: dict[str, dict[str, object]] = {}
-    for kind in BlockKind:
-        fields = (
-            _TABLE_BLOCK_FIELDS
-            if kind in {BlockKind.TABLE, BlockKind.HTML_TABLE}
-            else _COMMON_BLOCK_FIELDS
-        )
-        config = {
-            field: value
-            for field in fields
-            if (value := getattr(args, _block_option_dest(kind, field))) is not None
-        }
-        if config:
-            raw[kind.value] = config
+    for kind, config in args.block:
+        if kind in raw:
+            raise ValueError(f"duplicate block config for kind: {kind!r}")
+        raw[kind] = config
     return parse_block_config_mapping(raw) or []
 
 
@@ -79,7 +79,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "input", help="Path, directory, or glob of supported document files"
     )
-    parser.add_argument(
+    input_options = parser.add_argument_group("input")
+    input_options.add_argument(
         "--input-format",
         choices=(
             "auto",
@@ -117,80 +118,97 @@ def build_parser() -> argparse.ArgumentParser:
             "notebook",
         ),
         default="auto",
+        metavar="FORMAT",
         help="Input format (default: auto-detect from file extension)",
     )
-    parser.add_argument("-o", "--output", help="Optional output file path")
-    parser.add_argument(
-        "--output-dir", help="Write one JSON result per input directory"
-    )
-    parser.add_argument(
-        "--recursive", action="store_true", help="Recurse when input is a directory"
-    )
-    parser.add_argument(
+    output_options = parser.add_argument_group("output")
+    output_options.add_argument("-o", "--output", help="Optional output file path")
+    output_options.add_argument(
         "--jsonl", action="store_true", help="Emit one result record per line"
     )
-    parser.add_argument(
+
+    batch_options = parser.add_argument_group("batch processing")
+    batch_options.add_argument(
+        "--output-dir", help="Write one JSON result per input directory"
+    )
+    batch_options.add_argument(
+        "--recursive", action="store_true", help="Recurse when input is a directory"
+    )
+    batch_options.add_argument(
         "--overwrite", action="store_true", help="Allow replacing files in --output-dir"
     )
-    parser.add_argument(
+    batch_options.add_argument(
         "--fail-fast", action="store_true", help="Stop after the first input failure"
     )
-    parser.add_argument(
+
+    split_options = parser.add_argument_group("splitting")
+    split_options.add_argument(
         "--tokenizer",
         choices=("approx", "tiktoken", "transformers"),
         default="approx",
+        metavar="ENGINE",
         help="Tokenizer engine used to encode and count text. Counting mode is "
         "selected by --splitter; unprefixed names use incremental counting and "
         "exact-* selects full recounting.",
     )
-    parser.add_argument(
+    split_options.add_argument(
         "--splitter",
         choices=BUILTIN_SPLITTER_NAMES,
         default="section",
+        metavar="NAME",
         help=(
             "Splitter implementation. 'sibling'/'subtree'/'section' default "
             "to incremental counting; use 'exact-*' for full recounting. "
             "Use 'record' for CSV/TSV, JSONL, and log files."
         ),
     )
-    parser.add_argument(
+    split_options.add_argument(
         "--max-tokens", type=int, default=1200, help="Maximum tokens per chunk"
     )
-    parser.add_argument(
+
+    tuning_options = parser.add_argument_group("advanced splitting")
+    tuning_options.add_argument(
         "--ideal-max-tokens-ratio",
         type=float,
         default=0.8,
         help="Preferred split budget as a ratio of --max-tokens",
     )
-    parser.add_argument(
+    tuning_options.add_argument(
         "--merge-below-ratio",
         type=float,
         default=0.125,
         help="Tail-fragment merge threshold as a fraction of --max-tokens "
         "in [0.0, 1.0); 0 disables merging (default: 0.125)",
     )
-    parser.add_argument(
+    tuning_options.add_argument(
         "--heading-sensitive",
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Include the chunk's external heading-path tokens in split budgets "
         "(default: enabled). Headings are always returned as metadata.",
     )
-    parser.add_argument(
+    tuning_options.add_argument(
         "--max-heading-level",
         type=int,
         default=None,
         help="Maximum heading level to keep as chunk section context. "
         "Deeper headings are rendered as body text.",
     )
-    block_options = parser.add_argument_group("block configuration")
-    block_options.description = (
-        "Configure built-in block kinds with --block.<kind>.<field> VALUE. "
-        "Fields: isolated, split, max-tokens; table and html_table also support "
-        "repeat-header. Boolean values must be true or false."
+    block_options = parser.add_argument_group("block handling")
+    block_options.add_argument(
+        "--block",
+        action="append",
+        default=[],
+        type=_parse_block_argument,
+        metavar="KIND:SETTING,...",
+        help=(
+            "Configure one block kind; repeatable. Settings: isolated=BOOL, "
+            "split=BOOL, max-tokens=N, and table-only repeat-header=BOOL"
+        ),
     )
-    _add_block_config_arguments(block_options)
-    parser.add_argument(
+
+    trace_options = parser.add_argument_group("diagnostics")
+    trace_options.add_argument(
         "--trace-stage",
         action="append",
         choices=TRACE_STAGES,
@@ -198,7 +216,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Include one pipeline trace stage in JSON output; repeatable. "
         "Default: no trace stages.",
     )
-    parser.add_argument(
+    trace_options.add_argument(
         "--trace-max-bytes",
         type=int,
         default=1_048_576,

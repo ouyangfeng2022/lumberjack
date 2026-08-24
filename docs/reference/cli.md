@@ -21,10 +21,7 @@ lumber INPUT [OPTIONS]
 | `--merge-below-ratio` | `0.125` | Same-heading tail merge threshold in `[0.0, 1.0)`; `0` disables it. |
 | `--[no-]heading-sensitive` | enabled | Include external heading-path tokens in split budgets. Heading metadata is always returned. |
 | `--max-heading-level` | unset | Deepest heading level retained as section context. |
-| `--block.<kind>.isolated` | unset | Set whether a block kind must form its own chunk: `true` or `false`. |
-| `--block.<kind>.split` | unset | Set whether an oversized block kind may be split: `true` or `false`. |
-| `--block.<kind>.max-tokens` | unset | Set a positive per-kind token budget. |
-| `--block.table.repeat-header`, `--block.html_table.repeat-header` | unset | Set whether split Markdown or HTML tables repeat their header: `true` or `false`. |
+| `--block KIND:SETTING,...` | unset | Configure one block kind; repeat for multiple kinds. Settings are `isolated`, `split`, `max-tokens`, and table-only `repeat-header`. |
 | `-o`, `--output` | stdout | Output file path. |
 | `--output-dir` | unset | Write one per-input JSON record; existing files require `--overwrite`. |
 | `--recursive` | disabled | Recurse when the input is a directory. |
@@ -33,8 +30,8 @@ lumber INPUT [OPTIONS]
 
 `<kind>` is one of `paragraph`, `blockquote`, `list`, `list_item`, `table`,
 `html_table`, `code_block`, `code_fence`, `html_block`, `front_matter`,
-`math_block`, or `math_block_eqno`. Repeat an option when necessary; the final
-value wins.
+`math_block`, or `math_block_eqno`. Boolean setting values are `true` or `false`.
+Each kind may be configured once.
 
 For example:
 
@@ -44,9 +41,7 @@ lumber handbook.md \
   --max-tokens 800 \
   --tokenizer tiktoken \
   --splitter incremental-sibling \
-  --block.table.max-tokens 500 \
-  --block.table.split false \
-  --block.table.isolated true
+  --block table:max-tokens=500,split=false,isolated=true
 
 # Stream a directory safely into a pipeline.
 lumber data/ --recursive | jq -c 'select(.status == "success")'

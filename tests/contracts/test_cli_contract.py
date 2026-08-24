@@ -89,7 +89,26 @@ def test_cli_help_assigns_counting_mode_to_splitter() -> None:
     assert "--recursive" in help_text
     assert "--jsonl" in help_text
     assert "--trace-stage" in help_text
-    assert "--block.table.max-tokens" in help_text
-    assert "--block.table.repeat-header" in help_text
+    assert "--block KIND:SETTING,..." in help_text
+    assert "--block.table.max-tokens" not in help_text
     assert "--block-config" not in help_text
     assert "--block-config-json" not in help_text
+
+
+def test_cli_help_groups_options_and_hides_long_choice_lists() -> None:
+    help_text = build_parser().format_help()
+
+    for title in (
+        "input:",
+        "output:",
+        "batch processing:",
+        "splitting:",
+        "advanced splitting:",
+        "block handling:",
+        "diagnostics:",
+    ):
+        assert title in help_text
+    assert "--input-format FORMAT" in help_text
+    assert "--tokenizer ENGINE" in help_text
+    assert "--splitter NAME" in help_text
+    assert "{auto,markdown,html" not in help_text

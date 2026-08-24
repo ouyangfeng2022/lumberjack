@@ -19,10 +19,7 @@ lumber INPUT [OPTIONS]
 | `--merge-below-ratio` | `0.125` | `[0.0, 1.0)` 内的同标题尾段合并阈值；`0` 表示关闭。 |
 | `--[no-]heading-sensitive` | 启用 | 是否将外部标题路径 token 计入预算；标题 metadata 始终返回。 |
 | `--max-heading-level` | 未设置 | 保留为章节上下文的最大标题层级。 |
-| `--block.<kind>.isolated` | 未设置 | 设置一种 block 是否必须单独成块：`true` 或 `false`。 |
-| `--block.<kind>.split` | 未设置 | 设置超预算 block 是否可拆分：`true` 或 `false`。 |
-| `--block.<kind>.max-tokens` | 未设置 | 设置该 kind 的正整数 token 预算。 |
-| `--block.table.repeat-header`、`--block.html_table.repeat-header` | 未设置 | 设置拆分 Markdown 或 HTML 表格时是否重复表头：`true` 或 `false`。 |
+| `--block KIND:SETTING,...` | 未设置 | 配置一种 block；配置多种 kind 时可重复使用。设置项包括 `isolated`、`split`、`max-tokens`，表格还支持 `repeat-header`。 |
 | `-o`、`--output` | stdout | 输出文件路径。 |
 | `--output-dir` | 未设置 | 为每个输入写一个 JSON 记录；已有文件必须显式传入 `--overwrite`。 |
 | `--recursive` | 禁用 | 输入为目录时递归处理。 |
@@ -31,7 +28,8 @@ lumber INPUT [OPTIONS]
 
 `<kind>` 可取 `paragraph`、`blockquote`、`list`、`list_item`、`table`、
 `html_table`、`code_block`、`code_fence`、`html_block`、`front_matter`、
-`math_block` 或 `math_block_eqno`。同一选项可重复使用，最后一个值生效。
+`math_block` 或 `math_block_eqno`。布尔设置值为 `true` 或 `false`，每个 kind
+只能配置一次。
 
 示例：
 
@@ -41,9 +39,7 @@ lumber handbook.md \
   --max-tokens 800 \
   --tokenizer tiktoken \
   --splitter incremental-sibling \
-  --block.table.max-tokens 500 \
-  --block.table.split false \
-  --block.table.isolated true
+  --block table:max-tokens=500,split=false,isolated=true
 
 # 安全地将目录流入后续处理管道。
 lumber data/ --recursive | jq -c 'select(.status == "success")'

@@ -28,8 +28,8 @@ def test_cli_validates_block_configs_against_detected_html_format(
             str(html_path),
             "--max-tokens",
             "500",
-            "--block.html_table.isolated",
-            "true",
+            "--block",
+            "html_table:isolated=true",
         ],
     )
 
@@ -42,20 +42,14 @@ def test_cli_validates_block_configs_against_detected_html_format(
     assert payload["chunk_count"] >= 1
 
 
-def test_cli_parses_dotted_block_options_and_uses_last_value() -> None:
+def test_cli_parses_compact_block_options() -> None:
     args = build_parser().parse_args(
         [
             "guide.md",
-            "--block.table.max-tokens",
-            "500",
-            "--block.table.split",
-            "false",
-            "--block.table.repeat-header",
-            "false",
-            "--block.table.max-tokens",
-            "600",
-            "--block.code_fence.isolated",
-            "true",
+            "--block",
+            "table:max-tokens=600,split=false,repeat-header=false",
+            "--block",
+            "code_fence:isolated=true",
         ]
     )
 
@@ -75,14 +69,29 @@ def test_cli_block_options_reject_invalid_values_and_legacy_flags() -> None:
     parser = build_parser()
 
     with pytest.raises(SystemExit):
-        parser.parse_args(["guide.md", "--block.table.split", "yes"])
+        parser.parse_args(["guide.md", "--block", "table:split=yes"])
     zero_budget = parser.parse_args(
-        ["guide.md", "--block.table.isolated", "true", "--block.table.max-tokens", "0"]
+        ["guide.md", "--block", "table:isolated=true,max-tokens=0"]
     )
     with pytest.raises(ValueError, match="positive integer"):
         _parse_cli_block_options(zero_budget)
     with pytest.raises(SystemExit):
-        parser.parse_args(["guide.md", "--block-config", "table:500"])
+        parser.parse_args(["guide.md", "--block.table.split", "true"])
+
+
+def test_cli_rejects_duplicate_block_kinds() -> None:
+    args = build_parser().parse_args(
+        [
+            "guide.md",
+            "--block",
+            "table:split=false",
+            "--block",
+            "table:isolated=true",
+        ]
+    )
+
+    with pytest.raises(ValueError, match="duplicate block config"):
+        _parse_cli_block_options(args)
 
 
 def test_cli_includes_only_requested_bounded_trace_stages(
