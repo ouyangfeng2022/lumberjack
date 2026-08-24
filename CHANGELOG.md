@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added a parser-focused large-corpus benchmark with version-pinned Markdown
+  and DOCX sources, deterministic per-source random sampling, per-document raw
+  evidence, token/character content-retention metrics, element conformance
+  assertions, structure validation, and error distributions.
 - Added versioned v1 JSON schemas and shared serializers for chunks and document
   trees. CLI and Web split results now include `schema_version`.
 - Added streaming `Lumberjack.saw_many()` with per-document success or failure
@@ -44,6 +48,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** The default splitter is now `section` across the Python API, CLI, and Web API. Select `sibling` explicitly when adjacent sibling sections should be packed together.
 - Streamlined the English and Chinese READMEs around installation, a first split,
   splitter selection, and links to the complete documentation.
+
+### Fixed
+
+- DOCX parsing now preserves hyperlinks and embedded images as inline nodes,
+  including inside tables; recognizes direct OOXML numbering; groups consecutive
+  list items; reads visible content controls and tracked insertions; and escapes
+  Markdown table delimiters and multiline cells. DOCX provenance now uses OOXML
+  element paths instead of synthetic line numbers.
+- Markdown math parsing now distinguishes currency-shaped dollar text, supports
+  numbered dollar/bracket display formulas, retains delimiter information, and
+  does not consume trailing prose after an invalid bracket-math block form.
+- DOCX parsing now recognizes linear OMML math, wrapped table cells, and visible
+  text boxes, and tolerates Strict OOXML plus narrowly repairable package
+  metadata defects while recording applied repairs.
+- DOCX headings and lists now rely only on explicit OOXML outline/numbering
+  properties; style names and monospace appearance are no longer guessed as
+  heading, list, quote, or code semantics. Ambiguous or oversized OPC packages
+  are rejected before parsing.
 
 ## [0.4.0] - 2026-08-19
 

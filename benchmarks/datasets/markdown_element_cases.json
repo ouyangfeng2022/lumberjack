@@ -1,0 +1,106 @@
+[
+  {
+    "id": "heading-hierarchy",
+    "source": "# Parent\n\n### Child\n\nBody\n",
+    "required_elements": ["section:h1", "section:h3", "block:paragraph", "inline:text"]
+  },
+  {
+    "id": "inline-formatting",
+    "source": "**strong** *emphasis* ~~strike~~ `code` [link](https://example.com) ![alt](image.png) <https://example.com>\n",
+    "required_elements": ["block:paragraph", "inline:strong", "inline:emphasis", "inline:strikethrough", "inline:code_span", "inline:link", "inline:image", "inline:autolink"]
+  },
+  {
+    "id": "line-breaks",
+    "source": "soft\nbreak  \nhard\n",
+    "required_elements": ["block:paragraph", "inline:soft_break", "inline:hard_break"]
+  },
+  {
+    "id": "blockquote",
+    "source": "> quoted\n>\n> second\n",
+    "required_elements": ["block:blockquote", "block:paragraph", "inline:text"]
+  },
+  {
+    "id": "unordered-list",
+    "source": "- one\n- two\n",
+    "required_elements": ["block:list", "block:list_item", "block:list_item", "block:paragraph", "block:paragraph"]
+  },
+  {
+    "id": "ordered-nested-list",
+    "source": "1. one\n   - nested\n2. two\n",
+    "required_elements": ["block:list", "block:list", "block:list_item", "block:list_item", "block:list_item"]
+  },
+  {
+    "id": "pipe-table",
+    "source": "| A | B |\n| - | - |\n| 1 | 2 |\n",
+    "required_elements": ["block:table"]
+  },
+  {
+    "id": "code-blocks",
+    "source": "```python\n$a$\n```\n\n    indented\n",
+    "required_elements": ["block:code_fence", "block:code_block"],
+    "forbidden_elements": ["inline:math_inline"]
+  },
+  {
+    "id": "raw-html",
+    "source": "<div>block</div>\n\ntext <span>inline</span>\n",
+    "required_elements": ["block:html_block", "block:paragraph", "inline:inline_html"]
+  },
+  {
+    "id": "html-table",
+    "source": "<table><tr><th>A</th></tr><tr><td>B</td></tr></table>\n",
+    "required_elements": ["block:html_table"]
+  },
+  {
+    "id": "front-matter",
+    "source": "---\ntitle: Example\ntags: [one, two]\n---\n\nBody\n",
+    "required_elements": ["block:front_matter", "block:paragraph"]
+  },
+  {
+    "id": "thematic-break",
+    "source": "before\n\n---\n\nafter\n",
+    "required_elements": ["block:paragraph", "block:paragraph"],
+    "forbidden_elements": ["block:thematic_break"]
+  },
+  {
+    "id": "reference-link",
+    "source": "[label][target]\n\n[target]: https://example.com \"Title\"\n",
+    "required_elements": ["block:paragraph", "inline:link", "reference_definition"]
+  },
+  {
+    "id": "dollar-inline-math-spaces",
+    "source": "before $ a+b=c$ middle $x^2 + y^2 $ after\n",
+    "required_elements": ["block:paragraph", "inline:math_inline", "inline:math_inline"]
+  },
+  {
+    "id": "parenthesis-inline-math",
+    "source": "before \\(\\frac{a}{b}\\) after\n",
+    "required_elements": ["block:paragraph", "inline:math_inline"]
+  },
+  {
+    "id": "dollar-display-math",
+    "source": "$$\n\\begin{aligned}\na &= b \\\\\nc &= d\n\\end{aligned}\n$$\n",
+    "required_elements": ["block:math_block"]
+  },
+  {
+    "id": "numbered-dollar-display-math",
+    "source": "$$E=mc^2$$ (energy)\n",
+    "required_elements": ["block:math_block_eqno"]
+  },
+  {
+    "id": "bracket-display-math",
+    "source": "\\[\n\\begin{matrix}1 & 0 \\\\ 0 & 1\\end{matrix}\n\\]\n",
+    "required_elements": ["block:math_block"]
+  },
+  {
+    "id": "currency-not-math",
+    "source": "The price moved from $5 to $10 and USD $100.00 remained literal.\n",
+    "required_elements": ["block:paragraph", "inline:text"],
+    "forbidden_elements": ["inline:math_inline"]
+  },
+  {
+    "id": "escaped-and-unclosed-math",
+    "source": "Escaped \\$x\\$ and unclosed $a+b stay text.\n",
+    "required_elements": ["block:paragraph", "inline:text"],
+    "forbidden_elements": ["inline:math_inline"]
+  }
+]

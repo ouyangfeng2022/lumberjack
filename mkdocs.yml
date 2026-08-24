@@ -61,6 +61,7 @@ nav:
       - Custom components: guides/custom-components.md
   - Evaluation:
       - Benchmark methodology: evaluation/benchmark-results.md
+      - Parser coverage: evaluation/parser-coverage.md
   - Reference:
       - Python API: reference/python.md
       - CLI: reference/cli.md
@@ -80,6 +81,7 @@ nav:
           - 自定义组件: zh-CN/guides/custom-components.md
       - 评估:
           - Benchmark 方法论: zh-CN/evaluation/benchmark-results.md
+          - Parser 覆盖范围: zh-CN/evaluation/parser-coverage.md
       - 参考:
           - Python API: zh-CN/reference/python.md
           - CLI: zh-CN/reference/cli.md

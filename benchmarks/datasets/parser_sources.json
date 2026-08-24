@@ -1,0 +1,58 @@
+{
+  "dataset_version": "2026.08.25",
+  "sources": [
+    {
+      "id": "lumberjack-markdown-elements",
+      "kind": "local-cases-json",
+      "format": "markdown",
+      "target": "markdown_element_cases.json",
+      "revision": "1",
+      "license": "project-test-data"
+    },
+    {
+      "id": "commonmark-0.31.2",
+      "kind": "commonmark-json",
+      "format": "markdown",
+      "url": "https://spec.commonmark.org/0.31.2/spec.json",
+      "revision": "0.31.2",
+      "sha256": "d431b29d97b6f73e69d547109cf5081578fac931e72afe95639ebe766c1b2a20",
+      "size_bytes": 140487,
+      "target": "spec.json",
+      "license": "CC-BY-SA-4.0",
+      "license_url": "https://spec.commonmark.org/0.31.2/"
+    },
+    {
+      "id": "kubernetes-website",
+      "kind": "git",
+      "format": "markdown",
+      "repository": "https://github.com/kubernetes/website.git",
+      "revision": "69f5dc26e7888218dd713eb1d77c3b957a33d1ad",
+      "checkout_paths": ["content/en"],
+      "include": ["content/en/**/*.md"],
+      "license": "CC-BY-4.0",
+      "license_url": "https://github.com/kubernetes/website/blob/69f5dc26e7888218dd713eb1d77c3b957a33d1ad/LICENSE"
+    },
+    {
+      "id": "python-docx-tests",
+      "kind": "git",
+      "format": "docx",
+      "repository": "https://github.com/python-openxml/python-docx.git",
+      "revision": "e45454602b53e8e572b179ccf1c91093ec9f4ed7",
+      "checkout_paths": ["features/steps/test_files", "tests/test_files"],
+      "include": ["features/steps/test_files/**/*.docx", "tests/test_files/**/*.docx"],
+      "license": "MIT",
+      "license_url": "https://github.com/python-openxml/python-docx/blob/e45454602b53e8e572b179ccf1c91093ec9f4ed7/LICENSE"
+    },
+    {
+      "id": "libreoffice-writer-ooxml",
+      "kind": "git",
+      "format": "docx",
+      "repository": "https://github.com/LibreOffice/core.git",
+      "revision": "c1e563f6efd09cd3463f1b92a3022ae288c92087",
+      "checkout_paths": ["sw/qa/extras/ooxmlimport/data", "sw/qa/extras/ooxmlexport/data"],
+      "include": ["sw/qa/extras/ooxmlimport/data/**/*.docx", "sw/qa/extras/ooxmlexport/data/**/*.docx"],
+      "license": "MPL-2.0",
+      "license_url": "https://api.libreoffice.org/share/readme/LICENSE.html"
+    }
+  ]
+}

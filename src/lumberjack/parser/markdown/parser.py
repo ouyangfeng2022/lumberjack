@@ -130,7 +130,10 @@ class InlineNormalizer:
                     DocumentInline(
                         kind="math_inline",
                         text=token.content,
-                        attrs={"literal": token.content},
+                        attrs={
+                            "literal": token.content,
+                            "delimiter": str(token.markup or "$"),
+                        },
                     )
                 )
                 index += 1
@@ -286,7 +289,9 @@ class InlineNormalizer:
         if node.kind == "code_span":
             return f"`{node.attrs.get('literal', node.text)}`"
         if node.kind == "math_inline":
-            return f"${node.attrs.get('literal', node.text)}$"
+            delimiter = str(node.attrs.get("delimiter") or "$")
+            closing = r"\)" if delimiter == r"\(" else delimiter
+            return f"{delimiter}{node.attrs.get('literal', node.text)}{closing}"
         if node.kind == "emphasis":
             return f"*{self.render_inlines(node.children)}*"
         if node.kind == "strong":
@@ -332,6 +337,7 @@ class MarkdownItParser(ParserProtocol):
         "paragraph_open": "paragraph",
         "fence": "code_fence",
         "math_block": "math_block",
+        "math_block_label": "math_block_eqno",
         "math_block_eqno": "math_block_eqno",
         "code_block": "code_block",
         "html_block": "html_block",
@@ -349,7 +355,7 @@ class MarkdownItParser(ParserProtocol):
         "list": ("list", "list_item"),
         "table": "table",
         "front_matter": "front_matter",
-        "math_block": "math_block",
+        "math_block": ("math_block", "math_block_eqno"),
         "math_block_eqno": "math_block_eqno",
     }
 
@@ -380,6 +386,7 @@ class MarkdownItParser(ParserProtocol):
             "list_item_open",
             "fence",
             "math_block",
+            "math_block_label",
             "math_block_eqno",
             "code_block",
             "html_block",
@@ -491,7 +498,9 @@ class MarkdownItParser(ParserProtocol):
         ) = self._normalize_block_extensions(block_specs)
         self._inline = InlineNormalizer()
         self._parser = MarkdownIt(preset, options_update=options_update)
-        self._parser.use(dollarmath_plugin)
+        # A digit adjacent *outside* a delimiter is usually currency, such as
+        # ``$5 and $10``. Digits inside math (``$2x$``) remain supported.
+        self._parser.use(dollarmath_plugin, allow_space=True, allow_digits=False)
         self._parser.use(front_matter_plugin)
         self._parser.use(brackets_math_plugin)
         for plugin in plugins:
@@ -603,7 +612,10 @@ class MarkdownItParser(ParserProtocol):
         inline_token = tokens[index + 1] if index + 1 < len(tokens) else None
         title_inlines = self._inline.token_to_inlines(inline_token)
         title = self._inline.render_inlines(title_inlines).strip()
-        level = int(token.tag[1:]) if token.tag.startswith("h") else 1
+        heading_tag = re.fullmatch(r"h([1-6])", token.tag)
+        if heading_tag is None:
+            raise ValueError(f"invalid heading token tag: {token.tag!r}")
+        level = int(heading_tag.group(1))
         section_start = start_line(token)
 
         while section_stack and section_stack[-1].level >= level:
@@ -738,12 +750,15 @@ class MarkdownItParser(ParserProtocol):
                     text=slice_source(source_lines, token.map),
                     start_line=start_line(token),
                     end_line=end_line(token),
-                    attrs={"literal": token.content.rstrip("\n")},
+                    attrs={
+                        "literal": token.content.rstrip("\n"),
+                        "delimiter": str(token.markup or "$$"),
+                    },
                 ),
                 index + 1,
             )
 
-        if token.type == "math_block_eqno":
+        if token.type in {"math_block_label", "math_block_eqno"}:
             return (
                 DocumentBlock(
                     kind=BlockKind.MATH_BLOCK_EQNO,
@@ -753,6 +768,7 @@ class MarkdownItParser(ParserProtocol):
                     attrs={
                         "literal": token.content.rstrip("\n"),
                         "eqno": token.info.strip(),
+                        "delimiter": str(token.markup or "$$"),
                     },
                 ),
                 index + 1,

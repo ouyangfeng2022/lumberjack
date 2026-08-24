@@ -12,7 +12,7 @@ import platform
 import subprocess
 import sys
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -116,7 +116,7 @@ def run_benchmark(
     return BenchmarkReport(
         schema_version="1.0",
         commit=_commit(),
-        generated_at=datetime.now(UTC).isoformat(),
+        generated_at=datetime.now(timezone.utc).isoformat(),
         environment={
             "python": sys.version,
             "platform": platform.platform(),

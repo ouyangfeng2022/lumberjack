@@ -208,6 +208,109 @@ def test_markdown_it_parser_can_disable_setext_headings() -> None:
     assert document.root.blocks[0].text == "Title\n====="
 
 
+@pytest.mark.parametrize(
+    ("source", "literal", "delimiter"),
+    [
+        ("$a+b=c$", "a+b=c", "$"),
+        ("$ a+b=c$", " a+b=c", "$"),
+        ("$a+b=c $", "a+b=c ", "$"),
+        ("$ a+b=c $", " a+b=c ", "$"),
+        (r"\(a+b=c\)", "a+b=c", r"\("),
+        (r"\( a+b=c \)", " a+b=c ", r"\("),
+        (r"$\frac{a}{b}$", r"\frac{a}{b}", "$"),
+        (
+            r"$\begin{aligned}a&=b\\c&=d\end{aligned}$",
+            r"\begin{aligned}a&=b\\c&=d\end{aligned}",
+            "$",
+        ),
+    ],
+)
+def test_markdown_parser_recognizes_inline_math_dialects(
+    source: str, literal: str, delimiter: str
+) -> None:
+    tree = MarkdownParser().parse(source, document_title="math.md")
+    inline = tree.root.blocks[0].inlines[0]
+
+    assert inline.kind == "math_inline"
+    assert inline.attrs == {"literal": literal, "delimiter": delimiter}
+    assert tree.root.blocks[0].text == source
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        r"escaped \$a+b\$",
+        "price $5 and $10",
+        "USD $100.00",
+        "1$x$",
+        "$x$2",
+        "unclosed $a+b",
+        "`$a+b$`",
+    ],
+)
+def test_markdown_parser_does_not_misclassify_non_math_dollars(source: str) -> None:
+    tree = MarkdownParser().parse(source, document_title="not-math.md")
+    inlines = tree.root.blocks[0].inlines
+
+    assert all(inline.kind != "math_inline" for inline in inlines)
+
+
+@pytest.mark.parametrize(
+    ("source", "kind", "literal", "eqno", "delimiter"),
+    [
+        ("$$a+b=c$$", "math_block", "a+b=c", None, "$$"),
+        ("$$\na+b=c\n$$", "math_block", "\na+b=c", None, "$$"),
+        ("$$\na+b=c\n$$ (eq-1)", "math_block_eqno", "\na+b=c", "eq-1", "$$"),
+        (r"\[a+b=c\]", "math_block", "a+b=c", None, r"\["),
+        (
+            "\\[\na+b=c\n\\] (eq-2)",
+            "math_block_eqno",
+            "\na+b=c",
+            "eq-2",
+            r"\[",
+        ),
+    ],
+)
+def test_markdown_parser_recognizes_display_math_dialects(
+    source: str,
+    kind: str,
+    literal: str,
+    eqno: str | None,
+    delimiter: str,
+) -> None:
+    tree = MarkdownParser().parse(source, document_title="display-math.md")
+    block = tree.root.blocks[0]
+
+    assert block.kind == kind
+    assert block.attrs["literal"] == literal
+    assert block.attrs["delimiter"] == delimiter
+    if eqno is not None:
+        assert block.attrs["eqno"] == eqno
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        r"\[a+b=c\] trailing text",
+        r"\[a+b=c\] (eq-1) trailing text",
+    ],
+)
+def test_bracket_math_does_not_drop_trailing_text(source: str) -> None:
+    tree = MarkdownParser().parse(source, document_title="math.md")
+
+    assert [block.kind for block in tree.root.blocks] == ["paragraph"]
+    assert tree.root.blocks[0].text == source
+
+
+def test_markdown_parser_discards_thematic_break() -> None:
+    tree = MarkdownParser().parse("before\n\n---\n\nafter", document_title="hr.md")
+
+    assert [block.kind for block in tree.root.blocks] == [
+        "paragraph",
+        "paragraph",
+    ]
+
+
 def test_markdown_it_parser_handles_all_block_and_inline_tokens_in_comprehensive_fixture() -> (
     None
 ):
