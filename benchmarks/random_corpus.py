@@ -867,7 +867,7 @@ def _generate_sqlite(rng: random.Random) -> RandomDocument:
             ]
             schemas.append(rng.choice(unused))
         for table, names, kinds, ddl in schemas:
-            connection.execute(ddl)
+            connection.execute(ddl, ())
             visible.extend(names)
             for _ in range(rng.randint(1, 12)):
                 values: list[Any] = []
