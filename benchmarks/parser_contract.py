@@ -15,6 +15,7 @@ class ParserBenchmarkConfig:
     seed: int = 20260824
     sample_size_per_source: int = 500
     max_document_bytes: int = 20_000_000
+    formats: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.sample_size_per_source < 0:

@@ -9,6 +9,7 @@ from typing import Any
 
 from lumberjack.models import DocTree, DocumentBlock, SectionNode
 from lumberjack.parser.docx import DocxParser
+from lumberjack.parser.html import HTMLParser
 from lumberjack.parser.markdown import MarkdownParser
 
 COMMONMARK_0_31_2_SHA256 = (
@@ -86,23 +87,36 @@ def validate_docx(paths: Iterable[Path]) -> int:
     return count
 
 
+def validate_html(paths: Iterable[Path]) -> int:
+    parser = HTMLParser()
+    count = 0
+    for path in paths:
+        tree = parser.parse(path.read_text(encoding="utf-8"), document_title=path.name)
+        validate_tree(tree)
+        count += 1
+    return count
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate parser corpora")
     parser.add_argument("--commonmark-json", type=Path)
     parser.add_argument("--docx-dir", type=Path)
+    parser.add_argument("--html-dir", type=Path)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    if args.commonmark_json is None and args.docx_dir is None:
-        raise SystemExit("provide --commonmark-json and/or --docx-dir")
+    if args.commonmark_json is None and args.docx_dir is None and args.html_dir is None:
+        raise SystemExit("provide --commonmark-json, --docx-dir, and/or --html-dir")
 
-    result = {"commonmark": 0, "docx": 0}
+    result = {"commonmark": 0, "docx": 0, "html": 0}
     if args.commonmark_json is not None:
         result["commonmark"] = validate_commonmark(args.commonmark_json)
     if args.docx_dir is not None:
         result["docx"] = validate_docx(sorted(args.docx_dir.rglob("*.docx")))
+    if args.html_dir is not None:
+        result["html"] = validate_html(sorted(args.html_dir.rglob("*.html")))
     print(json.dumps(result, sort_keys=True))
 
 

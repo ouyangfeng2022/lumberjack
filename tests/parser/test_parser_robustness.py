@@ -9,8 +9,20 @@ from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 import pytest
 
 from lumberjack.models import DocTree, DocumentBlock, SectionNode
+from lumberjack.parser.code import NotebookParser, SourceCodeParser, SQLParser
 from lumberjack.parser.docx import DocxParser
+from lumberjack.parser.html import HTMLParser
 from lumberjack.parser.markdown import MarkdownParser
+from lumberjack.parser.records import (
+    DelimitedTextParser,
+    JSONLinesParser,
+    JSONParser,
+    TOMLParser,
+    XMLParser,
+    YAMLParser,
+)
+from lumberjack.parser.sqlite import SQLiteParser
+from lumberjack.parser.xlsx import XlsxParser
 
 MARKDOWN_BLOCK_CASES = {
     "paragraph": "{inline}\n",
@@ -615,3 +627,425 @@ def test_docx_parser_rejects_duplicate_package_part_names() -> None:
 
     with pytest.raises(ValueError, match="duplicate part names"):
         DocxParser().parse(payload.getvalue(), document_title="duplicate.docx")
+
+
+# ---------------------------------------------------------------------------
+# HTML, records, spreadsheet, database, and source parsers
+
+
+HTML_BLOCK_CASES = {
+    "body-paragraph": "<html><body><p>{inline}</p></body></html>",
+    "fragment-paragraph": "<p>{inline}</p>",
+    "fragment-bare-text": "{inline}",
+    "fragment-bare-inline": "before <strong>{inline}</strong> after",
+    "heading": "<h2>Title</h2>\n<p>{inline}</p>",
+    "deep-heading": "<h1>Parent</h1>\n<h4>Deep</h4>\n<p>{inline}</p>",
+    "blockquote": "<blockquote>{inline}</blockquote>",
+    "nested-blockquote": "<blockquote>outer<blockquote>{inline}</blockquote></blockquote>",
+    "bullet-list": "<ul><li>{inline}</li><li>second item</li></ul>",
+    "ordered-list": '<ol start="7"><li>{inline}</li><li>second item</li></ol>',
+    "nested-list-in-item": "<ul><li>parent<ul><li>{inline}</li></ul></li></ul>",
+    "bare-li": "<li>{inline}</li><li>second",
+    "fence": "<pre><code>{inline}\nsecond line</code></pre>",
+    "table": "<table><tr><th>key</th></tr><tr><td>{inline}</td></tr></table>",
+    "definition-list": "<dl><dt>term</dt><dd>{inline}</dd></dl>",
+    "div": '<div class="note">{inline}</div>',
+    "script": "<p>visible</p>\n<script>var hidden = 1;</script>\n<p>{inline}</p>",
+    "style": "<style>p {{ color: red; }}</style>\n<p>{inline}</p>",
+    "entities": "<p>a &amp; b &lt; c &copy; {inline}</p>",
+    "comment": "<!-- comment -->\n<p>{inline}</p>\n<!-- tail -->",
+    "img-alt": '<p>lead <img src="x.png" alt="decorative"> {inline}</p>',
+    "mixed-newlines": "<html>\r\n<body>\r\n<p>{inline}</p>\r\n</body>\r\n</html>",
+}
+
+HTML_INLINE_CASES = {
+    "plain": "LJ_SENTINEL plain text",
+    "unicode": "LJ_SENTINEL 中文 Ελληνικά العربية 👩🏽‍💻",
+    "strong": "LJ_SENTINEL <strong>bold</strong> text",
+    "emphasis": "LJ_SENTINEL <em>italic</em> text",
+    "code": "LJ_SENTINEL <code>code span</code> text",
+    "link": 'LJ_SENTINEL <a href="https://example.com/a?b=c">label</a>',
+    "image": 'LJ_SENTINEL <img src="image.png" alt="alt text">',
+    "breaks": "LJ_SENTINEL first<br>second",
+    "nested": "LJ_SENTINEL <strong>bold <em>both</em></strong>",
+    "nul": "LJ_SENTINEL before\x00after",
+    "bidi": "LJ_SENTINEL abc \u202etext\u202c end",
+    "long": f"LJ_SENTINEL {'word ' * 200}",
+}
+
+HTML_CASES = [
+    pytest.param(block, inline, id=f"{block_name}-{inline_name}")
+    for (block_name, block), (inline_name, inline) in product(
+        HTML_BLOCK_CASES.items(), HTML_INLINE_CASES.items()
+    )
+]
+
+
+@pytest.mark.parametrize(("block_template", "inline"), HTML_CASES)
+def test_html_parser_handles_combinatorial_syntax_corpus(
+    block_template: str,
+    inline: str,
+) -> None:
+    source = block_template.format(inline=inline)
+
+    tree = HTMLParser().parse(source, document_title="generated.html")
+
+    _assert_tree_invariants(tree)
+    rendered = _tree_text(tree)
+    assert "LJ_SENTINEL" in rendered
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_tokens"),
+    [
+        ("<h1>Hello<h2>World", ("Hello", "World")),
+        ("<!doctype html><h3><li>abc</h2>foo", ("abc", "foo")),
+        ("<!doctype html><h1><div><h3><span></h1>foo", ("foo",)),
+        (
+            "<li>hello<li>world<ul>how<li>item</ul>you",
+            ("hello", "world", "how", "item", "you"),
+        ),
+        ("<p>before</p>\n<table><tr><td>cell</td></tr>", ("before", "cell")),
+        (
+            "<ul><li>one<ul><li>nested</li></ul></li><li>two</li></ul>",
+            ("one", "nested", "two"),
+        ),
+        ("<ul><li>one</li><ul><li>nested</li></ul></ul>", ("one", "nested")),
+        ("<dl><dt>alpha</dt><dt>beta</dt></dl>", ("alpha", "beta")),
+        ("text<div>more</div>tail", ("text", "more", "tail")),
+        ("<p>unclosed paragraph at eof", ("unclosed", "eof")),
+        ("<blockquote>unclosed quote", ("unclosed", "quote")),
+        ("<ol><li>unclosed item", ("unclosed", "item")),
+        ("<td>stray cell</td>", ("stray", "cell")),
+        ("</p></li></ul></table>stray end tags", ("stray", "tags")),
+        ("<h2>heading with <svg><circle/></svg> inline</h2>", ("heading", "inline")),
+        (
+            "<h2>heading with <button>btn</button> inline</h2>",
+            ("heading", "btn", "inline"),
+        ),
+        ("<table><td>no tr</td><tr><td>row</td></tr></table>", ("row",)),
+        ("<div><div><div><p>deep nesting</p></div></div></div>", ("deep", "nesting")),
+    ],
+    ids=lambda value: (
+        value[:40].replace("/", "-").replace(" ", "_")[:40]
+        if isinstance(value, str)
+        else "tokens"
+    ),
+)
+def test_html_parser_preserves_text_in_adversarial_fragments(
+    source: str, expected_tokens: tuple[str, ...]
+) -> None:
+    tree = HTMLParser().parse(source, document_title="adversarial.html")
+
+    _assert_tree_invariants(tree)
+    extracted = _tree_text(tree)
+    for token in expected_tokens:
+        assert token in extracted, f"lost {token!r} in {source!r}"
+
+
+def test_html_parser_applies_implied_end_tags_between_headings() -> None:
+    tree = HTMLParser().parse("<h1>Hello<h2>World", document_title="implies.html")
+
+    assert [(section.level, section.title) for section in tree.root.children] == [
+        (1, "Hello")
+    ]
+    assert [(child.level, child.title) for child in tree.root.children[0].children] == [
+        (2, "World")
+    ]
+
+
+def test_html_parser_renders_bare_list_items_as_implicit_list() -> None:
+    tree = HTMLParser().parse(
+        "<li>hello<li>world<ul>how<li>do</ul>you", document_title="bare-li.html"
+    )
+
+    assert [block.text for block in tree.root.blocks] == [
+        "- hello\n- world",
+        "how",
+        "- do",
+        "you",
+    ]
+
+
+def test_html_parser_flushes_unclosed_table_and_lists_at_eof() -> None:
+    tree = HTMLParser().parse(
+        "<p>before</p>\n<ul><li>item\n<table><tr><td>cell",
+        document_title="unclosed.html",
+    )
+
+    assert [block.kind for block in tree.root.blocks] == [
+        "paragraph",
+        "list",
+        "html_table",
+    ]
+    assert "cell" in tree.root.blocks[2].text
+    _assert_tree_invariants(tree)
+
+
+def test_html_parser_keeps_nested_list_text_inside_parent_item() -> None:
+    tree = HTMLParser().parse(
+        "<ul><li>one<ul><li>nested</li></ul></li><li>two</li></ul>",
+        document_title="nested.html",
+    )
+
+    assert len(tree.root.blocks) == 1
+    assert [child.text for child in tree.root.blocks[0].children] == [
+        "one - nested",
+        "two",
+    ]
+
+
+def test_html_parser_separates_block_level_containers() -> None:
+    tree = HTMLParser().parse(
+        "<dl><dt>alpha</dt><dt>beta</dt></dl>", document_title="dl.html"
+    )
+
+    assert "alpha beta" in _tree_text(tree).replace("\n", " ")
+
+
+@pytest.mark.parametrize("seed", range(16))
+def test_html_parser_handles_deterministic_generated_corpus(seed: int) -> None:
+    rng = random.Random(seed)
+    oracle = _RandomHtmlOracle(rng)
+    source = oracle.build()
+
+    tree = HTMLParser().parse(source, document_title=f"generated-{seed}.html")
+
+    _assert_tree_invariants(tree)
+    rendered = _tree_text(tree)
+    assert all(sentinel in rendered for sentinel in oracle.sentinels)
+
+
+class _RandomHtmlOracle:
+    """Minimal independent HTML generator used by the seeded corpus test."""
+
+    def __init__(self, rng: random.Random) -> None:
+        self._rng = rng
+        self._counter = 0
+        self.sentinels: list[str] = []
+        self._parts: list[str] = []
+
+    def _sentinel(self) -> str:
+        self._counter += 1
+        sentinel = f"LJ_H_{self._counter:03d}"
+        self.sentinels.append(sentinel)
+        return sentinel
+
+    def build(self) -> str:
+        level = 1
+        for _ in range(self._rng.randint(6, 18)):
+            choice = self._rng.random()
+            sentinel = self._sentinel()
+            if choice < 0.2:
+                level = min(6, max(1, level + self._rng.choice([-1, 1, 2])))
+                self._parts.append(f"<h{level}>{sentinel} heading</h{level}>")
+            elif choice < 0.5:
+                self._parts.append(f"<p>{sentinel} paragraph text</p>")
+            elif choice < 0.65:
+                tag = "ol" if self._rng.random() < 0.5 else "ul"
+                self._parts.append(
+                    f"<{tag}><li>{sentinel} item one</li><li>item two</li></{tag}>"
+                )
+            elif choice < 0.8:
+                self._parts.append(f"<table><tr><td>{sentinel} cell</td></tr></table>")
+            else:
+                self._parts.append(f"<blockquote>{sentinel} quote</blockquote>")
+            if self._rng.random() < 0.2:
+                self._parts.append("<!-- generated comment -->")
+        return "\n".join(self._parts) + "\n"
+
+
+@pytest.mark.parametrize("seed", range(8))
+def test_records_parsers_handle_deterministic_generated_corpus(seed: int) -> None:
+    from benchmarks.random_corpus import FORMAT_SPECS
+
+    for name in ("csv", "tsv", "jsonl", "json", "yaml", "toml", "xml", "text", "log"):
+        rng = random.Random(f"robustness:{seed}:{name}".encode())
+        document = FORMAT_SPECS[name].generate(rng)
+        if document.allowed_error_types:
+            continue
+        tree = (
+            FORMAT_SPECS[name]
+            .make_parser()
+            .parse(document.source, document_title=document.document_id)
+        )
+
+        _assert_tree_invariants(tree)
+        if document.required_elements and document.min_token_recall:
+            assert _tree_text(tree)  # reference oracle is asserted in benchmarks
+
+
+def test_delimited_text_parser_preserves_embedded_newlines_in_quoted_fields() -> None:
+    tree = DelimitedTextParser().parse(
+        'name,notes\nAda,"line one\nline two"\nGrace,ok', document_title="notes.csv"
+    )
+
+    assert [block.text for block in tree.root.blocks] == [
+        "name: Ada\nnotes: line one\nline two",
+        "name: Grace\nnotes: ok",
+    ]
+
+
+def test_delimited_text_parser_preserves_rfc4180_field_shapes() -> None:
+    tree = DelimitedTextParser().parse(
+        'a,b\n"x, y","z ""q"" w"\n,empty-first', document_title="rfc.csv"
+    )
+
+    assert [block.text for block in tree.root.blocks] == [
+        'a: x, y\nb: z "q" w',
+        "a: \nb: empty-first",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("parser_factory", "payload"),
+    [
+        (lambda: JSONParser(), "{not json"),
+        (lambda: JSONParser(), ""),
+        (lambda: JSONParser(), '["unterminated'),
+        (lambda: YAMLParser(), "key: [unclosed"),
+        (lambda: YAMLParser(), "\t- bad: indent"),
+        (lambda: TOMLParser(), "key = "),
+        (lambda: TOMLParser(), "[unclosed table"),
+        (lambda: XMLParser(), "<root><unclosed></root>"),
+        (lambda: XMLParser(), ""),
+        (lambda: XMLParser(), "not xml at all"),
+        (lambda: JSONLinesParser(), '{"valid": 1}\n{broken'),
+        (lambda: JSONLinesParser(), "[1, 2,\n"),
+        (lambda: NotebookParser(), "{not json"),
+        (lambda: NotebookParser(), '{"cells": "not-a-list"}'),
+    ],
+    ids=lambda value: (
+        value
+        if isinstance(value, str)
+        else value.__self__.__class__.__name__
+        if hasattr(value, "__self__")
+        else "case"
+    ),
+)
+def test_records_parsers_reject_invalid_input_with_value_error(
+    parser_factory, payload: str
+) -> None:
+    with pytest.raises(ValueError):
+        parser_factory().parse(payload, document_title="invalid")
+
+
+def test_xml_parser_retains_mixed_content_text_segments() -> None:
+    tree = XMLParser().parse(
+        "<root>lead in <b>bold</b> tail text<c>leaf</c></root>",
+        document_title="mixed.xml",
+    )
+
+    assert [block.text for block in tree.root.blocks] == [
+        "/root[1]/text()[1]: lead in",
+        "/root[1]/b[1]: bold",
+        "/root[1]/text()[2]: tail text",
+        "/root[1]/c[1]: leaf",
+    ]
+    assert tree.root.blocks[0].attrs["text_segment"] is True
+
+
+def test_xml_parser_counts_duplicate_sibling_elements() -> None:
+    tree = XMLParser().parse("<r><a>1</a><a>2</a></r>", document_title="dup.xml")
+
+    assert [block.text for block in tree.root.blocks] == [
+        "/r[1]/a[1]: 1",
+        "/r[1]/a[2]: 2",
+    ]
+
+
+def test_sql_parser_keeps_semicolons_inside_literals_and_comments() -> None:
+    source = (
+        "INSERT INTO t VALUES ('a;b');\n"
+        "-- comment; with semicolon\n"
+        "SELECT 'it''s';\n"
+        "/* block; comment */ UPDATE t SET name = $$dollar; quoted$$;\n"
+        'CREATE TABLE "weird;name" (id INTEGER)'
+    )
+
+    tree = SQLParser().parse(source, document_title="batch.sql")
+
+    assert [block.text for block in tree.root.blocks] == [
+        "INSERT INTO t VALUES ('a;b');",
+        "-- comment; with semicolon\nSELECT 'it''s';",
+        "/* block; comment */ UPDATE t SET name = $$dollar; quoted$$;",
+        'CREATE TABLE "weird;name" (id INTEGER);',
+    ]
+    assert [
+        (block.source_locations[0].line_start, block.source_locations[0].line_end)
+        for block in tree.root.blocks
+    ] == [(1, 1), (2, 3), (4, 4), (5, 5)]
+
+
+def test_sql_parser_handles_empty_and_comment_only_input() -> None:
+    tree = SQLParser().parse("-- only a comment\n", document_title="empty.sql")
+
+    assert tree.root.blocks == []
+    _assert_tree_invariants(SQLParser().parse("", document_title="empty.sql"))
+
+
+@pytest.mark.parametrize("seed", range(4))
+def test_tabular_parsers_handle_generated_workbooks_and_databases(seed: int) -> None:
+    from benchmarks.random_corpus import FORMAT_SPECS
+
+    for name in ("xlsx", "sqlite"):
+        rng = random.Random(f"robustness:{seed}:{name}".encode())
+        document = FORMAT_SPECS[name].generate(rng)
+        if document.allowed_error_types:
+            continue
+        tree = (
+            FORMAT_SPECS[name]
+            .make_parser()
+            .parse(document.source, document_title=document.document_id)
+        )
+
+        _assert_tree_invariants(tree)
+        assert tree.root.blocks
+
+
+def test_xlsx_parser_rejects_non_zip_payload() -> None:
+    with pytest.raises(BadZipFile):
+        XlsxParser().parse(b"not a zip archive", document_title="bad.xlsx")
+
+
+def test_sqlite_parser_rejects_non_database_payload() -> None:
+    import sqlite3
+
+    with pytest.raises(sqlite3.DatabaseError):
+        SQLiteParser().parse(b"definitely not sqlite", document_title="bad.db")
+
+
+@pytest.mark.parametrize(
+    "language",
+    ["python", "javascript", "typescript"],
+)
+def test_source_code_parser_symbol_fallback_matches_tree_sitter_contract(
+    language: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from typing import cast
+
+    from lumberjack.parser.code import parser as code_parser_module
+    from lumberjack.parser.code.tree_sitter import CodeLanguage
+
+    monkeypatch.setattr(
+        code_parser_module, "extract_top_level_symbols", lambda *_args: None
+    )
+    if language == "python":
+        source = "def one():\n    return 1\n\n\nclass Two:\n    pass\n"
+        expected = 2
+    elif language == "javascript":
+        source = "function one() { return 1; }\n\nclass Two {}\n\nconst three = 3;\n"
+        expected = 3
+    else:
+        source = (
+            "function one(): number { return 1; }\n\n"
+            "interface Shape { label: string }\n\n"
+            "const three = 3;\n"
+        )
+        expected = 3
+    tree = SourceCodeParser(language=cast(CodeLanguage, language)).parse(
+        source, document_title="module"
+    )
+
+    assert len(tree.root.blocks) == expected
+    assert all(block.kind == "record" for block in tree.root.blocks)

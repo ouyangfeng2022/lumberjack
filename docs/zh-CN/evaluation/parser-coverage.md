@@ -90,6 +90,42 @@ AST。转义 dollar、未闭合分隔符以及代码中的 dollar 会保持为�
 - part 名重复或不安全、entry 超过 100,000 个、解压后总内容超过 512 MiB 的
   package 会在修复和解析前被拒绝。
 
+## HTML 覆盖范围
+
+| 输入元素 | 表示 | 当前行为 |
+| --- | --- | --- |
+| `<h1>`-`<h6>` | `SectionNode` | 标题层级；标题之间以及来自块级内容的隐式结束标签；任意 `</hN>` 都会关闭开放标题 |
+| `<title>` / `<meta>` | metadata | 按 HTML5 in-head 规则进入文档元数据，绝不进入正文块 |
+| 段落 / 裸文本 | `paragraph` | 无 `<html>`/`<body>` 包装的片段保留全部文本；隐式段落由可识别的块级标签定界 |
+| `<blockquote>` / `<pre>` | `blockquote` / `code_block` | `pre` 字面内容以围栏渲染保留 |
+| `<ul>`/`<ol>`/`<li>` | `list` / `list_item` | 嵌套列表留在父条目内；无列表包装的裸 `<li>` 形成隐式列表；`<li>` 隐式结束上一个条目 |
+| `<table>` | `html_table` | 原始表格标记作为不透明块保留；嵌套表格按深度跟踪；未闭合表格在输入结束时冲刷 |
+| 行内 `strong`/`em`/`code`/`a`/`img` | inline 节点 | 图片 `alt` 文本保留；实体引用解码 |
+| 块级容器（`div`、`dl`、`dt`、`dd`、`section`、`figure` 等） | 软边界 | 相邻文本按浏览器渲染方式分隔，而不是粘连成词 |
+| `<script>`/`<style>` | 丢弃 | 绝不作为正文内容输出 |
+| 未闭合结构 | EOF 冲刷 | 输入结束时，开放的标题、列表、条目、表格和块都会输出已收集的内容 |
+| CRLF / 注释 / doctype | 结构性 | 不影响文本和行号溯源 |
+
+已知限制：格式化元素 adoption（`<b>1<i>2<p>3</b>4`）保留全部字符但可能连接
+相邻文本运行；表格单元格文本保留在原始表格标记内部，而不是拆成独立 inline
+节点。
+
+## 记录、源码与表格格式覆盖范围
+
+| 格式 | 解析器 | 当前行为 |
+| --- | --- | --- |
+| 纯文本 / 行模式 | `TextParser` | 段落或逐行块，带行号溯源 |
+| 日志 | `LogParser` | 每个非空行一个原子记录 |
+| CSV / TSV | `DelimitedTextParser` | RFC 4180 引号字段（含内嵌分隔符与换行）完整保留；表头 schema 进入行元数据 |
+| JSON / YAML / TOML | `JSONParser` / `YAMLParser` / `TOMLParser` | 标量叶节点成为带路径的记录；空容器成为单条记录；非法输入以 `ValueError` 拒绝 |
+| JSON Lines | `JSONLinesParser` | 每个非空行一条规范化记录，带 JSON-path 溯源 |
+| XML | `XMLParser` | 叶元素以及混合内容的 `text()`/tail 片段成为有序记录，带元素路径 |
+| XLSX | `XlsxParser` | 非空行成为带工作表溯源的记录；空表头单元格重命名为 `column_N`；只有表头的工作表跳过 |
+| SQLite | `SQLiteParser` | 表行成为带表/行/列溯源的记录（Python 3.11+ 字节输入） |
+| Python / JS / TS | `SourceCodeParser` | 安装 tree-sitter 时按顶层符号提取，否则回退到 `ast`/正则；损坏源码返回带标记的记录或 `ValueError` |
+| Jupyter notebook | `NotebookParser` | 非空单元格成为有序、带单元格类型的记录 |
+| SQL | `SQLParser` | 引号/注释感知的语句切分：`'...'`、`"..."`、反引号和 `$$...$$` 内的分号绝不切分语句；纯注释结尾不产生记录 |
+
 ## 可复现基线
 
 基线使用 seed `20260824`，大型来源每个随机抽取最多 500 份，小型 DOCX 和元素
@@ -102,11 +138,31 @@ AST。转义 dollar、未闭合分隔符以及代码中的 dollar 会保持为�
 | Kubernetes website Markdown | 2,453 中抽取 500 | 500 成功；平均 token recall 0.9975 |
 | python-docx fixtures | 45 | 45 成功；DOCX 字符 recall 1.0 |
 | LibreOffice Writer OOXML | 377 | 376 成功；所有成功文档的 DOCX 字符 recall 均为 1.0 |
-| **总计** | **1,442** | **1,441 成功；仅 1 个 malformed XML 失败** |
+| html5lib tree-construction 片段 | 1,791 全部 | 1,791 成功；字符 recall 1.0 |
+| MDN Learning Area HTML | 413 全部 | 413 成功；平均 token recall 0.9992；字符 recall 1.0 |
+| **总计** | **3,646** | **3,645 成功；仅 1 个 malformed XML 失败** |
 
 LibreOffice 中有 19 份成功文档的词法 token recall 低于 0.99，原因是 OOXML run
 边界以不同方式连接或拆分了相同可见字符；这些文档的非空白字符 recall 都是 1.0，
-因此将其保留为指标诊断，而不报告为内容丢失。
+因此将其保留为指标诊断，而不报告为内容丢失。同理，130 份 html5lib 片段的
+token recall 低于 0.99 仅因为测试数据把单个数字直接相邻放置
+（`<a>1<p>2</a>3`）；全部字符都有保留（字符 recall 1.0）。
+
+### 随机语料基线
+
+种子化生成器为 Markdown 和 DOCX 之外的每个解析器构造文档，并同时给出三个
+oracle：生成时记录的可见文本、精确的元素签名计数，以及对对抗性损坏载荷允许
+的异常类型。基线使用 seed `20260825`、每种格式 500 份文档：
+
+| 格式族 | 格式 | 文档数 | 结果 |
+| --- | --- | ---: | --- |
+| 文档 | html | 500 | 500 成功；token recall 1.0 |
+| 平面文本 | text、text-lines、log | 1,500 | 1,500 成功；token recall 1.0 |
+| 分隔符 | csv、tsv | 1,000 | 1,000 成功；token recall 1.0 |
+| 结构化 | json、jsonl、yaml、toml、xml | 2,500 | 2,500 成功或干净拒绝；0 失败 |
+| 字节表格 | xlsx、sqlite | 1,000 | 1,000 成功或干净拒绝；0 失败 |
+| 源码 / notebook / SQL | python、javascript、typescript、notebook、sql | 2,500 | 2,500 成功；哨兵 recall 1.0 |
+| **总计** | 18 种格式 | **9,000** | **0 失败；所有严格文档达到 recall 1.0 和精确元素计数；391 份对抗文档被干净拒绝** |
 
 运行方式：
 
@@ -115,6 +171,9 @@ uv run python -m benchmarks.fetch_parser_corpora
 uv run python -m benchmarks.parser_run \
   --seed 20260824 \
   --sample-size-per-source 500
+uv run python -m benchmarks.random_run \
+  --seed 20260825 \
+  --documents-per-format 500
 ```
 
 `raw.json` 是单文档失败和诊断的权威证据；`summary.json` 提供总体、按格式和按

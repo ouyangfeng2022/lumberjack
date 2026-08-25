@@ -199,6 +199,12 @@ Implemented in `src/lumberjack/cli.py`.
 
 Tests use `pytest`. `tests/conftest.py` adds `src/` to `sys.path`.
 
+Parser verification has three layers, all under `benchmarks/`:
+
+- `benchmarks/parser_run.py` — pinned external corpora (Markdown, DOCX, HTML incl. html5lib fragments and MDN pages); sources are declared in `benchmarks/datasets/parser_sources.json` and fetched with `benchmarks/fetch_parser_corpora.py`
+- `benchmarks/random_run.py` + `benchmarks/random_corpus.py` — seeded random-document generators for every parser beyond Markdown/DOCX, checked against generated visible-text recall, exact element counts, and clean rejection of adversarial payloads
+- `tests/parser/test_parser_robustness.py` — combinatorial syntax corpora, adversarial fragments, and invalid-input rejection tests for Markdown, DOCX, HTML, records, spreadsheet, database, and source parsers
+
 Current test areas:
 
 - Markdown parser heading-tree construction, inlines, line ranges

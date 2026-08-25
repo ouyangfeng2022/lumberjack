@@ -33,6 +33,35 @@
       "license_url": "https://github.com/kubernetes/website/blob/69f5dc26e7888218dd713eb1d77c3b957a33d1ad/LICENSE"
     },
     {
+      "id": "html5lib-tree-construction",
+      "kind": "git",
+      "loader": "html5lib-dat",
+      "format": "html",
+      "repository": "https://github.com/html5lib/html5lib-tests.git",
+      "revision": "9329e64694e7835d0dcff9811e22856ef6ad16f9",
+      "checkout_paths": ["tree-construction"],
+      "include": ["tree-construction/*.dat"],
+      "license": "MIT",
+      "license_url": "https://github.com/html5lib/html5lib-tests/blob/9329e64694e7835d0dcff9811e22856ef6ad16f9/LICENSE"
+    },
+    {
+      "id": "mdn-learning-area",
+      "kind": "git",
+      "format": "html",
+      "repository": "https://github.com/mdn/learning-area.git",
+      "revision": "233917e3a39f36ef320fd9f9424a03e9c41879ec",
+      "checkout_paths": ["html", "javascript", "accessibility", "tools-testing", "css"],
+      "include": [
+        "html/**/*.html",
+        "javascript/**/*.html",
+        "accessibility/**/*.html",
+        "tools-testing/**/*.html",
+        "css/**/*.html"
+      ],
+      "license": "CC0-1.0",
+      "license_url": "https://github.com/mdn/learning-area/blob/233917e3a39f36ef320fd9f9424a03e9c41879ec/LICENSE"
+    },
+    {
       "id": "python-docx-tests",
       "kind": "git",
       "format": "docx",

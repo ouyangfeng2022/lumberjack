@@ -56,6 +56,91 @@ def _builder(document: Document) -> DocTreeBuilder:
     )
 
 
+_DOLLAR_TAG_RE = re.compile(r"\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$")
+
+
+def _split_sql_statements(source: str) -> list[tuple[str, int, int]]:
+    """Split on semicolons that sit outside literals, identifiers, and comments.
+
+    Returns ``(statement_with_semicolon, start_line, end_line)`` tuples so
+    string literals such as ``'a;b'`` stay inside one statement.
+    """
+    statements: list[tuple[str, int, int]] = []
+    length = len(source)
+    index = 0
+    line = 1
+    statement_start: int | None = None
+    statement_start_line = 1
+    statement_has_content = False
+    while index < length:
+        character = source[index]
+        following = source[index : index + 2]
+        if character == "\n":
+            line += 1
+            index += 1
+            continue
+        if statement_start is None and not character.isspace():
+            statement_start = index
+            statement_start_line = line
+        if following == "--":
+            newline = source.find("\n", index)
+            index = length if newline == -1 else newline
+            continue
+        if following == "/*":
+            depth = 1
+            index += 2
+            while index < length and depth:
+                if source[index : index + 2] == "/*":
+                    depth += 1
+                    index += 2
+                elif source[index : index + 2] == "*/":
+                    depth -= 1
+                    index += 2
+                else:
+                    if source[index] == "\n":
+                        line += 1
+                    index += 1
+            continue
+        if character in {"'", '"', "`"}:
+            quote = character
+            index += 1
+            while index < length:
+                if source[index] == quote:
+                    if source[index + 1 : index + 2] == quote:
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                if source[index] == "\n":
+                    line += 1
+                index += 1
+            statement_has_content = True
+            continue
+        if character == "$":
+            tag = _DOLLAR_TAG_RE.match(source, index)
+            if tag is not None:
+                closing = source.find(tag.group(0), tag.end())
+                end = length if closing == -1 else closing + len(tag.group(0))
+                line += source.count("\n", index, end)
+                index = end
+                statement_has_content = True
+                continue
+        if character == ";" and statement_start is not None:
+            statement = source[statement_start:index].strip()
+            if statement and statement_has_content:
+                statements.append((f"{statement};", statement_start_line, line))
+            statement_start = None
+            statement_has_content = False
+        elif not character.isspace():
+            statement_has_content = True
+        index += 1
+    if statement_start is not None:
+        statement = source[statement_start:].strip()
+        if statement and statement_has_content:
+            statements.append((f"{statement};", statement_start_line, line))
+    return statements
+
+
 class SQLParser:
     """Parse semicolon-delimited SQL statements as ordered atomic records."""
 
@@ -77,26 +162,23 @@ class SQLParser:
             source_path=source_path,
         )
         builder = _builder(source_document)
-        start_line = 1
-        for index, statement in enumerate(_text(source_document).split(";")):
-            normalized = statement.strip()
-            statement_lines = statement.count("\n") + 1
-            if normalized:
-                builder.add_record(
-                    normalized + ";",
-                    locations=(
-                        SourceLocation(
-                            source=str(source_document.source_path)
-                            if source_document.source_path
-                            else None,
-                            line_start=start_line,
-                            line_end=start_line + statement_lines - 1,
-                            element_id=f"statement:{index}",
-                        ),
+        for index, (statement, start_line, end_line) in enumerate(
+            _split_sql_statements(_text(source_document))
+        ):
+            builder.add_record(
+                statement,
+                locations=(
+                    SourceLocation(
+                        source=str(source_document.source_path)
+                        if source_document.source_path
+                        else None,
+                        line_start=start_line,
+                        line_end=end_line,
+                        element_id=f"statement:{index}",
                     ),
-                    attrs={"statement_index": index},
-                )
-            start_line += statement_lines
+                ),
+                attrs={"statement_index": index},
+            )
         return builder.build()
 
 

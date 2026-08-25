@@ -102,6 +102,42 @@ Current limits:
 - Packages with duplicate/unsafe part names, more than 100,000 entries, or more
   than 512 MiB total expanded content are rejected before repair or parsing.
 
+## HTML coverage
+
+| Input element | Representation | Current behavior |
+| --- | --- | --- |
+| `<h1>`-`<h6>` | `SectionNode` | Heading hierarchy; implied end tags between headings and from block content; any `</hN>` closes an open heading |
+| `<title>` / `<meta>` | metadata | Routed to document metadata per the HTML5 in-head rules, never body blocks |
+| Paragraphs / bare text | `paragraph` | Fragments without `<html>`/`<body>` wrappers keep all text; implicit paragraphs are bounded by recognized block tags |
+| `<blockquote>` / `<pre>` | `blockquote` / `code_block` | Literal `pre` content preserved inside a fenced rendering |
+| `<ul>`/`<ol>`/`<li>` | `list` / `list_item` | Nested lists stay inside their parent item; bare `<li>` without a list wrapper becomes an implicit list; `<li>` implies the end of the previous item |
+| `<table>` | `html_table` | Raw table markup retained as an opaque block; nested tables tracked by depth; unclosed tables flush at end of input |
+| Inline `strong`/`em`/`code`/`a`/`img` | inline nodes | Image `alt` text retained; entity references decoded |
+| Block containers (`div`, `dl`, `dt`, `dd`, `section`, `figure`, ...) | soft boundary | Adjacent runs are separated the way a browser renders them instead of gluing words |
+| `<script>`/`<style>` | discarded | Never emitted as body content |
+| Unclosed constructs | flushed at EOF | Open headings, lists, items, tables, and blocks emit their collected content when the document ends |
+| CRLF / comments / doctype | structural | Handled without affecting text or line provenance |
+
+Known limits: formatting-element adoption (`<b>1<i>2<p>3</b>4`) keeps every
+character but may join adjacent text runs, and table cell text is retained
+inside the raw table markup rather than as separate inline nodes.
+
+## Records, source, and tabular coverage
+
+| Format | Parser | Current behavior |
+| --- | --- | --- |
+| Plain text / line mode | `TextParser` | Paragraph or per-line blocks with line provenance |
+| Logs | `LogParser` | One atomic record per non-empty line |
+| CSV / TSV | `DelimitedTextParser` | RFC 4180 quoted fields with embedded delimiters and newlines preserved; header schema in row metadata |
+| JSON / YAML / TOML | `JSONParser` / `YAMLParser` / `TOMLParser` | Scalar leaves as path-aware records; empty containers as single records; invalid input rejected with `ValueError` |
+| JSON Lines | `JSONLinesParser` | One canonical record per non-blank line with JSON-path provenance |
+| XML | `XMLParser` | Leaf elements plus mixed-content `text()`/tail segments as ordered records with element paths |
+| XLSX | `XlsxParser` | Non-empty rows as sheet-aware records; empty header cells renamed `column_N`; sheets with only headers skipped |
+| SQLite | `SQLiteParser` | Table rows as records with table/row/column provenance (Python 3.11+ bytes input) |
+| Python / JS / TS | `SourceCodeParser` | Top-level symbols via tree-sitter when installed, `ast`/regex fallback otherwise; malformed source returns flagged records or `ValueError` |
+| Jupyter notebooks | `NotebookParser` | Non-empty cells as ordered, cell-typed records |
+| SQL | `SQLParser` | Quote/comment-aware statement splitting: semicolons inside `'...'`, `"..."`, backticks, and `$$...$$` never split a statement; comment-only tails emit no records |
+
 ## Reproducible baseline
 
 Baseline generated with seed `20260824`, at most 500 random documents per large
@@ -114,20 +150,46 @@ source, and all smaller DOCX and conformance corpora:
 | Kubernetes website Markdown | 500 of 2,453 | 500 successful; mean token recall 0.9975 |
 | python-docx fixtures | 45 | 45 successful; DOCX character recall 1.0 |
 | LibreOffice Writer OOXML | 377 | 376 successful; DOCX character recall 1.0 for every successful document |
-| **Total** | **1,442** | **1,441 successful; one malformed-XML failure** |
+| html5lib tree-construction fragments | 1,791 of 1,791 | 1,791 successful; character recall 1.0 |
+| MDN Learning Area HTML | 413 of 413 | 413 successful; mean token recall 0.9992; character recall 1.0 |
+| **Total** | **3,646** | **3,645 successful; one malformed-XML failure** |
 
 Nineteen successful LibreOffice files have lexical-token recall below 0.99 because
 OOXML run boundaries join or split identical visible characters differently.
 Their non-whitespace-character recall is 1.0, so they are retained as a metric
-diagnostic rather than reported as content loss.
+diagnostic rather than reported as content loss. Likewise, 130 html5lib
+fragments show token recall below 0.99 only because the test data places single
+digits directly adjacent (`<a>1<p>2</a>3`); every character is retained
+(character recall 1.0).
 
-Run the benchmark with:
+### Randomized corpus baseline
+
+Seeded generators build documents for every parser beyond Markdown and DOCX
+along with three oracles: the visible text the generator emitted, exact
+element-signature counts, and — for adversarily damaged payloads — the exact
+exception types the parser may reject with. Baseline generated with seed
+`20260825` and 500 documents per format:
+
+| Format family | Formats | Documents | Result |
+| --- | --- | ---: | --- |
+| Document | html | 500 | 500 successful; token recall 1.0 |
+| Flat text | text, text-lines, log | 1,500 | 1,500 successful; token recall 1.0 |
+| Delimited | csv, tsv | 1,000 | 1,000 successful; token recall 1.0 |
+| Structured | json, jsonl, yaml, toml, xml | 2,500 | 2,500 successful or cleanly rejected; 0 failures |
+| Tabular bytes | xlsx, sqlite | 1,000 | 1,000 successful or cleanly rejected; 0 failures |
+| Source / notebooks / SQL | python, javascript, typescript, notebook, sql | 2,500 | 2,500 successful; sentinel recall 1.0 |
+| **Total** | 18 formats | **9,000** | **0 failed; every strict document met recall 1.0 and exact element counts; 391 adversarial documents were cleanly rejected** |
+
+Run the benchmarks with:
 
 ```bash
 uv run python -m benchmarks.fetch_parser_corpora
 uv run python -m benchmarks.parser_run \
   --seed 20260824 \
   --sample-size-per-source 500
+uv run python -m benchmarks.random_run \
+  --seed 20260825 \
+  --documents-per-format 500
 ```
 
 `raw.json` is authoritative for individual failures and diagnostics;

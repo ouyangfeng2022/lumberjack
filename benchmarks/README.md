@@ -65,20 +65,50 @@ uv run python -m benchmarks.parser_run \
 
 The pinned set combines a project-owned Markdown element conformance suite, 652
 normative CommonMark cases, real Kubernetes documentation, python-docx
-interoperability fixtures, and LibreOffice Writer OOXML regression documents.
-Random selection is stratified per source and is stable for the same seed.
-Every selected document records its corpus-relative path, SHA-256, byte size,
-status, exception, timings, Python allocation peak, lexical-token and
-non-whitespace-character recall, element assertions, and tree statistics.
-`raw.json` preserves all document evidence, including dirty-worktree status;
-`summary.json` reports aggregate, per-format, and per-dataset results.
+interoperability fixtures, LibreOffice Writer OOXML regression documents, the
+html5lib tree-construction adversarial HTML fragments, and the MDN Learning
+Area real-world HTML pages. Random selection is stratified per source and is
+stable for the same seed. Every selected document records its corpus-relative
+path, SHA-256, byte size, status, exception, timings, Python allocation peak,
+lexical-token and non-whitespace-character recall, element assertions, and tree
+statistics. `raw.json` preserves all document evidence, including dirty-worktree
+status; `summary.json` reports aggregate, per-format, and per-dataset results.
 
 固定语料包括项目自有的 Markdown 元素一致性套件、652 个 CommonMark 规范样例、
-真实 Kubernetes 文档、python-docx 互操作 fixture 和 LibreOffice Writer OOXML
-回归文档。随机抽样按来源分层，并在相同 seed 下保持稳定。每份样本记录相对路径、
-SHA-256、大小、状态、异常、耗时、Python 内存分配峰值、词法 token recall、非空白
-字符 recall、元素断言和树结构统计；`raw.json` 保留逐文档证据，`summary.json`
-提供总体、按格式和按数据集汇总。
+真实 Kubernetes 文档、python-docx 互操作 fixture、LibreOffice Writer OOXML
+回归文档、html5lib tree-construction 对抗性 HTML 片段，以及 MDN Learning Area
+真实 HTML 页面。随机抽样按来源分层，并在相同 seed 下保持稳定。每份样本记录相对
+路径、SHA-256、大小、状态、异常、耗时、Python 内存分配峰值、词法 token
+recall、非空白字符 recall、元素断言和树结构统计；`raw.json` 保留逐文档证据，
+`summary.json` 提供总体、按格式和按数据集汇总。
+
+## Random corpus benchmark / 随机语料基准
+
+`random_run.py` verifies every parser beyond Markdown and DOCX (HTML, text,
+logs, CSV/TSV, JSON/JSONL/YAML/TOML/XML, XLSX, SQLite, Python/JS/TS, notebooks,
+SQL) against seeded document generators. Each generated document carries three
+oracles: the visible text the generator emitted (token/character recall),
+exact element-signature counts, and — for adversarially damaged payloads — the
+exact exception types a clean rejection may raise. Results use the same
+report format as the pinned-corpus benchmark.
+
+`random_run.py` 用种子化生成器验证 Markdown 和 DOCX 之外的每一个解析器
+（HTML、文本、日志、CSV/TSV、JSON/JSONL/YAML/TOML/XML、XLSX、SQLite、
+Python/JS/TS、notebook、SQL）。每份生成文档携带三个 oracle：生成时记录的
+可见文本（token/字符 recall）、精确的元素签名计数，以及对对抗性损坏载荷
+允许的干净拒绝异常类型。结果与固定语料基准使用同一报告格式。
+
+```bash
+# All 18 formats, 500 documents each, deterministic for a given seed.
+uv run python -m benchmarks.random_run \
+  --seed 20260825 \
+  --documents-per-format 500
+
+# A quick subset run.
+uv run python -m benchmarks.random_run \
+  --formats html,csv,json,xlsx \
+  --documents-per-format 50
+```
 
 Token recall is sensitive to producer-specific DOCX run boundaries, so it is
 not an element-correctness score. Character recall checks retention despite run

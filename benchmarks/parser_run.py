@@ -1,4 +1,4 @@
-"""Large-corpus, deterministic benchmark for Markdown and DOCX parsers."""
+"""Large-corpus, deterministic benchmark for the Markdown, HTML, and DOCX parsers."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from html.parser import HTMLParser
+from html.parser import HTMLParser as _StdlibHTMLParser
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -33,6 +33,7 @@ from benchmarks.parser_contract import (
 )
 from lumberjack.models import DocTree, DocumentBlock, DocumentInline, SectionNode
 from lumberjack.parser.docx import DocxParser
+from lumberjack.parser.html import HTMLParser
 from lumberjack.parser.markdown import MarkdownParser
 
 ROOT = Path(__file__).resolve().parent
@@ -53,13 +54,27 @@ class CorpusDocument:
     forbidden_elements: tuple[str, ...] = ()
 
 
-class _HTMLTextExtractor(HTMLParser):
+class _HTMLTextExtractor(_StdlibHTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style", "head", "template", "title"}:
+            self._skip_depth += 1
+        elif tag == "img" and self._skip_depth == 0:
+            alt = next((value for name, value in attrs if name == "alt"), None)
+            if alt:
+                self.parts.append(alt)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style", "head", "template", "title"}:
+            self._skip_depth = max(0, self._skip_depth - 1)
 
     def handle_data(self, data: str) -> None:
-        self.parts.append(data)
+        if self._skip_depth == 0:
+            self.parts.append(data)
 
 
 def _safe_child(root: Path, *parts: str) -> Path:
@@ -72,6 +87,20 @@ def _safe_child(root: Path, *parts: str) -> Path:
 
 
 def _html_text(source: str) -> str:
+    extractor = _HTMLTextExtractor()
+    extractor.feed(source)
+    extractor.close()
+    return " ".join(extractor.parts)
+
+
+def _html_visible_text(source: str) -> str:
+    """Independent visible-text reference for HTML corpus documents.
+
+    Mirrors the body text a browser shows: text nodes plus image alt text,
+    excluding ``script``/``style``/``template``, and ``title``/``head``-only
+    content. Parts are joined with spaces so block-level splits in the tree
+    do not glue separate words together.
+    """
     extractor = _HTMLTextExtractor()
     extractor.feed(source)
     extractor.close()
@@ -169,25 +198,85 @@ def _git_documents(source: dict[str, Any], root: Path) -> list[CorpusDocument]:
         }
     )
     source_format = str(source["format"])
-    if source_format not in {"markdown", "docx"}:
+    if source_format not in {"markdown", "docx", "html"}:
         raise ValueError(f"unsupported parser corpus format: {source_format!r}")
     documents: list[CorpusDocument] = []
     for path in paths:
         relative_path = path.relative_to(repository_root).as_posix()
+        load: Callable[[], str | bytes]
+        if source_format == "docx":
+            load = lambda path=path: path.read_bytes()  # noqa: E731
+        else:
+            load = lambda path=path: path.read_text(encoding="utf-8")  # noqa: E731
         documents.append(
             CorpusDocument(
                 dataset_id=str(source["id"]),
                 document_id=relative_path,
                 format=source_format,
                 source_bytes=path.stat().st_size,
-                load=(
-                    (lambda path=path: path.read_text(encoding="utf-8"))
-                    if source_format == "markdown"
-                    else (lambda path=path: path.read_bytes())
-                ),
+                load=load,
             )
         )
     return documents
+
+
+def _html5lib_documents(source: dict[str, Any], root: Path) -> list[CorpusDocument]:
+    """Load html5lib tree-construction ``.dat`` cases as HTML fragments."""
+    repository_root = _safe_child(root, str(source["id"]))
+    if not repository_root.is_dir():
+        raise FileNotFoundError(f"parser corpus is not fetched: {repository_root}")
+    patterns = [str(pattern) for pattern in source["include"]]
+    paths = sorted(
+        {
+            path
+            for pattern in patterns
+            for path in repository_root.glob(pattern)
+            if path.is_file()
+        }
+    )
+    documents: list[CorpusDocument] = []
+    for path in paths:
+        relative_path = path.relative_to(repository_root).as_posix()
+        content = path.read_text(encoding="utf-8")
+        case_lines: list[str] = []
+        case_index = 0
+        in_data = False
+        for line in content.splitlines():
+            if line == "#data":
+                if case_lines:
+                    documents.append(
+                        _html5lib_case(source, relative_path, case_index, case_lines)
+                    )
+                case_index += 1
+                case_lines = []
+                in_data = True
+                continue
+            if line.startswith("#"):
+                in_data = False
+                continue
+            if in_data:
+                case_lines.append(line)
+        if case_lines:
+            documents.append(
+                _html5lib_case(source, relative_path, case_index, case_lines)
+            )
+    return documents
+
+
+def _html5lib_case(
+    source: dict[str, Any],
+    relative_path: str,
+    case_index: int,
+    lines: list[str],
+) -> CorpusDocument:
+    fragment = "\n".join(lines)
+    return CorpusDocument(
+        dataset_id=str(source["id"]),
+        document_id=f"{relative_path}#case-{case_index}",
+        format="html",
+        source_bytes=len(fragment.encode("utf-8")),
+        load=lambda fragment=fragment: fragment,
+    )
 
 
 def _local_case_documents(
@@ -229,14 +318,17 @@ def discover_documents(
         known_sources.add(source_id)
         if source_ids is not None and source_id not in source_ids:
             continue
-        if source["kind"] == "commonmark-json":
+        loader = str(source.get("loader") or source["kind"])
+        if loader == "commonmark-json":
             candidates = _commonmark_documents(source, corpus_root)
-        elif source["kind"] == "git":
+        elif loader == "git":
             candidates = _git_documents(source, corpus_root)
-        elif source["kind"] == "local-cases-json":
+        elif loader == "html5lib-dat":
+            candidates = _html5lib_documents(source, corpus_root)
+        elif loader == "local-cases-json":
             candidates = _local_case_documents(source, manifest_path)
         else:
-            raise ValueError(f"unsupported parser corpus kind: {source['kind']!r}")
+            raise ValueError(f"unsupported parser corpus loader: {loader!r}")
         candidates = [
             item
             for item in candidates
@@ -474,14 +566,19 @@ def _parse_document(document: CorpusDocument) -> ParserDocumentResult:
     wall_start = time.perf_counter()
     cpu_start = time.process_time()
     try:
-        if isinstance(payload, str):
+        if document.format == "markdown":
             tree = MarkdownParser().parse(
-                payload,
+                payload if isinstance(payload, str) else "",
+                document_title=document.document_id,
+            )
+        elif document.format == "html":
+            tree = HTMLParser().parse(
+                payload if isinstance(payload, str) else "",
                 document_title=document.document_id,
             )
         else:
             tree = DocxParser().parse(
-                payload,
+                payload if isinstance(payload, bytes) else b"",
                 document_title=document.document_id,
             )
         diagnostics = _validate_tree(tree)
@@ -489,11 +586,14 @@ def _parse_document(document: CorpusDocument) -> ParserDocumentResult:
             _check_elements(tree, document)
         )
         diagnostics.extend(element_diagnostics)
-        source_text = (
-            document.reference_text
-            if document.reference_text is not None
-            else (payload if isinstance(payload, str) else _docx_visible_text(payload))
-        )
+        if document.reference_text is not None:
+            source_text = document.reference_text
+        elif isinstance(payload, str):
+            source_text = (
+                _html_visible_text(payload) if document.format == "html" else payload
+            )
+        else:
+            source_text = _docx_visible_text(payload)
         extracted_text = _tree_text(tree)
         source_token_count, matched_token_count, recall = _content_token_stats(
             source_text, extracted_text

@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added large-scale randomized parser verification: seeded generators build
+  documents for HTML, TXT/LOG, CSV/TSV, JSON/JSONL/YAML/TOML/XML, XLSX, SQLite,
+  Python/JavaScript/TypeScript, notebooks, and SQL, and check each parser
+  against generated visible-text recall, exact element counts, and clean
+  rejection of damaged payloads (`benchmarks/random_run.py`).
+- Added two version-pinned HTML corpora to the parser benchmark: html5lib
+  tree-construction adversarial fragments and MDN Learning Area real-world
+  pages, with an independent HTML visible-text reference extractor.
+- Added combinatorial and adversarial robustness tests for the HTML, records,
+  spreadsheet, database, and source parsers, including deterministic generated
+  corpora and invalid-input rejection checks.
+
+### Changed
+
+- HTML parsing now retains text that was previously dropped: fragments without
+  `<body>` wrappers, bare text between constructs, nested list items inside
+  their parent item, unclosed headings/lists/tables/paragraphs flushed at end
+  of input, `<dt>`/`<dd>`/`<div>`-style block boundaries keeping adjacent words
+  separate, and implied end tags such as `<h1>a<h2>b`, `<li>x<li>y`, and any
+  `</hN>` closing an open heading.
+- CSV/TSV parsing now preserves RFC 4180 quoted fields containing embedded
+  newlines and delimiters instead of silently dropping the newlines and
+  shifting row provenance.
+- SQL parsing now splits statements on a quote/comment-aware scanner, so
+  semicolons inside `'...'`, `"..."`, backtick identifiers, `$$...$$` dollar
+  quotes, `--`, and `/* */` comments no longer break a statement, and
+  comment-only tails emit no records.
+- XML parsing now retains mixed-content `text()`/tail segments (for example
+  `<root>lead<b>bold</b>tail</root>`) as ordered records instead of dropping
+  the container text.
+- Invalid TOML input is now consistently rejected with `ValueError` like JSON
+  and YAML instead of leaking `tomllib.TOMLDecodeError`.
 - Added a parser-focused large-corpus benchmark with version-pinned Markdown
   and DOCX sources, deterministic per-source random sampling, per-document raw
   evidence, token/character content-retention metrics, element conformance

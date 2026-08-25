@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import io
 import json
 from collections.abc import Iterable, Mapping
 from importlib import import_module
@@ -223,7 +224,8 @@ class DelimitedTextParser:
             source_path=source_path,
         )
         reader = csv.reader(
-            _text(source_document).splitlines(), delimiter=self.delimiter
+            io.StringIO(_text(source_document), newline=""),
+            delimiter=self.delimiter,
         )
         try:
             header = next(reader)
@@ -395,7 +397,7 @@ class _StructuredDataParser:
         )
         try:
             value = self.load(_text(source_document))
-        except (json.JSONDecodeError, yaml.YAMLError) as exc:
+        except (ValueError, yaml.YAMLError) as exc:
             raise ValueError(f"Invalid {self.format.upper()} input: {exc}") from exc
         builder = _builder(source_document, topology="records", kinds=self.block_kinds)
         for index, (path, scalar) in enumerate(_scalar_records(value)):
@@ -496,16 +498,46 @@ class XMLParser:
 
         builder = _builder(source_document, topology="records", kinds=self.block_kinds)
         record_index = 0
+        segment_counts: dict[str, int] = {}
+
+        def add_text_segment(parent_path: str, tag: str, segment: str) -> None:
+            nonlocal record_index
+            count = segment_counts.get(parent_path, 0) + 1
+            segment_counts[parent_path] = count
+            segment_path = f"{parent_path}/text()[{count}]"
+            builder.add_record(
+                f"{segment_path}: {segment}",
+                locations=(
+                    SourceLocation(
+                        source=_source_path(source_document), element_id=segment_path
+                    ),
+                ),
+                attrs={
+                    "record_index": record_index,
+                    "path": segment_path,
+                    "tag": tag,
+                    "value_type": "string",
+                    "text_segment": True,
+                },
+            )
+            record_index += 1
 
         def visit(element: ElementTree.Element, path: str) -> None:
             nonlocal record_index
             children = list(element)
             if children:
+                lead = (element.text or "").strip()
+                if lead:
+                    add_text_segment(path, _tag_name(element.tag), lead)
                 counts: dict[str, int] = {}
                 for child in children:
                     name = _tag_name(child.tag)
                     counts[name] = counts.get(name, 0) + 1
-                    visit(child, f"{path}/{name}[{counts[name]}]")
+                    child_path = f"{path}/{name}[{counts[name]}]"
+                    visit(child, child_path)
+                    tail = (child.tail or "").strip()
+                    if tail:
+                        add_text_segment(path, _tag_name(element.tag), tail)
                 return
             text = (element.text or "").strip()
             builder.add_record(
