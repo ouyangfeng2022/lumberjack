@@ -31,6 +31,12 @@ uv run lumber path/to/file.md --tokenizer tiktoken --splitter incremental-siblin
 # Run CLI (DOCX)
 uv run lumber path/to/file.docx --input-format docx --max-tokens 1200
 
+# Inspect parser output for one file (DocTree JSON; --outline prints the section tree)
+uv run python -m lumberjack.parser path/to/file.md --outline
+
+# Inspect splitter output for one file (same JSON envelope as `lumber`)
+uv run python -m lumberjack.splitter path/to/file.md --splitter sibling --max-tokens 800
+
 # Show CLI help
 uv run lumber --help
 
@@ -351,6 +357,7 @@ src/lumberjack/
     web/                            # FastAPI layer
     parser/                         # Public parser implementations
         __init__.py                 # AutoParser and concrete parser exports
+        __main__.py                 # `python -m lumberjack.parser` inspection entry
         auto.py                     # Format inference and parser selection
         markdown/
             parser.py               # MarkdownItParser
@@ -361,6 +368,7 @@ src/lumberjack/
             parser.py               # HTMLParser + _HTMLDocumentBuilder
             table_parser.py         # HTMLTableParser + HTMLTable*
     splitter/                         # Public splitter implementations
+        __main__.py                   # `python -m lumberjack.splitter` inspection entry
         base.py
         exact.py
         incremental.py

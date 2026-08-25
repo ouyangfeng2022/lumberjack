@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added runnable module entries for stage-level inspection:
+  `python -m lumberjack.parser FILE` prints the parsed `DocTree` as versioned
+  JSON (or a section outline with `--outline`), and
+  `python -m lumberjack.splitter FILE` prints the same chunk-result JSON
+  envelope as the `lumber` CLI with the core split options
+  (`--splitter`, `--tokenizer`, `--max-tokens`, ratio and heading controls).
+  Both accept `-` to read text from stdin.
 - Added large-scale randomized parser verification: seeded generators build
   documents for HTML, TXT/LOG, CSV/TSV, JSON/JSONL/YAML/TOML/XML, XLSX, SQLite,
   Python/JavaScript/TypeScript, notebooks, and SQL, and check each parser
