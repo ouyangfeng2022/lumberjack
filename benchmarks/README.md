@@ -116,6 +116,132 @@ fragmentation, while the local conformance cases explicitly assert required and
 forbidden element kinds. See the parser coverage reference in the documentation
 for the supported syntax matrix and known limitations.
 
+## Random splitter benchmark / 随机 splitter 基准
+
+`splitter_random_run.py` measures the six hierarchical splitter variants
+(section/subtree/sibling topology × exact/incremental counting) under identical
+tokenizers and documents: split-phase wall/CPU speed, tokenizer `count` call
+volume, the gap between the split-time estimate
+(`Chunk.estimated_token_count`) and the finalizer's authoritative recount
+(`Chunk.token_count`), final chunks exceeding `max_tokens`, content-fidelity
+oracles, and cold-run tracemalloc allocation peaks. Parsing runs once per
+document outside every timed region; every variant splits the same `DocTree`.
+
+`splitter_random_run.py` 在相同 tokenizer 与文档下测量六个 hierarchical
+splitter 变体（section/subtree/sibling 拓扑 × exact/incremental 计数）：
+split 阶段 wall/CPU 速度、tokenizer `count` 调用量、split 期估计值
+（`Chunk.estimated_token_count`）与 finalizer 权威重计数（`Chunk.token_count`）
+的误差、最终 chunk 超出 `max_tokens` 的情况、内容保真 oracle，以及 tracemalloc
+冷启动分配峰值。每份文档只解析一次且不计入计时；所有变体切分同一棵 `DocTree`。
+
+Timing and memory are measured in separate passes: timed repetitions run without
+tracemalloc so wall times are clean; memory is measured with fresh tokenizer
+caches per repetition (`--memory-reps`, cold-run peaks for split alone and for
+split + finalize). Per-document results report both the median and the mean over
+`--repetitions` runs after `--warmups`.
+
+计时与内存分通道测量：计时重复不开启 tracemalloc，wall time 干净；内存通道每轮
+重建 splitter 并配全新 tokenizer 缓存（`--memory-reps`），记录 split 单独与
+split+finalize 两个峰值。每篇文档在 `--warmups` 次预热后重复 `--repetitions`
+次，同时报告中位数与均值。
+
+Two dataset modes combine in one run:
+
+- **Synthetic shapes** — seeded generators with six structural profiles
+  (deep-tree, wide-flat, long-sections, oversized-blocks, tiny-sections,
+  edge-degenerate). Body sentinels must survive in some chunk, code sentinels
+  must appear in exactly one chunk (no loss or duplication), and
+  word-level recall against the parsed tree must stay ≥ 0.99.
+- **Recombined real corpora** — section spans sampled from the fetched external
+  Markdown corpora (Kubernetes docs, CommonMark cases, local element cases)
+  and stitched into new documents, checked with the same word-recall oracle.
+
+数据集双模式：
+
+- **合成形态** — 种子化生成器提供六种结构画像（深树、宽扁平、长章节、超大块、
+  微小节、退化边角）。正文哨兵必须保留在某个 chunk 中，代码哨兵必须恰好出现在
+  一个 chunk（无丢失、无重复），对解析树的词级 recall 须 ≥ 0.99。
+- **真实语料重组** — 从已 fetch 的外部 Markdown 语料（Kubernetes 文档、
+  CommonMark 样例、本地 element cases）抽取章节片段拼接成新文档，使用同一
+  词级 recall oracle。
+
+```bash
+# Fetch the pinned corpora first (only needed for recombined mode).
+uv run python -m benchmarks.fetch_parser_corpora
+
+# Full default run: 6 shapes x 10 docs + 30 recombined, approx + tiktoken.
+uv run python -m benchmarks.splitter_random_run
+
+# Parameter axis: re-run the same matrix under a different max_tokens budget.
+uv run python -m benchmarks.splitter_random_run --max-tokens 1200 \
+  --warmups 2 --repetitions 5 --memory-reps 3 \
+  --output benchmarks/results/splitter-full-b1200
+
+# Quick synthetic-only run (no fetched corpora required).
+uv run python -m benchmarks.splitter_random_run \
+  --corpus synthetic \
+  --shapes deep-tree,oversized-blocks \
+  --documents-per-shape 3 \
+  --tokenizers approx \
+  --warmups 0 --repetitions 1 --memory-reps 0
+
+# Focus on one topology pair with the realistic encoder.
+uv run python -m benchmarks.splitter_random_run \
+  --corpus both \
+  --splitters incremental-subtree,exact-subtree \
+  --tokenizers tiktoken
+```
+
+`summary.json` reports overall / by-tokenizer / by-splitter / by-dataset
+aggregates plus a pairwise exact-vs-incremental table (wall-time ratio,
+count-call ratio, memory ratio, estimate-error and budget-violation
+comparison). The process exits non-zero when any oracle fails. Whether exact is
+faster than incremental depends on topology and budget: exact relies on
+tokenizer LRU hits to amortize its recounts while incremental pays a fixed
+pre-measure pass, so exact typically wins at larger budgets and on cache-heavy
+workloads (measured wall ratios span roughly 0.5x–1.5x). Over-budget chunks
+reported by both counting modes come from `edge-degenerate`'s long-title
+variant — a heading is an atomic unit that cannot be split internally.
+
+`summary.json` 提供总体 / 按 tokenizer / 按 splitter / 按数据集的汇总，以及 exact
+与 incremental 的配对对比表（耗时比、计数调用比、内存比、估计误差与超预算率对
+比）。任何 oracle 失败时进程以非零码退出。exact 与 incremental 谁更快取决于拓扑
+与预算：exact 靠 tokenizer LRU 缓存命中摊销重复重计数，incremental 则要支付一
+次性预测量开销，因此大预算/缓存密集型负载下通常 exact 更快（实测耗时比约
+0.5x–1.5x）。两种计数方式报告的超预算块均来自 `edge-degenerate` 的“超长标题”
+变体——标题是原子单元，无法在标题内部切分。
+
+### Full comparison report / 完整对比报告
+
+`splitter_report.py` renders a self-contained Chinese HTML report from several
+`splitter_random_run` output directories plus the cache probe:
+
+```bash
+# After running the matrix under budgets 300/600/1200 with --output
+# benchmarks/results/splitter-full-b{BUDGET}, and (optionally) producing
+# splitter-cache-probe.json via a focused tiktoken LRU-capacity experiment:
+uv run python -m benchmarks.splitter_report
+```
+
+The report covers dataset length profiles, length × time tables per
+engine/budget, accuracy tables (estimate error, violation rate, recall),
+cold-run memory peaks per dataset/splitter, a tiktoken LRU-capacity sensitivity
+table, auto-derived key findings, and an editorial summary & evaluation section
+(per-dimension verdicts, splitter selection guidance, and measurement-scope
+caveats). One known result: a single split of a
+~40 KB document touches ~1900 distinct `count()` texts, which exceeds the
+default `TiktokenTokenizer(max_cache_size=1000)`; the LRU thrashes and the
+document is 30–38x slower until the cache is enlarged (e.g. `max_cache_size`
+10000).
+
+`splitter_report.py` 从多个 `splitter_random_run` 输出目录与缓存探测数据渲染一份
+自包含的中文 HTML 报告：数据集长度画像、每引擎/预算的长度 × 时间表、准确率表
+（估计误差、超限率、召回率）、每数据集/splitter 的冷启动内存峰值、tiktoken LRU
+容量敏感性表、自动生成的关键发现，以及「总结与评价」章节（分维度评价、选型建
+议与测量口径局限）。已知结论之一：约 40 KB 文档单次 split 会触及
+约 1900 个不同的 `count()` 文本，超过默认 `TiktokenTokenizer(max_cache_size=1000)`
+导致 LRU 抖动，耗时放大 30–38 倍，扩容缓存（如 10000）即恢复线性。
+
 ## Optional competitors / 可选竞品
 
 Competitor adapters are never installed by the core package. The harness

@@ -191,7 +191,7 @@ Implemented in `src/lumberjack/cli.py`.
 ## Constraints
 
 - Markdown, HTML, and DOCX are the supported input formats
-- Fenced code blocks are preserved intact even when they exceed `max_tokens` (unless `code_block`/`code_fence` has `split=True`)
+- Oversized fenced code blocks are split into re-fenced segments by default (`BlockConfig.split=True`); configure `code_block`/`code_fence` with `split=False` to preserve them intact even when they exceed `max_tokens`
 - CLI should stay orchestration-only; parsing and splitting logic belongs to the public component implementations, while integration adapters belong in `src/lumberjack/_internal/`
 - There is no LangChain dependency
 
@@ -204,6 +204,8 @@ Parser verification has three layers, all under `benchmarks/`:
 - `benchmarks/parser_run.py` — pinned external corpora (Markdown, DOCX, HTML incl. html5lib fragments and MDN pages); sources are declared in `benchmarks/datasets/parser_sources.json` and fetched with `benchmarks/fetch_parser_corpora.py`
 - `benchmarks/random_run.py` + `benchmarks/random_corpus.py` — seeded random-document generators for every parser beyond Markdown/DOCX, checked against generated visible-text recall, exact element counts, and clean rejection of adversarial payloads
 - `tests/parser/test_parser_robustness.py` — combinatorial syntax corpora, adversarial fragments, and invalid-input rejection tests for Markdown, DOCX, HTML, records, spreadsheet, database, and source parsers
+
+Splitter verification has its own random benchmark: `benchmarks/splitter_random_run.py` + `benchmarks/splitter_random_corpus.py` measure the six hierarchical splitter variants (section/subtree/sibling topology × exact/incremental counting) over seeded synthetic structural shapes plus recombined real corpora, comparing clean wall time (repetitions without tracemalloc), cold-run tracemalloc allocation peaks, tokenizer call counts, and the split-time estimate vs authoritative token-count error under identical tokenizers. `benchmarks/splitter_report.py` renders the full comparison (length × splitter × counting mode × `max_tokens` budget; time/accuracy/memory) into a self-contained HTML report from the per-budget `raw.json` outputs.
 
 Current test areas:
 

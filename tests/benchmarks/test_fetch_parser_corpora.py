@@ -9,7 +9,14 @@ import pytest
 from benchmarks.fetch_parser_corpora import fetch_corpora
 
 
-def test_fetch_corpora_merges_partial_fetches_into_lock(tmp_path: Path) -> None:
+def test_fetch_corpora_merges_partial_fetches_into_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # file:// fixtures exercise the merge/lock logic only; URL safety has its
+    # own dedicated tests in test_fetch_url_validation.py.
+    monkeypatch.setattr(
+        "benchmarks.fetch_parser_corpora._validated_download_url", lambda url: url
+    )
     sources: list[dict[str, object]] = []
     for source_id in ("first", "second"):
         payload = f"{source_id} corpus".encode()

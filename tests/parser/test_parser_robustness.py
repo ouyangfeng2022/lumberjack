@@ -1015,6 +1015,31 @@ def test_sqlite_parser_rejects_non_database_payload() -> None:
         SQLiteParser().parse(b"definitely not sqlite", document_title="bad.db")
 
 
+def test_xml_parser_rejects_dtd_and_entity_declarations() -> None:
+    for payload in (
+        '<!DOCTYPE root [<!ENTITY x "y">]><root>&x;</root>',
+        "<root><!-- <!ENTITY x 'y'> --></root>",
+    ):
+        with pytest.raises(ValueError, match="DTD or entity"):
+            XMLParser().parse(payload, document_title="hostile.xml")
+
+
+def test_sqlite_parser_quotes_hostile_table_names() -> None:
+    import sqlite3
+
+    connection = sqlite3.connect(":memory:")
+    connection.execute('CREATE TABLE "t"" --drop" (value TEXT)')
+    connection.execute('INSERT INTO "t"" --drop" VALUES (\'kept\')')
+    serialize = getattr(connection, "serialize")  # noqa: B009
+    payload = serialize()
+    connection.close()
+
+    tree = SQLiteParser().parse(payload, document_title="hostile.db")
+
+    assert [block.text for block in tree.root.blocks] == ["value: kept"]
+    assert tree.root.blocks[0].attrs["table"] == 't" --drop'
+
+
 @pytest.mark.parametrize(
     "language",
     ["python", "javascript", "typescript"],

@@ -22,7 +22,7 @@ src/lumberjack/web/static/
 # Datasets
 data/
 output/
-benchmarks/results/*/
+benchmarks/results/*
 !benchmarks/results/.gitkeep
 benchmarks/datasets/external/
 site/

@@ -4,17 +4,71 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
+import socket
 import subprocess
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.request import urlopen
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_MANIFEST = ROOT / "datasets" / "parser_sources.json"
 DEFAULT_CORPUS_ROOT = ROOT / "datasets" / "external"
 DEFAULT_MAX_HTTP_BYTES = 64 * 1024 * 1024
+
+
+def _validated_download_url(url: str) -> str:
+    """Return *url* after requiring http(s) and a public target address.
+
+    The manifest is repository-controlled, but validate anyway so a modified
+    manifest cannot turn the fetcher into a request against localhost, the
+    loopback/private ranges, or link-local/multicast/reserved space.  The
+    validated URL itself must be the value handed to the opener; redirects
+    are re-validated by :class:`_ValidatingRedirectHandler`.
+    """
+    parts = urlsplit(url)
+    if parts.scheme not in {"http", "https"}:
+        raise ValueError(f"unsupported URL scheme for {url!r}: {parts.scheme!r}")
+    host = parts.hostname
+    if not host:
+        raise ValueError(f"URL has no host: {url!r}")
+    if host == "localhost" or host.endswith(".localhost"):
+        raise ValueError(f"localhost host is not allowed: {url!r}")
+    try:
+        addrinfos = socket.getaddrinfo(
+            host, parts.port or (443 if parts.scheme == "https" else 80)
+        )
+    except socket.gaierror as exc:
+        raise ValueError(f"cannot resolve host for {url!r}: {exc}") from exc
+    for addrinfo in addrinfos:
+        address = ipaddress.ip_address(addrinfo[4][0])
+        if (
+            address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_reserved
+            or address.is_multicast
+            or address.is_unspecified
+        ):
+            raise ValueError(
+                f"URL host {host!r} resolves to a non-public address "
+                f"{address}; refusing to fetch {url!r}"
+            )
+    return url
+
+
+class _ValidatingRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Refuse redirects whose target fails the same URL validation."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        _validated_download_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_VALIDATING_OPENER = urllib.request.build_opener(_ValidatingRedirectHandler)
 
 
 def _safe_child(root: Path, *parts: str) -> Path:
@@ -92,7 +146,8 @@ def _fetch_http(source: dict[str, Any], corpus_root: Path) -> dict[str, str]:
         raise ValueError(f"invalid download size limit for {source['id']}")
 
     if not target.exists():
-        with urlopen(str(source["url"]), timeout=60) as response:
+        download_url = _validated_download_url(str(source["url"]))
+        with _VALIDATING_OPENER.open(download_url, timeout=60) as response:
             payload = response.read(max_bytes + 1)
         if len(payload) > max_bytes:
             raise ValueError(f"download for {source['id']} exceeds {max_bytes} bytes")

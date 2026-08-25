@@ -771,21 +771,103 @@ def _generate_xlsx(rng: random.Random) -> RandomDocument:
     )
 
 
+# Static schema catalog for the SQLite generator: (table, columns, kinds,
+# literal DDL).  Keeping the DDL as source constants means every statement
+# executed by the generator is a fixed literal; only row values vary.
+_SQLITE_SCHEMA_CATALOG: tuple[
+    tuple[str, tuple[str, ...], tuple[str, ...], str], ...
+] = (
+    (
+        "table_1",
+        ("col_1", "col_2"),
+        ("TEXT", "INTEGER"),
+        'CREATE TABLE "table_1" ("col_1" TEXT, "col_2" INTEGER)',
+    ),
+    (
+        "table_1",
+        ("col_1", "col_2", "col_3"),
+        ("TEXT", "INTEGER", "REAL"),
+        'CREATE TABLE "table_1" ("col_1" TEXT, "col_2" INTEGER, "col_3" REAL)',
+    ),
+    (
+        "table_1",
+        ("col_1", "col_2", "col_3", "col_4"),
+        ("TEXT", "TEXT", "INTEGER", "REAL"),
+        'CREATE TABLE "table_1" ("col_1" TEXT, "col_2" TEXT, "col_3" INTEGER, "col_4" REAL)',
+    ),
+    (
+        "table_1",
+        ("col_1", "col_2", "col_3", "col_4", "col_5"),
+        ("TEXT", "TEXT", "INTEGER", "INTEGER", "REAL"),
+        'CREATE TABLE "table_1" ("col_1" TEXT, "col_2" TEXT, "col_3" INTEGER, "col_4" INTEGER, "col_5" REAL)',
+    ),
+    (
+        "table_2",
+        ("col_1", "col_2"),
+        ("INTEGER", "REAL"),
+        'CREATE TABLE "table_2" ("col_1" INTEGER, "col_2" REAL)',
+    ),
+    (
+        "table_2",
+        ("col_1", "col_2", "col_3"),
+        ("INTEGER", "REAL", "TEXT"),
+        'CREATE TABLE "table_2" ("col_1" INTEGER, "col_2" REAL, "col_3" TEXT)',
+    ),
+    (
+        "table_2",
+        ("col_1", "col_2", "col_3", "col_4"),
+        ("INTEGER", "REAL", "TEXT", "TEXT"),
+        'CREATE TABLE "table_2" ("col_1" INTEGER, "col_2" REAL, "col_3" TEXT, "col_4" TEXT)',
+    ),
+    (
+        "table_2",
+        ("col_1", "col_2", "col_3", "col_4", "col_5"),
+        ("INTEGER", "INTEGER", "REAL", "TEXT", "TEXT"),
+        'CREATE TABLE "table_2" ("col_1" INTEGER, "col_2" INTEGER, "col_3" REAL, "col_4" TEXT, "col_5" TEXT)',
+    ),
+    (
+        "table_3",
+        ("col_1", "col_2"),
+        ("REAL", "TEXT"),
+        'CREATE TABLE "table_3" ("col_1" REAL, "col_2" TEXT)',
+    ),
+    (
+        "table_3",
+        ("col_1", "col_2", "col_3"),
+        ("REAL", "TEXT", "INTEGER"),
+        'CREATE TABLE "table_3" ("col_1" REAL, "col_2" TEXT, "col_3" INTEGER)',
+    ),
+    (
+        "table_3",
+        ("col_1", "col_2", "col_3", "col_4"),
+        ("REAL", "TEXT", "INTEGER", "INTEGER"),
+        'CREATE TABLE "table_3" ("col_1" REAL, "col_2" TEXT, "col_3" INTEGER, "col_4" INTEGER)',
+    ),
+    (
+        "table_3",
+        ("col_1", "col_2", "col_3", "col_4", "col_5"),
+        ("REAL", "REAL", "TEXT", "INTEGER", "TEXT"),
+        'CREATE TABLE "table_3" ("col_1" REAL, "col_2" REAL, "col_3" TEXT, "col_4" INTEGER, "col_5" TEXT)',
+    ),
+)
+
+
 def _generate_sqlite(rng: random.Random) -> RandomDocument:
     oracle = _Oracle(rng, "LJ_DB_")
     connection = sqlite3.connect(":memory:")
     visible: list[str] = []
     row_total = 0
     try:
-        for table_index in range(rng.randint(1, 3)):
-            table = f"table_{table_index + 1}"
-            columns = rng.randint(2, 5)
-            names = [f"col_{index}" for index in range(columns)]
-            kinds = [rng.choice(["TEXT", "INTEGER", "REAL"]) for _ in range(columns)]
-            definition = ", ".join(
-                f'"{name}" {kind}' for name, kind in zip(names, kinds, strict=True)
-            )
-            connection.execute(f'CREATE TABLE "{table}" ({definition})')
+        schemas: list[tuple[str, tuple[str, ...], tuple[str, ...], str]] = []
+        for _ in range(rng.randint(1, 3)):
+            unused = [
+                entry
+                for entry in _SQLITE_SCHEMA_CATALOG
+                if all(entry[0] != used[0] for used in schemas)
+            ]
+            schemas.append(rng.choice(unused))
+        for table, names, kinds, ddl in schemas:
+            connection.execute(ddl)
             visible.extend(names)
             for _ in range(rng.randint(1, 12)):
                 values: list[Any] = []

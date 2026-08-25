@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Untrusted XML parsing (DOCX parts, XML records, parser benchmarks) now
+  rejects payloads containing DTD or entity declarations before parsing, and
+  forbids DTDs on the underlying expat parser, closing the internal-entity
+  expansion (billion laughs) resource-exhaustion vector.
+- SQLite parsing now reads table schemas and row values from the connection's
+  dump output, so the parser executes fixed SQL statements only and
+  document-supplied table identifiers are never interpolated into a query.
+- The benchmark corpus fetcher now validates download URLs before fetching:
+  only `http`/`https` schemes are allowed and hosts resolving to loopback,
+  private, link-local, multicast, reserved, or unspecified addresses are
+  refused, including redirect targets.
+
 ### Added
 
 - Added large-scale randomized parser verification: seeded generators build

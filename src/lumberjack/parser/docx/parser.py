@@ -12,6 +12,7 @@ from xml.etree import ElementTree
 
 from lumberjack.block import BlockKind
 
+from ..._internal.xml_safe import parse_untrusted_xml
 from ...models import (
     DocTree,
     DocumentBlock,
@@ -190,7 +191,7 @@ def _repair_docx_package(data: bytes | bytearray) -> tuple[bytes, tuple[str, ...
         for name, payload in tuple(editable.items()):
             if not name.endswith(".rels"):
                 continue
-            root = ElementTree.fromstring(payload)
+            root = parse_untrusted_xml(payload)
             changed = False
             source_directory = _relationship_source_directory(name)
             for relationship in list(root):
@@ -216,7 +217,7 @@ def _repair_docx_package(data: bytes | bytearray) -> tuple[bytes, tuple[str, ...
                 f"removed {removed_relationships} relationships to missing parts"
             )
 
-        content_types = ElementTree.fromstring(editable["[Content_Types].xml"])
+        content_types = parse_untrusted_xml(editable["[Content_Types].xml"])
         default_tag = f"{{{_CONTENT_TYPES_NS}}}Default"
         declared_extensions = {
             str(element.get("Extension", "")).casefold()

@@ -13,6 +13,7 @@ from xml.etree import ElementTree
 
 import yaml
 
+from ..._internal.xml_safe import parse_untrusted_xml
 from ...models import DocTree, Document, InputFormat, SourceLocation
 from ..builder import DocTreeBuilder
 
@@ -492,7 +493,7 @@ class XMLParser:
             source_path=source_path,
         )
         try:
-            root = ElementTree.fromstring(_text(source_document))
+            root = parse_untrusted_xml(_text(source_document))
         except ElementTree.ParseError as exc:
             raise ValueError(f"Invalid XML input: {exc}") from exc
 

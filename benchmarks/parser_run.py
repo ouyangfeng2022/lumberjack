@@ -31,6 +31,7 @@ from benchmarks.parser_contract import (
     ParserBenchmarkReport,
     ParserDocumentResult,
 )
+from lumberjack._internal.xml_safe import parse_untrusted_xml
 from lumberjack.models import DocTree, DocumentBlock, DocumentInline, SectionNode
 from lumberjack.parser.docx import DocxParser
 from lumberjack.parser.html import HTMLParser
@@ -412,7 +413,7 @@ def _tree_text(tree: DocTree) -> str:
 def _docx_visible_text(payload: bytes) -> str:
     with zipfile.ZipFile(BytesIO(payload)) as package:
         document_xml = package.read("word/document.xml")
-    root = ElementTree.fromstring(document_xml)
+    root = parse_untrusted_xml(document_xml)
     paragraphs: list[str] = []
 
     def local_name(element: ElementTree.Element) -> str:

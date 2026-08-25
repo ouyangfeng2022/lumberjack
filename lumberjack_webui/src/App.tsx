@@ -59,7 +59,7 @@ Import the library and initialize it with your configuration:
 import { createClient } from 'my-package';
 
 const client = createClient({
-  apiKey: process.env.API_KEY,
+  apiKey: 'your-api-key',
 });
 \`\`\`
 
