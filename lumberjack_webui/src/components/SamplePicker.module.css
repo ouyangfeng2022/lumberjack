@@ -1,0 +1,15 @@
+.select {
+  max-width: 160px;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--ink-secondary);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.select:hover {
+  border-color: var(--primary);
+}

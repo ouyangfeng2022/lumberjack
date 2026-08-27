@@ -6,9 +6,43 @@ const en = {
   btn_splitting: 'Splitting...',
   html_title: 'Lumberjack - Markdown Splitter',
   panel_results_title: 'Split Results',
+  panel_compare_title: 'Splitter Comparison',
   result_budget_use: 'Largest chunk budget use',
   empty_split_title: 'Ready to split',
   empty_split_body: 'Paste Markdown or upload a file, adjust the token budget, then run the splitter to preview chunked output.',
+
+  // Samples
+  sample_label: 'Load sample…',
+  sample_technical: 'Technical guide',
+  sample_table: 'Wide tables',
+  sample_long_paragraph: 'Long paragraphs',
+  sample_mixed: 'Mixed 中/EN',
+  sample_code: 'Code heavy',
+
+  // Compare mode
+  compare_toggle: 'Compare splitters',
+  compare_preset: 'Preset',
+  compare_preset_topology: 'Topologies (incremental)',
+  compare_preset_counting: 'Counting (section)',
+  compare_preset_custom: 'Custom selection',
+  compare_custom_hint: 'Pick at least two splitters to compare.',
+
+  // Boundary map
+  boundary_title: 'Chunk boundaries',
+  boundary_uncovered: '{{count}} unassigned lines',
+  boundary_truncated: 'Showing first lines of {{count}}.',
+  boundary_show: 'Boundaries',
+  boundary_hide: 'Hide boundaries',
+
+  // Export / download
+  export_title: 'Copy configuration',
+  export_hide: 'Hide configuration',
+  export_python: 'Python',
+  export_cli: 'CLI',
+  export_copy: 'Copy',
+  export_copied: 'Copied!',
+  download_json: 'JSON',
+  download_jsonl: 'JSONL',
 
   // Markdown Input
   md_label: 'Markdown Input',
@@ -65,11 +99,17 @@ const en = {
   // Chunk Result
   chunk_tokens: '{{count}} tokens',
   chunk_lines: 'Lines {{from}}-{{to}}',
+  chunk_estimated: 'est. {{count}}',
+  chunk_estimated_title:
+    'Split-time estimate vs the authoritative final token count (Δ = relative error)',
+  chunk_protected: 'protected',
 
   // Chunk List
   chunks_count: '{{count}} chunk',
   chunks_count_plural: '{{count}} chunks',
   chunks_total_tokens: '{{count}} total tokens',
+  chunks_mean_error: 'Δ {{value}}% avg',
+  chunks_mean_error_title: 'Mean relative error of split-time estimates',
 
   // Stats
   stats_characters: 'Characters',

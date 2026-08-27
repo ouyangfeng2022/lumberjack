@@ -6,9 +6,43 @@ const zh = {
   btn_splitting: '拆分中...',
   html_title: 'Lumberjack - Markdown 拆分器',
   panel_results_title: '拆分结果',
+  panel_compare_title: '切分器对比',
   result_budget_use: '最大块预算占用',
   empty_split_title: '等待拆分',
   empty_split_body: '粘贴 Markdown 或上传文件，调整词元预算后即可预览拆分结果。',
+
+  // Samples
+  sample_label: '加载示例…',
+  sample_technical: '技术文档',
+  sample_table: '宽表格',
+  sample_long_paragraph: '长段落',
+  sample_mixed: '中英混合',
+  sample_code: '代码密集',
+
+  // Compare mode
+  compare_toggle: '对比多个切分器',
+  compare_preset: '预设',
+  compare_preset_topology: '拓扑对比（增量计量）',
+  compare_preset_counting: '计量对比（章节）',
+  compare_preset_custom: '自选组合',
+  compare_custom_hint: '至少选择两个切分器进行对比。',
+
+  // Boundary map
+  boundary_title: '块边界',
+  boundary_uncovered: '{{count}} 行未归属',
+  boundary_truncated: '仅显示 {{count}} 行中的前若干行。',
+  boundary_show: '边界视图',
+  boundary_hide: '收起边界',
+
+  // Export / download
+  export_title: '复制配置',
+  export_hide: '收起配置',
+  export_python: 'Python',
+  export_cli: 'CLI',
+  export_copy: '复制',
+  export_copied: '已复制！',
+  download_json: 'JSON',
+  download_jsonl: 'JSONL',
 
   // Markdown Input
   md_label: 'Markdown 输入',
@@ -65,10 +99,15 @@ const zh = {
   // Chunk Result
   chunk_tokens: '{{count}} 个词元',
   chunk_lines: '第 {{from}}-{{to}} 行',
+  chunk_estimated: '估 {{count}}',
+  chunk_estimated_title: '切分时估算 vs 最终权威词元数（Δ 为相对误差）',
+  chunk_protected: '受保护',
 
   // Chunk List
   chunks_count: '{{count}} 个块',
   chunks_total_tokens: '共 {{count}} 个词元',
+  chunks_mean_error: '平均误差 {{value}}%',
+  chunks_mean_error_title: '切分时估算的平均相对误差',
 
   // Stats
   stats_characters: '字符',

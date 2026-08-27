@@ -77,3 +77,11 @@ export interface SplitOptions {
   tokenizer: TokenizerName;
   splitter: SplitterName;
 }
+
+export interface CompareColumn {
+  splitter: SplitterName;
+  options: SplitOptions;
+  result: SplitResponse | null;
+  error: string | null;
+  elapsedMs: number | null;
+}
