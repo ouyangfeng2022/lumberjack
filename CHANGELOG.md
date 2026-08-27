@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Public web deployments now enforce resource limits: requests and uploads
+  above a size ceiling return `413`, split execution runs under a concurrency
+  limit and a wall-clock timeout (`503` on expiry), and split API calls are
+  rate limited per client (`429`). All limits are configurable through
+  `LUMBERJACK_WEB_*` environment variables and invalid values fail at startup.
+  Error details are sanitized so parser failures cannot leak server file
+  paths, and every response carries `X-Content-Type-Options` and
+  `Referrer-Policy` headers. The web API documentation now states the privacy
+  guarantees: uploads are processed in memory only and logs never contain
+  document content.
 - Untrusted XML parsing (DOCX parts, XML records, parser benchmarks) now
   rejects payloads containing DTD or entity declarations before parsing, and
   forbids DTDs on the underlying expat parser, closing the internal-entity
@@ -20,6 +30,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only `http`/`https` schemes are allowed and hosts resolving to loopback,
   private, link-local, multicast, reserved, or unspecified addresses are
   refused, including redirect targets.
+
+### Added
+
+- Added `GET /health` and `GET /version` endpoints (also under
+  `/lumber/api`) reporting the running package version and, when the
+  `LUMBERJACK_BUILD_COMMIT` environment variable is set at deploy time, the
+  deployed commit. Health probes are exempt from rate limiting.
+- The Web UI gained a splitter comparison mode: built-in sample documents
+  (technical, wide tables, long paragraphs, mixed Chinese/English, and
+  code-heavy), topology and exact-vs-incremental presets plus custom splitter
+  selections rendered side by side, a source-line boundary map that colors
+  every line by its chunk, chunk cards showing `token_count`,
+  `estimated_token_count` with the relative error, block kind, protected
+  marking, heading breadcrumbs, and non-line source locations, copyable
+  Python/CLI configuration for the current options, and JSON/JSONL result
+  downloads.
+- The benchmark dataset grew from 6 to 36 CC0 documents: five documents per
+  scenario (technical, tables, code/formula, short sections, long paragraphs,
+  mixed language) plus three Markdown/HTML cross-format equivalence groups
+  sharing a `group` id. Benchmark adapters now receive the document format,
+  so HTML corpus entries are parsed as HTML. The dataset version is
+  `2026.08.27`.
 
 ### Added
 
@@ -67,6 +99,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The Docker production image now installs a built wheel instead of an
+  editable source link, drops the `uv` binary and source tree from the
+  runtime stage, and bakes the frontend into the installed package. Build
+  scripts pass a `COMMIT` build argument so `GET /version` reports the
+  deployed revision, and `docker-compose.yml` healthchecks `GET /health`
+  instead of the SPA root.
+- The Web UI's default splitter is now `section`, matching the documented
+  CLI/Web/Python default instead of `sibling`.
 - HTML parsing now retains text that was previously dropped: fragments without
   `<body>` wrappers, bare text between constructs, nested list items inside
   their parent item, unclosed headings/lists/tables/paragraphs flushed at end
