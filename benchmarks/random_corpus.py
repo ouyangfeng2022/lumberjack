@@ -686,9 +686,17 @@ def _generate_xml(rng: random.Random) -> RandomDocument:
 
 def _generate_xlsx(rng: random.Random) -> RandomDocument:
     from openpyxl import Workbook
+    from openpyxl.packaging.core import DocumentProperties
 
     oracle = _Oracle(rng, "LJ_XL_")
     workbook = Workbook()
+    # Pin the document timestamps: openpyxl stamps wall-clock times that
+    # change between saves, which would break seeded-corpus determinism.
+    workbook.properties = DocumentProperties(
+        creator="lumberjack-benchmarks",
+        created=datetime(2026, 1, 1, 0, 0, 0),
+        modified=datetime(2026, 1, 1, 0, 0, 0),
+    )
     visible: list[str] = []
     row_total = 0
     for sheet_index in range(rng.randint(1, 3)):
