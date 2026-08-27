@@ -24,6 +24,7 @@ from benchmarks.adapters.competitors import (
     UnstructuredByTitleAdapter,
 )
 from benchmarks.adapters.langchain import (
+    LangChainHTMLAdapter,
     LangChainMarkdownAdapter,
     LangChainRecursiveAdapter,
 )
@@ -52,6 +53,7 @@ def _adapter(name: str) -> BenchmarkAdapter:
         "lumberjack": LumberjackAdapter(),
         "langchain-recursive": LangChainRecursiveAdapter(),
         "langchain-markdown": LangChainMarkdownAdapter(),
+        "langchain-html": LangChainHTMLAdapter(),
         "unstructured-basic": UnstructuredBasicAdapter(),
         "unstructured-by-title": UnstructuredByTitleAdapter(),
         "docling-hierarchical": DoclingHierarchicalAdapter(),
@@ -140,6 +142,7 @@ def _parser() -> argparse.ArgumentParser:
             "lumberjack",
             "langchain-recursive",
             "langchain-markdown",
+            "langchain-html",
             "unstructured-basic",
             "unstructured-by-title",
             "docling-hierarchical",

@@ -7,6 +7,11 @@ from .competitors import (
     UnstructuredBasicAdapter,
     UnstructuredByTitleAdapter,
 )
+from .langchain import (
+    LangChainHTMLAdapter,
+    LangChainMarkdownAdapter,
+    LangChainRecursiveAdapter,
+)
 from .lumberjack import LumberjackAdapter
 
 __all__ = [
@@ -14,6 +19,9 @@ __all__ = [
     "BenchmarkAdapter",
     "ChonkieRecursiveAdapter",
     "DoclingHierarchicalAdapter",
+    "LangChainHTMLAdapter",
+    "LangChainMarkdownAdapter",
+    "LangChainRecursiveAdapter",
     "LumberjackAdapter",
     "UnstructuredBasicAdapter",
     "UnstructuredByTitleAdapter",

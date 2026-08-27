@@ -56,3 +56,28 @@ class LangChainMarkdownAdapter(LangChainRecursiveAdapter):
             )
             for document in splitter.split_text(source)
         ]
+
+
+class LangChainHTMLAdapter(LangChainRecursiveAdapter):
+    name = "langchain-html"
+
+    def split(
+        self, source: str, *, config: BenchmarkConfig, format: str = "markdown"
+    ) -> list[BenchmarkChunk]:
+        del config, format
+        try:
+            from langchain_text_splitters import HTMLHeaderTextSplitter
+        except ImportError as error:
+            raise AdapterUnavailable(
+                "langchain-text-splitters is required for langchain-html"
+            ) from error
+        splitter = HTMLHeaderTextSplitter(
+            headers_to_split_on=[("h1", "h1"), ("h2", "h2"), ("h3", "h3")],
+        )
+        return [
+            BenchmarkChunk(
+                text=document.page_content,
+                token_count=max(1, len(document.page_content.encode("utf-8")) // 3),
+            )
+            for document in splitter.split_text(source)
+        ]

@@ -2400,6 +2400,7 @@ web = [
 
 [package.dev-dependencies]
 benchmark = [
+    { name = "beautifulsoup4" },
     { name = "chonkie" },
     { name = "docling", version = "2.99.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
     { name = "docling", version = "2.120.3", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'darwin'" },
@@ -2498,6 +2499,7 @@ provides-extras = ["all", "code-parsing", "docx", "haystack", "langchain", "llam
 
 [package.metadata.requires-dev]
 benchmark = [
+    { name = "beautifulsoup4", specifier = ">=4.12" },
     { name = "chonkie", specifier = ">=1.0" },
     { name = "docling", specifier = ">=2.0" },
     { name = "langchain-text-splitters", specifier = ">=0.3.0" },
