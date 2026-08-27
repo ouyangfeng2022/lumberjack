@@ -55,6 +55,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added a `langchain-html` benchmark adapter (`HTMLHeaderTextSplitter`) so
+  HTML corpus entries can be compared against LangChain's own HTML splitting;
+  the `benchmark` dependency group now includes `beautifulsoup4`.
+- Added three runnable end-to-end examples with CI smoke tests:
+  `examples/technical_document.py` (structure-aware vs naive splitting with
+  heading provenance), `examples/table_chunking.py` (header repetition and
+  unsplittable tables under a tight budget), and
+  `examples/incremental_counting.py` (exact vs incremental counting with
+  tokenizer call counts, wall time, and estimate error). The splitter
+  decision guide (`docs/splitter-strategies.md`, bilingual) was expanded to a
+  full when-to-use/trade-off reference for every topology, counting mode, and
+  budget knob.
 - Added optional LangChain, LlamaIndex, and Haystack adapters for final
   `Chunk` objects.  All preserve JSON-safe chunk metadata and provenance while
   keeping `Chunk.body` as framework content; the LlamaIndex adapter also builds
