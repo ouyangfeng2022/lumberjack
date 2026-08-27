@@ -9,7 +9,10 @@ from benchmarks.contract import BenchmarkChunk, BenchmarkConfig
 class LangChainRecursiveAdapter:
     name = "langchain-recursive"
 
-    def split(self, source: str, *, config: BenchmarkConfig) -> list[BenchmarkChunk]:
+    def split(
+        self, source: str, *, config: BenchmarkConfig, format: str = "markdown"
+    ) -> list[BenchmarkChunk]:
+        del format
         try:
             from langchain_text_splitters import RecursiveCharacterTextSplitter
         except ImportError as error:
@@ -32,8 +35,10 @@ class LangChainRecursiveAdapter:
 class LangChainMarkdownAdapter(LangChainRecursiveAdapter):
     name = "langchain-markdown"
 
-    def split(self, source: str, *, config: BenchmarkConfig) -> list[BenchmarkChunk]:
-        del config
+    def split(
+        self, source: str, *, config: BenchmarkConfig, format: str = "markdown"
+    ) -> list[BenchmarkChunk]:
+        del config, format
         try:
             from langchain_text_splitters import MarkdownHeaderTextSplitter
         except ImportError as error:

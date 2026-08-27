@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Observability Guide</title>
+</head>
+<body>
+  <h1>Observability Guide</h1>
+  <p>How the platform exposes its internal state.</p>
+
+  <h2>Metrics</h2>
+  <p>Counters track totals, gauges track current values, and histograms track
+  distributions. All three carry the same labels: service, region, and shard.</p>
+
+  <h2>Traces</h2>
+  <p>Every request receives a trace id at the edge. The id propagates through
+  every hop and is attached to logs, spans, and any error returned to the
+  caller.</p>
+
+  <h2>Logs</h2>
+  <table>
+    <thead>
+      <tr><th>Level</th><th>When to use</th><th>Retention</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>debug</td><td>local development</td><td>1 day</td></tr>
+      <tr><td>info</td><td>routine operation</td><td>14 days</td></tr>
+      <tr><td>warn</td><td>recoverable anomalies</td><td>30 days</td></tr>
+      <tr><td>error</td><td>failed operations</td><td>90 days</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Dashboards</h2>
+  <p>The golden dashboard pairs traffic with latency and errors; every service
+  must appear on it before it takes production traffic.</p>
+</body>
+</html>

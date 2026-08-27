@@ -18,7 +18,7 @@ class BenchmarkAdapter(Protocol):
     name: str
 
     def split(
-        self, source: str, *, config: BenchmarkConfig
+        self, source: str, *, config: BenchmarkConfig, format: str = "markdown"
     ) -> list[BenchmarkChunk]: ...
 
 

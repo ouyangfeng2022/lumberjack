@@ -1,55 +1,411 @@
 {
   "schema_version": "1.0",
-  "dataset_version": "2026.08.19",
+  "dataset_version": "2026.08.27",
   "license": "CC0-1.0",
   "documents": [
     {
-      "id": "technical-01",
+      "id": "technical-01.md",
       "path": "corpus/technical-01.md",
       "scenario": "technical",
       "license": "CC0-1.0",
-      "required_content": ["API contract", "Configuration"],
+      "required_content": [
+        "API contract",
+        "Configuration"
+      ],
       "protected_content": []
     },
     {
-      "id": "table-01",
+      "id": "technical-02.md",
+      "path": "corpus/technical-02.md",
+      "scenario": "technical",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Token Rotation",
+        "Rate Limits"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "technical-03.md",
+      "path": "corpus/technical-03.md",
+      "scenario": "technical",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Release 4.2",
+        "Exactly-Once Sinks"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "technical-04.md",
+      "path": "corpus/technical-04.md",
+      "scenario": "technical",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Resource Limits",
+        "Rollback"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "technical-05.md",
+      "path": "corpus/technical-05.md",
+      "scenario": "technical",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Accounts",
+        "Billing"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "table-01.md",
       "path": "corpus/table-01.md",
       "scenario": "tables",
       "license": "CC0-1.0",
-      "required_content": ["| Name | Value |", "alpha"],
-      "protected_content": ["| Name | Value |\n| --- | --- |\n| alpha | one |\n| beta | two |"]
+      "required_content": [
+        "| Name | Value |",
+        "alpha"
+      ],
+      "protected_content": [
+        "| Name | Value |\n| --- | --- |\n| alpha | one |\n| beta | two |"
+      ]
     },
     {
-      "id": "code-01",
+      "id": "table-02.md",
+      "path": "corpus/table-02.md",
+      "scenario": "tables",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Compute",
+        "Support"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "table-03.md",
+      "path": "corpus/table-03.md",
+      "scenario": "tables",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Datacenter Inventory",
+        "Spares"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "table-04.md",
+      "path": "corpus/table-04.md",
+      "scenario": "tables",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Client Libraries",
+        "Protocols"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "table-05.md",
+      "path": "corpus/table-05.md",
+      "scenario": "tables",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Audit Log",
+        "2026-05"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "code-01.md",
       "path": "corpus/code-01.md",
       "scenario": "code_formula",
       "license": "CC0-1.0",
-      "required_content": ["def add", "E = mc^2"],
-      "protected_content": ["```python\ndef add(left: int, right: int) -> int:\n    return left + right\n```"]
+      "required_content": [
+        "def add",
+        "E = mc^2"
+      ],
+      "protected_content": []
     },
     {
-      "id": "short-sections-01",
+      "id": "code-02.md",
+      "path": "corpus/code-02.md",
+      "scenario": "code_formula",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Sessionization",
+        "Retention"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "code-03.md",
+      "path": "corpus/code-03.md",
+      "scenario": "code_formula",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Main Config",
+        "Feature Flags"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "code-04.md",
+      "path": "corpus/code-04.md",
+      "scenario": "code_formula",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Softmax",
+        "Distance Matrix"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "code-05.md",
+      "path": "corpus/code-05.md",
+      "scenario": "code_formula",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Polyglot Snippets",
+        "Notes"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "short-sections-01.md",
       "path": "corpus/short-sections-01.md",
       "scenario": "short_sections",
       "license": "CC0-1.0",
-      "required_content": ["One", "Five"],
+      "required_content": [
+        "One",
+        "Five"
+      ],
       "protected_content": []
     },
     {
-      "id": "paragraph-01",
+      "id": "short-sections-02.md",
+      "path": "corpus/short-sections-02.md",
+      "scenario": "short_sections",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Changelog",
+        "Removed"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "short-sections-03.md",
+      "path": "corpus/short-sections-03.md",
+      "scenario": "short_sections",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Glossary",
+        "Protected Block"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "short-sections-04.md",
+      "path": "corpus/short-sections-04.md",
+      "scenario": "short_sections",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Link Directory",
+        "On Call"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "short-sections-05.md",
+      "path": "corpus/short-sections-05.md",
+      "scenario": "short_sections",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Quick Reference",
+        "Commit"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "paragraph-01.md",
       "path": "corpus/paragraph-01.md",
       "scenario": "long_paragraph",
       "license": "CC0-1.0",
-      "required_content": ["fallback order", "sentence boundary"],
+      "required_content": [
+        "fallback order",
+        "sentence boundary"
+      ],
       "protected_content": []
     },
     {
-      "id": "mixed-01",
+      "id": "paragraph-02.md",
+      "path": "corpus/paragraph-02.md",
+      "scenario": "long_paragraph",
+      "license": "CC0-1.0",
+      "required_content": [
+        "The Problem",
+        "In Practice"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "paragraph-03.md",
+      "path": "corpus/paragraph-03.md",
+      "scenario": "long_paragraph",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Terms of Service",
+        "Fair Use"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "paragraph-04.md",
+      "path": "corpus/paragraph-04.md",
+      "scenario": "long_paragraph",
+      "license": "CC0-1.0",
+      "required_content": [
+        "The Usual Story",
+        "Where It Breaks"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "paragraph-05.md",
+      "path": "corpus/paragraph-05.md",
+      "scenario": "long_paragraph",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Week One",
+        "Cutover"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "mixed-01.md",
       "path": "corpus/mixed-01.md",
       "scenario": "mixed_language",
       "license": "CC0-1.0",
-      "required_content": ["中文段落", "English paragraph"],
+      "required_content": [
+        "中文段落",
+        "English paragraph"
+      ],
       "protected_content": []
+    },
+    {
+      "id": "mixed-02.md",
+      "path": "corpus/mixed-02.md",
+      "scenario": "mixed_language",
+      "license": "CC0-1.0",
+      "required_content": [
+        "回滚",
+        "Prerequisites"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "mixed-03.md",
+      "path": "corpus/mixed-03.md",
+      "scenario": "mixed_language",
+      "license": "CC0-1.0",
+      "required_content": [
+        "背景",
+        "观察"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "mixed-04.md",
+      "path": "corpus/mixed-04.md",
+      "scenario": "mixed_language",
+      "license": "CC0-1.0",
+      "required_content": [
+        "性能",
+        "Known Issues"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "mixed-05.md",
+      "path": "corpus/mixed-05.md",
+      "scenario": "mixed_language",
+      "license": "CC0-1.0",
+      "required_content": [
+        "术语对照",
+        "Counting"
+      ],
+      "protected_content": []
+    },
+    {
+      "id": "cross-01.md",
+      "path": "corpus/cross-01.md",
+      "scenario": "cross_format",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Observability Guide",
+        "Dashboards"
+      ],
+      "protected_content": [],
+      "group": "cross-01"
+    },
+    {
+      "id": "cross-01.html",
+      "path": "corpus/cross-01.html",
+      "scenario": "cross_format",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Observability Guide",
+        "Dashboards"
+      ],
+      "protected_content": [],
+      "group": "cross-01"
+    },
+    {
+      "id": "cross-02.md",
+      "path": "corpus/cross-02.md",
+      "scenario": "cross_format",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Onboarding Path",
+        "After Onboarding"
+      ],
+      "protected_content": [],
+      "group": "cross-02"
+    },
+    {
+      "id": "cross-02.html",
+      "path": "corpus/cross-02.html",
+      "scenario": "cross_format",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Onboarding Path",
+        "After Onboarding"
+      ],
+      "protected_content": [],
+      "group": "cross-02"
+    },
+    {
+      "id": "cross-03.md",
+      "path": "corpus/cross-03.md",
+      "scenario": "cross_format",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Security Baseline",
+        "Reporting"
+      ],
+      "protected_content": [],
+      "group": "cross-03"
+    },
+    {
+      "id": "cross-03.html",
+      "path": "corpus/cross-03.html",
+      "scenario": "cross_format",
+      "license": "CC0-1.0",
+      "required_content": [
+        "Security Baseline",
+        "Reporting"
+      ],
+      "protected_content": [],
+      "group": "cross-03"
     }
   ]
 }

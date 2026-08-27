@@ -26,13 +26,21 @@ ignored by Git so reports can be regenerated on the measured commit.
 ## Corpus / 语料
 
 `datasets/manifest.json` is the dataset contract. Every document is CC0,
-declares its scenario, required content, and protected content. The first
-checked-in corpus provides one compact document per scenario; the corpus is
-designed for deterministic harness validation, not for performance claims.
+declares its scenario, required content, and protected content. The checked-in
+corpus provides five documents per scenario (technical, tables, code/formula,
+short sections, long paragraphs, mixed language) plus three cross-format
+equivalence groups, each pair shipping the same visible content as Markdown
+and HTML under a shared `group` id. DOCX equivalence is covered by the parser
+benchmarks because the splitter harness reads textual sources. The corpus is
+designed for deterministic harness validation and repeatable comparison, not
+for performance marketing.
 
 `datasets/manifest.json` 是数据集契约。每份文档均为 CC0，并声明场景、必需内容和
-protected 内容。首批入库语料为每类场景提供一个紧凑文档，用来验证确定性基准工具，
-不用于发布性能结论。
+protected 内容。入库语料为每类场景（技术文档、表格、代码/公式、大量短 section、
+超长段落、中英混合）各提供五份文档，另附三组跨格式等价文档：每组以相同可见内容
+分别提供 Markdown 和 HTML 版本，共享同一个 `group` id。DOCX 等价性由 parser
+基准覆盖，因为 splitter 基准工具只读取文本语料。该语料用于验证确定性基准工具
+和可重复对比，不用于性能营销。
 
 ## Parser corpus benchmark / Parser 大语料基准
 

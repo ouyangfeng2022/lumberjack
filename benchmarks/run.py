@@ -71,15 +71,18 @@ def run_benchmark(
     results: list[DocumentResult] = []
     for item in manifest["documents"]:
         source = (ROOT / "datasets" / item["path"]).read_text(encoding="utf-8")
+        source_format = (
+            "html" if item["path"].endswith(".html") else item.get("format", "markdown")
+        )
         for _ in range(config.warmups):
-            adapter.split(source, config=config)
+            adapter.split(source, config=config, format=source_format)
 
         chunks = []
         samples = []
         for _ in range(config.repetitions):
             chunks, sample = measure_callable(
-                lambda source=source, config=config: adapter.split(
-                    source, config=config
+                lambda source=source, config=config, fmt=source_format: adapter.split(
+                    source, config=config, format=fmt
                 )
             )
             samples.append(

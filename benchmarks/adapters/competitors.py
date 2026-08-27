@@ -25,36 +25,57 @@ def _approx_chunks(parts: Iterable[Any]) -> list[BenchmarkChunk]:
 class UnstructuredBasicAdapter:
     name = "unstructured-basic"
 
-    def split(self, source: str, *, config: BenchmarkConfig) -> list[BenchmarkChunk]:
+    def split(
+        self, source: str, *, config: BenchmarkConfig, format: str = "markdown"
+    ) -> list[BenchmarkChunk]:
         del config
         try:
-            from unstructured.partition.md import partition_md
+            if format == "html":
+                from unstructured.partition.html import partition_html
+
+                elements = partition_html(text=source)
+            else:
+                from unstructured.partition.md import partition_md
+
+                elements = partition_md(text=source)
         except ImportError as error:
             raise AdapterUnavailable(
                 "unstructured is required for unstructured-basic"
             ) from error
-        return _approx_chunks(partition_md(text=source))
+        return _approx_chunks(elements)
 
 
 class UnstructuredByTitleAdapter:
     name = "unstructured-by-title"
 
-    def split(self, source: str, *, config: BenchmarkConfig) -> list[BenchmarkChunk]:
+    def split(
+        self, source: str, *, config: BenchmarkConfig, format: str = "markdown"
+    ) -> list[BenchmarkChunk]:
         del config
         try:
             from unstructured.chunking.title import chunk_by_title
-            from unstructured.partition.md import partition_md
+
+            if format == "html":
+                from unstructured.partition.html import partition_html
+
+                elements = partition_html(text=source)
+            else:
+                from unstructured.partition.md import partition_md
+
+                elements = partition_md(text=source)
         except ImportError as error:
             raise AdapterUnavailable(
                 "unstructured is required for unstructured-by-title"
             ) from error
-        return _approx_chunks(chunk_by_title(partition_md(text=source)))
+        return _approx_chunks(chunk_by_title(elements))
 
 
 class DoclingHierarchicalAdapter:
     name = "docling-hierarchical"
 
-    def split(self, source: str, *, config: BenchmarkConfig) -> list[BenchmarkChunk]:
+    def split(
+        self, source: str, *, config: BenchmarkConfig, format: str = "markdown"
+    ) -> list[BenchmarkChunk]:
         del config
         try:
             from docling.document_converter import DocumentConverter
@@ -65,7 +86,7 @@ class DoclingHierarchicalAdapter:
         converter = DocumentConverter()
         try:
             document = converter.convert_string(
-                source, filename="benchmark.md"
+                source, filename=f"benchmark.{format}"
             ).document
             return _approx_chunks([document.export_to_markdown()])
         except (AttributeError, TypeError) as error:
@@ -77,7 +98,10 @@ class DoclingHierarchicalAdapter:
 class ChonkieRecursiveAdapter:
     name = "chonkie-recursive"
 
-    def split(self, source: str, *, config: BenchmarkConfig) -> list[BenchmarkChunk]:
+    def split(
+        self, source: str, *, config: BenchmarkConfig, format: str = "markdown"
+    ) -> list[BenchmarkChunk]:
+        del format
         try:
             from chonkie import RecursiveChunker
         except ImportError as error:

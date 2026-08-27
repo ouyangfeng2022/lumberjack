@@ -41,6 +41,8 @@ an explicit comparability limitation—not a missing value hidden from results.
 Competitor packages are optional benchmark dependencies and never core package
 dependencies.
 
-The checked-in corpus is intentionally small and validates the harness. Publish
-an outcome only after running the expanded, versioned corpus on the commit being
-discussed and linking its exact result directory here.
+The checked-in corpus provides five CC0 documents per scenario plus three
+cross-format Markdown/HTML equivalence groups. It is sized for repeatable
+harness validation, not for headline numbers. Publish an outcome only after
+running the corpus on the commit being discussed and linking its exact result
+directory here.
