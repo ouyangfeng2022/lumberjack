@@ -58,6 +58,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a `langchain-html` benchmark adapter (`HTMLHeaderTextSplitter`) so
   HTML corpus entries can be compared against LangChain's own HTML splitting;
   the `benchmark` dependency group now includes `beautifulsoup4`.
+- Added `docling-hybrid` and `chonkie-table` benchmark adapters, completing
+  the nine-variant competitor set. The hybrid adapter feeds Docling's
+  `HybridChunker` with an offline UTF-8-bytes tokenizer so benchmark runs
+  never download a HuggingFace model; the table adapter maps the token budget
+  onto Chonkie's `TableChunker` (`chonkie>=1.7`). Both Docling adapters now
+  support the `convert_string(content, format)` signature required by
+  docling >= 2.120 while keeping compatibility with the older keyword form.
 - Added three runnable end-to-end examples with CI smoke tests:
   `examples/technical_document.py` (structure-aware vs naive splitting with
   heading provenance), `examples/table_chunking.py` (header repetition and
@@ -179,6 +186,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Seeded XLSX corpus generation is now byte-deterministic across runs: the
+  generator pins the workbook's creation and modification timestamps instead
+  of letting openpyxl stamp wall-clock times, which previously made the same
+  seed produce different archives when generation straddled a second
+  boundary.
 - DOCX parsing now preserves hyperlinks and embedded images as inline nodes,
   including inside tables; recognizes direct OOXML numbering; groups consecutive
   list items; reads visible content controls and tracked insertions; and escapes

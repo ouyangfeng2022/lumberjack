@@ -92,7 +92,7 @@ test = ["pytest>=8.0.0", "httpx>=0.28.0", "jsonschema>=4.23.0"]
 docs = ["mkdocs-material>=9.6", "mkdocstrings[python]>=0.30"]
 benchmark = [
     "beautifulsoup4>=4.12",
-    "chonkie>=1.0",
+    "chonkie>=1.7",
     "docling>=2.0",
     "langchain-text-splitters>=0.3.0",
     "unstructured[md]>=0.16.0",

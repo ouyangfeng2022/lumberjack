@@ -19,7 +19,9 @@ from typing import Any
 from benchmarks.adapters.base import AdapterUnavailable, BenchmarkAdapter
 from benchmarks.adapters.competitors import (
     ChonkieRecursiveAdapter,
+    ChonkieTableAdapter,
     DoclingHierarchicalAdapter,
+    DoclingHybridAdapter,
     UnstructuredBasicAdapter,
     UnstructuredByTitleAdapter,
 )
@@ -57,7 +59,9 @@ def _adapter(name: str) -> BenchmarkAdapter:
         "unstructured-basic": UnstructuredBasicAdapter(),
         "unstructured-by-title": UnstructuredByTitleAdapter(),
         "docling-hierarchical": DoclingHierarchicalAdapter(),
+        "docling-hybrid": DoclingHybridAdapter(),
         "chonkie-recursive": ChonkieRecursiveAdapter(),
+        "chonkie-table": ChonkieTableAdapter(),
     }
     try:
         return adapters[name]
@@ -146,7 +150,9 @@ def _parser() -> argparse.ArgumentParser:
             "unstructured-basic",
             "unstructured-by-title",
             "docling-hierarchical",
+            "docling-hybrid",
             "chonkie-recursive",
+            "chonkie-table",
         ),
     )
     parser.add_argument(

@@ -3,7 +3,9 @@
 from .base import AdapterUnavailable, BenchmarkAdapter
 from .competitors import (
     ChonkieRecursiveAdapter,
+    ChonkieTableAdapter,
     DoclingHierarchicalAdapter,
+    DoclingHybridAdapter,
     UnstructuredBasicAdapter,
     UnstructuredByTitleAdapter,
 )
@@ -18,7 +20,9 @@ __all__ = [
     "AdapterUnavailable",
     "BenchmarkAdapter",
     "ChonkieRecursiveAdapter",
+    "ChonkieTableAdapter",
     "DoclingHierarchicalAdapter",
+    "DoclingHybridAdapter",
     "LangChainHTMLAdapter",
     "LangChainMarkdownAdapter",
     "LangChainRecursiveAdapter",

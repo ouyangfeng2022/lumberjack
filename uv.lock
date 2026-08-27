@@ -2500,7 +2500,7 @@ provides-extras = ["all", "code-parsing", "docx", "haystack", "langchain", "llam
 [package.metadata.requires-dev]
 benchmark = [
     { name = "beautifulsoup4", specifier = ">=4.12" },
-    { name = "chonkie", specifier = ">=1.0" },
+    { name = "chonkie", specifier = ">=1.7" },
     { name = "docling", specifier = ">=2.0" },
     { name = "langchain-text-splitters", specifier = ">=0.3.0" },
     { name = "unstructured", extras = ["md"], specifier = ">=0.16.0" },
