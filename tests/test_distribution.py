@@ -52,12 +52,19 @@ def test_wheel_contains_typed_package_without_web_assets(
     # deliberately not bundled; deployments build them from lumberjack_webui/.
     assert not any(name.startswith("lumberjack/web/static") for name in names)
     package_metadata = message_from_string(metadata)
-    assert set(package_metadata.get_all("Provides-Extra", [])) == {
+    extras = {
         "all",
+        "code-parsing",
         "docx",
+        "haystack",
+        "langchain",
+        "llama-index",
+        "spreadsheets",
         "tokenizers",
+        "toml",
         "web",
     }
+    assert set(package_metadata.get_all("Provides-Extra", [])) == extras
 
     requirements = set(package_metadata.get_all("Requires-Dist", []))
     requirements_by_extra = {
@@ -66,7 +73,7 @@ def test_wheel_contains_typed_package_without_web_assets(
             for requirement in requirements
             if requirement.endswith(f"extra == '{extra}'")
         }
-        for extra in ("tokenizers", "docx", "web", "all")
+        for extra in extras
     }
     assert requirements_by_extra["tokenizers"] == {
         "cachetools>=7.1.1",
@@ -80,10 +87,17 @@ def test_wheel_contains_typed_package_without_web_assets(
         "starlette<1.0.0",
         "uvicorn>=0.34.0",
     }
+    assert requirements_by_extra["langchain"] == {"langchain-core>=0.3"}
+    assert requirements_by_extra["llama-index"] == {"llama-index-core>=0.12"}
+    assert requirements_by_extra["haystack"] == {"haystack-ai>=2.0"}
     assert requirements_by_extra["all"] == (
-        requirements_by_extra["tokenizers"]
-        | requirements_by_extra["docx"]
-        | requirements_by_extra["web"]
+        set().union(
+            *(
+                values
+                for extra, values in requirements_by_extra.items()
+                if extra != "all"
+            )
+        )
     )
 
 

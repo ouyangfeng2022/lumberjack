@@ -23,6 +23,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added optional LangChain, LlamaIndex, and Haystack adapters for final
+  `Chunk` objects.  All preserve JSON-safe chunk metadata and provenance while
+  keeping `Chunk.body` as framework content; the LlamaIndex adapter also builds
+  a ready-to-retrieve `VectorStoreIndex`. Runnable LangChain, LlamaIndex, and
+  Haystack demos cover splitting, indexing, retrieval, and query/prompt
+  construction. Install the corresponding
+  `langchain`, `llama-index`, or `haystack` extra to use one.
+- Added native RAG pipeline components that plug Lumberjack into each
+  framework's own ingestion flow, replacing the built-in splitter:
+  `lumberjack.integrations.LumberjackNodeParser` (LlamaIndex `NodeParser`
+  with `SOURCE`/`PREVIOUS`/`NEXT` relationships, deterministic node ids, and
+  suffix-based fallback routing) and `LumberjackReader` (a `BaseReader`
+  rendering Markdown/HTML/DOCX into canonical Markdown), plus
+  `LumberjackTextSplitter` / `LumberjackDocumentTransformer` (LangChain
+  `TextSplitter` / indexing transformer) and `LumberjackDocumentSplitter`
+  (a Haystack `@component`). The `langchain` extra now also installs
+  `langchain-text-splitters`; all components are imported lazily so the core
+  install stays framework-free.
 - Added runnable module entries for stage-level inspection:
   `python -m lumberjack.parser FILE` prints the parsed `DocTree` as versioned
   JSON (or a section outline with `--outline`), and

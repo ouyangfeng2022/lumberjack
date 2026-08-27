@@ -75,3 +75,52 @@ jobs:
       - name: Build (includes tsc type check)
         run: bun run build
         working-directory: lumberjack_webui
+
+  integrations:
+    name: RAG framework integrations
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+          enable-cache: true
+
+      - name: Install integration test dependencies
+        run: uv sync --group test --group integrations
+
+      - name: Test adapters
+        run: uv run pytest tests/integrations
+
+  integration-minimums:
+    name: Minimum ${{ matrix.framework }} integration
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - framework: LangChain
+            dependency: langchain-core==0.3.0
+            test: tests/integrations/test_langchain_demo.py::test_langchain_demo_runs_full_pipeline
+          - framework: LlamaIndex
+            dependency: llama-index-core==0.12.0
+            test: tests/integrations/test_llamaindex_demo.py::test_llamaindex_demo_runs_full_pipeline
+          - framework: Haystack
+            dependency: haystack-ai==2.0.0
+            test: tests/integrations/test_haystack_demo.py::test_haystack_demo_runs_full_pipeline
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+          enable-cache: true
+
+      - name: Test declared minimum dependency
+        run: >-
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src
+          uv run --no-project --with pytest --with '${{ matrix.dependency }}'
+          pytest '${{ matrix.test }}' -q

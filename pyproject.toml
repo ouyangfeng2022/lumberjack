@@ -40,7 +40,12 @@ web = [
     "uvicorn>=0.34.0",
     "python-multipart>=0.0.18",
 ]
-all = ["lumberjack-py[tokenizers,docx,web,spreadsheets,toml,code-parsing]"]
+langchain = ["langchain-core>=0.3", "langchain-text-splitters>=0.3"]
+llama-index = ["llama-index-core>=0.12"]
+haystack = ["haystack-ai>=2.0"]
+all = [
+    "lumberjack-py[tokenizers,docx,web,spreadsheets,toml,code-parsing,langchain,llama-index,haystack]"
+]
 code-parsing = [
     "tree-sitter>=0.25",
     "tree-sitter-bash>=0.25",
@@ -90,6 +95,12 @@ benchmark = [
     "docling>=2.0",
     "langchain-text-splitters>=0.3.0",
     "unstructured[md]>=0.16.0",
+]
+integrations = [
+    "langchain-core>=0.3",
+    "langchain-text-splitters>=0.3",
+    "llama-index-core>=0.12",
+    "haystack-ai>=2.0",
 ]
 
 [build-system]

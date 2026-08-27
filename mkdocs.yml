@@ -59,6 +59,7 @@ nav:
   - Guides:
       - Configuration: guides/configuration.md
       - Custom components: guides/custom-components.md
+      - RAG integrations: guides/integrations.md
   - Evaluation:
       - Benchmark methodology: evaluation/benchmark-results.md
       - Parser coverage: evaluation/parser-coverage.md
@@ -79,6 +80,7 @@ nav:
       - 指南:
           - 配置: zh-CN/guides/configuration.md
           - 自定义组件: zh-CN/guides/custom-components.md
+          - RAG 框架集成: zh-CN/guides/integrations.md
       - 评估:
           - Benchmark 方法论: zh-CN/evaluation/benchmark-results.md
           - Parser 覆盖范围: zh-CN/evaluation/parser-coverage.md
