@@ -118,6 +118,29 @@ nodes = pipeline.run(documents=loaded_documents)
 
 设置 `heading_context=True` 会在每个 node 文本前加渲染后的标题面包屑，让 embedding 看到章节上下文。
 
+### 为 `AutoMergingRetriever` 输出真实章节父节点
+
+设置 `emit_parents=True` 还会为每个真实标题章节生成一个父 `TextNode`（把该章节下的叶子 chunk 聚合），并通过 `PARENT`/`CHILD` 关系把叶子与父节点、父节点与叶子互链。这用文档的真实章节边界替代了 LlamaIndex `HierarchicalNodeParser`（用机械的 token 窗口伪造层级）：父节点文本即整节内容，因此当 `AutoMergingRetriever` 命中某章节多个 chunk 时，会返回整节。
+
+```python
+from llama_index.core import VectorStoreIndex
+from llama_index.core.embeddings import MockEmbedding
+from llama_index.core.retrievers import AutoMergingRetriever
+from llama_index.core.storage.storage_context import StorageContext
+from lumberjack.integrations import LumberjackNodeParser
+
+nodes = LumberjackNodeParser(max_tokens=512, emit_parents=True).get_nodes_from_documents(documents)
+storage = StorageContext.from_defaults()
+index = VectorStoreIndex(nodes=nodes, storage_context=storage, embed_model=embed_model)
+retriever = AutoMergingRetriever(
+    vector_retriever=index.as_retriever(similarity_top_k=4),
+    storage_context=storage,
+)
+hits = retriever.retrieve(query)
+```
+
+父节点 id 是确定性的（`<source id>:parent:<hash>`），因此重复重建索引保持增量。
+
 ### 用同一个 reader 加载 Markdown / HTML / DOCX
 
 `SimpleDirectoryReader` 无法把 DOCX 或 HTML/XML 读成结构感知的文本。`LumberjackReader` 是一个 `BaseReader`，用 Lumberjack 解析每个受支持的文件并重新渲染为规范 Markdown，保留标题、表格、列表和代码块；front matter 作为文档 metadata 附加。把它的输出直接喂给 `LumberjackNodeParser`，即可让所有格式走同一条结构感知切分路径：

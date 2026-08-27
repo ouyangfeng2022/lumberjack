@@ -17,10 +17,11 @@ lumberjack-py[llama-index]``).
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from llama_index.core.node_parser.interface import NodeParser
 from llama_index.core.readers.base import BaseReader
@@ -39,6 +40,7 @@ from lumberjack.models import (
     DocTree,
     InputFormat,
     SectionNode,
+    render_heading_path,
 )
 from lumberjack.models import (
     Document as LumberjackSource,
@@ -93,6 +95,57 @@ def render_doc_tree(tree: DocTree) -> str:
     return "\n\n".join(parts)
 
 
+def _section_parent_id(source: BaseNode, path: tuple[tuple[int, str], ...]) -> str:
+    """Deterministic parent-node id derived from the section heading path."""
+    titles = "/".join(title for _, title in path)
+    digest = hashlib.sha1(titles.encode("utf-8")).hexdigest()[:10]
+    return f"{source.node_id}:parent:{digest}"
+
+
+def _parent_metadata(
+    parent_id: str,
+    path: tuple[tuple[int, str], ...],
+    group: list[tuple[Any, TextNode]],
+) -> dict[str, Any]:
+    """JSON-safe, section-level metadata for one parent node."""
+    chunks = [chunk for chunk, _ in group]
+    base = chunk_metadata(chunks[0])
+    start_line = min(
+        (chunk.start_line for chunk in chunks if chunk.start_line is not None),
+        default=None,
+    )
+    end_line = max(
+        (chunk.end_line for chunk in chunks if chunk.end_line is not None),
+        default=None,
+    )
+    locations: list[dict[str, Any]] = []
+    seen: set[tuple[Any, ...]] = set()
+    for chunk in chunks:
+        serialized = chunk_metadata(chunk).get("source_locations") or []
+        for location in cast(list[dict[str, Any]], serialized):
+            key = (
+                location.get("source"),
+                location.get("line_start"),
+                location.get("line_end"),
+            )
+            if key not in seen:
+                seen.add(key)
+                locations.append(location)
+    return {
+        **base,
+        "chunk_id": parent_id,
+        "chunk_type": "section",
+        "ancestor_headings": [[level, title] for level, title in path[:-1]],
+        "own_heading": list(path[-1]) if path else None,
+        "section_level": path[-1][0],
+        "token_count": sum(chunk.token_count for chunk in chunks),
+        "body_token_count": sum(chunk.body_token_count for chunk in chunks),
+        "start_line": start_line,
+        "end_line": end_line,
+        "source_locations": locations,
+    }
+
+
 class LumberjackNodeParser(NodeParser):
     """LlamaIndex node parser backed by Lumberjack structure-aware splitting.
 
@@ -113,6 +166,13 @@ class LumberjackNodeParser(NodeParser):
         heading_context: Prefix each node text with its rendered heading
             breadcrumb so embeddings see the section context. Defaults to
             ``Chunk.body`` only.
+        emit_parents: Also emit one parent ``TextNode`` per real heading
+            section, grouping the leaf chunks under that section, and link
+            leaves to their parent (``PARENT``) and parents to their leaves
+            (``CHILD``). Pair with ``AutoMergingRetriever``: the parent text is
+            the full section (heading breadcrumb plus all leaf bodies), so a
+            retrieval hit on several chunks of one section returns the whole
+            section instead.
         input_format: Format hint for the text inside nodes (``auto``,
             ``markdown``, ``html``).
         block_options: Typed ``lumberjack.block`` options (or their
@@ -135,6 +195,7 @@ class LumberjackNodeParser(NodeParser):
     heading_sensitive: bool = True
     max_heading_level: int | None = None
     heading_context: bool = False
+    emit_parents: bool = False
     input_format: InputFormat = "auto"
     block_options: list[Any] | None = None
     fallback_suffixes: tuple[str, ...] = ()
@@ -219,26 +280,76 @@ class LumberjackNodeParser(NodeParser):
     def _nodes_for_chunks(
         self, source: BaseNode, chunks: Iterable[Any]
     ) -> list[TextNode]:
-        nodes: list[TextNode] = []
+        leaves: list[TextNode] = []
+        pairs: list[tuple[Any, TextNode]] = []
         excluded_embed = set(source.excluded_embed_metadata_keys)
         excluded_llm = set(source.excluded_llm_metadata_keys)
         for i, chunk in enumerate(chunks):
             metadata = chunk_metadata(chunk)
             chunk_keys = set(metadata)
-            nodes.append(
-                TextNode(
-                    id_=self.id_func(i, source),
-                    text=chunk_content(chunk, heading_context=self.heading_context),
-                    metadata=metadata,
-                    excluded_embed_metadata_keys=sorted(excluded_embed | chunk_keys),
-                    excluded_llm_metadata_keys=sorted(excluded_llm | chunk_keys),
-                    embedding=source.embedding,
-                    relationships={
-                        NodeRelationship.SOURCE: source.as_related_node_info()
-                    },
-                )
+            leaf = TextNode(
+                id_=self.id_func(i, source),
+                text=chunk_content(chunk, heading_context=self.heading_context),
+                metadata=metadata,
+                excluded_embed_metadata_keys=sorted(excluded_embed | chunk_keys),
+                excluded_llm_metadata_keys=sorted(excluded_llm | chunk_keys),
+                embedding=source.embedding,
+                relationships={NodeRelationship.SOURCE: source.as_related_node_info()},
             )
-        return nodes
+            leaves.append(leaf)
+            pairs.append((chunk, leaf))
+        if not self.emit_parents:
+            return leaves
+        parents = self._build_section_parents(
+            source, pairs, excluded_embed, excluded_llm
+        )
+        return [*parents, *leaves]
+
+    def _build_section_parents(
+        self,
+        source: BaseNode,
+        pairs: list[tuple[Any, TextNode]],
+        excluded_embed: set[str],
+        excluded_llm: set[str],
+    ) -> list[TextNode]:
+        """Group leaves by their real section path and emit one parent each."""
+        groups: dict[tuple[tuple[int, str], ...], list[tuple[Any, TextNode]]] = {}
+        for chunk, leaf in pairs:
+            path = chunk.ancestor_headings + (
+                (chunk.own_heading,) if chunk.own_heading is not None else ()
+            )
+            if not path:
+                continue
+            groups.setdefault(path, []).append((chunk, leaf))
+
+        parents: list[TextNode] = []
+        for path, group in groups.items():
+            parent_id = _section_parent_id(source, path)
+            body = "\n\n".join(
+                chunk.body.strip() for chunk, _ in group if chunk.body.strip()
+            )
+            heading = render_heading_path(path)
+            text = f"{heading}\n\n{body}" if heading else body
+            metadata = _parent_metadata(parent_id, path, group)
+            metadata_keys = set(metadata)
+            parent = TextNode(
+                id_=parent_id,
+                text=text,
+                metadata=metadata,
+                excluded_embed_metadata_keys=sorted(excluded_embed | metadata_keys),
+                excluded_llm_metadata_keys=sorted(excluded_llm | metadata_keys),
+                embedding=source.embedding,
+                relationships={NodeRelationship.SOURCE: source.as_related_node_info()},
+            )
+            parent.relationships[NodeRelationship.CHILD] = [
+                leaf.as_related_node_info() for _, leaf in group
+            ]
+            for _, leaf in group:
+                leaf.relationships[NodeRelationship.PARENT] = (
+                    parent.as_related_node_info()
+                )
+            parents.append(parent)
+        return parents
 
     def to_dict(self, **kwargs: Any) -> dict:
         data = super().to_dict(**kwargs)

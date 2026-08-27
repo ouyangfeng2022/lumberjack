@@ -153,6 +153,36 @@ nodes = pipeline.run(documents=loaded_documents)
 Set `heading_context=True` to prefix each node text with its rendered heading
 breadcrumb so embeddings see the section context.
 
+### Emitting real section parents for `AutoMergingRetriever`
+
+Set `emit_parents=True` to also emit one parent `TextNode` per real heading
+section (grouping the leaf chunks under that section) and link leaves to their
+parent and parents to their leaves via `PARENT`/`CHILD` relationships. This
+replaces LlamaIndex's `HierarchicalNodeParser` (which fakes parents with
+mechanical token-window chunks) with the document's actual section boundaries:
+the parent text is the full section, so when `AutoMergingRetriever` hits
+several chunks of one section it returns the whole section.
+
+```python
+from llama_index.core import VectorStoreIndex
+from llama_index.core.embeddings import MockEmbedding
+from llama_index.core.retrievers import AutoMergingRetriever
+from llama_index.core.storage.storage_context import StorageContext
+from lumberjack.integrations import LumberjackNodeParser
+
+nodes = LumberjackNodeParser(max_tokens=512, emit_parents=True).get_nodes_from_documents(documents)
+storage = StorageContext.from_defaults()
+index = VectorStoreIndex(nodes=nodes, storage_context=storage, embed_model=embed_model)
+retriever = AutoMergingRetriever(
+    vector_retriever=index.as_retriever(similarity_top_k=4),
+    storage_context=storage,
+)
+hits = retriever.retrieve(query)
+```
+
+Parent node ids are deterministic (`<source id>:parent:<hash>`), so re-indexing
+stays incremental.
+
 ### Loading Markdown / HTML / DOCX with one reader
 
 `SimpleDirectoryReader` cannot read DOCX or HTML/XML into structure-aware text.

@@ -241,3 +241,122 @@ def test_render_doc_tree_skips_empty_sections() -> None:
     rendered = render_doc_tree  # public helper stays importable
     assert callable(rendered)
     assert "\n\n\n" not in tree_text
+
+
+HIERARCHICAL_MD = (
+    "# Guide\n\nIntro paragraph.\n\n"
+    "## Setup\n\nInstall step one.\n\nInstall step two.\n\n"
+    "## Usage\n\nRun it now.\n\nMore usage detail.\n"
+)
+
+
+def _hierarchical_nodes(
+    parser: LumberjackNodeParser | None = None, id_: str | None = None
+):
+    parser = parser or LumberjackNodeParser(max_tokens=40, emit_parents=True)
+    fields: dict[str, Any] = {
+        "text": HIERARCHICAL_MD,
+        "metadata": {"file_path": "x.md"},
+    }
+    if id_ is not None:
+        fields["id_"] = id_
+    return parser.get_nodes_from_documents([LlamaDocument(**fields)])
+
+
+def test_emit_parents_disabled_by_default() -> None:
+    nodes = _hierarchical_nodes(LumberjackNodeParser(max_tokens=40))
+    assert all(node.metadata["chunk_type"] != "section" for node in nodes)
+    assert all(NodeRelationship.PARENT not in node.relationships for node in nodes)
+
+
+def test_emit_parents_groups_real_sections() -> None:
+    nodes = _hierarchical_nodes()
+    parents = [n for n in nodes if n.metadata["chunk_type"] == "section"]
+    leaves = [n for n in nodes if n.metadata["chunk_type"] != "section"]
+
+    assert [parent.metadata["own_heading"][1] for parent in parents] == [
+        "Guide",
+        "Setup",
+        "Usage",
+    ]
+    # The Setup section has two leaves; every section still gets one parent.
+    assert len(leaves) == 3
+    assert len(parents) == 3
+
+    _guide, setup, usage = parents
+    assert setup.metadata["ancestor_headings"] == [[1, "Guide"]]
+    assert setup.metadata["section_level"] == 2
+    assert setup.metadata["token_count"] > 0
+    assert setup.metadata["start_line"] is not None
+    assert setup.text == "# Guide\n\n## Setup\n\nInstall step one.\n\nInstall step two."
+
+    # Leaves point to their section parent; parents list their leaves.
+    leaf_by_id = {node.id_: node for node in leaves}
+    for child in setup.child_nodes:
+        assert (
+            leaf_by_id[child.node_id].relationships[NodeRelationship.PARENT].node_id
+            == setup.id_
+        )
+    assert setup.id_ != usage.id_
+
+
+def test_emit_parents_ids_are_deterministic() -> None:
+    first = _hierarchical_nodes(id_="stable-source")
+    second = _hierarchical_nodes(id_="stable-source")
+    first_ids = {n.id_ for n in first}
+    second_ids = {n.id_ for n in second}
+    assert first_ids == second_ids
+    assert any(n.metadata["chunk_type"] == "section" for n in first)
+
+
+def test_emit_parents_metadata_is_json_safe() -> None:
+    import json
+
+    nodes = _hierarchical_nodes()
+    for node in nodes:
+        json.dumps(node.metadata)  # must not raise
+
+
+def test_emit_parents_serialization_round_trip() -> None:
+    parser = LumberjackNodeParser(max_tokens=40, emit_parents=True)
+    restored = LumberjackNodeParser.from_dict(parser.to_dict())
+    assert restored.emit_parents is True
+    nodes = restored.get_nodes_from_documents(
+        [LlamaDocument(text=HIERARCHICAL_MD, metadata={"file_path": "x.md"})]
+    )
+    assert sum(n.metadata["chunk_type"] == "section" for n in nodes) == 3
+
+
+def test_auto_merging_retriever_merges_to_section_parent() -> None:
+    from llama_index.core import VectorStoreIndex
+    from llama_index.core.retrievers import AutoMergingRetriever
+    from llama_index.core.storage.storage_context import StorageContext
+
+    section = "\n".join(
+        f"Detail paragraph {i} with enough words to become its own chunk."
+        for i in range(12)
+    )
+    text = f"# Guide\n\nIntro.\n\n## Big\n\n{section}\n\n## Other\n\nOne line.\n"
+    nodes = LumberjackNodeParser(
+        max_tokens=60, emit_parents=True
+    ).get_nodes_from_documents(
+        [LlamaDocument(text=text, metadata={"file_path": "x.md"})]
+    )
+    leaves = [n for n in nodes if n.metadata["chunk_type"] != "section"]
+    big_parent = next(n for n in nodes if n.metadata["own_heading"] == [2, "Big"])
+    assert len(big_parent.child_nodes or []) == 6
+
+    storage = StorageContext.from_defaults()
+    index = VectorStoreIndex(
+        nodes=nodes, storage_context=storage, embed_model=MockEmbedding(embed_dim=8)
+    )
+    retriever = AutoMergingRetriever(
+        vector_retriever=cast(Any, index.as_retriever(similarity_top_k=len(leaves))),
+        storage_context=storage,
+    )
+    texts = [hit.node.get_content() for hit in retriever.retrieve("detail")]
+    # All six Big leaves are hit, so they merge into the real section parent.
+    merged = [
+        t for t in texts if t.startswith("# Guide\n\n## Big\n\nDetail paragraph 0")
+    ]
+    assert len(merged) == 1

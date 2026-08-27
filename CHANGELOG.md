@@ -41,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (a Haystack `@component`). The `langchain` extra now also installs
   `langchain-text-splitters`; all components are imported lazily so the core
   install stays framework-free.
+- Added `emit_parents` to the LlamaIndex `LumberjackNodeParser`: it now emits
+  one parent `TextNode` per real heading section, grouped from the leaf chunks
+  under that section, with `PARENT`/`CHILD` relationships and deterministic
+  parent ids, so `AutoMergingRetriever` merges retrieval hits into the actual
+  section text instead of token-window pseudo-hierarchies.
 - Added runnable module entries for stage-level inspection:
   `python -m lumberjack.parser FILE` prints the parsed `DocTree` as versioned
   JSON (or a section outline with `--outline`), and
