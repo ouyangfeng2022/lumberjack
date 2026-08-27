@@ -1,11 +1,14 @@
 # syntax=docker/dockerfile:1
 
 # Pass the project version for hatch-vcs, which otherwise needs a .git
-# directory to detect the version.  On the host run:
+# directory to detect the version.  Pass COMMIT to expose the deployed
+# revision through /version.  On the host run:
 #   docker compose build  (reads from git automatically via .env)
 #   # or manually:
-#   docker build --build-arg VERSION=$(git describe --tags --always) .
+#   docker build --build-arg VERSION=$(git describe --tags --always) \
+#                --build-arg COMMIT=$(git rev-parse --short HEAD) .
 ARG VERSION=0.0.0
+ARG COMMIT=""
 
 # ──────────────────────────────────────────────
 # Stage 1: Build frontend assets
@@ -32,13 +35,13 @@ RUN cd lumberjack_webui \
     && bun run build -- --outDir /app/frontend-dist
 
 # ──────────────────────────────────────────────
-# Stage 2: Python builder — install dependencies
-# and the project in EDITABLE mode so that
-# volume-mounted source is picked up at runtime.
+# Stage 2: Python builder — resolve dependencies,
+# build the wheel (with web assets inside), and
+# install it NON-EDITABLE into a clean venv.
 # ──────────────────────────────────────────────
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
 
-# Re-declare the global ARG so it's visible in this build stage
+# Re-declare build args so they are visible in this build stage
 ARG VERSION=0.0.0
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -53,7 +56,7 @@ WORKDIR /app
 COPY pyproject.toml .
 COPY uv.lock .
 
-# Install all optional dependencies (web + tokenizers) WITHOUT the project
+# Install all optional dependencies WITHOUT the project
 # so the dependency layer is cached independently of source changes.
 RUN --mount=type=cache,target=/root/.local/share/uv \
     uv sync --frozen --no-dev --extra all --no-install-project
@@ -61,37 +64,40 @@ RUN --mount=type=cache,target=/root/.local/share/uv \
 # Copy project source and README (hatchling requires readme file for metadata)
 COPY src/ ./src/
 COPY README.md .
+COPY schemas/ ./schemas/
 
-# Install the project itself in EDITABLE mode.
-# This creates a .pth link in the venv pointing to /app/src/lumberjack/,
-# so any volume-mounted source at runtime is picked up immediately.
+COPY --from=frontend-builder /app/frontend-dist /app/frontend-dist
+
+# Build the wheel and install it into the venv non-editable. The runtime
+# image therefore contains an immutable installed package, not an editable
+# link that would depend on the repository layout. The built frontend is
+# copied into the installed package afterwards because hatchling respects
+# .gitignore and web/static is not version controlled.
 RUN --mount=type=cache,target=/root/.local/share/uv \
-    uv sync --frozen --no-dev --extra all
+    uv build --wheel --out-dir /app/dist \
+    && uv pip install --python /app/.venv/bin/python /app/dist/*.whl \
+    && STATIC_DIR="$(/app/.venv/bin/python -c 'import lumberjack, pathlib; print(pathlib.Path(lumberjack.__file__).parent / "web" / "static")')" \
+    && mkdir -p "${STATIC_DIR}" \
+    && cp -r /app/frontend-dist/. "${STATIC_DIR}"/
 
 # ──────────────────────────────────────────────
-# Stage 3: Minimal runtime image
+# Stage 3: Minimal runtime image — venv only,
+# no build tools, no source tree.
 # ──────────────────────────────────────────────
 FROM python:3.13-slim AS runtime
 
+ARG COMMIT=""
+
 WORKDIR /app
 
-# Install uv for potential runtime package management
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-
-ENV UV_SYSTEM_PYTHON=1
-
-# Copy the pre-built virtual environment (contains editable .pth link)
+# Copy the pre-built virtual environment with the installed package
 COPY --from=builder /app/.venv /app/.venv
-# Copy project metadata (needed by editable install resolution)
-COPY --from=builder /app/src ./src
-COPY pyproject.toml .
-COPY uv.lock .
-
-# Copy pre-built frontend assets into the web static directory
-COPY --from=frontend-builder /app/frontend-dist ./src/lumberjack/web/static
 
 # Ensure venv binaries are on PATH
 ENV PATH=/app/.venv/bin:$PATH
+
+# Expose the deployed revision through GET /version
+ENV LUMBERJACK_BUILD_COMMIT=${COMMIT}
 
 # Pre-populate tokenizer caches so the offline server never needs network access.
 RUN mkdir -p /app/.cache/tiktoken \
