@@ -10,6 +10,13 @@ from lumberjack.models import Chunk
 from ._metadata import chunk_metadata, metadata_keys
 
 
+class _ExplicitEmptyTransformations(list[Any]):
+    """An empty transformation list that bypasses LlamaIndex's ``or`` default."""
+
+    def __bool__(self) -> bool:
+        return True
+
+
 def to_llamaindex_node(chunk: Chunk) -> Any:
     """Convert one chunk to a ``llama_index.core.schema.TextNode``.
 
@@ -45,6 +52,8 @@ def build_llamaindex_index(chunks: Iterable[Chunk], **kwargs: Any) -> Any:
     ``storage_context``, and ``transformations`` through ``kwargs``.  This
     keeps embedding, storage, and query-engine choices under the caller's
     normal LlamaIndex configuration while providing a ready-to-retrieve index.
+    Without an explicit transformation, final Lumberjack chunks bypass
+    LlamaIndex's default splitter.
     """
     try:
         from llama_index.core import VectorStoreIndex
@@ -52,4 +61,8 @@ def build_llamaindex_index(chunks: Iterable[Chunk], **kwargs: Any) -> Any:
         raise ImportError(
             "LlamaIndex integration requires `pip install lumberjack-py[llama-index]`."
         ) from error
+    # Chunks are already final; avoid LlamaIndex's default SentenceSplitter,
+    # which otherwise initializes tiktoken (and may fetch its encoding).
+    if not kwargs.get("transformations"):
+        kwargs["transformations"] = _ExplicitEmptyTransformations()
     return VectorStoreIndex(nodes=to_llamaindex_nodes(chunks), **kwargs)

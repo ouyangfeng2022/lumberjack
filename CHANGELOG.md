@@ -31,6 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   private, link-local, multicast, reserved, or unspecified addresses are
   refused, including redirect targets.
 
+### Fixed
+
+- Seeded XLSX parser-benchmark documents now normalize ZIP member timestamps,
+  so repeated generation produces identical bytes. CI also runs tokenizer and
+  LlamaIndex integration tests offline; the LlamaIndex index helper skips its
+  default splitter for already-final chunks, and the runnable LlamaIndex demo
+  supplies local token counting to avoid implicit tiktoken downloads.
+
 ### Added
 
 - Added `GET /health` and `GET /version` endpoints (also under

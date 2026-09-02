@@ -57,6 +57,17 @@ def _texts(nodes: Sequence[BaseNode]) -> list[str]:
     return [node.get_content() for node in nodes]
 
 
+@pytest.fixture(name="_local_tiktoken")
+def local_tiktoken(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Encoding:
+        def encode(self, text: str) -> list[int]:
+            return list(text.encode("utf-8"))
+
+    import tiktoken
+
+    monkeypatch.setattr(tiktoken, "encoding_for_model", lambda _model: Encoding())
+
+
 def _related(node: BaseNode, relationship: NodeRelationship) -> str:
     related = node.relationships[relationship]
     assert not isinstance(related, list)
@@ -108,11 +119,13 @@ def test_node_parser_runs_inside_ingestion_pipeline() -> None:
     assert nodes[0].metadata["document_title"] == "Guide"
 
 
-def test_node_parser_feeds_vector_store_index() -> None:
+def test_node_parser_feeds_vector_store_index(_local_tiktoken) -> None:
     from llama_index.core import VectorStoreIndex
 
     nodes = LumberjackNodeParser(max_tokens=64).get_nodes_from_documents([_document()])
-    built = VectorStoreIndex(nodes=nodes, embed_model=MockEmbedding(embed_dim=8))
+    built = VectorStoreIndex(
+        nodes=nodes, embed_model=MockEmbedding(embed_dim=8), transformations=[]
+    )
     hits = built.as_retriever(similarity_top_k=1).retrieve("install")
     assert hits[0].text == "Install first."
 
@@ -327,7 +340,7 @@ def test_emit_parents_serialization_round_trip() -> None:
     assert sum(n.metadata["chunk_type"] == "section" for n in nodes) == 3
 
 
-def test_auto_merging_retriever_merges_to_section_parent() -> None:
+def test_auto_merging_retriever_merges_to_section_parent(_local_tiktoken) -> None:
     from llama_index.core import VectorStoreIndex
     from llama_index.core.retrievers import AutoMergingRetriever
     from llama_index.core.storage.storage_context import StorageContext
@@ -348,7 +361,10 @@ def test_auto_merging_retriever_merges_to_section_parent() -> None:
 
     storage = StorageContext.from_defaults()
     index = VectorStoreIndex(
-        nodes=nodes, storage_context=storage, embed_model=MockEmbedding(embed_dim=8)
+        nodes=nodes,
+        storage_context=storage,
+        embed_model=MockEmbedding(embed_dim=8),
+        transformations=[],
     )
     retriever = AutoMergingRetriever(
         vector_retriever=cast(Any, index.as_retriever(similarity_top_k=len(leaves))),

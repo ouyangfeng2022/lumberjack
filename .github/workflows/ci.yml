@@ -50,6 +50,12 @@ jobs:
 
       - name: Test
         run: uv run pytest
+        env:
+          # Tokenizer tests inject local backends; a cache miss must fail instead
+          # of downloading a model or encoding during the test run.
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+          TIKTOKEN_CACHE_DIR: ${{ runner.temp }}/tiktoken-cache
 
   frontend:
     name: Frontend (lint + build)

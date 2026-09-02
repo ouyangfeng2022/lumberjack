@@ -32,7 +32,12 @@ def run_demo(
     """Split ``source``, index its chunks, retrieve, and query with LlamaIndex."""
     try:
         from llama_index.core.embeddings import MockEmbedding
+        from llama_index.core.indices.prompt_helper import (
+            ChatPromptHelper,
+            PromptHelper,
+        )
         from llama_index.core.llms.mock import MockLLM
+        from llama_index.core.response_synthesizers import get_response_synthesizer
     except ModuleNotFoundError as error:
         raise ImportError(
             "This demo requires `uv sync --extra llama-index` "
@@ -45,7 +50,23 @@ def run_demo(
         embed_model=MockEmbedding(embed_dim=8),
     )
     retrieved = index.as_retriever(similarity_top_k=top_k).retrieve(query)
-    response = index.as_query_engine(llm=MockLLM(), similarity_top_k=top_k).query(query)
+    llm = MockLLM()
+
+    def tokenizer(text: str) -> list[str]:
+        return list(text)
+
+    response_synthesizer = get_response_synthesizer(
+        llm=llm,
+        prompt_helper=PromptHelper.from_llm_metadata(llm.metadata, tokenizer=tokenizer),
+        chat_prompt_helper=ChatPromptHelper.from_llm_metadata(
+            llm.metadata, tokenizer=tokenizer
+        ),
+    )
+    response = index.as_query_engine(
+        llm=llm,
+        similarity_top_k=top_k,
+        response_synthesizer=response_synthesizer,
+    ).query(query)
 
     return {
         "document": result.document.title,

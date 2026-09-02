@@ -59,12 +59,22 @@ def test_llamaindex_conversion(chunk: Chunk) -> None:
     assert to_llamaindex_nodes([chunk])[0] == node
 
 
-def test_llamaindex_index_retrieval_and_query() -> None:
+def test_llamaindex_index_retrieval_and_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     pytest.importorskip("llama_index.core")
     from llama_index.core.embeddings import MockEmbedding
     from llama_index.core.llms.mock import MockLLM
 
     from lumberjack.integrations import build_llamaindex_index
+
+    class Encoding:
+        def encode(self, text: str, **kwargs: object) -> list[int]:  # noqa: ARG002
+            return list(text.encode("utf-8"))
+
+    import tiktoken
+
+    monkeypatch.setattr(tiktoken, "encoding_for_model", lambda _model: Encoding())
 
     chunk = (
         Lumberjack().saw("# Guide\n\nLumberjack preserves source provenance.").chunks[0]

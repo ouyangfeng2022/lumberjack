@@ -21,6 +21,7 @@ import io
 import json
 import random
 import sqlite3
+import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -46,6 +47,7 @@ from lumberjack.parser.sqlite import SQLiteParser
 from lumberjack.parser.xlsx import XlsxParser
 
 ADVERSARIAL_RATIO = 0.15
+_FIXED_ZIP_TIMESTAMP = (2026, 1, 1, 0, 0, 0)
 
 _WORDS = (
     "lumber",
@@ -684,6 +686,24 @@ def _generate_xml(rng: random.Random) -> RandomDocument:
 # Spreadsheets and SQLite
 
 
+def _normalize_zip_timestamps(payload: bytes) -> bytes:
+    """Rewrite ZIP members with a fixed timestamp for deterministic XLSX bytes."""
+    source = io.BytesIO(payload)
+    result = io.BytesIO()
+    with (
+        zipfile.ZipFile(source) as archive,
+        zipfile.ZipFile(result, "w", compression=zipfile.ZIP_DEFLATED) as normalized,
+    ):
+        for member in archive.infolist():
+            info = zipfile.ZipInfo(member.filename, date_time=_FIXED_ZIP_TIMESTAMP)
+            info.compress_type = member.compress_type
+            info.external_attr = member.external_attr
+            info.internal_attr = member.internal_attr
+            info.create_system = member.create_system
+            normalized.writestr(info, archive.read(member))
+    return result.getvalue()
+
+
 def _generate_xlsx(rng: random.Random) -> RandomDocument:
     from openpyxl import Workbook
     from openpyxl.packaging.core import DocumentProperties
@@ -758,7 +778,7 @@ def _generate_xlsx(rng: random.Random) -> RandomDocument:
             row_total += sheet_rows
     stream = io.BytesIO()
     workbook.save(stream)
-    source = stream.getvalue()
+    source = _normalize_zip_timestamps(stream.getvalue())
 
     def mutate(payload: bytes, mutator: random.Random) -> bytes:
         if len(payload) < 2:
