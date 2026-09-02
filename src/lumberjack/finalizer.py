@@ -39,19 +39,27 @@ class ChunkFinalizer:
     def finalize(self, document: DocTree, drafts: Iterable[ChunkDraft]) -> list[Chunk]:
         finished: list[Chunk] = []
         for draft in drafts:
-            body = render_draft_body(draft.entries, draft.headings)
-            body = self.transformer.transform(self.normalizer.normalize(body))
+            rendered = render_draft_body(draft.entries, draft.headings)
+            body = self.transformer.transform(self.normalizer.normalize(rendered))
             if self.skip_empty_sections and not body.strip():
                 continue
 
-            heading_text = render_heading_path(draft.headings)
-            headings_token_count = self.tokenizer.count(heading_text, cache=True)
-            body_token_count = self.tokenizer.count(body, cache=True)
-            token_count = (
-                headings_token_count
-                + self.tokenizer.count(RENDER_SEPARATOR, cache=True)
-                + body_token_count
-            )
+            if draft.counting_mode == "exact" and body == rendered:
+                # The text stages left the rendered body untouched, so the
+                # exact splitter's full recount already covers this chunk —
+                # re-encoding it here would duplicate the work.
+                headings_token_count = draft.headings_token_count
+                body_token_count = draft.body_token_count
+                token_count = draft.token_count
+            else:
+                heading_text = render_heading_path(draft.headings)
+                headings_token_count = self.tokenizer.count(heading_text, cache=True)
+                body_token_count = self.tokenizer.count(body, cache=True)
+                token_count = (
+                    headings_token_count
+                    + self.tokenizer.count(RENDER_SEPARATOR, cache=True)
+                    + body_token_count
+                )
             ancestor_headings = (
                 draft.headings[:-1] if draft.own_heading is not None else draft.headings
             )

@@ -49,7 +49,14 @@ class IncrementalCountingMixin(BaseSplitter):
         )
 
     def _count_once(self, text: str) -> int:
-        """Count an atomic measurement once during the incremental pre-pass."""
+        """Count an atomic measurement once during the incremental pre-pass.
+
+        ``cache=True`` is deliberate: the per-split dict memo dedupes split
+        decisions, but the request-local tokenizer LRU is what carries piece
+        and heading counts across the component boundary into
+        :class:`ChunkFinalizer`, whose authoritative recount would otherwise
+        re-encode them.
+        """
         counts = getattr(self, "_atomic_token_counts", None)
         if counts is None:
             counts = {}
@@ -60,6 +67,8 @@ class IncrementalCountingMixin(BaseSplitter):
         count = self.tokenizer.count(text, cache=True)
         counts[text] = count
         return count
+
+    _memoized_count = _count_once
 
     def _heading_path_token_count(self, path: HeadingPath) -> int:
         if not path:

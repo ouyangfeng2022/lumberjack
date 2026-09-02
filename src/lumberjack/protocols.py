@@ -7,7 +7,23 @@ if TYPE_CHECKING:
 
 
 class TokenizerProtocol(Protocol):
-    """Measure text units used by splitters and finalizers."""
+    """Measure text units used by splitters and finalizers.
+
+    Implementations used with the exact splitters (``Exact*Splitter``,
+    ``RecordSplitter``) should satisfy the join-counting property: for the
+    separators used when rendering chunks (``"\\n\\n"`` and ``"\\n"``),
+
+        ``count(a + separator + b) >= count(a) + count(b) - 2``
+
+    — joining two texts cannot save more than two tokens per join.  The
+    built-in tokenizers satisfy this property, and the exact splitters rely
+    on it to skip provably overflowing candidates without encoding them.
+    A custom tokenizer that collapses joined text (for example, one that
+    maps any string containing a blank line to a near-constant count)
+    violates the contract: exact-mode pruning may then reject a join that a
+    full recount would accept, producing smaller chunks than unbounded
+    counting would.  Chunk content is never lost either way.
+    """
 
     def encode(self, text: str, *, cache=False) -> tuple[int, ...]: ...
 

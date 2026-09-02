@@ -82,6 +82,7 @@ class BaseSplitter:
             max_tokens=self.max_tokens,
             block_options=self.block_options,
             use_cache=self.use_tokenizer_cache,
+            count_fn=self._memoized_count,
         )
 
     def split(self, document: DocTree) -> list[ChunkDraft]:  # pragma: no cover
@@ -89,6 +90,48 @@ class BaseSplitter:
             "split() is provided by a counting-strategy mixin "
             "(ExactCountingMixin or IncrementalCountingMixin)"
         )
+
+    def _memo_count(self, text: str) -> int:
+        """Count a distinct string once per split, cache-free.
+
+        Shared per-split memo for exact-style counting (exact mixins and the
+        record splitter).  ``split()`` implementations reset ``_count_memo``
+        so counts never leak across documents.
+        """
+        memo = getattr(self, "_count_memo", None)
+        if memo is None:
+            memo = {}
+            self._count_memo = memo
+        cached = memo.get(text)
+        if cached is not None:
+            return cached
+        count = self.tokenizer.count(text, cache=False)
+        memo[text] = count
+        return count
+
+    def _memoized_count(self, text: str) -> int:
+        """Per-split dedup hook used by BlockSplitter; mixins override.
+
+        Exact-style strategies route through :meth:`_memo_count`; the
+        incremental strategy routes through :meth:`_count_once`.
+        """
+        return self.tokenizer.count(text, cache=self.use_tokenizer_cache)
+
+    def _merge_bound_exceeds(
+        self,
+        left_draft: ChunkDraft,  # noqa: ARG002
+        right_draft: ChunkDraft,  # noqa: ARG002
+        common_headings: HeadingPath,  # noqa: ARG002
+        limit: int,  # noqa: ARG002
+    ) -> bool:
+        """Sound fast rejection for merging two drafts; False unless overridden.
+
+        Returning ``True`` lets merge-heavy topologies skip rendering and
+        counting a candidate whose joined budget provably exceeds *limit*.
+        The default never pre-rejects; exact counting overrides it with a
+        part-sum lower bound.
+        """
+        return False
 
     def _heading_path_token_count(self, path: HeadingPath) -> int:
         if not path:

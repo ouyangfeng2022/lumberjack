@@ -15,9 +15,19 @@ class RecordSplitter(BaseSplitter):
 
     A record is atomic: when it alone exceeds the budget, the emitted draft is
     marked ``protected`` instead of splitting its text or claiming compliance.
+
+    Counting is exact but cache-free: like the exact splitters, identical
+    strings within one split (the emitted body re-counted after packing) are
+    deduplicated by a per-split memo instead of the tokenizer cache.  The
+    part-sum join bound assumes the join-counting property documented on
+    ``TokenizerProtocol``.
     """
 
+    use_tokenizer_cache = False
+
     supported_topologies = frozenset({"records"})
+
+    _memoized_count = BaseSplitter._memo_count
 
     def __init__(
         self,
@@ -43,6 +53,7 @@ class RecordSplitter(BaseSplitter):
 
     def split(self, document: DocTree) -> list[ChunkDraft]:
         self._validate_document_topology(document)
+        self._count_memo = {}
         invalid_kinds = {
             str(block.kind).lower()
             for block in document.root.blocks
@@ -61,7 +72,7 @@ class RecordSplitter(BaseSplitter):
             if not entries:
                 return
             body = render_draft_body(entries, ())
-            body_tokens = self.tokenizer.count(body, cache=True)
+            body_tokens = self._memo_count(body)
             drafts.append(
                 ChunkDraft(
                     entries=list(entries),
@@ -76,35 +87,52 @@ class RecordSplitter(BaseSplitter):
                 )
             )
 
+        def flush(*, protected: bool = False) -> None:
+            """Emit the running group and reset it together with its count."""
+            nonlocal current, current_tokens
+            if not current:
+                return
+            emit(current, protected=protected)
+            current = []
+            current_tokens = 0
+
+        current_tokens = 0
         for block in document.root.blocks:
+            entry_tokens = self._memo_count(block.text)
             entry = Entry(
                 headings=(),
                 body=block.text,
                 start_line=block.start_line,
                 end_line=block.end_line,
-                body_token_count=self.tokenizer.count(block.text, cache=True),
+                body_token_count=entry_tokens,
                 source_locations=block.source_locations,
             )
-            candidate = [*current, entry]
-            candidate_body = render_draft_body(candidate, ())
-            candidate_tokens = self._chunk_token_count(
-                0, self.tokenizer.count(candidate_body, cache=True)
-            )
-            if current and candidate_tokens > self.ideal_max_tokens:
-                emit(current)
-                current = [entry]
+            single_tokens = self._chunk_token_count(0, entry_tokens)
+            if current and current_tokens + entry_tokens - 2 > self.ideal_max_tokens:
+                # Sound rejection: the candidate renders both groups as
+                # contiguous blocks joined by one separator, so its count is
+                # at least the current body + entry - 2 for tokenizers
+                # honoring the join-counting property documented on
+                # TokenizerProtocol — encoding it would be wasted work.
+                flush()
+            if current:
+                candidate = [*current, entry]
                 candidate_tokens = self._chunk_token_count(
-                    0, self.tokenizer.count(block.text, cache=True)
+                    0, self._memo_count(render_draft_body(candidate, ()))
                 )
-            if not current:
-                current = [entry]
-            elif candidate_tokens <= self.ideal_max_tokens:
-                current = candidate
-            if len(current) == 1 and candidate_tokens > self.max_tokens:
-                emit(current, protected=True)
-                current = []
+                if candidate_tokens <= self.ideal_max_tokens:
+                    current = candidate
+                    current_tokens = candidate_tokens
+                    continue
+                flush()
+            current = [entry]
+            current_tokens = single_tokens
+            if single_tokens > self.max_tokens:
+                # A lone record that not even max_tokens accommodates is
+                # reported as protected, never split or faked into compliance.
+                flush(protected=True)
 
-        emit(current)
+        flush()
         return drafts
 
 

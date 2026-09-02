@@ -172,6 +172,27 @@ def test_record_splitter_packs_rows_without_heading_context() -> None:
     assert [location.row_start for location in chunks[0].source_locations] == [2, 3]
 
 
+def test_record_splitter_emits_each_record_exactly_once_across_chunks() -> None:
+    """Packing past the budget must not re-pack already emitted records."""
+    builder = DocTreeBuilder(title="Rows", topology="records", block_kinds=["record"])
+    records = [f"row-{index}-" + "x" * 90 for index in range(6)]
+    for index, record in enumerate(records):
+        builder.add_record(
+            record,
+            locations=[SourceLocation(json_path=f"$.items[{index}]")],
+        )
+    document = builder.build()
+
+    chunks = saw(RecordSplitter(ApproxByteTokenizer(), max_tokens=100), document)
+
+    assert len(chunks) > 1
+    rendered = "\n".join(chunk.body for chunk in chunks)
+    assert all(rendered.count(record) == 1 for record in records)
+    assert [
+        location.json_path for chunk in chunks for location in chunk.source_locations
+    ] == [f"$.items[{index}]" for index in range(6)]
+
+
 def test_hierarchical_splitters_reject_record_documents() -> None:
     document = (
         DocTreeBuilder(title="Rows", topology="records", block_kinds=["record"])

@@ -6,14 +6,30 @@ from types import SimpleNamespace
 import pytest
 
 import lumberjack.tokenizer as tokenizers
-from lumberjack.models import ChunkDraft, complete_heading_path, render_heading_path
+from lumberjack.finalizer import ChunkFinalizer
+from lumberjack.models import (
+    ChunkDraft,
+    SourceLocation,
+    complete_heading_path,
+    render_draft_body,
+    render_heading_path,
+)
+from lumberjack.parser import DocTreeBuilder
 from lumberjack.parser.markdown.parser import MarkdownItParser
 from lumberjack.splitter.context import SectionView
+from lumberjack.splitter.record import RecordSplitter
 from lumberjack.tokenizer import (
     ApproxByteTokenizer,
     TiktokenTokenizer,
 )
-from tests.helpers import create_splitter, create_tokenizer, saw, splitter_options
+from lumberjack.transformer import PlainTextTransformer
+from tests.helpers import (
+    CharacterTokenizer,
+    create_splitter,
+    create_tokenizer,
+    saw,
+    splitter_options,
+)
 
 
 @pytest.fixture(name="_local_tiktoken")
@@ -242,7 +258,7 @@ class TestSplitterCachePolicy:
         Repeated heading paths and bodies counted at both the call site and
         the draft builder must never reach the tokenizer twice within one
         split. Uses a budget large enough that no block is oversized, so the
-        shared BlockSplitter (outside the memo's scope) never counts.
+        assertion covers only the mixin's own counting points.
         """
         tokenizer = _RecordingCountTokenizer()
         splitter = create_splitter(
@@ -252,6 +268,142 @@ class TestSplitterCachePolicy:
         splitter.split(MarkdownItParser().parse(self.SOURCE))
 
         assert len(tokenizer.counted) > 1
+        assert len(tokenizer.counted) == len(set(tokenizer.counted))
+
+    def test_exact_split_dedupes_block_splitter_piece_counts(self) -> None:
+        """BlockSplitter counts share the exact memo across the boundary.
+
+        With an oversized fenced block, BlockSplitter's wrapper, literal, and
+        piece counts must land in the same per-split memo the mixin reads, so
+        neither the full block text nor any piece is encoded twice.
+        """
+        tokenizer = _RecordingCountTokenizer()
+        splitter = create_splitter(
+            "exact-section", tokenizer, splitter_options(max_tokens=60)
+        )
+
+        splitter.split(MarkdownItParser().parse(self.SOURCE))
+
+        assert len(tokenizer.counted) > 1
+        assert len(tokenizer.counted) == len(set(tokenizer.counted))
+
+
+class TestExactFinalizerReuse:
+    """Exact split-time counts carry over to finalize when text is unchanged."""
+
+    SOURCE = (
+        "# Title\n\n"
+        "First paragraph with some text to pack.\n\n"
+        "## Subsection\n\n"
+        "Subsection body content here.\n\n"
+        "```python\n"
+        "print('alpha')\nprint('beta')\nprint('gamma')\n"
+        "print('delta')\nprint('epsilon')\n"
+        "```\n"
+    )
+
+    def test_unchanged_body_skips_final_recount(self) -> None:
+        tokenizer = _RecordingCountTokenizer()
+        splitter = create_splitter(
+            "exact-section", tokenizer, splitter_options(max_tokens=60)
+        )
+        document = MarkdownItParser().parse(self.SOURCE)
+        drafts = splitter.split(document)
+        counts_after_split = len(tokenizer.counted)
+
+        chunks = ChunkFinalizer(tokenizer).finalize(document, drafts)
+
+        assert chunks
+        assert len(tokenizer.counted) == counts_after_split
+        assert all(chunk.estimated_token_count == chunk.token_count for chunk in chunks)
+
+    def test_changed_body_recounts(self) -> None:
+        tokenizer = _RecordingCountTokenizer()
+        splitter = create_splitter(
+            "exact-section", tokenizer, splitter_options(max_tokens=60)
+        )
+        document = MarkdownItParser().parse(self.SOURCE)
+        drafts = splitter.split(document)
+        counts_after_split = len(tokenizer.counted)
+
+        chunks = ChunkFinalizer(
+            tokenizer,
+            transformer=PlainTextTransformer(),
+        ).finalize(document, drafts)
+
+        assert chunks
+        assert len(tokenizer.counted) > counts_after_split
+
+
+class TestExactSubtreeFitChecks:
+    """Subtree fit decisions prune with block counts before rendering."""
+
+    SOURCE = (
+        "# Root\n\n"
+        + "alpha-body " * 40
+        + "\n\n## Branch\n\n"
+        + "beta-body " * 40
+        + "\n"
+    )
+
+    def test_oversized_subtree_render_is_never_encoded(self) -> None:
+        tokenizer = _RecordingCountTokenizer()
+        splitter = create_splitter(
+            "exact-subtree", tokenizer, splitter_options(max_tokens=50)
+        )
+        document = MarkdownItParser().parse(self.SOURCE)
+
+        chunks = saw(splitter, document)
+
+        assert chunks
+        joined = "\n".join(chunk.body for chunk in chunks)
+        assert "alpha-body" in joined
+        assert "beta-body" in joined
+        # The full subtree render starts with the root heading and contains
+        # the deepest body; pruning must keep it out of the tokenizer.
+        assert not any(
+            text.startswith("# Root") and "beta-body" in text
+            for text in tokenizer.counted
+        )
+
+    def test_collapsed_subtree_entries_skip_per_entry_counts(self) -> None:
+        tokenizer = _RecordingCountTokenizer()
+        splitter = create_splitter(
+            "exact-subtree", tokenizer, splitter_options(max_tokens=10000)
+        )
+        document = MarkdownItParser().parse(self.SOURCE)
+
+        drafts = splitter.split(document)
+
+        assert len(drafts) == 1
+        assert len(drafts[0].entries) == 2
+        assert all(entry.body_token_count == 0 for entry in drafts[0].entries)
+        assert drafts[0].body_token_count > 0
+
+
+class TestRecordSplitterCountingPolicy:
+    """The record splitter counts exactly, through the shared per-split memo."""
+
+    def _document(self):
+        builder = DocTreeBuilder(
+            title="Rows", topology="records", block_kinds=["record"]
+        )
+        for index in range(4):
+            builder.add_record(
+                f"row-{index}-" + "x" * 90,
+                locations=[SourceLocation(json_path=f"$.items[{index}]")],
+            )
+        return builder.build()
+
+    def test_runs_cache_free_with_per_split_memo(self) -> None:
+        tokenizer = _RecordingCountTokenizer()
+        splitter = RecordSplitter(tokenizer, max_tokens=100)
+
+        assert splitter.use_tokenizer_cache is False
+
+        drafts = splitter.split(self._document())
+
+        assert drafts
         assert len(tokenizer.counted) == len(set(tokenizer.counted))
 
 
@@ -530,3 +682,295 @@ class TestCliSplitterChoices:
 
         with pytest.raises(SystemExit):
             build_parser().parse_args(["input.md", "--splitter", "bogus"])
+
+
+class TestLowerBoundRejections:
+    """Sound part-sum bounds skip provably doomed encodes without flips."""
+
+    def test_approx_count_skips_tuple_materialization(self) -> None:
+        """count() must not route through encode()'s per-byte int tuple."""
+
+        class EncodeSpyTokenizer(ApproxByteTokenizer):
+            def __init__(self) -> None:
+                super().__init__()
+                self.encode_calls = 0
+
+            def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:
+                self.encode_calls += 1
+                return super().encode(text, cache=cache)
+
+        tokenizer = EncodeSpyTokenizer()
+
+        for text in ("", "hello", "héllo wörld", "x" * 10_000):
+            assert tokenizer.count(text) == len(text.encode("utf-8")) // 3
+
+        assert tokenizer.encode_calls == 0
+        assert tokenizer.encode("hi") == (104, 105)
+
+    def test_exact_sibling_merge_bound_matches_full_recount(self) -> None:
+        """Pre-rejecting provably overflowing merges never changes the drafts."""
+        source = (
+            "# Root\n\n"
+            + "intro body\n\n"
+            + "## A\n\n"
+            + "alpha " * 60
+            + "\n\n"
+            + "## B\n\n"
+            + "beta " * 60
+            + "\n\n"
+            + "## C\n\n"
+            + "gamma " * 60
+            + "\n"
+        )
+        document = MarkdownItParser().parse(source)
+        tokenizer = _RecordingCountTokenizer()
+        splitter = create_splitter(
+            "exact-sibling", tokenizer, splitter_options(max_tokens=60)
+        )
+        bounded = splitter.split(document)
+
+        splitter._merge_bound_exceeds = lambda *_: False  # type: ignore[method-assign]
+        unbounded = splitter.split(document)
+
+        assert [(d.headings, d.body_token_count, d.token_count) for d in bounded] == [
+            (d.headings, d.body_token_count, d.token_count) for d in unbounded
+        ]
+        assert bounded
+
+    def test_pack_parts_rejects_provably_overflowing_join(self) -> None:
+        from lumberjack._internal.block_splitter import BlockSplitter
+
+        tokenizer = _RecordingCountTokenizer()
+        splitter = BlockSplitter(
+            tokenizer,
+            max_tokens=15,
+            block_options={},
+            use_cache=False,
+            count_fn=None,
+        )
+        left = "a" * 30
+        right = "b" * 30
+
+        packed = splitter.pack_parts(
+            [left, right], 15, separator="\n", part_token_counts=[10, 10]
+        )
+
+        # The recording tokenizer counts characters, so the first piece
+        # carries its encoded count (30) and the second its part count (10);
+        # the grouping is what matters — the join cannot fit 15.
+        assert packed == [(left, 30), (right, 10)]
+        # The doomed join (>= 10 + 10 - 2 > 15) was never encoded.
+        assert f"{left}\n{right}" not in tokenizer.counted
+
+    def test_pack_parts_exact_check_decides_within_bound_slack(self) -> None:
+        from lumberjack._internal.block_splitter import BlockSplitter
+
+        tokenizer = _RecordingCountTokenizer()
+        splitter = BlockSplitter(
+            tokenizer,
+            max_tokens=2,
+            block_options={},
+            use_cache=False,
+            count_fn=None,
+        )
+
+        # Single-character parts: 1 + 1 - 2 = 0 <= 2, so the bound must not
+        # reject and the exact join check decides ("a\nb" counts 3 > 2).
+        packed = splitter.pack_parts(
+            ["a", "b"], 2, separator="\n", part_token_counts=[1, 1]
+        )
+
+        assert packed == [("a", 1), ("b", 1)]
+        assert "a\nb" in tokenizer.counted
+
+
+class _JoinCollapsingTokenizer:
+    """Tokenizer violating TokenizerProtocol's join-counting property.
+
+    Any text containing a blank line collapses to one token, so joining two
+    parts can save far more than the two tokens of slack the pruning bounds
+    allow.
+    """
+
+    def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
+        return (1,) if "\n\n" in text else tuple(ord(char) for char in text)
+
+    def count(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
+        return 1 if "\n\n" in text else len(text)
+
+
+class TestBoundContract:
+    """The pruning bounds assume TokenizerProtocol's join-counting property.
+
+    With a contract-violating tokenizer the bound is no longer sound: it
+    rejects joins a full recount would accept.  This test pins that
+    documented limitation instead of pretending it cannot happen — grouping
+    changes, but no content is ever lost.
+    """
+
+    def test_join_collapsing_tokenizer_changes_grouping_not_content(self) -> None:
+        source = (
+            "# Root\n\n## Alpha\n\n" + "a" * 40 + "\n\n## Beta\n\n" + "b" * 40 + "\n"
+        )
+        document = MarkdownItParser().parse(source)
+        splitter = create_splitter(
+            "exact-sibling",
+            _JoinCollapsingTokenizer(),
+            splitter_options(max_tokens=60),
+        )
+
+        bounded = splitter.split(document)
+        splitter._merge_bound_exceeds = lambda *_args, **_kwargs: False  # type: ignore[method-assign]
+        unbounded = splitter.split(document)
+
+        assert len(bounded) > len(unbounded)
+        assert len(unbounded) == 1
+        # Either way every record survives exactly once.
+        for drafts in (bounded, unbounded):
+            joined = "\n\n".join(
+                render_draft_body(draft.entries, draft.headings) for draft in drafts
+            )
+            assert joined.count("a" * 40) == 1
+            assert joined.count("b" * 40) == 1
+        unbounded_body = render_draft_body(unbounded[0].entries, unbounded[0].headings)
+        assert "a" * 40 in unbounded_body
+        assert "b" * 40 in unbounded_body
+
+
+EQUIVALENCE_SOURCES = {
+    "merge-heavy": (
+        "# Root\n\n"
+        "Intro paragraph with ordinary body text.\n\n"
+        "## Alpha\n\n" + "alpha body " * 25 + "\n\n"
+        "## Beta\n\n" + "beta body " * 25 + "\n\n"
+        "### Beta Child\n\n" + "child body text " * 8 + "\n\n"
+        "## Gamma\n\n" + "gamma body " * 25 + "\n"
+    ),
+    "oversized-blocks": (
+        "# Root\n\n"
+        + "overflow paragraph " * 30
+        + "\n\n```python\n"
+        + "\n".join(f"print('statement number {i}')" for i in range(24))
+        + "\n```\n\n"
+        + "".join(f"- {'list item with words ' * 5}\n" for _ in range(4))
+        + "\n| head one | head two |\n"
+        "| --- | --- |\n"
+        + "\n".join(f"| row {i} alpha | row {i} beta |" for i in range(12))
+        + "\n"
+    ),
+}
+
+
+def _disable_bounds(splitter) -> None:
+    """Turn off every pre-rejection bound, keeping counting identical."""
+    from lumberjack._internal.block_splitter import BlockSplitter
+
+    splitter._merge_bound_exceeds = lambda *_args, **_kwargs: False
+    splitter._subtree_body_token_bound = lambda _section: -(2**62)  # type: ignore[assignment]
+    block_splitter = splitter._block_splitter
+    unbounded_pack = BlockSplitter.pack_parts
+
+    def pack_parts_unbounded(
+        parts,
+        max_tokens,
+        *,
+        separator,
+        part_token_counts=None,  # noqa: ARG001
+    ):
+        """Drop the caller's part counts so every join is decided by recount."""
+        return unbounded_pack(
+            block_splitter,
+            parts,
+            max_tokens,
+            separator=separator,
+            part_token_counts=None,
+        )
+
+    block_splitter.pack_parts = pack_parts_unbounded
+
+
+class TestBoundEquivalence:
+    """Bounded pruning never changes split output for contract-abiding tokenizers.
+
+    Every exact topology runs each source at several budgets under three
+    tokenizers (real approx, character counting, offline tiktoken), with all
+    pre-rejection bounds disabled for the second run; the bounded drafts
+    must equal the unbounded ones draft for draft.
+    """
+
+    @pytest.mark.parametrize("source_name", sorted(EQUIVALENCE_SOURCES))
+    @pytest.mark.parametrize("tokenizer_name", ["approx", "chars", "tiktoken"])
+    @pytest.mark.parametrize("max_tokens", [40, 120, 400])
+    @pytest.mark.parametrize(
+        "splitter_name", ["exact-section", "exact-subtree", "exact-sibling"]
+    )
+    def test_bounded_split_matches_unbounded(
+        self,
+        splitter_name: str,
+        max_tokens: int,
+        tokenizer_name: str,
+        source_name: str,
+        _local_tiktoken,
+    ) -> None:
+        document = MarkdownItParser().parse(EQUIVALENCE_SOURCES[source_name])
+        if tokenizer_name == "approx":
+            tokenizer = ApproxByteTokenizer()
+        elif tokenizer_name == "tiktoken":
+            tokenizer = create_tokenizer("tiktoken")
+        else:
+            tokenizer = CharacterTokenizer()
+        splitter = create_splitter(
+            splitter_name, tokenizer, splitter_options(max_tokens=max_tokens)
+        )
+
+        bounded = splitter.split(document)
+
+        _disable_bounds(splitter)
+        unbounded = splitter.split(document)
+
+        assert bounded
+        assert bounded == unbounded
+
+    def test_record_packing_matches_unbounded_reference(self) -> None:
+        """The record join bound must not change greedy packing decisions."""
+        texts = [f"row-{index} " + "x" * (30 + (index % 5) * 17) for index in range(24)]
+        texts.append("huge " + "y" * 300)
+        tokenizer = _RecordingCountTokenizer()
+        splitter = RecordSplitter(tokenizer, max_tokens=120)
+        builder = DocTreeBuilder(
+            title="Rows", topology="records", block_kinds=["record"]
+        )
+        for index, text in enumerate(texts):
+            builder.add_record(
+                text, locations=[SourceLocation(json_path=f"$.items[{index}]")]
+            )
+
+        drafts = splitter.split(builder.build())
+
+        # Reference packer with the bound removed: greedy accumulate,
+        # full recount each step, protected emit for lone overflows.
+        separator_tokens = splitter.separator_token_count
+        expected: list[tuple[str, bool]] = []
+        current: list[str] = []
+
+        def rendered(group: list[str]) -> str:
+            return "\n\n".join(text for text in group if text)
+
+        for text in texts:
+            candidate = [*current, text]
+            candidate_tokens = separator_tokens + len(rendered(candidate))
+            if current and candidate_tokens > splitter.ideal_max_tokens:
+                expected.append((rendered(current), False))
+                current = [text]
+            else:
+                current = candidate
+            if len(current) == 1 and separator_tokens + len(text) > splitter.max_tokens:
+                expected.append((text, True))
+                current = []
+        if current:
+            expected.append((rendered(current), False))
+
+        assert [
+            (render_draft_body(draft.entries, ()), draft.protected) for draft in drafts
+        ] == expected
+        assert any(protected for _, protected in expected)

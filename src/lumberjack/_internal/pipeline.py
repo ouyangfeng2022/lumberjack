@@ -106,6 +106,12 @@ class Pipeline:
 
     def run_trace(self, document: Document) -> PipelineTrace:
         """Run all stages and retain their public intermediate representations."""
+        # Every document splits from a zero text cache, matching the web path
+        # (per-request fresh cache) and the CLI (per-file pipeline).  Optional
+        # guard: custom tokenizers may not expose a clearable cache.
+        clear_cache = getattr(self.tokenizer, "clear_cache", None)
+        if callable(clear_cache):
+            clear_cache()
         extraction = (
             self.parser.extract(document)
             if isinstance(self.parser, ExtractionParserProtocol)

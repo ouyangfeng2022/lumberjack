@@ -33,6 +33,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Pipeline runs no longer crash on a custom tokenizer that exposes a
+  non-callable `clear_cache` attribute: the per-run cache reset only calls
+  callable hooks now.
+- The `record` splitter no longer re-packs already-emitted records into
+  subsequent chunks: when a packed group exceeded the budget, the running
+  candidate list was not reset alongside the current group, so every earlier
+  record was duplicated into the next chunk and output grew quadratically on
+  long flat documents. Multi-chunk record documents now emit each record
+  exactly once, in input order.
 - Seeded XLSX parser-benchmark documents now normalize ZIP member timestamps,
   so repeated generation produces identical bytes. CI also runs tokenizer and
   LlamaIndex integration tests offline; the LlamaIndex index helper skips its
@@ -126,6 +135,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The default `approx` tokenizer no longer materializes a per-byte integer
+  tuple inside `count()`: counting now takes the UTF-8 byte length directly,
+  which is roughly 90x cheaper per call and speeds up splits with the default
+  engine by about 10% end to end.
+- Exact-mode budget decisions skip provably doomed candidate encodings via
+  sound part-sum lower bounds (two tokens of slack per join, assuming the
+  join-counting property now documented on `TokenizerProtocol`):
+  oversized-block piece and list-item packing, sibling merge attempts, and
+  record packing no longer render and count joins whose parts already exceed
+  the budget. Exact subtree fit pruning now includes descendant headings in
+  the bound and subtracts the per-join slack, making it a constructive lower
+  bound instead of a practical estimate. Accepted candidates are still
+  verified by full recounts, and chunk output is unchanged for tokenizers
+  honoring the documented contract; a custom tokenizer that collapses joined
+  text violates it and may see differently grouped chunks.
+- Oversized-block splitting (`BlockSplitter`) now counts through the owning
+  splitter's per-split memo instead of calling the tokenizer directly: full
+  oversized-block texts, produced pieces, list items, and table row pieces
+  are encoded once per split and shared with the exact draft builder.
+  Together with the finalize and pruning changes below, exact splitters
+  encode 15-21% fewer characters on the seeded splitter corpus (split plus
+  finalize) with byte-identical chunk output.
+- `ChunkFinalizer` reuses an exact draft's split-time counts when the default
+  normalize/transform stages leave the rendered body unchanged, instead of
+  re-encoding every final chunk body. Texts actually modified by custom text
+  stages are still recounted authoritatively.
+- Exact subtree fit decisions (`exact-subtree`, `exact-sibling`) first compare
+  a raw block-text lower bound against the budget and skip rendering subtree
+  candidates that cannot possibly fit; fitting subtrees produce unchanged
+  drafts. Entries of exact subtree drafts now carry `body_token_count=0` in
+  trace output: per-entry counts never fed a budget decision, and computing
+  them encoded every section body a second time.
+- The record splitter counts through the same cache-free per-split memo as
+  the exact splitters instead of populating the tokenizer text cache.
+- Every pipeline run now clears the tokenizer text cache before splitting, so
+  the Python API (`Lumberjack.saw()`/`saw_many()`) honors the same
+  zero-cache-per-document semantics as the web path (fresh cache per request)
+  and the CLI (fresh pipeline per file).
 - `Exact*Splitter` classes now deduplicate identical `count()` texts within
   one split through an internal per-split memo (mirroring incremental's
   `_count_once`) instead of re-enabling the tokenizer text cache: repeated
