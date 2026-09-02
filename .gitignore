@@ -25,6 +25,7 @@ output/
 benchmarks/results/*
 !benchmarks/results/.gitkeep
 benchmarks/datasets/external/
+benchmarks/assets/vendor/
 site/
 
 # Private development documentation

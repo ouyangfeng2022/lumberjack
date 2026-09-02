@@ -207,9 +207,12 @@ comparison). The process exits non-zero when any oracle fails. Whether exact is
 faster than incremental depends on topology and budget: exact relies on
 tokenizer LRU hits to amortize its recounts while incremental pays a fixed
 pre-measure pass, so exact typically wins at larger budgets and on cache-heavy
-workloads (measured wall ratios span roughly 0.5x–1.5x). Over-budget chunks
-reported by both counting modes come from `edge-degenerate`'s long-title
-variant — a heading is an atomic unit that cannot be split internally.
+workloads (measured wall ratios span roughly 0.5x–1.8x). Over-budget chunks
+reported by both counting modes are identical and come from atomic units that
+exceed the budget — `edge-degenerate`'s long-title variant and, once the
+Kubernetes corpus joins the recombined pool, oversized table/list blocks from
+real pages. A heading or a table is an atomic unit that cannot be split
+internally.
 
 `summary.json` 提供总体 / 按 tokenizer / 按 splitter / 按数据集的汇总，以及 exact
 与 incremental 的配对对比表（耗时比、计数调用比、内存比、估计误差与超预算率对
@@ -236,19 +239,41 @@ engine/budget, accuracy tables (estimate error, violation rate, recall),
 cold-run memory peaks per dataset/splitter, a tiktoken LRU-capacity sensitivity
 table, auto-derived key findings, and an editorial summary & evaluation section
 (per-dimension verdicts, splitter selection guidance, and measurement-scope
-caveats). One known result: a single split of a
+caveats). Every measured section also carries interactive ECharts figures —
+budget × splitter time bars, a per-document length × time scatter, incremental
+estimate-error bars, exact/incremental paired ratios against a 1.0 reference
+line, cold-run memory bars, and the cache LRU comparison — with button
+selectors for engine/budget/metric, hover tooltips, and toggleable legend
+series, so cross-dimension comparisons that are hard to read row-by-row in a
+table are visible at a glance. Metric definitions are typeset as LaTeX and
+rendered with an inlined KaTeX. One known result: a single split of a
 ~40 KB document touches ~1900 distinct `count()` texts, which exceeds the
 default `TiktokenTokenizer(max_cache_size=1000)`; the LRU thrashes and the
-document is 30–38x slower until the cache is enlarged (e.g. `max_cache_size`
+document is ~30–35x slower until the cache is enlarged (e.g. `max_cache_size`
 10000).
+
+Chart/LaTeX vendor libraries (pinned ECharts 5.6.0 and KaTeX 0.16.21, including
+the woff2 fonts, embedded as base64 data URIs) live in the git-ignored
+`benchmarks/assets/vendor/` directory and are downloaded automatically on the
+first render, keeping the emitted HTML fully self-contained and offline
+viewable.
 
 `splitter_report.py` 从多个 `splitter_random_run` 输出目录与缓存探测数据渲染一份
 自包含的中文 HTML 报告：数据集长度画像、每引擎/预算的长度 × 时间表、准确率表
 （估计误差、超限率、召回率）、每数据集/splitter 的冷启动内存峰值、tiktoken LRU
 容量敏感性表、自动生成的关键发现，以及「总结与评价」章节（分维度评价、选型建
-议与测量口径局限）。已知结论之一：约 40 KB 文档单次 split 会触及
-约 1900 个不同的 `count()` 文本，超过默认 `TiktokenTokenizer(max_cache_size=1000)`
-导致 LRU 抖动，耗时放大 30–38 倍，扩容缓存（如 10000）即恢复线性。
+议与测量口径局限）。每个测量章节另配可交互的 ECharts 图表——预算 × 变体的耗时
+柱状图、逐文档的长度 × 耗时散点图、incremental 估计误差柱状图、exact/incremental
+配对比值图（带 1.0 参考线）、冷启动内存柱状图与缓存 LRU 对比图——支持按钮切换
+引擎/预算/统计量、悬停查数值、图例开关系列，表格里逐行难以横向对比的维度在图
+上一眼可比；度量定义用 LaTeX 书写并由内联 KaTeX 渲染。已知结论之一：约 40 KB
+文档单次 split 会触及约 1900 个不同的 `count()` 文本，超过默认
+`TiktokenTokenizer(max_cache_size=1000)` 导致 LRU 抖动，耗时放大约 30–35 倍，
+扩容缓存（如 10000）即恢复线性。
+
+图表与 LaTeX 的 vendor 库（固定版本 ECharts 5.6.0 与 KaTeX 0.16.21，含以 base64
+data URI 内嵌的 woff2 字体）存放在被 Git 忽略的 `benchmarks/assets/vendor/`
+目录，首次渲染时自动下载，产出的 HTML 保持完全自包含、可离线查看。
 
 ## Optional competitors / 可选竞品
 
