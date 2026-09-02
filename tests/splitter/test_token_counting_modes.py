@@ -236,6 +236,24 @@ class TestSplitterCachePolicy:
         assert tokenizer.cache_flags
         assert any(tokenizer.cache_flags)
 
+    def test_exact_split_dedupes_identical_count_texts(self) -> None:
+        """The per-split memo must encode every distinct text at most once.
+
+        Repeated heading paths and bodies counted at both the call site and
+        the draft builder must never reach the tokenizer twice within one
+        split. Uses a budget large enough that no block is oversized, so the
+        shared BlockSplitter (outside the memo's scope) never counts.
+        """
+        tokenizer = _RecordingCountTokenizer()
+        splitter = create_splitter(
+            "exact-sibling", tokenizer, splitter_options(max_tokens=400)
+        )
+
+        splitter.split(MarkdownItParser().parse(self.SOURCE))
+
+        assert len(tokenizer.counted) > 1
+        assert len(tokenizer.counted) == len(set(tokenizer.counted))
+
 
 class TestCreateTokenizer:
     def test_approx_is_supported(self) -> None:

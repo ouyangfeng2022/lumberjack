@@ -211,10 +211,11 @@ uv run python -m benchmarks.splitter_random_run \
 aggregates plus a pairwise exact-vs-incremental table (wall-time ratio,
 count-call ratio, memory ratio, estimate-error and budget-violation
 comparison). The process exits non-zero when any oracle fails. Exact counting
-never enables the tokenizer cache: every document's split starts from a zero
-cache in production, and a single split offers essentially no cache reuse, so
-the recount pays full encoding every time while incremental pays a fixed
-pre-measure pass — all wall times are cold-cache numbers. Over-budget chunks
+never enables the tokenizer cache (every document's split starts from a zero
+cache in production); identical texts within one split are deduplicated by
+the splitter's internal per-split memo, so only the ever-growing candidate
+concatenations re-encode fully while incremental pays a fixed pre-measure
+pass — all wall times are cold-cache numbers. Over-budget chunks
 reported by both counting modes are identical and come from atomic units that
 exceed the budget — `edge-degenerate`'s long-title variant and, once the
 Kubernetes corpus joins the recombined pool, oversized table/list blocks from
@@ -223,11 +224,12 @@ internally.
 
 `summary.json` 提供总体 / 按 tokenizer / 按 splitter / 按数据集的汇总，以及 exact
 与 incremental 的配对对比表（耗时比、计数调用比、内存比、估计误差与超预算率对
-比）。任何 oracle 失败时进程以非零码退出。exact 计数完全不启用 tokenizer 缓存：
-生产中每篇文档的 split 都从零缓存开始、单篇内基本不存在缓存复用，因此 exact 的
-每次重计数都支付完整编码成本，incremental 则支付一次性预测量开销——所有耗时均为
-冷缓存口径。两种计数方式报告的超预算块均来自 `edge-degenerate` 的“超长标题”
-变体——标题是原子单元，无法在标题内部切分。
+比）。任何 oracle 失败时进程以非零码退出。exact 计数完全不启用 tokenizer 缓存
+（生产中每篇文档的 split 都从零缓存开始）；同一 split 内的相同字符串重计数由
+splitter 内部的 per-split memo 去重，只有不断增长的候选拼接仍需整体重编码，
+incremental 则只支付一次性预测量开销——所有耗时均为冷缓存口径。两种计数方式
+报告的超预算块均来自 `edge-degenerate` 的“超长标题”变体——标题是原子单元，
+无法在标题内部切分。
 
 ### Full comparison report / 完整对比报告
 
@@ -241,24 +243,25 @@ internally.
 uv run python -m benchmarks.splitter_report
 ```
 
-The report covers dataset length profiles, length × time tables per
-engine/budget, accuracy tables (estimate error, violation rate, recall),
-cold-run memory peaks per dataset/splitter, a tiktoken cache-capacity
-irrelevance probe, auto-derived key findings, and an editorial summary &
-evaluation section (per-dimension verdicts, splitter selection guidance, and
-measurement-scope caveats). Every measured section also carries interactive
-ECharts figures — budget × splitter time bars, a per-document length × time
-scatter, incremental estimate-error bars, exact/incremental paired ratios
-against a 1.0 reference line, cold-run memory bars, and the cache LRU
-comparison — with button selectors for engine/budget/metric, hover tooltips,
-and toggleable legend series, so cross-dimension comparisons that are hard to
-read row-by-row in a table are visible at a glance. Metric definitions are
-typeset as LaTeX and rendered with an inlined KaTeX. One known result: a
-single split of the ~50 KB probe document touches ~1900 distinct `count()`
-texts; under the cold-cache timing semantics (cache cleared before every
-repetition) the default `max_cache_size=1000` and an enlarged `10000` measure
-identically (speedup 1.0x for all six variants) — no splitter depends on
-intra-split LRU reuse, and no cache tuning is needed for large documents.
+The report covers dataset length profiles, a dimension pivot explorer
+(metric × X-axis × series across counting mode / topology / budget with an
+engine filter; leftover dimensions aggregate by median), fixed-view chapters
+for time, accuracy (estimate error, violation rate, recall), and cold-run
+memory, a tiktoken cache-capacity irrelevance probe, auto-derived key
+findings, and an editorial summary & evaluation section (per-dimension
+verdicts, splitter selection guidance, and measurement-scope caveats).
+Counting mode and topology are always separate dimensions — colors encode
+counting mode (accent violet dark/light), scatter marker shapes encode
+topology, and cross tables use two-level 计数方式 × 拓扑 headers; combined
+labels like `exact-section` never appear in the display layer. Every measured
+section also carries interactive ECharts figures with button selectors and
+hover tooltips. Metric definitions are typeset as LaTeX and rendered with an
+inlined KaTeX. One known result: a single split of the ~50 KB probe document
+touches ~1900 distinct `count()` texts; under the cold-cache timing semantics
+(cache cleared before every repetition) the default `max_cache_size=1000` and
+an enlarged `10000` measure identically (speedup 1.0x for all six variants) —
+no splitter depends on intra-split LRU reuse, and no cache tuning is needed
+for large documents.
 
 Chart/LaTeX vendor libraries (pinned ECharts 5.6.0 and KaTeX 0.16.21, including
 the woff2 fonts, embedded as base64 data URIs) live in the git-ignored
@@ -267,14 +270,14 @@ first render, keeping the emitted HTML fully self-contained and offline
 viewable.
 
 `splitter_report.py` 从多个 `splitter_random_run` 输出目录与缓存探测数据渲染一份
-自包含的中文 HTML 报告：数据集长度画像、每引擎/预算的长度 × 时间表、准确率表
-（估计误差、超限率、召回率）、每数据集/splitter 的冷启动内存峰值、tiktoken 缓存
-容量无关性探测、自动生成的关键发现，以及「总结与评价」章节（分维度评价、选型建
-议与测量口径局限）。每个测量章节另配可交互的 ECharts 图表——预算 × 变体的耗时
-柱状图、逐文档的长度 × 耗时散点图、incremental 估计误差柱状图、exact/incremental
-配对比值图（带 1.0 参考线）、冷启动内存柱状图与缓存 LRU 对比图——支持按钮切换
-引擎/预算/统计量、悬停查数值、图例开关系列，表格里逐行难以横向对比的维度在图
-上一眼可比；度量定义用 LaTeX 书写并由内联 KaTeX 渲染。已知结论之一：~50 KB 探测
+自包含的中文 HTML 报告：数据集长度画像、维度透视总览（指标 × X 轴 × 系列任选，
+覆盖计数方式 / 拓扑 / 预算三个维度并按引擎过滤，其余维度自动取中位聚合）、时间 /
+准确率 / 内存三个固定视角章节、tiktoken 缓存容量无关性探测、自动生成的关键发现，
+以及「总结与评价」章节（分维度评价、选型建议与测量口径局限）。计数方式与拓扑在
+展示层永远是两个独立维度——颜色编码计数方式（品牌紫深浅双色）、散点图形状编码
+拓扑、交叉表用两级「计数方式 × 拓扑」表头，`exact-section` 式组合标签只存在于
+raw.json 的键里。每个测量章节另配可交互的 ECharts 图表（按钮切换、悬停查数值）；
+度量定义用 LaTeX 书写并由内联 KaTeX 渲染。已知结论之一：~50 KB 探测
 文档单次 split 会触及约 1900 个不同的 `count()` 文本；在冷缓存计时口径（每轮计时
 前清空缓存）下，默认 `max_cache_size=1000` 与扩容到 10000 的耗时完全一致（六个
 变体加速比均为 1.0x）——没有任何变体依赖单篇内的 LRU 复用，大文档也无需调整

@@ -75,7 +75,10 @@ def test_incremental_counting_example_compares_modes() -> None:
 
     assert exact["chunk_count"] == incremental["chunk_count"]
     assert exact["total_tokens"] == incremental["total_tokens"]
-    assert exact["tokenizer_count_calls"] > incremental["tokenizer_count_calls"]
+    # Exact planning re-encodes the growing rendered candidate at every
+    # budget decision (identical strings deduplicated per split), so its
+    # encoded text volume dominates even when its call count does not.
+    assert exact["tokenizer_count_chars"] > incremental["tokenizer_count_chars"]
     assert (
         exact["mean_estimate_error_pct"]
         <= incremental["mean_estimate_error_pct"] + 1e-6

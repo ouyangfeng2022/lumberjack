@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# ruff: noqa: RUF001 -- report text is deliberately Chinese (fullwidth punct)
+# ruff: noqa: RUF001, RUF002 -- report text is deliberately Chinese (fullwidth punct)
 """Render the full splitter comparison HTML report from splitter-full-b* runs.
 
 Reads ``benchmarks/results/splitter-full-b{300,600,1200}/raw.json`` and the
@@ -39,6 +39,9 @@ VENDOR_SOURCES = {
 }
 BUDGETS = (300, 600, 1200)
 TOPOLOGIES = ("section", "subtree", "sibling")
+MODES = ("exact", "incremental")
+#: Raw-result keys keep the historical ``{mode}-{topology}`` spelling; the
+#: display layer always decomposes them via :func:`_mode_topology`.
 SPLITTERS = (
     "incremental-section",
     "exact-section",
@@ -47,18 +50,30 @@ SPLITTERS = (
     "incremental-sibling",
     "exact-sibling",
 )
-#: Stable per-splitter colors shared by every chart, so a variant keeps its
-#: color across sections. Topology picks the hue, counting mode the shade.
-SPLITTER_COLORS = {
-    "exact-section": "#1d4ed8",
-    "incremental-section": "#93c5fd",
-    "exact-subtree": "#047857",
-    "incremental-subtree": "#6ee7b7",
-    "exact-sibling": "#b45309",
-    "incremental-sibling": "#fcd34d",
+#: Dimension-encoded colors. Counting mode is the primary encoding (accent
+#: violet family: exact dark, incremental light) so mode-vs-anything charts
+#: stay legible under color-vision deficiency; topology picks the hue family
+#: and budget a lightness ramp of one hue.
+MODE_COLORS = {"exact": "#5b21b6", "incremental": "#c4b5fd"}
+TOPOLOGY_COLORS = {
+    "section": "#1d4ed8",
+    "subtree": "#047857",
+    "sibling": "#b45309",
 }
-#: Series colors for the exact-vs-incremental ratio chart (not per splitter).
+BUDGET_COLORS = {300: "#93c5fd", 600: "#3b82f6", 1200: "#1e3a8a"}
+#: ECharts scatter symbols per topology: shape encodes topology so the scatter
+#: never needs combined series names.
+TOPOLOGY_SYMBOLS = {"section": "circle", "subtree": "rect", "sibling": "triangle"}
+#: Series colors for the exact-vs-incremental ratio chart (not per dimension).
 RATIO_COLORS = ("#dc2626", "#7c3aed", "#0891b2")
+
+
+def _mode_topology(splitter: str) -> tuple[str, str]:
+    """Decompose a raw ``{mode}-{topology}`` splitter key into its dimensions."""
+    mode, _, topology = splitter.partition("-")
+    return mode, topology
+
+
 ENGINE_LABEL = {
     "approx": "ApproxByteTokenizer（默认引擎，UTF-8 字节数 ÷ 3）",
     "tiktoken": "TiktokenTokenizer（o200k_base / gpt-4o-mini，LRU=1000）",
@@ -248,8 +263,159 @@ def _table(
     )
 
 
+def _cross_table(
+    caption: str,
+    lead_headers: list[str],
+    rows: list[list[str]],
+    *,
+    note: str = "",
+) -> str:
+    """Cross table whose data columns carry a two-level 计数方式 × 拓扑 header.
+
+    Each row is ``[*lead_cells, value(exact,section), value(exact,subtree),
+    value(exact,sibling), value(incremental,section), ...]``; the leading cells
+    get ``rowspan=2`` header cells, the data columns a merged mode row plus a
+    topology row. The lowest value per row is highlighted.
+    """
+    lead = len(lead_headers)
+    head1 = "".join(f'<th rowspan="2">{h}</th>' for h in lead_headers)
+    head1 += "".join(f'<th colspan="{len(TOPOLOGIES)}">{mode}</th>' for mode in MODES)
+    head2 = "".join(f"<th>{topology}</th>" for _ in MODES for topology in TOPOLOGIES)
+    body_rows = []
+    for row in rows:
+        numeric = [
+            (col, _parse_number(cell))
+            for col, cell in enumerate(row[lead:], start=lead)
+            if _parse_number(cell) is not None
+        ]
+        best = min((value for _, value in numeric), default=None)
+        cells = []
+        for col, cell in enumerate(row):
+            klass = ""
+            if best is not None and col >= lead and _parse_number(cell) == best:
+                klass = ' class="best"'
+            cells.append(f"<td{klass}>{cell}</td>")
+        body_rows.append("<tr>" + "".join(cells) + "</tr>")
+    note_html = f'<p class="note">{note}</p>' if note else ""
+    return (
+        f"<figure><figcaption>{caption}</figcaption>"
+        '<div class="scroll"><table><thead><tr>'
+        f"{head1}</tr><tr>{head2}</tr></thead><tbody>"
+        + "".join(body_rows)
+        + "</tbody></table></div>"
+        + note_html
+        + "</figure>"
+    )
+
+
 def _dataset_label(name: str) -> str:
     return DATASET_LABEL.get(name, name)
+
+
+#: Pivot-chart metrics: key in the flat records, human label (unit included).
+PIVOT_METRICS: tuple[tuple[str, str], ...] = (
+    ("wall_med", "split 中位 ms"),
+    ("wall_mean", "split 均值 ms"),
+    ("wall_p95", "split p95 ms"),
+    ("ms_per_kb", "吞吐 ms/KB"),
+    ("split_peak", "split 峰值 KB"),
+    ("total_peak", "split+finalize 峰值 KB"),
+    ("calls_med", "count() 调用中位"),
+    ("err_mean", "|err| 均值 tokens"),
+    ("viol_rate", "超预算率 %"),
+)
+PIVOT_DIMS: tuple[tuple[str, str], ...] = (
+    ("mode", "计数方式"),
+    ("topology", "拓扑"),
+    ("budget", "预算"),
+)
+
+
+def _pivot_records(
+    agg: dict[tuple[str, int, str, str], dict[str, Any]],
+    engines: tuple[str, ...],
+) -> list[dict[str, Any]]:
+    """Flat per-(engine, budget, mode, topology) records feeding the JS pivot."""
+    records: list[dict[str, Any]] = []
+    for engine in engines:
+        for budget in BUDGETS:
+            for splitter in SPLITTERS:
+                mode, topology = _mode_topology(splitter)
+                stats = agg[(engine, budget, "ALL", splitter)]
+                records.append(
+                    {
+                        "engine": engine,
+                        "budget": budget,
+                        "mode": mode,
+                        "topology": topology,
+                        "wall_med": round(stats["wall_med"] * 1000, 4),
+                        "wall_mean": round(stats["wall_mean"] * 1000, 4),
+                        "wall_p95": round(stats["wall_p95"] * 1000, 4),
+                        "ms_per_kb": round(stats["ms_per_kb"], 4),
+                        "split_peak": round(stats["split_peak_med"] / 1024, 2),
+                        "total_peak": round(stats["total_peak_med"] / 1024, 2),
+                        "calls_med": stats["calls_med"],
+                        "err_mean": round(stats["err_mean"], 4),
+                        "viol_rate": round(stats["viol_rate"] * 100, 4),
+                    }
+                )
+    return records
+
+
+def _pivot_button(group: str, key: str, label: str, *, active: bool = False) -> str:
+    state = ' class="active"' if active else ""
+    return (
+        f'<button data-group="{group}" data-key="{key}"{state} '
+        f"onclick=\"setPivot('{group}', '{key}')\">{label}</button>"
+    )
+
+
+def _pivot_section(engines: tuple[str, ...]) -> str:
+    """§2 dimension pivot: one chart, metric / X / series / engine controls."""
+    metric_buttons = "".join(
+        _pivot_button("metric", key, label, active=key == "wall_med")
+        for key, label in PIVOT_METRICS
+    )
+    x_buttons = "".join(
+        _pivot_button("x", key, label, active=key == "mode")
+        for key, label in PIVOT_DIMS
+    )
+    series_options = [
+        (key, label) for key, label in (("none", "无（单系列）"), *PIVOT_DIMS)
+    ]
+    series_buttons = "".join(
+        _pivot_button("series", key, label, active=key == "budget")
+        for key, label in series_options
+    )
+    engine_buttons = "".join(
+        _pivot_button("engine", engine, ENGINE_SHORT[engine], active=index == 0)
+        for index, engine in enumerate(engines)
+    )
+    return (
+        '<h2 id="pivot">2. 维度透视（时间 × 空间 × 准确率）</h2>'
+        + _explain(
+            "本报告所有测量都可以沿四个独立维度切片：<b>计数方式</b>（exact / incremental）、"
+            "<b>拓扑</b>（section / subtree / sibling）、<b>预算</b>（300 / 600 / 1200）、"
+            "<b>引擎</b>（approx / tiktoken）。本章用一张图承载全部切片：选择指标与两个坐标维度，"
+            "剩余维度自动取<b>中位数聚合</b>（悬停可见聚合样本数），引擎作为过滤条件不参与聚合。"
+            "典型读法：『X=计数方式、系列=预算』对比计数方式的时间与空间代价；"
+            "『X=拓扑、系列=计数方式』看不同拓扑对计数方式的敏感度；"
+            "『X=预算』观察随预算的缩放。后续各章固定视角的图表与表格使用同一套维度配色。"
+        )
+        + '<figure class="chart-frame">'
+        + '<div class="pivot-controls" id="chart-pivot-controls">'
+        + '<div class="pivot-group"><span class="pivot-label">指标</span>'
+        + f'<div class="pivot-buttons">{metric_buttons}</div></div>'
+        + '<div class="pivot-group"><span class="pivot-label">X 轴</span>'
+        + f'<div class="pivot-buttons">{x_buttons}</div></div>'
+        + '<div class="pivot-group"><span class="pivot-label">系列</span>'
+        + f'<div class="pivot-buttons">{series_buttons}</div></div>'
+        + '<div class="pivot-group"><span class="pivot-label">引擎</span>'
+        + f'<div class="pivot-buttons">{engine_buttons}</div></div>'
+        + "</div>"
+        + '<figcaption id="chart-pivot-caption">维度透视（悬停看数值与聚合样本数）</figcaption>'
+        + '<div class="chart chart-tall" id="chart-pivot"></div></figure>'
+    )
 
 
 def _main() -> None:
@@ -293,20 +459,21 @@ def _main() -> None:
     sections.append(
         _explain(
             "<b>报告导读。</b>"
-            "本报告对比 lumberjack 六个 splitter 变体在相同 tokenizer、相同文档下的表现："
+            "本报告对比 lumberjack 六个 splitter 组合在相同 tokenizer、相同文档下的表现："
             "三种拓扑（<code>section</code> 逐节直切、<code>subtree</code> 子树优先折叠、"
             "<code>sibling</code> 兄弟节点预算打包）× 两种计数方式"
-            "（<b>exact</b> 每个预算决策都对渲染文本完整重计数、<b>incremental</b> 一次性预测量后用"
-            "增量估计值做决策）。两个引擎：approx 按 "
+            "（<b>exact</b> 每个预算决策都对渲染文本完整重计数、不启用 tokenizer 缓存，"
+            "<b>incremental</b> 一次性预测量后用增量估计值做决策）。两个引擎：approx 按 "
             r"\( \hat{t} = \left\lfloor \mathrm{bytes}_{\text{UTF-8}} / 3 \right\rfloor \) 估算，"
             "tiktoken 用真实 BPE 编码器 o200k_base。"
-            "评测分三个<b>互不可换算</b>的通道：时间（第 2 章，热缓存稳态）、"
-            "准确率（第 3 章，split 期估计 vs finalizer 权威重计数）、内存（第 4 章，tracemalloc "
-            "冷启动峰值）；第 1 章描述语料构成，第 5 章是 tiktoken 缓存容量的专项探测，"
-            "第 6/7 章给出结论与选型建议。"
+            "评测分三个<b>互不可换算</b>的通道：时间（第 3 章，每轮计时前清空 tokenizer "
+            "文本缓存的冷缓存口径）、准确率（第 4 章，split 期估计 vs finalizer 权威重计数）、"
+            "内存（第 5 章，tracemalloc 冷启动峰值）；第 2 章是可自由切换维度的透视总览，"
+            "第 1 章描述语料构成，第 6 章是 tiktoken 缓存容量的专项探测，"
+            "第 7/8 章给出结论与选型建议。"
             f"本矩阵共 {total_results} 条测量记录、失败 {total_failed} 条，内容保真 oracle"
             "（正文哨兵保留、代码哨兵恰好出现一次、词召回 ≥ 0.99）全部通过——"
-            "六个变体都不丢内容，选型只需在速度、计数精度、内存三个轴上权衡；"
+            "六个组合都不丢内容，选型只需在速度、计数精度、内存三个轴上权衡；"
             f"synthetic 语料覆盖 {len(_shape_names(datasets))} 种结构形状：{shape_list}。"
         )
     )
@@ -357,33 +524,38 @@ def _main() -> None:
         )
     )
 
-    # ---- 2. time ----
-    time_html = ['<h2 id="time">2. 时间消耗（split 阶段，每文档中位数）</h2>']
+    # ---- 2. dimension pivot ----
+    sections.append(_pivot_section(engines))
+
+    # ---- 3. time ----
+    time_html = ['<h2 id="time">3. 时间消耗（split 阶段，每文档中位数）</h2>']
     time_html.append(
         _explain(
-            "本章测量 split 阶段（不含解析与 finalize）的处理速度。计时在热缓存稳态下进行："
-            f"每篇文档先 warmup {config['warmups']} 次（tokenizer LRU 已填充），再重复 "
-            f"{config['repetitions']} 次取每篇中位数；跨文档的<b>中位数</b>抗离群点，"
-            "<b>均值与 p95</b> 用来暴露长尾。阅读要点：<br>"
-            "① <b>总览表</b>：绿色高亮是该预算下最快的变体；<code>ms/KB</code> 列按文档体量归一化，"
-            "可直接比较吞吐；<code>count() 调用中位</code>反映变体对 tokenizer 的压力，"
+            "本章测量 split 阶段（不含解析与 finalize）的处理速度。计时为<b>冷缓存口径</b>："
+            f"每篇文档先 warmup {config['warmups']} 次（仅加载 tokenizer 后端并达到稳态），"
+            f"再重复 {config['repetitions']} 次、<b>每轮计时前清空 tokenizer 文本缓存</b>，"
+            "取每篇中位数——与生产一致（每篇文档的切分都从零缓存开始）。"
+            "跨文档的<b>中位数</b>抗离群点，<b>均值与 p95</b> 用来暴露长尾。阅读要点：<br>"
+            "① <b>总览表</b>：绿色高亮是该预算下最快的组合；<code>ms/KB</code> 列按文档体量归一化，"
+            "可直接比较吞吐；<code>count() 调用中位</code>反映对 tokenizer 的压力，"
             "是 exact/incremental 速度差的直接来源之一。<br>"
             "② <b>长度 × 耗时表</b>：把同一预算按数据集拆开，观察耗时随规模与结构的缩放——"
             "中位耗时随 <code>med KB</code> 近似线性；相同体量下结构的影响（如 tiny-sections "
             "节多、sibling 拓扑打包更费）会体现为行内耗时差。<br>"
-            "③ tiktoken 引擎下<b>均值/p95 远大于中位数</b>不是测量噪声：少数 ~50KB 级大文档触发"
-            "默认 LRU=1000 的缓存抖动（见第 5 章），把均值与 p95 抬高数十倍，中位数不受影响；"
-            "对比变体优劣请以中位数为准。<br>"
+            "③ tiktoken 引擎下<b>均值/p95 远大于中位数</b>不是噪声：少数 ~50KB 级大文档的"
+            "真实 BPE 编码成本（冷缓存口径下每轮全部重编码）主导长尾，中位数代表典型文档；"
+            "对比组合优劣请以中位数为准。<br>"
             "④ <code>finalize 中位 ms</code> 是切分之后权威重计数 + 渲染管线的耗时参考，"
-            "六个变体共享同一 finalizer 实现，该列基本只随块数增减而变化。<br>"
-            "⑤ <b>交互图</b>：下方两张图分别从『预算 × 变体』与『文档长度 × 变体』两个维度展示同一批数据，"
-            "按钮切换引擎与统计量，悬停看数值，点图例可开关系列——表格里难以横向对比的行，在图上一眼可比。"
+            "所有组合共享同一 finalizer 实现，该列基本只随块数增减而变化。<br>"
+            "⑤ <b>交互图</b>：图 3-1 沿预算对比两种计数方式（取拓扑中位数）；"
+            "图 3-2 逐文档散点，颜色区分计数方式、形状区分拓扑；"
+            "任意维度组合的对比请用第 2 章的维度透视。"
         )
     )
     time_html.append(
         _chart_figure(
             "chart-time",
-            "图 2-1：split 耗时总览（按钮切换引擎 × 统计量；柱状分组 = 三档预算）",
+            "图 3-1：split 耗时随预算变化（按钮切换引擎 × 统计量；柱 = 计数方式，取拓扑中位数）",
             _chart_controls(
                 "chart-time",
                 [
@@ -405,7 +577,7 @@ def _main() -> None:
     time_html.append(
         _chart_figure(
             "chart-scatter",
-            "图 2-2：文档长度 × 耗时散点（按钮切换引擎 × 预算；y 轴对数，每点一篇文档）",
+            "图 3-2：文档长度 × 耗时散点（按钮切换引擎 × 预算；颜色 = 计数方式，形状 = 拓扑；y 轴对数）",
             _chart_controls(
                 "chart-scatter",
                 [
@@ -419,27 +591,30 @@ def _main() -> None:
     for engine in engines:
         rows = []
         for budget in BUDGETS:
-            for splitter in SPLITTERS:
-                stats = agg[(engine, budget, "ALL", splitter)]
-                rows.append(
-                    [
-                        str(budget),
-                        splitter,
-                        _fmt_ms(stats["wall_med"]),
-                        _fmt_ms(stats["wall_mean"]),
-                        _fmt_ms(stats["wall_p95"]),
-                        _fmt_ms(stats["finalize_med"]),
-                        _fmt_int(stats["calls_med"]),
-                        f"{stats['ms_per_kb']:.3f}",
-                    ]
-                )
+            for mode in MODES:
+                for topology in TOPOLOGIES:
+                    stats = agg[(engine, budget, "ALL", f"{mode}-{topology}")]
+                    rows.append(
+                        [
+                            str(budget),
+                            mode,
+                            topology,
+                            _fmt_ms(stats["wall_med"]),
+                            _fmt_ms(stats["wall_mean"]),
+                            _fmt_ms(stats["wall_p95"]),
+                            _fmt_ms(stats["finalize_med"]),
+                            _fmt_int(stats["calls_med"]),
+                            f"{stats['ms_per_kb']:.3f}",
+                        ]
+                    )
         time_html.append(
             f"<h3>{ENGINE_LABEL[engine]}</h3>"
             + _table(
-                f"各预算 × 各 splitter 总览（跨数据集 {docs_per_budget} 篇文档）",
+                f"各预算 × 计数方式 × 拓扑总览（跨数据集 {docs_per_budget} 篇文档）",
                 [
                     "预算",
-                    "splitter",
+                    "计数方式",
+                    "拓扑",
                     "split 中位 ms",
                     "split 均值 ms",
                     "split p95 ms",
@@ -448,10 +623,11 @@ def _main() -> None:
                     "ms / KB",
                 ],
                 rows,
-                highlight_min_cols={2},
+                highlight_min_cols={3},
                 note=r"ms/KB = \( \dfrac{\sum_i \mathrm{med}(t_i)}{\sum_i \mathrm{KB}_i} \)；"
                 "计时不含 tracemalloc 开销；每篇 warmup "
-                f"{config['warmups']} 次 + 重复 {config['repetitions']} 次取每篇中位数，再跨文档取中位数 / 均值。",
+                f"{config['warmups']} 次 + 重复 {config['repetitions']} 次"
+                "（每轮计时前清空 tokenizer 文本缓存），取每篇中位数，再跨文档取中位数 / 均值。",
             )
         )
         for budget in BUDGETS:
@@ -463,27 +639,31 @@ def _main() -> None:
                     _fmt_int(stats["bytes_med"]),
                     _fmt_int(stats["tokens_med"]),
                 ]
-                for splitter in SPLITTERS:
-                    row.append(
-                        _fmt_ms(agg[(engine, budget, dataset, splitter)]["wall_med"])
-                    )
+                for mode in MODES:
+                    for topology in TOPOLOGIES:
+                        row.append(
+                            _fmt_ms(
+                                agg[(engine, budget, dataset, f"{mode}-{topology}")][
+                                    "wall_med"
+                                ]
+                            )
+                        )
                 rows.append(row)
             time_html.append(
-                _table(
+                _cross_table(
                     f"文档长度 × 耗时（预算 {budget}；每格 = 该数据集每篇文档 split 中位耗时的中位数，ms）",
-                    ["数据集", "med KB", "med tokens", *SPLITTERS],
+                    ["数据集", "med KB", "med tokens"],
                     rows,
-                    highlight_min_cols={3, 4, 5, 6, 7, 8},
                 )
             )
     sections.append("".join(time_html))
 
-    # ---- 3. accuracy ----
-    acc_html = ['<h2 id="accuracy">3. 准确率（split 期估计 vs 权威重计数）</h2>']
+    # ---- 4. accuracy ----
+    acc_html = ['<h2 id="accuracy">4. 准确率（split 期估计 vs 权威重计数）</h2>']
     acc_html.append(
         _explain(
             "本章回答：splitter 在预算决策时<b>自认为</b>的块大小，与最终权威重计数<b>相差多少</b>。"
-            "incremental 变体用增量估计值做预算判断，exact 变体每一步都完整重计数"
+            "incremental 计数用增量估计值做预算判断，exact 计数每一步都完整重计数"
             "（估计即权威值，误差恒为 0）；两者最终都由 <code>ChunkFinalizer</code> 做一次权威重计数"
             "作为统一基准。核心量定义："
             "估计误差 "
@@ -508,7 +688,7 @@ def _main() -> None:
     acc_html.append(
         _chart_figure(
             "chart-err",
-            "图 3-1：incremental 估计误差（按钮切换引擎 × 统计量；exact 系恒为 0，可点图例隐藏）",
+            "图 4-1：估计误差随预算变化（按钮切换引擎 × 统计量；柱 = 计数方式，取拓扑中位数；exact 恒为 0）",
             _chart_controls(
                 "chart-err",
                 [
@@ -527,42 +707,49 @@ def _main() -> None:
     acc_html.append(
         _chart_figure(
             "chart-ratio",
-            "图 3-2：exact / incremental 配对比值（虚线 = 1.0；低于虚线 exact 更优）",
+            "图 4-2：exact / incremental 配对比值（按钮切换引擎 × 预算；X = 拓扑；虚线 = 1.0，低于虚线 exact 更优）",
             _chart_controls(
                 "chart-ratio",
-                [(engine, ENGINE_SHORT[engine]) for engine in engines],
+                [
+                    (f"{engine}:{budget}", f"{ENGINE_SHORT[engine]}·{budget}")
+                    for engine in engines
+                    for budget in BUDGETS
+                ],
             ),
         )
     )
     for engine in engines:
         rows = []
         for budget in BUDGETS:
-            for splitter in SPLITTERS:
-                stats = agg[(engine, budget, "ALL", splitter)]
-                recall = stats["recall_min"]
-                rows.append(
-                    [
-                        str(budget),
-                        splitter,
-                        f"{stats['err_mean']:.3f}",
-                        f"{stats['err_p95']:.0f}",
-                        f"{stats['err_max']:.0f}",
-                        f"{stats['rel_err_max'] * 100:.2f}%",
-                        f"{stats['viol_rate'] * 100:.2f}%",
-                        str(stats["viol"]),
-                        str(stats["overshoot_max"]),
-                        f"{recall:.4f}" if recall is not None else "n/a",
-                        _fmt_int(stats["chunks"]),
-                        str(stats["failed"]),
-                    ]
-                )
+            for mode in MODES:
+                for topology in TOPOLOGIES:
+                    stats = agg[(engine, budget, "ALL", f"{mode}-{topology}")]
+                    recall = stats["recall_min"]
+                    rows.append(
+                        [
+                            str(budget),
+                            mode,
+                            topology,
+                            f"{stats['err_mean']:.3f}",
+                            f"{stats['err_p95']:.0f}",
+                            f"{stats['err_max']:.0f}",
+                            f"{stats['rel_err_max'] * 100:.2f}%",
+                            f"{stats['viol_rate'] * 100:.2f}%",
+                            str(stats["viol"]),
+                            str(stats["overshoot_max"]),
+                            f"{recall:.4f}" if recall is not None else "n/a",
+                            _fmt_int(stats["chunks"]),
+                            str(stats["failed"]),
+                        ]
+                    )
         acc_html.append(
             f"<h3>{ENGINE_LABEL[engine]}</h3>"
             + _table(
-                "估计误差 |estimated_token_count − token_count|、预算超限率、词召回率（exact 模式估计即重计数，误差恒为 0）",
+                "估计误差 |estimated_token_count − token_count|、预算超限率、词召回率（exact 计数估计即重计数，误差恒为 0）",
                 [
                     "预算",
-                    "splitter",
+                    "计数方式",
+                    "拓扑",
                     "|err| 均值",
                     "|err| p95",
                     "|err| 最大",
@@ -630,30 +817,39 @@ def _main() -> None:
         )
     sections.append("".join(acc_html))
 
-    # ---- 4. memory ----
-    mem_html = ['<h2 id="memory">4. 内存消耗（tracemalloc 冷启动分配峰值）</h2>']
+    # ---- 5. memory ----
+    mem_html = ['<h2 id="memory">5. 内存消耗（tracemalloc 冷启动分配峰值）</h2>']
     mem_html.append(
         _explain(
             "内存是<b>独立测量通道</b>：每轮新建 splitter 并配全新 tokenizer 缓存（无预热），"
             f"在 tracemalloc 下冷启动执行，重复 {config['memory_reps']} 次取峰值中位数。"
-            "该口径与第 2 章的计时通道（热缓存稳态）<b>不可互相换算</b>：计时回答『跑多快』，"
-            "本章回答『第一次跑要占多少内存』，内存受限的常驻/并发服务应看本章。阅读要点：<br>"
-            "① <b>按数据集峰值表</b>：绿色高亮为该数据集上分配峰值最低的变体，"
+            "该口径与第 3 章的计时通道（同为冷缓存，但无 tracemalloc 开销）"
+            "<b>不可互相换算</b>：计时回答『跑多快』，本章回答『第一次跑要占多少内存』，"
+            "内存受限的常驻/并发服务应看本章。阅读要点：<br>"
+            "① <b>按数据集峰值表</b>：绿色高亮为该数据集上分配峰值最低的组合，"
             "峰值随文档体量近线性增长。<br>"
             "② <b>总览表</b>：<code>split 峰值 med</code> 是切分期间的瞬时分配压力，"
             "<code>finalize 增量</code>是权威重计数 + 渲染阶段的追加量。<br>"
-            "③ 典型形态：tiktoken 下 exact 变体峰值更高（LRU 缓存随计数增长）；"
-            "approx 下 exact 反而更低——incremental 的预切块视图在切分期间常驻，"
-            "而 exact 的重计数即用即弃。"
+            "③ 典型形态：exact 计数不写 tokenizer 缓存，但保留一份 per-split 去重 memo"
+            "（字符串存活至 split 结束）；incremental 常驻一次性预测量的视图树与 memo——"
+            "两者的峰值构成不同，引擎间表现相反（tiktoken 下 exact 峰值更低，approx 下更高），"
+            "按实测数据选择。"
         )
     )
     mem_html.append(
         _chart_figure(
             "chart-mem",
-            "图 4-1：split 阶段冷启动分配峰值（按钮切换引擎；柱状分组 = 三档预算）",
+            "图 5-1：冷启动分配峰值随预算变化（按钮切换引擎 × 峰值口径；柱 = 计数方式，取拓扑中位数）",
             _chart_controls(
                 "chart-mem",
-                [(engine, ENGINE_SHORT[engine]) for engine in engines],
+                [
+                    (f"{engine}:{key}", f"{ENGINE_SHORT[engine]}·{label}")
+                    for engine in engines
+                    for key, label in (
+                        ("split_peak", "split 峰值"),
+                        ("total_peak", "split+finalize 峰值"),
+                    )
+                ],
             ),
         )
     )
@@ -666,42 +862,47 @@ def _main() -> None:
                     _dataset_label(dataset),
                     _fmt_int(stats["bytes_med"]),
                 ]
-                for splitter in SPLITTERS:
-                    row.append(
-                        _fmt_kb(
-                            agg[(engine, budget, dataset, splitter)]["split_peak_med"]
+                for mode in MODES:
+                    for topology in TOPOLOGIES:
+                        row.append(
+                            _fmt_kb(
+                                agg[(engine, budget, dataset, f"{mode}-{topology}")][
+                                    "split_peak_med"
+                                ]
+                            )
                         )
-                    )
                 rows.append(row)
             mem_html.append(
-                _table(
+                _cross_table(
                     f"split 阶段分配峰值 KB（预算 {budget}；每篇文档 "
                     f"{config['memory_reps']} 次冷启动重复取中位，再跨文档取中位；冷启动 = 全新 tokenizer 缓存）",
-                    ["数据集", "med KB", *SPLITTERS],
+                    ["数据集", "med KB"],
                     rows,
-                    highlight_min_cols={2, 3, 4, 5, 6, 7},
                 )
             )
         rows = []
         for budget in BUDGETS:
-            for splitter in SPLITTERS:
-                stats = agg[(engine, budget, "ALL", splitter)]
-                rows.append(
-                    [
-                        str(budget),
-                        splitter,
-                        _fmt_kb(stats["split_peak_med"]),
-                        _fmt_kb(stats["total_peak_med"]),
-                        _fmt_kb(stats["total_peak_med"] - stats["split_peak_med"]),
-                    ]
-                )
+            for mode in MODES:
+                for topology in TOPOLOGIES:
+                    stats = agg[(engine, budget, "ALL", f"{mode}-{topology}")]
+                    rows.append(
+                        [
+                            str(budget),
+                            mode,
+                            topology,
+                            _fmt_kb(stats["split_peak_med"]),
+                            _fmt_kb(stats["total_peak_med"]),
+                            _fmt_kb(stats["total_peak_med"] - stats["split_peak_med"]),
+                        ]
+                    )
         mem_html.append(
             f"<h3>{ENGINE_LABEL[engine]}（总览）</h3>"
             + _table(
                 "split 峰值 / split+finalize 总峰值总览（KB，跨数据集中位数）",
                 [
                     "预算",
-                    "splitter",
+                    "计数方式",
+                    "拓扑",
                     "split 峰值 med",
                     "split+finalize 峰值 med",
                     "finalize 增量",
@@ -711,56 +912,62 @@ def _main() -> None:
         )
     sections.append("".join(mem_html))
 
-    # ---- 5. cache-capacity probe ----
+    # ---- 6. cache-capacity probe ----
     probe = _load("splitter-cache-probe")
     probe_rows = [
         [
-            row["splitter"],
+            mode,
+            topology,
             f"{row['cache1000_ms']:.1f}",
             f"{row['cache10000_ms']:.1f}",
             f"{row['speedup']:.1f}x",
         ]
         for row in probe["rows"]
+        for mode, topology in (_mode_topology(row["splitter"]),)
     ]
     speedups = [row["speedup"] for row in probe["rows"]]
     probe_note = (
         f"该文档单次 split 触及 {probe.get('distinct_count_texts_max', '约 1900')} 个不同的 "
         f"count() 字符串；冷启动口径（每轮清空缓存）下默认 LRU=1000 与 10000 的中位耗时一致"
-        f"（加速比 {min(speedups):.2f}–{max(speedups):.2f}x），说明没有任何变体依赖单篇内的 "
-        "LRU 复用。exact 模式计数完全不启用缓存。approx 引擎无缓存，不受影响。"
+        f"（加速比 {min(speedups):.2f}–{max(speedups):.2f}x），说明没有任何组合依赖单篇内的 "
+        "LRU 复用。exact 计数完全不启用缓存。approx 引擎无缓存，不受影响。"
     )
     sections.append(
-        '<h2 id="cache">5. 缓存容量无关性（冷启动口径）</h2>'
+        '<h2 id="cache">6. 缓存容量无关性（冷启动口径）</h2>'
         + _explain(
             "本探测验证一个前提：生产中每篇文档的 split 都从零缓存开始（文本缓存按请求隔离、"
             "跨文档不可复用），因此任何 splitter 都不应依赖单篇内的 LRU 复用。方法是固定选取"
-            "语料中最慢的一篇长文档，同一 splitter 分别在 LRU=1000 与 LRU=10000 下计时"
+            "语料中最慢的一篇长文档，同一组合分别在 LRU=1000 与 LRU=10000 下计时"
             "（预热 1 次仅加载 tokenizer，每轮计时前清空缓存，重复 5 次取中位），并统计单次 "
             "split 实际触及的<b>不同</b> <code>count()</code> 字符串个数。加速比定义为 "
             r"\( s = \dfrac{t_{\text{LRU}=1000}}{t_{\text{LRU}=10000}} \)，"
-            "接近 1 即容量无关；显著大于 1 则意味着该变体退回到了依赖单篇内缓存复用。"
-            "exact 计数模式已完全不启用 tokenizer 缓存；incremental 的单篇内复用由其一次性"
+            "接近 1 即容量无关；显著大于 1 则意味着退回到了依赖单篇内缓存复用。"
+            "exact 计数已完全不启用 tokenizer 缓存；incremental 的单篇内复用由其一次性"
             "预测量 memo 承担，不经过 LRU。approx 引擎按 UTF-8 字节估算、无缓存，不受影响。"
         )
         + _chart_figure(
             "chart-cache",
-            "图 5-1：冷启动口径下 LRU=1000 vs LRU=10000 的 split 中位耗时（两柱接近即容量无关）",
+            "图 6-1：冷启动口径下 LRU=1000 vs LRU=10000（按钮切换计数方式；X = 拓扑；两柱接近即容量无关）",
+            _chart_controls(
+                "chart-cache",
+                [(mode, mode) for mode in MODES],
+            ),
         )
         + _table(
             f"最慢文档（{probe['document_id']}，{probe['source_bytes']} 字节）在预算 "
             f"{probe.get('max_tokens', 600)} 下、"
-            "同一 splitter 分别使用默认 LRU=1000 与 LRU=10000 的中位耗时",
-            ["splitter", "LRU=1000 ms", "LRU=10000 ms", "加速比"],
+            "同一组合分别使用默认 LRU=1000 与 LRU=10000 的中位耗时",
+            ["计数方式", "拓扑", "LRU=1000 ms", "LRU=10000 ms", "加速比"],
             probe_rows,
-            highlight_min_cols={1, 2},
+            highlight_min_cols={2, 3},
             note=probe_note,
         )
     )
 
-    # ---- 6. key findings ----
+    # ---- 7. key findings ----
     findings = _findings(agg, engines)
     sections.append(
-        '<h2 id="findings">6. 关键发现</h2>'
+        '<h2 id="findings">7. 关键发现</h2>'
         + _explain(
             "以下发现由本报告同一份数据自动计算得出，所有数字与前面的表格一致；"
             "每条加粗词是该发现的主题轴。"
@@ -770,7 +977,7 @@ def _main() -> None:
         + "</ul>"
     )
 
-    # ---- 7. summary & evaluation ----
+    # ---- 8. summary & evaluation ----
     sections.append(_summary_evaluation(agg, engines, probe, docs_per_budget))
 
     charts: dict[str, dict[str, dict[str, Any]]] = {
@@ -781,7 +988,15 @@ def _main() -> None:
         "chart-mem": _memory_chart_options(agg, engines),
         "chart-cache": _cache_chart_options(probe),
     }
-    html = _page(meta, engines, docs_per_budget, total_results, sections, charts)
+    html = _page(
+        meta,
+        engines,
+        docs_per_budget,
+        total_results,
+        sections,
+        charts,
+        _pivot_records(agg, engines),
+    )
     output = RESULTS / "splitter-full-report.html"
     output.write_text(html, encoding="utf-8")
     print(f"written: {output} ({output.stat().st_size / 1024:.1f} KB)")
@@ -836,45 +1051,63 @@ def _chart_base(title: str, y_name: str) -> dict[str, Any]:
 
 
 def _series_for(
-    splitter: str, data: list[Any], color: str | None = None, **extra: Any
+    name: str, data: list[Any], color: str | None = None, **extra: Any
 ) -> dict[str, Any]:
     option: dict[str, Any] = {
-        "name": splitter,
+        "name": name,
         "type": "bar",
         "data": data,
-        "itemStyle": {"color": color or SPLITTER_COLORS[splitter]},
+        "itemStyle": {"color": color or "#6b7280"},
     }
     option.update(extra)
     return option
+
+
+def _mode_median(
+    agg: dict[tuple[str, int, str, str], dict[str, Any]],
+    engine: str,
+    budget: int,
+    mode: str,
+    key: str,
+    *,
+    scale: float = 1.0,
+) -> float:
+    """Median of *key* across the three topologies for one counting mode."""
+    values = [
+        agg[(engine, budget, "ALL", f"{mode}-{topology}")][key]
+        for topology in TOPOLOGIES
+    ]
+    return round(statistics.median(values) * scale, 4)
 
 
 def _time_chart_options(
     agg: dict[tuple[str, int, str, str], dict[str, Any]],
     engines: tuple[str, ...],
 ) -> dict[str, dict[str, Any]]:
-    """§2 overview chart: one option per (engine, metric) selector key."""
+    """§3 overview chart: X = budget, series = counting mode (topology median)."""
     metrics = (
-        ("wall_med", "split 中位 ms"),
-        ("wall_mean", "split 均值 ms"),
-        ("wall_p95", "split p95 ms"),
-        ("ms_per_kb", "吞吐 ms/KB（越低越好）"),
+        ("wall_med", "split 中位 ms", 1000.0),
+        ("wall_mean", "split 均值 ms", 1000.0),
+        ("wall_p95", "split p95 ms", 1000.0),
+        ("ms_per_kb", "吞吐 ms/KB（越低越好）", 1.0),
     )
     options: dict[str, dict[str, Any]] = {}
     for engine in engines:
-        for key, label in metrics:
+        for key, label, scale in metrics:
             option = _chart_base(
-                f"各 splitter 在三档预算下的 {label}（引擎 {engine}；悬停看数值，点图例开关系列）",
+                f"{label}随预算变化（引擎 {engine}；柱 = 计数方式，取拓扑中位数）",
                 label,
             )
             option["series"] = [
                 _series_for(
-                    splitter,
+                    mode,
                     [
-                        round(agg[(engine, budget, "ALL", splitter)][key], 4)
+                        _mode_median(agg, engine, budget, mode, key, scale=scale)
                         for budget in BUDGETS
                     ],
+                    color=MODE_COLORS[mode],
                 )
-                for splitter in SPLITTERS
+                for mode in MODES
             ]
             options[f"{engine}:{key}"] = option
     return options
@@ -883,12 +1116,14 @@ def _time_chart_options(
 def _scatter_chart_options(
     raws: dict[int, dict[str, Any]], engines: tuple[str, ...]
 ) -> dict[str, dict[str, Any]]:
-    """§2 length-x-time scatter: one option per (engine, budget) selector key.
+    """§3 length-x-time scatter: one option per (engine, budget) selector key.
 
     Each point is one document: x = source KB, y = per-document median split
-    wall time (ms); the point name carries the document id for tooltips. The
-    y axis is logarithmic so sub-millisecond documents and LRU-thrashing
-    outliers stay visible together.
+    wall time (ms); the point name carries the document id for tooltips. Color
+    encodes counting mode and the marker shape encodes topology, so the six
+    variants stay distinguishable without combined series names. The y axis is
+    logarithmic so sub-millisecond documents and the cold-cache encode cost of
+    ~50 KB documents stay visible together.
     """
     points: dict[tuple[int, str, str], list[dict[str, Any]]] = {}
     for budget, raw in raws.items():
@@ -897,15 +1132,15 @@ def _scatter_chart_options(
             if not samples:
                 continue
             wall_ms = statistics.median(s["wall_time_seconds"] for s in samples) * 1000
-            points.setdefault(
-                (budget, result["tokenizer"], result["splitter"]), []
-            ).append(
+            mode, topology = _mode_topology(result["splitter"])
+            points.setdefault((budget, result["tokenizer"], mode), []).append(
                 {
                     "name": result["document_id"],
                     "value": [
                         round(result["source_bytes"] / 1024, 2),
                         round(wall_ms, 4),
                     ],
+                    "symbol": TOPOLOGY_SYMBOLS[topology],
                 }
             )
     options: dict[str, dict[str, Any]] = {}
@@ -915,7 +1150,7 @@ def _scatter_chart_options(
                 "title": {
                     "text": (
                         f"文档长度 × split 中位耗时（引擎 {engine}，预算 {budget}；"
-                        "每点 = 一篇文档，悬停看文档 id；y 轴对数）"
+                        "颜色 = 计数方式，形状 = 拓扑；y 轴对数）"
                     ),
                     "left": "center",
                     "textStyle": {"fontSize": 14},
@@ -931,16 +1166,13 @@ def _scatter_chart_options(
                 "yAxis": {"type": "log", "name": "split 中位 ms"},
                 "series": [
                     {
-                        "name": splitter,
+                        "name": mode,
                         "type": "scatter",
-                        "symbolSize": 7,
-                        "itemStyle": {
-                            "color": SPLITTER_COLORS[splitter],
-                            "opacity": 0.75,
-                        },
-                        "data": points.get((budget, engine, splitter), []),
+                        "symbolSize": 8,
+                        "itemStyle": {"color": MODE_COLORS[mode], "opacity": 0.75},
+                        "data": points.get((budget, engine, mode), []),
                     }
-                    for splitter in SPLITTERS
+                    for mode in MODES
                 ],
             }
             options[f"{engine}:{budget}"] = option
@@ -951,30 +1183,30 @@ def _accuracy_chart_options(
     agg: dict[tuple[str, int, str, str], dict[str, Any]],
     engines: tuple[str, ...],
 ) -> dict[str, dict[str, Any]]:
-    """§3 chart: one option per (engine, metric) selector key."""
+    """§4 chart: X = budget, series = counting mode (topology median)."""
     metrics = (
-        ("err_mean", "|err| 均值 tokens"),
-        ("err_p95", "|err| p95 tokens"),
-        ("err_max", "|err| 最大 tokens"),
-        ("viol_rate", "超预算率（越小越好，exact 与 incremental 一致）"),
+        ("err_mean", "|err| 均值 tokens", 1.0),
+        ("err_p95", "|err| p95 tokens", 1.0),
+        ("err_max", "|err| 最大 tokens", 1.0),
+        ("viol_rate", "超预算率（exact 与 incremental 一致）", 100.0),
     )
     options: dict[str, dict[str, Any]] = {}
     for engine in engines:
-        for key, label in metrics:
-            scale = 100 if key == "viol_rate" else 1
+        for key, label, scale in metrics:
             option = _chart_base(
-                f"incremental 估计误差：{label}（引擎 {engine}；exact 系恒为 0）",
+                f"估计误差随预算变化：{label}（引擎 {engine}；exact 系恒为 0）",
                 label,
             )
             option["series"] = [
                 _series_for(
-                    splitter,
+                    mode,
                     [
-                        round(agg[(engine, budget, "ALL", splitter)][key] * scale, 4)
+                        _mode_median(agg, engine, budget, mode, key, scale=scale)
                         for budget in BUDGETS
                     ],
+                    color=MODE_COLORS[mode],
                 )
-                for splitter in SPLITTERS
+                for mode in MODES
             ]
             if key == "viol_rate":
                 option["yAxis"] = {
@@ -992,10 +1224,7 @@ def _ratio_chart_options(
     agg: dict[tuple[str, int, str, str], dict[str, Any]],
     engines: tuple[str, ...],
 ) -> dict[str, dict[str, Any]]:
-    """§3 paired chart: exact/incremental ratios per topology and budget."""
-    categories = [
-        f"{topology}@{budget}" for budget in BUDGETS for topology in TOPOLOGIES
-    ]
+    """§4 paired chart: exact/incremental ratios per topology; budget buttons."""
     series_defs = (
         ("耗时比 exact/inc", "wall_med"),
         ("count() 调用比", "calls_med"),
@@ -1003,29 +1232,35 @@ def _ratio_chart_options(
     )
     options: dict[str, dict[str, Any]] = {}
     for engine in engines:
-        option = _chart_base(
-            f"exact / incremental 配对比值（引擎 {engine}；虚线 = 1.0，低于 1 表示 exact 更优）",
-            "比值 exact/inc",
-        )
-        option["xAxis"] = {"type": "category", "data": categories, "name": "拓扑@预算"}
-        option["series"] = []
-        for index, (label, key) in enumerate(series_defs):
-            data = []
-            for budget in BUDGETS:
+        for budget in BUDGETS:
+            option = _chart_base(
+                f"exact / incremental 配对比值（引擎 {engine}，预算 {budget}；"
+                "虚线 = 1.0，低于 1 表示 exact 更优）",
+                "比值 exact/inc",
+            )
+            option["xAxis"] = {
+                "type": "category",
+                "data": list(TOPOLOGIES),
+                "name": "拓扑",
+            }
+            option["series"] = []
+            for index, (label, key) in enumerate(series_defs):
+                data = []
                 for topology in TOPOLOGIES:
                     inc = agg[(engine, budget, "ALL", f"incremental-{topology}")][key]
                     exact = agg[(engine, budget, "ALL", f"exact-{topology}")][key]
-                    data.append(round(exact / inc, 3) if inc else 0.0)
-            series = _series_for(label, data, color=RATIO_COLORS[index])
-            series["markLine"] = {
-                "symbol": "none",
-                "silent": True,
-                "lineStyle": {"type": "dashed", "color": "#9ca3af"},
-                "data": [{"yAxis": 1}],
-                "label": {"formatter": "1.0x"},
-            }
-            option["series"].append(series)
-        options[engine] = option
+                    scale = 1000.0 if key == "wall_med" else 1.0
+                    data.append(round(exact * scale / (inc * scale), 3) if inc else 0.0)
+                series = _series_for(label, data, color=RATIO_COLORS[index])
+                series["markLine"] = {
+                    "symbol": "none",
+                    "silent": True,
+                    "lineStyle": {"type": "dashed", "color": "#9ca3af"},
+                    "data": [{"yAxis": 1}],
+                    "label": {"formatter": "1.0x"},
+                }
+                option["series"].append(series)
+            options[f"{engine}:{budget}"] = option
     return options
 
 
@@ -1033,54 +1268,72 @@ def _memory_chart_options(
     agg: dict[tuple[str, int, str, str], dict[str, Any]],
     engines: tuple[str, ...],
 ) -> dict[str, dict[str, Any]]:
-    """§4 chart: cold-run split allocation peaks per splitter and budget."""
+    """§5 chart: cold-run peaks, X = budget, series = counting mode."""
+    metrics = (
+        ("split_peak", "split 峰值 KB"),
+        ("total_peak", "split+finalize 峰值 KB"),
+    )
     options: dict[str, dict[str, Any]] = {}
     for engine in engines:
-        option = _chart_base(
-            f"split 阶段冷启动分配峰值（引擎 {engine}；KB，跨数据集中位数）",
-            "split 峰值 KB",
-        )
-        option["series"] = [
-            _series_for(
-                splitter,
-                [
-                    round(
-                        agg[(engine, budget, "ALL", splitter)]["split_peak_med"] / 1024,
-                        2,
-                    )
-                    for budget in BUDGETS
-                ],
+        for key, label in metrics:
+            stat_key = f"{key}_med"
+            option = _chart_base(
+                f"{label}随预算变化（引擎 {engine}；柱 = 计数方式，取拓扑中位数；冷启动口径）",
+                label,
             )
-            for splitter in SPLITTERS
-        ]
-        options[engine] = option
+            option["series"] = [
+                _series_for(
+                    mode,
+                    [
+                        round(
+                            _mode_median(
+                                agg, engine, budget, mode, stat_key, scale=1 / 1024
+                            ),
+                            2,
+                        )
+                        for budget in BUDGETS
+                    ],
+                    color=MODE_COLORS[mode],
+                )
+                for mode in MODES
+            ]
+            options[f"{engine}:{key}"] = option
     return options
 
 
 def _cache_chart_options(probe: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """§5 chart: LRU=1000 vs LRU=10000 on the probe document (log scale)."""
-    splitters = [row["splitter"] for row in probe["rows"]]
-    option = _chart_base(
-        f"缓存容量对比（{probe['document_id']}，{probe['source_bytes']} 字节；y 轴对数）",
-        "split 中位 ms",
-    )
-    option["xAxis"] = {"type": "category", "data": splitters, "name": "splitter"}
-    option["yAxis"] = {"type": "log", "name": "split 中位 ms"}
-    option["series"] = [
-        {
-            "name": "LRU=1000（默认）",
-            "type": "bar",
-            "data": [round(row["cache1000_ms"], 1) for row in probe["rows"]],
-            "itemStyle": {"color": "#dc2626"},
-        },
-        {
-            "name": "LRU=10000",
-            "type": "bar",
-            "data": [round(row["cache10000_ms"], 1) for row in probe["rows"]],
-            "itemStyle": {"color": "#16a34a"},
-        },
-    ]
-    return {"single": option}
+    """§6 chart: LRU=1000 vs LRU=10000, X = topology, counting-mode buttons."""
+    by_mode: dict[str, dict[str, dict[str, Any]]] = {
+        mode: {topology: [] for topology in TOPOLOGIES} for mode in MODES
+    }
+    for row in probe["rows"]:
+        mode, topology = _mode_topology(row["splitter"])
+        by_mode[mode][topology] = row
+    cache_colors = {1000: "#60a5fa", 10000: "#1e3a8a"}
+    options: dict[str, dict[str, Any]] = {}
+    for mode in MODES:
+        rows = by_mode[mode]
+        option = _chart_base(
+            f"冷启动口径下缓存容量对比（{mode} 计数；文档 "
+            f"{probe['document_id']}，{probe['source_bytes']} 字节；两柱接近即容量无关）",
+            "split 中位 ms",
+        )
+        option["xAxis"] = {
+            "type": "category",
+            "data": list(TOPOLOGIES),
+            "name": "拓扑",
+        }
+        option["series"] = []
+        for size in probe["cache_sizes"]:
+            option["series"].append(
+                _series_for(
+                    f"LRU={size}",
+                    [rows[topology][f"cache{size}_ms"] for topology in TOPOLOGIES],
+                    color=cache_colors.get(size, "#6b7280"),
+                )
+            )
+        options[mode] = option
+    return options
 
 
 def _summary_evaluation(
@@ -1099,13 +1352,15 @@ def _summary_evaluation(
             }
             best = min(stats, key=lambda name: stats[name])
             worst = max(stats, key=lambda name: stats[name])
+            best_mode, best_topology = _mode_topology(best)
+            worst_mode, worst_topology = _mode_topology(worst)
             fastest_rows.append(
                 [
                     str(budget),
                     engine,
-                    best,
+                    f"{best_mode}·{best_topology}",
                     _fmt_ms(stats[best]),
-                    worst,
+                    f"{worst_mode}·{worst_topology}",
                     _fmt_ms(stats[worst]),
                 ]
             )
@@ -1167,13 +1422,13 @@ def _summary_evaluation(
         )
 
     overview = (
-        '<h2 id="evaluation">7. 总结与评价</h2>'
+        '<h2 id="evaluation">8. 总结与评价</h2>'
         f"<p><b>总评。</b>六个 splitter 变体在本矩阵（{len(engines)} 引擎 × 3 预算 × "
         f"{docs_per_budget} 篇/档文档）中全部通过内容保真 oracle、零失败：RAG 预处理最关心的"
         "『不丢内容、代码块不重复、词召回 ≥ 0.99』对所有变体成立，选型可以放心地围绕速度、"
         "计数精度与内存三个轴做权衡。两种计数方式的本质差异是：<b>exact</b> 在每个预算决策处"
-        "完整重计数（不启用 tokenizer 缓存——单篇 split 内不存在可摊销的缓存复用），换来零估计"
-        "误差；<b>incremental</b> 用一次性预测量加运行估计，误差小、"
+        "完整重计数（不启用 tokenizer 缓存，同一 split 内相同字符串由内部 memo 去重），"
+        "换来零估计误差；<b>incremental</b> 用一次性预测量加运行估计，误差小、"
         "但要支付固定预测量开销。splitter 层面未发现需要修复的缺陷。</p>"
     )
     dimension_rows = [
@@ -1188,7 +1443,7 @@ def _summary_evaluation(
             "速度",
             f"exact/inc 中位耗时比 {min(wall_ratios):.2f}x–{max(wall_ratios):.2f}x"
             f"{b1200_sentence}",
-            "冷缓存口径下 incremental 通常更快（exact 的重计数每次都支付完整编码成本）；"
+            "冷缓存口径下 incremental 通常更快（exact 的候选拼接每一步都整体重编码）；"
             "需要绝对预算可靠时才选 exact。小文档各变体差距小，"
             "拓扑选择（语义边界）比计数方式更重要。",
         ],
@@ -1219,29 +1474,29 @@ def _summary_evaluation(
     recommendation_rows = [
         [
             "默认 / 保守选择",
-            "incremental-section（现 CLI 默认拓扑）",
+            "incremental + section（现 CLI 默认组合）",
             "行为即当前默认；小文档上固定开销最小。",
         ],
         [
             "大预算 RAG 管线（tiktoken、max_tokens ≥ 600、文档较大）",
-            "incremental-subtree 或 incremental-sibling",
+            "incremental + subtree / sibling 拓扑",
             "冷缓存口径下 tiktoken 引擎的最快档；估计误差小且不放大超限。"
-            "需要绝对预算可靠时再换 exact-*。",
+            "需要绝对预算可靠时再换 exact 计数。",
         ],
         [
             "严格预算合规（下游硬截断）",
-            "任一 exact-*",
+            "任一 exact 计数组合",
             "估计即权威重计数，不会因估计偏差意外超预算。",
         ],
         [
             "内存受限 / 并发常驻服务",
-            "exact-*（不写 tokenizer 缓存）或 approx 引擎",
+            "exact 计数组合（不写 tokenizer 缓存）或 approx 引擎",
             "exact 计数不启用缓存、无 LRU 增长，冷启动峰值可预期；approx 引擎无缓存。",
         ],
         [
             "小文档、高频短文本",
             "任意；按语义选拓扑",
-            "各变体差距 ~0.1 ms，计数方式不构成决策因素。",
+            "各组合差距 ~0.1 ms，计数方式不构成决策因素。",
         ],
     ]
     overview += _text_table(
@@ -1335,8 +1590,9 @@ def _findings(
     )
     findings.append(
         f"<b>速度</b>：exact/incremental 中位耗时比在 {min(ratios):.2f}x–{max(ratios):.2f}x 之间"
-        "（同 tokenizer、同文档配对对比）；exact 直接为每次重计数支付完整编码成本"
-        "（不启用 tokenizer 缓存），incremental 则有一次性预测量的固定开销。"
+        "（同 tokenizer、同文档配对对比）；exact 的候选拼接每一步都整体重编码"
+        "（不启用 tokenizer 缓存，相同字符串已由内部 memo 去重），incremental 则有"
+        "一次性预测量的固定开销。"
     )
     for engine in engines:
         engine_mem = mem_ratios[engine]
@@ -1344,7 +1600,8 @@ def _findings(
             "tiktoken 下 exact 的重计数会生成中间渲染文本，incremental 则常驻预测量视图树并"
             "向 tokenizer 缓存写入预测量条目。"
             if engine == "tiktoken"
-            else "approx 无缓存；incremental 的预测量视图树在 split 期间常驻，exact 即用即弃，峰值更低。"
+            else "approx 无缓存；incremental 的预测量视图树在 split 期间常驻，exact 仅保留"
+            " per-split 去重 memo，峰值更低。"
         )
         findings.append(
             f"<b>内存（{engine}）</b>：exact/incremental 的 split 峰值内存比 "
@@ -1362,6 +1619,119 @@ def _findings(
 _CHART_INIT_JS = """
 const CHARTS = {};
 const CHART_DATA = __CHART_DATA__;
+
+// ---- dimension pivot (§2) ----
+const PIVOT_DATA = __PIVOT_DATA__;
+const PIVOT = {
+  state: { metric: 'wall_med', x: 'mode', series: 'budget', engine: '__PIVOT_ENGINE__' },
+  dims: { mode: ['exact', 'incremental'], topology: ['section', 'subtree', 'sibling'],
+          budget: __BUDGETS__ },
+  dimLabels: { mode: '计数方式', topology: '拓扑', budget: '预算' },
+  metricLabels: __PIVOT_METRIC_LABELS__,
+  colors: {
+    mode: { exact: '__C_MODE_EXACT__', incremental: '__C_MODE_INC__' },
+    topology: { section: '__C_TOPO_SECTION__', subtree: '__C_TOPO_SUBTREE__',
+                sibling: '__C_TOPO_SIBLING__' },
+    budget: __C_BUDGETS__,
+    none: '#6b7280'
+  },
+  decimals: { wall_med: 2, wall_mean: 2, wall_p95: 2, ms_per_kb: 3,
+              split_peak: 1, total_peak: 1, calls_med: 0,
+              err_mean: 3, viol_rate: 2 }
+};
+
+function pivotMedian(values) {
+  if (!values.length) { return 0; }
+  const sorted = values.slice().sort(function (a, b) { return a - b; });
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function pivotRound(value, decimals) {
+  const factor = Math.pow(10, decimals);
+  return Math.round(value * factor) / factor;
+}
+
+function pivotTip(params) {
+  if (!params.length) { return ''; }
+  const decimals = PIVOT.decimals[PIVOT.state.metric] || 2;
+  const lines = [params[0].axisValueLabel || params[0].name];
+  params.forEach(function (p) {
+    const n = p.data && p.data.n ? p.data.n : 1;
+    lines.push(p.marker + ' ' + p.seriesName + '：' +
+               p.value.toFixed(decimals) + '（中位聚合 ' + n + ' 条记录）');
+  });
+  return lines.join('<br/>');
+}
+
+function renderPivot() {
+  const el = document.getElementById('chart-pivot');
+  if (!el) { return; }
+  if (!CHARTS['chart-pivot']) { CHARTS['chart-pivot'] = echarts.init(el); }
+  const st = PIVOT.state;
+  const dims = ['mode', 'topology', 'budget'];
+  const records = PIVOT_DATA.filter(function (r) { return r.engine === st.engine; });
+  const xvals = PIVOT.dims[st.x];
+  const svals = st.series === 'none' ? [null] : PIVOT.dims[st.series];
+  const aggDims = dims.filter(function (d) { return d !== st.x && d !== st.series; });
+  const decimals = PIVOT.decimals[st.metric] || 2;
+  const series = svals.map(function (sv) {
+    return {
+      name: sv === null ? PIVOT.metricLabels[st.metric] : String(sv),
+      type: 'bar',
+      data: xvals.map(function (xv) {
+        const cell = records.filter(function (r) {
+          return r[st.x] === xv && (sv === null || r[st.series] === sv);
+        });
+        return {
+          value: pivotRound(pivotMedian(cell.map(function (r) {
+            return r[st.metric];
+          })), decimals),
+          n: cell.length
+        };
+      }),
+      itemStyle: {
+        color: sv === null ? PIVOT.colors.none : PIVOT.colors[st.series][String(sv)]
+      }
+    };
+  });
+  const aggNote = aggDims.length
+    ? '；' + aggDims.map(function (d) { return PIVOT.dimLabels[d]; }).join('、') + '取中位聚合'
+    : '';
+  const seriesNote = st.series === 'none' ? '单系列' : '系列=' + PIVOT.dimLabels[st.series];
+  CHARTS['chart-pivot'].setOption({
+    title: {
+      text: PIVOT.metricLabels[st.metric] + '（引擎 ' + st.engine + '；X=' +
+            PIVOT.dimLabels[st.x] + '，' + seriesNote + aggNote + '）',
+      left: 'center', textStyle: { fontSize: 14 }
+    },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: pivotTip },
+    legend: { bottom: 0, type: 'scroll' },
+    grid: { top: 64, bottom: 64, left: 80, right: 24 },
+    xAxis: { type: 'category', data: xvals.map(String), name: PIVOT.dimLabels[st.x] },
+    yAxis: { type: 'value', name: PIVOT.metricLabels[st.metric] },
+    series: series
+  }, true);
+}
+
+function syncPivotButtons() {
+  document.querySelectorAll('#chart-pivot-controls button').forEach(function (b) {
+    b.classList.toggle('active', b.dataset.key === PIVOT.state[b.dataset.group]);
+  });
+}
+
+function setPivot(group, key) {
+  // Selecting the current X dimension as series (or vice versa) swaps the
+  // two axes instead of colliding.
+  if (group === 'series' && key !== 'none' && key === PIVOT.state.x) {
+    PIVOT.state.x = PIVOT.state.series;
+  } else if (group === 'x' && PIVOT.state.series === key) {
+    PIVOT.state.series = PIVOT.state.x;
+  }
+  PIVOT.state[group] = key;
+  syncPivotButtons();
+  renderPivot();
+}
 
 function setChart(id, key) {
   const options = CHART_DATA[id];
@@ -1387,6 +1757,7 @@ document.addEventListener('DOMContentLoaded', function () {
     CHARTS[id] = echarts.init(el);
     _activateFirst(id);
   });
+  renderPivot();
   window.addEventListener('resize', function () {
     Object.values(CHARTS).forEach(function (chart) { chart.resize(); });
   });
@@ -1408,6 +1779,7 @@ def _page(
     total_results: int,
     sections: list[str],
     charts: dict[str, dict[str, dict[str, Any]]],
+    pivot_records: list[dict[str, Any]],
 ) -> str:
     env = meta["environment"]
     config = meta["config"]
@@ -1422,16 +1794,36 @@ def _page(
         'function (p) { return p.name + "<br/>" + p.value[0] + " KB · " '
         '+ p.value[1] + " ms"; }',
     ).replace('"@@pct@@"', 'function (v) { return v + " %"; }')
-    if "</script" in charts_json:
+    pivot_json = json.dumps(pivot_records, ensure_ascii=False, separators=(",", ":"))
+    if "</script" in charts_json + pivot_json:
         raise ValueError("chart payload would terminate the inline <script> block")
-    chart_init_js = _CHART_INIT_JS.replace("__CHART_DATA__", charts_json)
+    chart_init_js = (
+        _CHART_INIT_JS.replace("__CHART_DATA__", charts_json)
+        .replace("__PIVOT_DATA__", pivot_json)
+        .replace("__PIVOT_ENGINE__", engines[0])
+        .replace("__BUDGETS__", json.dumps(list(BUDGETS)))
+        .replace(
+            "__PIVOT_METRIC_LABELS__",
+            json.dumps(dict(PIVOT_METRICS), ensure_ascii=False),
+        )
+        .replace("__C_MODE_EXACT__", MODE_COLORS["exact"])
+        .replace("__C_MODE_INC__", MODE_COLORS["incremental"])
+        .replace("__C_TOPO_SECTION__", TOPOLOGY_COLORS["section"])
+        .replace("__C_TOPO_SUBTREE__", TOPOLOGY_COLORS["subtree"])
+        .replace("__C_TOPO_SIBLING__", TOPOLOGY_COLORS["sibling"])
+        .replace(
+            "__C_BUDGETS__",
+            json.dumps({str(budget): color for budget, color in BUDGET_COLORS.items()}),
+        )
+    )
     toc = (
         "<nav><b>目录</b><ol>"
         "<li><a href='#datasets'>数据集长度画像</a></li>"
+        "<li><a href='#pivot'>维度透视</a></li>"
         "<li><a href='#time'>时间消耗</a></li>"
         "<li><a href='#accuracy'>准确率</a></li>"
         "<li><a href='#memory'>内存消耗</a></li>"
-        "<li><a href='#cache'>缓存容量敏感性</a></li>"
+        "<li><a href='#cache'>缓存容量无关性</a></li>"
         "<li><a href='#findings'>关键发现</a></li>"
         "<li><a href='#evaluation'>总结与评价</a></li>"
         "</ol></nav>"
@@ -1478,11 +1870,21 @@ code {{ background: #f4f4f5; padding: 1px 5px; border-radius: 4px; font-size: 0.
 .chart-frame {{ border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px 6px;
                 background: #fdfdff; }}
 .chart {{ width: 100%; height: 430px; }}
+.chart-tall {{ height: 480px; }}
 .chart-controls {{ display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }}
-.chart-controls button {{ font-size: 0.8rem; padding: 3px 10px; border-radius: 6px;
-                          border: 1px solid #d0adf7; background: #fff; color: #444;
-                          cursor: pointer; }}
-.chart-controls button.active {{ background: #d0adf7; color: #1f2328; font-weight: 600; }}
+.chart-controls button, .pivot-buttons button {{
+  font-size: 0.8rem; padding: 3px 10px; border-radius: 6px;
+  border: 1px solid #d0adf7; background: #fff; color: #444;
+  cursor: pointer; transition: background-color 160ms ease-out, color 160ms ease-out; }}
+.chart-controls button:hover, .pivot-buttons button:hover {{ background: #efe7fc; }}
+.chart-controls button:focus-visible, .pivot-buttons button:focus-visible {{
+  outline: 2px solid #5b21b6; outline-offset: 1px; }}
+.chart-controls button.active, .pivot-buttons button.active {{
+  background: #d0adf7; color: #1f2328; font-weight: 600; }}
+.pivot-controls {{ display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }}
+.pivot-group {{ display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }}
+.pivot-label {{ font-size: 0.78rem; font-weight: 700; color: #555; min-width: 3.2em; }}
+.pivot-buttons {{ display: flex; flex-wrap: wrap; gap: 6px; }}
 </style>
 </head>
 <body>
@@ -1495,7 +1897,8 @@ Python {env["python"].split()[0]} ｜ {env["platform"]}<br>
 （section / subtree / sibling 拓扑 × exact / incremental 计数）× 每预算 {docs_per_budget} 篇文档
 （6 种 synthetic 结构形状 × {config["documents_per_shape"]} + 真实语料重组 {config["recombined_documents"]}）＝
 共 {total_results} 条测量记录。<br>
-计时：每篇文档 warmup {config["warmups"]} 次 + 重复 {config["repetitions"]} 次，取每篇中位数与均值（无 tracemalloc 开销）；
+计时：每篇文档 warmup {config["warmups"]} 次（仅加载 tokenizer 与稳态）+ 重复 {config["repetitions"]} 次、
+每轮计时前清空 tokenizer 文本缓存（每篇文档从零缓存开始，对齐生产语义），取每篇中位数与均值（无 tracemalloc 开销）；
 内存：独立冷启动通道重复 {config["memory_reps"]} 次（每轮重建 splitter、全新 tokenizer 缓存），取 tracemalloc 分配峰值中位数；
 准确率：split 期估计 <code>estimated_token_count</code> 对 finalizer 权威重计数 <code>token_count</code> 的误差、
 预算超限率与词召回率（哨兵预言机全部通过才记 success）。

@@ -13,6 +13,7 @@ from ..models import (
     SectionNode,
     common_heading_path,
     render_draft_body,
+    render_heading_path,
     source_locations_for_blocks,
 )
 from .base import BaseSplitter
@@ -28,8 +29,11 @@ class ExactCountingMixin(BaseSplitter):
     ``SectionNode`` tree is walked directly.
 
     Counting runs cache-free: every split starts from a zero tokenizer cache
-    and a single document's split offers essentially no cache reuse, so the
-    recount pays full encoding every time instead of polluting an LRU.
+    and caches are never reused across documents. Identical strings within
+    one split (repeated heading paths, bodies counted at both the call site
+    and the draft builder) are deduplicated by a per-split memo instead, so
+    only genuinely distinct candidates — the ever-growing rendered
+    concatenations — pay full encoding.
     """
 
     use_tokenizer_cache = False
@@ -37,11 +41,30 @@ class ExactCountingMixin(BaseSplitter):
     def split(self, document: DocTree) -> list[ChunkDraft]:
         """Split by walking the raw ``SectionNode`` tree (no pre-measure)."""
         self._validate_document_topology(document)
+        self._count_memo: dict[str, int] = {}
         root = ExactCountingContext().prepare(self._root_for_splitting(document))
         drafts = self._post_process_drafts(self._split_section(root))
         for draft in drafts:
             draft.counting_mode = "exact"
         return drafts
+
+    def _memo_count(self, text: str) -> int:
+        """Count each distinct text once per split (deterministic memo hits)."""
+        memo = getattr(self, "_count_memo", None)
+        if memo is None:
+            memo = {}
+            self._count_memo = memo
+        cached = memo.get(text)
+        if cached is not None:
+            return cached
+        count = self.tokenizer.count(text, cache=False)
+        memo[text] = count
+        return count
+
+    def _heading_path_token_count(self, path: HeadingPath) -> int:
+        if not path:
+            return 0
+        return self._memo_count(render_heading_path(path))
 
     def _draft_budget_tokens(self, draft: ChunkDraft) -> int:
         """Exact logical footprint selected by the heading-sensitivity policy."""
@@ -108,7 +131,7 @@ class ExactCountingMixin(BaseSplitter):
     ) -> ChunkDraft:
         """Build a draft by fully recounting its separated public fields."""
         body = render_draft_body(entries, headings)
-        body_tokens = self.tokenizer.count(body, cache=False)
+        body_tokens = self._memo_count(body)
         prefix_tokens = self._heading_path_token_count(headings)
         token_count = self._chunk_token_count(prefix_tokens, body_tokens)
         return ChunkDraft(
@@ -133,7 +156,7 @@ class ExactCountingMixin(BaseSplitter):
                     body=body,
                     start_line=self._min_start_lines(section.blocks),
                     end_line=self._max_end_lines(section.blocks),
-                    body_token_count=self.tokenizer.count(body, cache=False),
+                    body_token_count=self._memo_count(body),
                     source_locations=source_locations_for_blocks(section.blocks),
                 )
             )
@@ -165,7 +188,7 @@ class ExactCountingMixin(BaseSplitter):
             entry = self._entry_from_blocks(
                 headings,
                 blocks,
-                body_token_count=self.tokenizer.count(body, cache=False),
+                body_token_count=self._memo_count(body),
             )
             return [
                 self._draft_from_entries(
@@ -227,7 +250,7 @@ class ExactCountingMixin(BaseSplitter):
                     entry = make_entry(
                         block,
                         block.text,
-                        self.tokenizer.count(block.text, cache=False),
+                        self._memo_count(block.text),
                     )
                     drafts.append(
                         self._draft_from_entries(
@@ -240,9 +263,7 @@ class ExactCountingMixin(BaseSplitter):
                     )
                 continue
 
-            entry = make_entry(
-                block, block.text, self.tokenizer.count(block.text, cache=False)
-            )
+            entry = make_entry(block, block.text, self._memo_count(block.text))
             block_draft = self._draft_from_entries(
                 [entry],
                 headings,
@@ -307,7 +328,7 @@ class ExactCountingMixin(BaseSplitter):
         if not (node.blocks or node.level > 0):
             return []
         body = join_rendered_blocks([block.text for block in node.blocks])
-        body_tokens = self.tokenizer.count(body, cache=False)
+        body_tokens = self._memo_count(body)
         has_standalone = any(
             block.kind in self.standalone_kinds for block in node.blocks
         )
@@ -357,9 +378,8 @@ class ExactCountingMixin(BaseSplitter):
         entry = self._entry_from_blocks(
             node.path,
             node.blocks,
-            body_token_count=self.tokenizer.count(
-                join_rendered_blocks([block.text for block in node.blocks]),
-                cache=False,
+            body_token_count=self._memo_count(
+                join_rendered_blocks([block.text for block in node.blocks])
             ),
         )
         draft = self._draft_from_entries(

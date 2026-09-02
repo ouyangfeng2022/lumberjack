@@ -2,8 +2,9 @@
 
 Splits the same generated document twice — ``exact-section`` (full recount
 at every budget decision) and ``section`` (incremental running estimate) —
-under a counting tokenizer wrapper that records call counts. Prints chunk
-counts, tokenizer calls, wall time, and the split-time estimate error.
+under a counting tokenizer wrapper that records call counts and the volume
+of text pushed through ``count()``. Prints chunk counts, tokenizer calls and
+characters, wall time, and the split-time estimate error.
 
 The example defaults to the offline byte-approximation tokenizer. Set
 ``LUMBERJACK_EXAMPLE_TOKENIZER=tiktoken`` to measure with tiktoken instead;
@@ -48,9 +49,11 @@ class CountingTokenizer:
         self.base = base
         self.count_calls = 0
         self.encode_calls = 0
+        self.count_chars = 0
 
     def count(self, text: str, *, cache: bool = False) -> int:
         self.count_calls += 1
+        self.count_chars += len(text)
         return self.base.count(text, cache=cache)
 
     def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:
@@ -95,6 +98,7 @@ def measure(splitter_name: str, base_tokenizer, document: str) -> dict:
     return {
         "chunk_count": len(result.chunks),
         "tokenizer_count_calls": counting.count_calls,
+        "tokenizer_count_chars": counting.count_chars,
         "tokenizer_encode_calls": counting.encode_calls,
         "wall_time_ms": round(elapsed_ms, 1),
         "mean_estimate_error_pct": round(mean_error, 3),
@@ -117,9 +121,11 @@ def main() -> int:
         "exact_section": exact,
         "incremental_section": incremental,
         "reading": (
-            "both runs emit the same authoritative token counts; incremental "
-            "planning spends far fewer tokenizer calls and its split-time "
-            "estimate error stays small"
+            "both runs emit the same authoritative token counts; exact "
+            "planning re-encodes more total text because every budget "
+            "decision recounts the growing rendered candidate (identical "
+            "strings are deduplicated per split), while incremental plans "
+            "from one pre-measure pass and keeps its estimate error small"
         ),
     }
     print(json.dumps(summary, indent=2, ensure_ascii=False))

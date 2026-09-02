@@ -126,6 +126,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `Exact*Splitter` classes now deduplicate identical `count()` texts within
+  one split through an internal per-split memo (mirroring incremental's
+  `_count_once`) instead of re-enabling the tokenizer text cache: repeated
+  heading paths and bodies counted at both the call site and the draft
+  builder no longer re-encode, while ever-growing candidate concatenations
+  still do. On the 50 KB benchmark probe document this removes all duplicate
+  tokenizer calls and cuts exact split wall time by 38–59% (exact-section
+  48.8→30.1 ms, exact-subtree 77.6→41.1 ms, exact-sibling 97.8→40.4 ms);
+  incremental variants are unchanged.
 - `Exact*Splitter` classes no longer enable the tokenizer text cache during
   splitting. Every document's split starts from a zero cache in production
   (text caches are request-local and never reused across documents) and a

@@ -238,7 +238,7 @@ Implemented in `src/lumberjack/cli.py`.
 - `Chunk.body` always includes rendered heading context; shared parent headings are deduplicated
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
 - `block_options` is a sequence of typed objects from `lumberjack.block`; duplicate kinds are rejected
-- Exact `Exact*Splitter` classes fully recount rendered text at every budget decision without the tokenizer text cache (`use_tokenizer_cache = False`): every document's split starts from a zero cache in production and a single split offers essentially no cache reuse. Default unprefixed splitters use a running additive estimate with a per-split `_count_once` memo. `ChunkFinalizer` performs the authoritative final recount after seasoning and planing.
+- Exact `Exact*Splitter` classes fully recount rendered text at every budget decision without the tokenizer text cache (`use_tokenizer_cache = False`): every document's split starts from a zero cache in production and caches are never reused across documents. Identical texts within one split (repeated heading paths, bodies counted at both the call site and the draft builder) are deduplicated by a per-split memo (`_memo_count`), mirroring incremental's `_count_once`. Default unprefixed splitters use a running additive estimate with a per-split `_count_once` memo. `ChunkFinalizer` performs the authoritative final recount after seasoning and planing.
 
 ## Constraints
 
