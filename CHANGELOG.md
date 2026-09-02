@@ -126,6 +126,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `Exact*Splitter` classes no longer enable the tokenizer text cache during
+  splitting. Every document's split starts from a zero cache in production
+  (text caches are request-local and never reused across documents) and a
+  single split offers essentially no cache reuse, so exact recounting now pays
+  the full encoding cost directly instead of populating an LRU; peak memory
+  during exact splits no longer grows with the cache. The splitter benchmark
+  follows the same semantics: it clears the tokenizer text cache before every
+  timed repetition (warmup only loads the tokenizer and reaches steady
+  state), so published wall times are cold-cache numbers.
 - The Docker production image now installs a built wheel instead of an
   editable source link, drops the `uv` binary and source tree from the
   runtime stage, and bakes the frontend into the installed package. Build

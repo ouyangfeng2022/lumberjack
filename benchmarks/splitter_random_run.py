@@ -3,8 +3,11 @@
 Measures the six splitter variants (section/subtree/sibling topology x
 exact/incremental counting) under identical tokenizers and documents:
 
-* split-phase wall/CPU speed, measured without tracing overhead, and
-  tokenizer ``count`` call volume,
+* split-phase wall/CPU speed, measured without tracing overhead, with the
+  tokenizer text cache cleared before every repetition so each timed split
+  starts from a zero cache — matching production, where caches are
+  request-local and never reused across documents,
+* tokenizer ``count`` call volume,
 * token estimation error - the gap between the split-time running estimate
   (``Chunk.estimated_token_count``) and the finalizer's authoritative recount
   (``Chunk.token_count``),
@@ -14,9 +17,12 @@ exact/incremental counting) under identical tokenizers and documents:
   split + finalize, taken in a separate pass with a fresh tokenizer cache per
   repetition so cache growth is attributed to the splitter that causes it.
 
-The parser runs once per document outside every timed region; splitters treat
-the tree as read-only, so all variants split the same ``DocTree`` instance.
-Re-run with different ``--max-tokens`` values to compare parameter budgets.
+Warmup runs exist only to load the tokenizer backend into memory and reach
+interpreter/allocator steady state; they never warm the timed repetitions'
+cache. The parser runs once per document outside every timed region;
+splitters treat the tree as read-only, so all variants split the same
+``DocTree`` instance. Re-run with different ``--max-tokens`` values to
+compare parameter budgets.
 
 Example:
     uv run python -m benchmarks.splitter_random_run --corpus both
@@ -236,6 +242,13 @@ def _fresh_tokenizer(template: TokenizerProtocol) -> TokenizerProtocol:
     return template
 
 
+def _reset_tokenizer_cache(tokenizer: TokenizerProtocol) -> None:
+    """Zero the text cache so the next split starts cold, as in production."""
+    clear = getattr(tokenizer, "clear_cache", None)
+    if callable(clear):
+        clear()
+
+
 def _tree_reference_text(tree: DocTree) -> str:
     """Visible-text truth from the parsed tree.
 
@@ -317,8 +330,9 @@ def _measure_memory(
     """Cold-run allocation peaks as ``(split peak, split+finalize peak)`` pairs.
 
     Every repetition rebuilds the splitter on a tokenizer with a fresh cache,
-    so the traced peak includes whatever LRU entries the splitter's own
-    ``cache=True`` counting allocates on a first run.
+    so the traced peak includes whatever LRU entries the splitter's
+    cache-enabled counting allocates on a first run (exact modes count
+    cache-free and allocate none).
     """
     peaks: list[tuple[int, int]] = []
     for _ in range(config.memory_reps):
@@ -350,7 +364,8 @@ def _measure_document(
     splitter_name: str,
     config: SplitterRandomConfig,
 ) -> SplitterDocumentResult:
-    tokenizer = CountingTokenizer(_fresh_tokenizer(template))
+    inner = _fresh_tokenizer(template)
+    tokenizer = CountingTokenizer(inner)
     splitter = SPLITTER_CLASSES[splitter_name](tokenizer, max_tokens=config.max_tokens)
     finalizer = ChunkFinalizer(tokenizer)
     result = SplitterDocumentResult(
@@ -367,10 +382,14 @@ def _measure_document(
         source_approx_tokens=document.profile.get("approx_tokens", 0),
     )
     try:
+        # Warmup loads the tokenizer backend and reaches steady state only;
+        # every timed repetition below clears the cache first, so warmup
+        # never leaks a warm cache into the measurements.
         for _ in range(config.warmups):
             splitter.split(tree)
         drafts: list[Any] = []
         for _ in range(config.repetitions):
+            _reset_tokenizer_cache(inner)
             tokenizer.count_calls = 0
             tokenizer.encode_calls = 0
             wall_start = time.perf_counter()

@@ -176,6 +176,67 @@ class _RecordingCountTokenizer:
         return len(text)
 
 
+class _CacheFlagRecordingTokenizer:
+    """Tokenizer that records the ``cache`` flag of every ``count`` call."""
+
+    def __init__(self) -> None:
+        self.cache_flags: list[bool] = []
+
+    def encode(self, text: str, *, cache: bool = False) -> tuple[int, ...]:  # noqa: ARG002
+        return tuple(ord(c) for c in text) if text else ()
+
+    def count(self, text: str, *, cache: bool = False) -> int:
+        self.cache_flags.append(cache)
+        return len(text)
+
+
+class TestSplitterCachePolicy:
+    """Exact counting runs cache-free; incremental keeps cache-enabled counting.
+
+    Every document's split starts from a zero tokenizer cache in production,
+    and a single split offers essentially no cache reuse, so the exact
+    recount must never enable the tokenizer text cache.
+    """
+
+    SOURCE = (
+        "# Title\n\n"
+        "First paragraph with some text to pack.\n\n"
+        "## Subsection\n\n"
+        "Subsection body content here.\n\n"
+        "```python\n"
+        "print('alpha')\nprint('beta')\nprint('gamma')\n"
+        "print('delta')\nprint('epsilon')\n"
+        "```\n"
+    )
+
+    def test_exact_split_never_requests_tokenizer_cache(self) -> None:
+        tokenizer = _CacheFlagRecordingTokenizer()
+        splitter = create_splitter(
+            "exact-sibling", tokenizer, splitter_options(max_tokens=40)
+        )
+
+        assert splitter.use_tokenizer_cache is False
+        splitter.split(MarkdownItParser().parse(self.SOURCE))
+
+        # Construction (separator count) and every split-phase count —
+        # including oversized-block pieces routed through BlockSplitter —
+        # must run with the tokenizer cache disabled.
+        assert tokenizer.cache_flags
+        assert not any(tokenizer.cache_flags)
+
+    def test_incremental_split_still_uses_cache(self) -> None:
+        tokenizer = _CacheFlagRecordingTokenizer()
+        splitter = create_splitter(
+            "incremental-sibling", tokenizer, splitter_options(max_tokens=40)
+        )
+
+        assert splitter.use_tokenizer_cache is True
+        splitter.split(MarkdownItParser().parse(self.SOURCE))
+
+        assert tokenizer.cache_flags
+        assert any(tokenizer.cache_flags)
+
+
 class TestCreateTokenizer:
     def test_approx_is_supported(self) -> None:
         engine = create_tokenizer("approx")

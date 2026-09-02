@@ -32,10 +32,12 @@ class BlockSplitter:
         *,
         max_tokens: int,
         block_options: dict[str, BlockOption],
+        use_cache: bool = True,
     ) -> None:
         self.tokenizer = tokenizer
         self.max_tokens = max_tokens
         self.block_options = block_options
+        self.use_cache = use_cache
         self._html_table_parser = HTMLTableParser()
 
     def split_oversized_block(
@@ -96,9 +98,11 @@ class BlockSplitter:
         open_fence = f"```{info}".rstrip()
         close_fence = "```"
         empty_render = f"{open_fence}\n\n{close_fence}"
-        wrapper_tokens = self.tokenizer.count(empty_render, cache=True)
+        wrapper_tokens = self.tokenizer.count(empty_render, cache=self.use_cache)
         if wrapper_tokens >= max_tokens:
-            return [(block.text, self.tokenizer.count(block.text, cache=True))]
+            return [
+                (block.text, self.tokenizer.count(block.text, cache=self.use_cache))
+            ]
 
         code_budget = max_tokens - wrapper_tokens
         pieces = self.split_text(literal, max_tokens=code_budget)
@@ -106,7 +110,9 @@ class BlockSplitter:
         for piece, _piece_tokens in pieces:
             wrapped = f"{open_fence}\n{piece}\n{close_fence}"
             # Fences add tokens beyond the literal, so recount the wrapped text.
-            result.append((wrapped, self.tokenizer.count(wrapped, cache=True)))
+            result.append(
+                (wrapped, self.tokenizer.count(wrapped, cache=self.use_cache))
+            )
         return result
 
     def split_table_block(
@@ -124,7 +130,7 @@ class BlockSplitter:
 
         def emit_piece(piece_header: list[str], rows: list[str]) -> tuple[str, int]:
             piece = self.render_table_piece(piece_header, rows)
-            return (piece, self.tokenizer.count(piece, cache=True))
+            return (piece, self.tokenizer.count(piece, cache=self.use_cache))
 
         header = lines[:2]
         rows = lines[2:]
@@ -135,14 +141,14 @@ class BlockSplitter:
             candidate_rows = [*current_rows, row]
             candidate_header = header if repeat_header or not pieces else []
             candidate = self.render_table_piece(candidate_header, candidate_rows)
-            candidate_tokens = self.tokenizer.count(candidate, cache=True)
+            candidate_tokens = self.tokenizer.count(candidate, cache=self.use_cache)
             if current_rows and candidate_tokens > max_tokens:
                 piece_header = header if repeat_header or not pieces else []
                 pieces.append(emit_piece(piece_header, current_rows))
                 current_rows = [row]
                 single_header = header if repeat_header or not pieces else []
                 single_row = self.render_table_piece(single_header, current_rows)
-                single_tokens = self.tokenizer.count(single_row, cache=True)
+                single_tokens = self.tokenizer.count(single_row, cache=self.use_cache)
                 if single_tokens > max_tokens:
                     pieces.append((single_row, single_tokens))
                     current_rows = []
@@ -158,7 +164,9 @@ class BlockSplitter:
             piece_header = header if repeat_header or not pieces else []
             pieces.append(emit_piece(piece_header, current_rows))
 
-        return pieces or [(block.text, self.tokenizer.count(block.text, cache=True))]
+        return pieces or [
+            (block.text, self.tokenizer.count(block.text, cache=self.use_cache))
+        ]
 
     def is_table_delimiter_row(self, line: str) -> bool:
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
@@ -184,10 +192,12 @@ class BlockSplitter:
         repeat_header = self._repeat_header(block.kind)
         tables = self._html_table_parser.extract_tables(block.text)
         if not tables:
-            return [(block.text, self.tokenizer.count(block.text, cache=True))]
+            return [
+                (block.text, self.tokenizer.count(block.text, cache=self.use_cache))
+            ]
 
         def emit(html: str) -> tuple[str, int]:
-            return (html, self.tokenizer.count(html, cache=True))
+            return (html, self.tokenizer.count(html, cache=self.use_cache))
 
         pieces: list[tuple[str, int]] = []
         for html_table in tables:
@@ -228,7 +238,7 @@ class BlockSplitter:
                 test_html = self._build_html_table_piece(
                     table_open_tag, caption_html, candidate_headers, test_rows
                 )
-                test_tokens = self.tokenizer.count(test_html, cache=True)
+                test_tokens = self.tokenizer.count(test_html, cache=self.use_cache)
 
                 if current_rows and test_tokens > max_tokens:
                     # Emit current group. ``piece_html`` differs from
@@ -267,7 +277,7 @@ class BlockSplitter:
         return (
             pieces
             if pieces
-            else [(block.text, self.tokenizer.count(block.text, cache=True))]
+            else [(block.text, self.tokenizer.count(block.text, cache=self.use_cache))]
         )
 
     def _build_html_table_piece(
@@ -328,7 +338,7 @@ class BlockSplitter:
 
         pieces: list[tuple[str, int]] = []
         for item in items:
-            item_tokens = self.tokenizer.count(item, cache=True)
+            item_tokens = self.tokenizer.count(item, cache=self.use_cache)
             if item_tokens <= max_tokens:
                 pieces.append((item, item_tokens))
                 continue
@@ -346,12 +356,12 @@ class BlockSplitter:
         *,
         max_tokens: int,
     ) -> list[tuple[str, int]]:
-        text_tokens = self.tokenizer.count(text, cache=True)
+        text_tokens = self.tokenizer.count(text, cache=self.use_cache)
         if text_tokens <= max_tokens:
             return [(text, text_tokens)]
 
         if any(
-            self.tokenizer.count(m.group(0), cache=True) > max_tokens
+            self.tokenizer.count(m.group(0), cache=self.use_cache) > max_tokens
             for m in PROTECTED_SPAN_RE.finditer(text)
         ):
             return [(text, text_tokens)]
@@ -399,7 +409,9 @@ class BlockSplitter:
         separator: str,
     ) -> list[tuple[str, int]] | None:
         """Pack one fallback level only when every atomic part fits."""
-        part_token_counts = [self.tokenizer.count(part, cache=True) for part in parts]
+        part_token_counts = [
+            self.tokenizer.count(part, cache=self.use_cache) for part in parts
+        ]
         if any(tokens > max_tokens for tokens in part_token_counts):
             return None
         return self.pack_parts(
@@ -428,7 +440,9 @@ class BlockSplitter:
             candidate_text = (
                 current_joined + separator + part if current_joined else part
             )
-            candidate_tokens = self.tokenizer.count(candidate_text, cache=True)
+            candidate_tokens = self.tokenizer.count(
+                candidate_text, cache=self.use_cache
+            )
             if current_parts and candidate_tokens > max_tokens:
                 packed.append((current_joined, current_tokens))
                 current_parts = [part]
@@ -436,7 +450,7 @@ class BlockSplitter:
                 current_tokens = (
                     part_token_counts[index]
                     if part_token_counts is not None
-                    else self.tokenizer.count(part, cache=True)
+                    else self.tokenizer.count(part, cache=self.use_cache)
                 )
             else:
                 current_parts.append(part)
@@ -461,19 +475,24 @@ class BlockSplitter:
             upper = min(len(text), start + step)
 
             while upper < len(text):
-                if self.tokenizer.count(text[start:upper], cache=True) > max_tokens:
+                if (
+                    self.tokenizer.count(text[start:upper], cache=self.use_cache)
+                    > max_tokens
+                ):
                     break
                 lower = upper
                 step *= 2
                 upper = min(len(text), start + step)
 
             if upper == len(text) and (
-                self.tokenizer.count(text[start:upper], cache=True) <= max_tokens
+                self.tokenizer.count(text[start:upper], cache=self.use_cache)
+                <= max_tokens
             ):
                 lower = upper
 
             if lower == start and (
-                self.tokenizer.count(text[start : start + 1], cache=True) > max_tokens
+                self.tokenizer.count(text[start : start + 1], cache=self.use_cache)
+                > max_tokens
             ):
                 lower = start + 1
 
@@ -484,7 +503,7 @@ class BlockSplitter:
                 while left <= right:
                     middle = (left + right) // 2
                     if (
-                        self.tokenizer.count(text[start:middle], cache=True)
+                        self.tokenizer.count(text[start:middle], cache=self.use_cache)
                         <= max_tokens
                     ):
                         best = middle
@@ -498,7 +517,9 @@ class BlockSplitter:
 
             piece = text[start:lower].strip()
             if piece:
-                result.append((piece, self.tokenizer.count(piece, cache=True)))
+                result.append(
+                    (piece, self.tokenizer.count(piece, cache=self.use_cache))
+                )
             start = lower
 
         return result

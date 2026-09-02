@@ -1,17 +1,23 @@
 """Focused tiktoken LRU-capacity probe feeding ``splitter-cache-probe.json``.
 
-The full report (``benchmarks/splitter_report.py``) reads the probe to show how
-the default ``TiktokenTokenizer(max_cache_size=1000)`` thrashes when one split
-touches more distinct ``count()`` texts than the cache holds. This module
-regenerates that JSON deterministically:
+The full report (``benchmarks/splitter_report.py``) reads the probe to verify
+that cache capacity is irrelevant under per-document cold-start semantics:
+every document's split begins with a zero tokenizer cache in production, so
+no splitter may depend on intra-split LRU reuse. This module regenerates
+that JSON deterministically:
 
 1. Generate the pinned slow document (``synthetic-long-sections`` index) with
    the shared seeded generator at the probe budget.
 2. Parse it once; every variant splits the same ``DocTree``.
-3. For each cache size, build a fresh tokenizer, warm up once, then time
-   ``--repetitions`` splits and keep the median wall time.
+3. For each cache size, build a fresh tokenizer, warm up once (tokenizer
+   load + steady state only), then time ``--repetitions`` splits with the
+   cache cleared before every repetition and keep the median wall time.
 4. One extra cold pass with a recording wrapper counts the distinct ``count()``
    texts a single split touches.
+
+A large ``speedup`` (cache1000 / cache10000) would mean a variant has
+regressed to relying on intra-split cache reuse, which production cold
+starts never pay for.
 
 Example:
     uv run python -m benchmarks.splitter_cache_probe
@@ -96,6 +102,7 @@ def run_probe(config: ProbeConfig) -> dict[str, Any]:
                 splitter.split(tree)
             samples: list[float] = []
             for _ in range(config.repetitions):
+                tokenizer.clear_cache()
                 start = time.perf_counter()
                 splitter.split(tree)
                 samples.append(time.perf_counter() - start)

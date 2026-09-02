@@ -725,28 +725,26 @@ def _main() -> None:
     speedups = [row["speedup"] for row in probe["rows"]]
     probe_note = (
         f"该文档单次 split 触及 {probe.get('distinct_count_texts_max', '约 1900')} 个不同的 "
-        "count() 字符串，超过默认缓存容量 1000，LRU 逐出导致每次重复都重新编码；"
-        f"扩容到 10000 后 {len(probe_rows)} 个变体一致提速 "
-        f"{min(speedups):.0f}–{max(speedups):.0f} 倍。approx 引擎无缓存，不受影响。"
+        f"count() 字符串；冷启动口径（每轮清空缓存）下默认 LRU=1000 与 10000 的中位耗时一致"
+        f"（加速比 {min(speedups):.2f}–{max(speedups):.2f}x），说明没有任何变体依赖单篇内的 "
+        "LRU 复用。exact 模式计数完全不启用缓存。approx 引擎无缓存，不受影响。"
     )
     sections.append(
-        '<h2 id="cache">5. 缓存容量敏感性（tiktoken LRU=1000 抖动）</h2>'
+        '<h2 id="cache">5. 缓存容量无关性（冷启动口径）</h2>'
         + _explain(
-            "本探测回答一个具体问题：tiktoken 默认缓存（<code>max_cache_size=1000</code>）"
-            "什么时候不够用？方法是固定选取语料中最慢的一篇长文档，同一 splitter 分别在 "
-            "LRU=1000 与 LRU=10000 下计时（预热 1 次 + 重复 5 次取中位），并统计单次 split "
-            "实际触及的<b>不同</b> <code>count()</code> 字符串个数。当工作集超过缓存容量时，"
-            "LRU 持续逐出导致每一步重复都要重新编码，耗时按倍数放大；扩容缓存后完全恢复线性。"
-            "加速比定义为 "
-            r"\( s = \dfrac{t_{\text{LRU}=1000}}{t_{\text{LRU}=10000}} \)。"
-            "approx 引擎按 UTF-8 字节估算、无缓存，不受影响。"
-            "<b>实操结论</b>：处理大文档时显式构造 "
-            "<code>TiktokenTokenizer(max_cache_size=10000)</code> 即可，"
-            "属配置问题而非算法问题。"
+            "本探测验证一个前提：生产中每篇文档的 split 都从零缓存开始（文本缓存按请求隔离、"
+            "跨文档不可复用），因此任何 splitter 都不应依赖单篇内的 LRU 复用。方法是固定选取"
+            "语料中最慢的一篇长文档，同一 splitter 分别在 LRU=1000 与 LRU=10000 下计时"
+            "（预热 1 次仅加载 tokenizer，每轮计时前清空缓存，重复 5 次取中位），并统计单次 "
+            "split 实际触及的<b>不同</b> <code>count()</code> 字符串个数。加速比定义为 "
+            r"\( s = \dfrac{t_{\text{LRU}=1000}}{t_{\text{LRU}=10000}} \)，"
+            "接近 1 即容量无关；显著大于 1 则意味着该变体退回到了依赖单篇内缓存复用。"
+            "exact 计数模式已完全不启用 tokenizer 缓存；incremental 的单篇内复用由其一次性"
+            "预测量 memo 承担，不经过 LRU。approx 引擎按 UTF-8 字节估算、无缓存，不受影响。"
         )
         + _chart_figure(
             "chart-cache",
-            "图 5-1：LRU=1000 vs LRU=10000 的 split 中位耗时（y 轴对数；红色远高于绿色即缓存抖动）",
+            "图 5-1：冷启动口径下 LRU=1000 vs LRU=10000 的 split 中位耗时（两柱接近即容量无关）",
         )
         + _table(
             f"最慢文档（{probe['document_id']}，{probe['source_bytes']} 字节）在预算 "
@@ -1173,10 +1171,10 @@ def _summary_evaluation(
         f"<p><b>总评。</b>六个 splitter 变体在本矩阵（{len(engines)} 引擎 × 3 预算 × "
         f"{docs_per_budget} 篇/档文档）中全部通过内容保真 oracle、零失败：RAG 预处理最关心的"
         "『不丢内容、代码块不重复、词召回 ≥ 0.99』对所有变体成立，选型可以放心地围绕速度、"
-        "计数精度与内存三个轴做权衡。两种计数方式的本质差异是：<b>exact</b> 用 tokenizer LRU "
-        "缓存摊销『每个预算决策都完整重计数』的成本，换来零估计误差与大预算下的速度优势；"
-        "<b>incremental</b> 用一次性预测量加运行估计，误差小、无缓存依赖，但要支付固定预测量开销。"
-        "splitter 层面未发现需要修复的缺陷。</p>"
+        "计数精度与内存三个轴做权衡。两种计数方式的本质差异是：<b>exact</b> 在每个预算决策处"
+        "完整重计数（不启用 tokenizer 缓存——单篇 split 内不存在可摊销的缓存复用），换来零估计"
+        "误差；<b>incremental</b> 用一次性预测量加运行估计，误差小、"
+        "但要支付固定预测量开销。splitter 层面未发现需要修复的缺陷。</p>"
     )
     dimension_rows = [
         [
@@ -1188,23 +1186,24 @@ def _summary_evaluation(
         ],
         [
             "速度",
-            f"exact/inc 中位耗时比 {min(wall_ratios):.2f}x–{max(wall_ratios):.2f}x；大预算下 exact 系最快{b1200_sentence}",
-            "大预算、高频管线值得切 exact；小文档各变体差距在 0.1 ms 量级，"
+            f"exact/inc 中位耗时比 {min(wall_ratios):.2f}x–{max(wall_ratios):.2f}x"
+            f"{b1200_sentence}",
+            "冷缓存口径下 incremental 通常更快（exact 的重计数每次都支付完整编码成本）；"
+            "需要绝对预算可靠时才选 exact。小文档各变体差距小，"
             "拓扑选择（语义边界）比计数方式更重要。",
         ],
         [
             "内存",
             f"exact/inc 冷启动 split 峰值比：{mem_summary}",
-            "tiktoken 下 exact 以约 1–2 倍峰值内存换速度（LRU 缓存）；approx 下 exact 反而更省"
-            "（incremental 的预测量视图树常驻）。内存受限的长驻/并发服务可留 incremental。",
+            "exact 的重计数生成中间渲染文本但不写 tokenizer 缓存，incremental 常驻预测量"
+            "视图树并向缓存写入条目；两者峰值构成不同，内存敏感场景按左列实测峰值选择。",
         ],
         [
             "长度缩放",
             f"中位耗时随长度近似线性（{ms_per_kb_summary}）；"
-            f"默认 LRU=1000 在 ~40 KB+ 文档上抖动，6 变体一致提速 {min(speedups):.0f}–"
-            f"{max(speedups):.0f} 倍即可恢复",
-            "唯一实质性风险点是 tiktoken 默认缓存容量，属配置问题而非算法问题；"
-            "处理大文档时显式调大 max_cache_size 即可。",
+            f"冷启动口径下 LRU 容量不影响耗时（probe 加速比 {min(speedups):.2f}–"
+            f"{max(speedups):.2f}x）",
+            "计时每轮从零缓存开始，对齐生产语义；无需为文档大小调整 tokenizer 缓存配置。",
         ],
     ]
     overview += _text_table(
@@ -1221,12 +1220,13 @@ def _summary_evaluation(
         [
             "默认 / 保守选择",
             "incremental-section（现 CLI 默认拓扑）",
-            "行为即当前默认，无缓存依赖；小文档上固定开销最小。",
+            "行为即当前默认；小文档上固定开销最小。",
         ],
         [
             "大预算 RAG 管线（tiktoken、max_tokens ≥ 600、文档较大）",
-            "exact-subtree 或 exact-sibling，配 TiktokenTokenizer(max_cache_size≥10000)",
-            "实测最快且零估计误差；扩容缓存避免 LRU 抖动放大长尾。",
+            "incremental-subtree 或 incremental-sibling",
+            "冷缓存口径下 tiktoken 引擎的最快档；估计误差小且不放大超限。"
+            "需要绝对预算可靠时再换 exact-*。",
         ],
         [
             "严格预算合规（下游硬截断）",
@@ -1235,8 +1235,8 @@ def _summary_evaluation(
         ],
         [
             "内存受限 / 并发常驻服务",
-            "incremental-subtree（tiktoken 下内存最低档之一）或 approx 引擎",
-            "无 LRU 缓存增长，冷启动峰值可预期。",
+            "exact-*（不写 tokenizer 缓存）或 approx 引擎",
+            "exact 计数不启用缓存、无 LRU 增长，冷启动峰值可预期；approx 引擎无缓存。",
         ],
         [
             "小文档、高频短文本",
@@ -1251,10 +1251,11 @@ def _summary_evaluation(
     )
     limitations = (
         "<p><b>局限与口径说明。</b></p><ul>"
-        "<li>计时通道为 warmup 后的稳态（缓存已预热）；一次性冷启动进程的耗时未单独计时，"
-        "exact 冷启动需先填充 LRU 缓存，首篇文档会偏慢。</li>"
+        "<li>计时通道每轮清空 tokenizer 文本缓存（每篇文档从零缓存开始，对齐生产语义）；"
+        "warmup 仅用于加载 tokenizer 后端并达到解释器稳态，不会预热计时轮的缓存。</li>"
         "<li>内存通道是冷启动峰值（每轮全新缓存），与计时通道口径不同，两者不可互相换算。</li>"
-        "<li>tiktoken 默认 LRU=1000 的抖动是『按默认配置测量』的刻意结果；扩容后即恢复线性。</li>"
+        "<li>exact 计数完全不启用 tokenizer 缓存；incremental 的单篇内复用由其一次性预测量 "
+        "memo 承担，不依赖 LRU。</li>"
         "<li>recombined 语料池由 CommonMark、Kubernetes 文档与本地 element cases 三个来源组成；"
         "均为 Markdown，其它格式的 splitter 行为不在本矩阵范围内。</li>"
         "<li>结构性超限（超长标题、超大表格/列表等原子单元本身超过预算）任何 splitter 都无法消除，"
@@ -1334,15 +1335,16 @@ def _findings(
     )
     findings.append(
         f"<b>速度</b>：exact/incremental 中位耗时比在 {min(ratios):.2f}x–{max(ratios):.2f}x 之间"
-        "（同 tokenizer、同文档配对对比）；exact 重计数依靠 LRU 缓存命中抵消重复渲染成本，"
-        "incremental 则有一次性预测量的固定开销，因此小文档上 incremental 更快、大预算下 exact 更快。"
+        "（同 tokenizer、同文档配对对比）；exact 直接为每次重计数支付完整编码成本"
+        "（不启用 tokenizer 缓存），incremental 则有一次性预测量的固定开销。"
     )
     for engine in engines:
         engine_mem = mem_ratios[engine]
         extra = (
-            "tiktoken 下 exact 通过 LRU 缓存（上限 1000 条 token 元组）换取计数命中，冷启动峰值内存高于 incremental。"
+            "tiktoken 下 exact 的重计数会生成中间渲染文本，incremental 则常驻预测量视图树并"
+            "向 tokenizer 缓存写入预测量条目。"
             if engine == "tiktoken"
-            else "approx 无 LRU；incremental 的预测量视图树在 split 期间常驻，exact 即用即弃，峰值更低。"
+            else "approx 无缓存；incremental 的预测量视图树在 split 期间常驻，exact 即用即弃，峰值更低。"
         )
         findings.append(
             f"<b>内存（{engine}）</b>：exact/incremental 的 split 峰值内存比 "
@@ -1350,15 +1352,9 @@ def _findings(
         )
     for engine in engines:
         engine_rates = rates[engine]
-        thrash_note = (
-            "；但 tiktoken 默认 LRU=1000 在超大文档上会抖动（单次 split 触及的字符串数超过缓存容量），"
-            "使均值/长尾被放大数十倍，扩容缓存即可恢复线性"
-            if engine == "tiktoken"
-            else ""
-        )
         findings.append(
             f"<b>长度缩放（{engine}）</b>：中位耗时随文档长度近似线性（{min(engine_rates):.3f}–"
-            f"{max(engine_rates):.3f} ms/KB）{thrash_note}。"
+            f"{max(engine_rates):.3f} ms/KB）；计时每轮从零缓存开始，tokenizer 缓存容量不影响耗时。"
         )
     return findings
 

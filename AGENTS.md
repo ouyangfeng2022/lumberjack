@@ -238,7 +238,7 @@ Implemented in `src/lumberjack/cli.py`.
 - `Chunk.body` always includes rendered heading context; shared parent headings are deduplicated
 - `skip_empty_sections=True` discards chunks that contain only a heading with no body content
 - `block_options` is a sequence of typed objects from `lumberjack.block`; duplicate kinds are rejected
-- Exact `Exact*Splitter` classes fully recount rendered text at every budget decision. Default unprefixed splitters use a running additive estimate. `ChunkFinalizer` performs the authoritative final recount after seasoning and planing.
+- Exact `Exact*Splitter` classes fully recount rendered text at every budget decision without the tokenizer text cache (`use_tokenizer_cache = False`): every document's split starts from a zero cache in production and a single split offers essentially no cache reuse. Default unprefixed splitters use a running additive estimate with a per-split `_count_once` memo. `ChunkFinalizer` performs the authoritative final recount after seasoning and planing.
 
 ## Constraints
 
@@ -257,7 +257,7 @@ Parser verification has three layers, all under `benchmarks/`:
 - `benchmarks/random_run.py` + `benchmarks/random_corpus.py` — seeded random-document generators for every parser beyond Markdown/DOCX, checked against generated visible-text recall, exact element counts, and clean rejection of adversarial payloads
 - `tests/parser/test_parser_robustness.py` — combinatorial syntax corpora, adversarial fragments, and invalid-input rejection tests for Markdown, DOCX, HTML, records, spreadsheet, database, and source parsers
 
-Splitter verification has its own random benchmark: `benchmarks/splitter_random_run.py` + `benchmarks/splitter_random_corpus.py` measure the six hierarchical splitter variants (section/subtree/sibling topology × exact/incremental counting) over seeded synthetic structural shapes plus recombined real corpora, comparing clean wall time (repetitions without tracemalloc), cold-run tracemalloc allocation peaks, tokenizer call counts, and the split-time estimate vs authoritative token-count error under identical tokenizers. `benchmarks/splitter_report.py` renders the full comparison (length × splitter × counting mode × `max_tokens` budget; time/accuracy/memory) into a self-contained HTML report from the per-budget `raw.json` outputs.
+Splitter verification has its own random benchmark: `benchmarks/splitter_random_run.py` + `benchmarks/splitter_random_corpus.py` measure the six hierarchical splitter variants (section/subtree/sibling topology × exact/incremental counting) over seeded synthetic structural shapes plus recombined real corpora, comparing clean wall time (repetitions without tracemalloc, with the tokenizer text cache cleared before every repetition — warmup only loads the tokenizer and reaches steady state), cold-run tracemalloc allocation peaks, tokenizer call counts, and the split-time estimate vs authoritative token-count error under identical tokenizers. `benchmarks/splitter_report.py` renders the full comparison (length × splitter × counting mode × `max_tokens` budget; time/accuracy/memory) into a self-contained HTML report from the per-budget `raw.json` outputs.
 
 Current test areas:
 

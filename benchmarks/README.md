@@ -143,15 +143,22 @@ split 阶段 wall/CPU 速度、tokenizer `count` 调用量、split 期估计值
 冷启动分配峰值。每份文档只解析一次且不计入计时；所有变体切分同一棵 `DocTree`。
 
 Timing and memory are measured in separate passes: timed repetitions run without
-tracemalloc so wall times are clean; memory is measured with fresh tokenizer
-caches per repetition (`--memory-reps`, cold-run peaks for split alone and for
-split + finalize). Per-document results report both the median and the mean over
-`--repetitions` runs after `--warmups`.
+tracemalloc so wall times are clean, and the tokenizer text cache is cleared
+before every repetition so each timed split starts from a zero cache — the
+production semantics, since text caches are request-local and never reused
+across documents. Warmup runs only load the tokenizer backend into memory and
+reach interpreter/allocator steady state; they never warm the timed cache.
+Memory is measured with fresh tokenizer caches per repetition
+(`--memory-reps`, cold-run peaks for split alone and for split + finalize).
+Per-document results report both the median and the mean over `--repetitions`
+runs after `--warmups`.
 
-计时与内存分通道测量：计时重复不开启 tracemalloc，wall time 干净；内存通道每轮
-重建 splitter 并配全新 tokenizer 缓存（`--memory-reps`），记录 split 单独与
-split+finalize 两个峰值。每篇文档在 `--warmups` 次预热后重复 `--repetitions`
-次，同时报告中位数与均值。
+计时与内存分通道测量：计时重复不开启 tracemalloc，wall time 干净，且每轮计时前清空
+tokenizer 文本缓存，每次计时都从零缓存开始——与生产语义一致（文本缓存按请求隔离、
+跨文档不可复用）。warmup 仅用于加载 tokenizer 后端并让解释器/分配器达到稳态，不会
+预热计时轮的缓存。内存通道每轮重建 splitter 并配全新 tokenizer 缓存
+（`--memory-reps`），记录 split 单独与 split+finalize 两个峰值。每篇文档在
+`--warmups` 次预热后重复 `--repetitions` 次，同时报告中位数与均值。
 
 Two dataset modes combine in one run:
 
@@ -203,11 +210,11 @@ uv run python -m benchmarks.splitter_random_run \
 `summary.json` reports overall / by-tokenizer / by-splitter / by-dataset
 aggregates plus a pairwise exact-vs-incremental table (wall-time ratio,
 count-call ratio, memory ratio, estimate-error and budget-violation
-comparison). The process exits non-zero when any oracle fails. Whether exact is
-faster than incremental depends on topology and budget: exact relies on
-tokenizer LRU hits to amortize its recounts while incremental pays a fixed
-pre-measure pass, so exact typically wins at larger budgets and on cache-heavy
-workloads (measured wall ratios span roughly 0.5x–1.8x). Over-budget chunks
+comparison). The process exits non-zero when any oracle fails. Exact counting
+never enables the tokenizer cache: every document's split starts from a zero
+cache in production, and a single split offers essentially no cache reuse, so
+the recount pays full encoding every time while incremental pays a fixed
+pre-measure pass — all wall times are cold-cache numbers. Over-budget chunks
 reported by both counting modes are identical and come from atomic units that
 exceed the budget — `edge-degenerate`'s long-title variant and, once the
 Kubernetes corpus joins the recombined pool, oversized table/list blocks from
@@ -216,10 +223,10 @@ internally.
 
 `summary.json` 提供总体 / 按 tokenizer / 按 splitter / 按数据集的汇总，以及 exact
 与 incremental 的配对对比表（耗时比、计数调用比、内存比、估计误差与超预算率对
-比）。任何 oracle 失败时进程以非零码退出。exact 与 incremental 谁更快取决于拓扑
-与预算：exact 靠 tokenizer LRU 缓存命中摊销重复重计数，incremental 则要支付一
-次性预测量开销，因此大预算/缓存密集型负载下通常 exact 更快（实测耗时比约
-0.5x–1.5x）。两种计数方式报告的超预算块均来自 `edge-degenerate` 的“超长标题”
+比）。任何 oracle 失败时进程以非零码退出。exact 计数完全不启用 tokenizer 缓存：
+生产中每篇文档的 split 都从零缓存开始、单篇内基本不存在缓存复用，因此 exact 的
+每次重计数都支付完整编码成本，incremental 则支付一次性预测量开销——所有耗时均为
+冷缓存口径。两种计数方式报告的超预算块均来自 `edge-degenerate` 的“超长标题”
 变体——标题是原子单元，无法在标题内部切分。
 
 ### Full comparison report / 完整对比报告
@@ -236,21 +243,22 @@ uv run python -m benchmarks.splitter_report
 
 The report covers dataset length profiles, length × time tables per
 engine/budget, accuracy tables (estimate error, violation rate, recall),
-cold-run memory peaks per dataset/splitter, a tiktoken LRU-capacity sensitivity
-table, auto-derived key findings, and an editorial summary & evaluation section
-(per-dimension verdicts, splitter selection guidance, and measurement-scope
-caveats). Every measured section also carries interactive ECharts figures —
-budget × splitter time bars, a per-document length × time scatter, incremental
-estimate-error bars, exact/incremental paired ratios against a 1.0 reference
-line, cold-run memory bars, and the cache LRU comparison — with button
-selectors for engine/budget/metric, hover tooltips, and toggleable legend
-series, so cross-dimension comparisons that are hard to read row-by-row in a
-table are visible at a glance. Metric definitions are typeset as LaTeX and
-rendered with an inlined KaTeX. One known result: a single split of a
-~40 KB document touches ~1900 distinct `count()` texts, which exceeds the
-default `TiktokenTokenizer(max_cache_size=1000)`; the LRU thrashes and the
-document is ~30–35x slower until the cache is enlarged (e.g. `max_cache_size`
-10000).
+cold-run memory peaks per dataset/splitter, a tiktoken cache-capacity
+irrelevance probe, auto-derived key findings, and an editorial summary &
+evaluation section (per-dimension verdicts, splitter selection guidance, and
+measurement-scope caveats). Every measured section also carries interactive
+ECharts figures — budget × splitter time bars, a per-document length × time
+scatter, incremental estimate-error bars, exact/incremental paired ratios
+against a 1.0 reference line, cold-run memory bars, and the cache LRU
+comparison — with button selectors for engine/budget/metric, hover tooltips,
+and toggleable legend series, so cross-dimension comparisons that are hard to
+read row-by-row in a table are visible at a glance. Metric definitions are
+typeset as LaTeX and rendered with an inlined KaTeX. One known result: a
+single split of the ~50 KB probe document touches ~1900 distinct `count()`
+texts; under the cold-cache timing semantics (cache cleared before every
+repetition) the default `max_cache_size=1000` and an enlarged `10000` measure
+identically (speedup 1.0x for all six variants) — no splitter depends on
+intra-split LRU reuse, and no cache tuning is needed for large documents.
 
 Chart/LaTeX vendor libraries (pinned ECharts 5.6.0 and KaTeX 0.16.21, including
 the woff2 fonts, embedded as base64 data URIs) live in the git-ignored
@@ -260,16 +268,17 @@ viewable.
 
 `splitter_report.py` 从多个 `splitter_random_run` 输出目录与缓存探测数据渲染一份
 自包含的中文 HTML 报告：数据集长度画像、每引擎/预算的长度 × 时间表、准确率表
-（估计误差、超限率、召回率）、每数据集/splitter 的冷启动内存峰值、tiktoken LRU
-容量敏感性表、自动生成的关键发现，以及「总结与评价」章节（分维度评价、选型建
+（估计误差、超限率、召回率）、每数据集/splitter 的冷启动内存峰值、tiktoken 缓存
+容量无关性探测、自动生成的关键发现，以及「总结与评价」章节（分维度评价、选型建
 议与测量口径局限）。每个测量章节另配可交互的 ECharts 图表——预算 × 变体的耗时
 柱状图、逐文档的长度 × 耗时散点图、incremental 估计误差柱状图、exact/incremental
 配对比值图（带 1.0 参考线）、冷启动内存柱状图与缓存 LRU 对比图——支持按钮切换
 引擎/预算/统计量、悬停查数值、图例开关系列，表格里逐行难以横向对比的维度在图
-上一眼可比；度量定义用 LaTeX 书写并由内联 KaTeX 渲染。已知结论之一：约 40 KB
-文档单次 split 会触及约 1900 个不同的 `count()` 文本，超过默认
-`TiktokenTokenizer(max_cache_size=1000)` 导致 LRU 抖动，耗时放大约 30–35 倍，
-扩容缓存（如 10000）即恢复线性。
+上一眼可比；度量定义用 LaTeX 书写并由内联 KaTeX 渲染。已知结论之一：~50 KB 探测
+文档单次 split 会触及约 1900 个不同的 `count()` 文本；在冷缓存计时口径（每轮计时
+前清空缓存）下，默认 `max_cache_size=1000` 与扩容到 10000 的耗时完全一致（六个
+变体加速比均为 1.0x）——没有任何变体依赖单篇内的 LRU 复用，大文档也无需调整
+缓存配置。
 
 图表与 LaTeX 的 vendor 库（固定版本 ECharts 5.6.0 与 KaTeX 0.16.21，含以 base64
 data URI 内嵌的 woff2 字体）存放在被 Git 忽略的 `benchmarks/assets/vendor/`
