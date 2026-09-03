@@ -42,8 +42,8 @@ benchmark 依赖，绝不会成为核心包依赖。
 
 ## 已发布基线 — 2026-09-03
 
-在提交 `7735d5828f38` 上以完整 adapter 集合测量：两种 lumberjack 计数模式加九个
-竞品变体。结果保存在 `benchmarks/results/20260903-7735d5828f38/`（可用下方命令重
+在提交 `f4ce6bb94432` 上以完整 adapter 集合测量：两种 lumberjack 计数模式加九个
+竞品变体。结果保存在 `benchmarks/results/20260903-f4ce6bb94432/`（可用下方命令重
 新生成）；聚合器 `benchmarks/compare.py` 从各 run 的 `raw.json` 生成
 `summary.json` 与 `comparison.md`，并在原生 oracle 失败时以非零码退出。
 
@@ -51,7 +51,7 @@ benchmark 依赖，绝不会成为核心包依赖。
 
 | 项目 | 值 |
 | --- | --- |
-| 提交 | `7735d5828f38`（`dev`） |
+| 提交 | `f4ce6bb94432`（`dev`） |
 | 日期 | 2026-09-03 |
 | 操作系统 / CPU | Linux（WSL2），AMD Ryzen 7 5800H，8 线程 |
 | Python | 3.12.3 |
@@ -90,19 +90,19 @@ chonkie chunker 使用按字节计数的 `ByteTokenizer` 配 `chunk_size=720` �
 
 | Run | 总耗时（36 份文档） | 单文档均值 | 吞吐量 | 分配峰值 | count 调用 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `lumberjack`（section，增量） | 0.184 s | 5.1 ms | 0.180 MB/s | 0.5 MB | 1878 |
-| `lumberjack`（exact-section） | 0.161 s | 4.5 ms | 0.206 MB/s | 0.5 MB | 487 |
-| `lumberjack`（section，tiktoken） | 0.204 s | 5.7 ms | 0.162 MB/s | 0.5 MB | 1845 |
-| `lumberjack`（exact-section，tiktoken） | 0.190 s | 5.3 ms | 0.174 MB/s | 0.5 MB | 466 |
-| `langchain-recursive` | 0.003 s | 0.1 ms | 9.621 MB/s | 0.0 MB | 0 |
-| `langchain-markdown` | 0.014 s | 0.4 ms | 2.305 MB/s | 0.0 MB | 0 |
-| `langchain-html` | 0.022 s | 0.6 ms | 1.497 MB/s | 0.1 MB | 0 |
-| `unstructured-basic` | 0.512 s | 14.2 ms | 0.065 MB/s | 0.2 MB | 0 |
-| `unstructured-by-title` | 0.562 s | 15.6 ms | 0.059 MB/s | 0.2 MB | 0 |
-| `docling-hierarchical` | 9.559 s | 265.5 ms | 0.003 MB/s | 0.5 MB | 0 |
-| `docling-hybrid` | 9.822 s | 272.8 ms | 0.003 MB/s | 0.5 MB | 0 |
-| `chonkie-recursive` | 0.008 s | 0.2 ms | 4.348 MB/s | 0.0 MB | 0 |
-| `chonkie-table` | 0.005 s | 0.1 ms | 6.654 MB/s | 0.0 MB | 0 |
+| `lumberjack`（section，增量） | 0.186 s | 5.2 ms | 0.178 MB/s | 0.5 MB | 1878 |
+| `lumberjack`（exact-section） | 0.168 s | 4.7 ms | 0.197 MB/s | 0.5 MB | 487 |
+| `lumberjack`（section，tiktoken） | 0.212 s | 5.9 ms | 0.156 MB/s | 0.5 MB | 1845 |
+| `lumberjack`（exact-section，tiktoken） | 0.185 s | 5.1 ms | 0.179 MB/s | 0.5 MB | 466 |
+| `langchain-recursive` | 0.004 s | 0.1 ms | 9.454 MB/s | 0.0 MB | 0 |
+| `langchain-markdown` | 0.014 s | 0.4 ms | 2.387 MB/s | 0.0 MB | 0 |
+| `langchain-html` | 0.022 s | 0.6 ms | 1.484 MB/s | 0.1 MB | 0 |
+| `unstructured-basic` | 0.566 s | 15.7 ms | 0.058 MB/s | 0.2 MB | 0 |
+| `unstructured-by-title` | 0.613 s | 17.0 ms | 0.054 MB/s | 0.2 MB | 0 |
+| `docling-hierarchical` | 10.275 s | 285.4 ms | 0.003 MB/s | 0.5 MB | 0 |
+| `docling-hybrid` | 10.224 s | 284.0 ms | 0.003 MB/s | 0.5 MB | 0 |
+| `chonkie-recursive` | 0.007 s | 0.2 ms | 4.436 MB/s | 0.0 MB | 0 |
+| `chonkie-table` | 0.005 s | 0.1 ms | 6.648 MB/s | 0.0 MB | 0 |
 
 docling 的耗时由文档转换主导而非 chunking；应把它的墙钟时间视为 36 份小文档上的
 转换成本，而不是 chunker 速度结论。`count_calls` 只统计 lumberjack 的 tokenizer
