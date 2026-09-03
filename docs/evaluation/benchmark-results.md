@@ -49,9 +49,9 @@ directory here. The first published baseline follows.
 
 ## Published baseline — 2026-09-03
 
-Measured on commit `f4ce6bb94432` with the full adapter set: the two lumberjack
+Measured on commit `5e60b30b6925` with the full adapter set: the two lumberjack
 counting modes plus nine competitor variants. Results live in
-`benchmarks/results/20260903-f4ce6bb94432/` (regenerate with the commands
+`benchmarks/results/20260903-5e60b30b6925/` (regenerate with the commands
 below); the aggregator `benchmarks/compare.py` produced `summary.json` and
 `comparison.md` from the per-run `raw.json` files and exits non-zero when a
 native oracle fails.
@@ -60,7 +60,7 @@ native oracle fails.
 
 | Item | Value |
 | --- | --- |
-| Commit | `f4ce6bb94432` (`dev`) |
+| Commit | `5e60b30b6925` (`dev`) |
 | Date | 2026-09-03 |
 | OS / CPU | Linux (WSL2), AMD Ryzen 7 5800H, 8 threads |
 | Python | 3.12.3 |
@@ -101,19 +101,19 @@ that column is not comparable and is omitted here.
 
 | Run | Total wall (36 docs) | Mean per doc | Throughput | Peak alloc | Count calls |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `lumberjack` (section, incremental) | 0.186 s | 5.2 ms | 0.178 MB/s | 0.5 MB | 1878 |
-| `lumberjack` (exact-section) | 0.168 s | 4.7 ms | 0.197 MB/s | 0.5 MB | 487 |
-| `lumberjack` (section, tiktoken) | 0.212 s | 5.9 ms | 0.156 MB/s | 0.5 MB | 1845 |
-| `lumberjack` (exact-section, tiktoken) | 0.185 s | 5.1 ms | 0.179 MB/s | 0.5 MB | 466 |
-| `langchain-recursive` | 0.004 s | 0.1 ms | 9.454 MB/s | 0.0 MB | 0 |
-| `langchain-markdown` | 0.014 s | 0.4 ms | 2.387 MB/s | 0.0 MB | 0 |
-| `langchain-html` | 0.022 s | 0.6 ms | 1.484 MB/s | 0.1 MB | 0 |
-| `unstructured-basic` | 0.566 s | 15.7 ms | 0.058 MB/s | 0.2 MB | 0 |
-| `unstructured-by-title` | 0.613 s | 17.0 ms | 0.054 MB/s | 0.2 MB | 0 |
-| `docling-hierarchical` | 10.275 s | 285.4 ms | 0.003 MB/s | 0.5 MB | 0 |
-| `docling-hybrid` | 10.224 s | 284.0 ms | 0.003 MB/s | 0.5 MB | 0 |
-| `chonkie-recursive` | 0.007 s | 0.2 ms | 4.436 MB/s | 0.0 MB | 0 |
-| `chonkie-table` | 0.005 s | 0.1 ms | 6.648 MB/s | 0.0 MB | 0 |
+| `lumberjack` (section, incremental) | 0.183 s | 5.1 ms | 0.181 MB/s | 0.5 MB | 1878 |
+| `lumberjack` (exact-section) | 0.189 s | 5.2 ms | 0.175 MB/s | 0.5 MB | 487 |
+| `lumberjack` (section, tiktoken) | 0.211 s | 5.9 ms | 0.157 MB/s | 0.5 MB | 1845 |
+| `lumberjack` (exact-section, tiktoken) | 0.191 s | 5.3 ms | 0.173 MB/s | 0.5 MB | 466 |
+| `langchain-recursive` | 0.003 s | 0.1 ms | 9.495 MB/s | 0.0 MB | 0 |
+| `langchain-markdown` | 0.014 s | 0.4 ms | 2.373 MB/s | 0.0 MB | 0 |
+| `langchain-html` | 0.023 s | 0.6 ms | 1.460 MB/s | 0.1 MB | 0 |
+| `unstructured-basic` | 0.541 s | 15.0 ms | 0.061 MB/s | 0.2 MB | 0 |
+| `unstructured-by-title` | 0.602 s | 16.7 ms | 0.055 MB/s | 0.2 MB | 0 |
+| `docling-hierarchical` | 9.670 s | 268.6 ms | 0.003 MB/s | 0.5 MB | 0 |
+| `docling-hybrid` | 9.993 s | 277.6 ms | 0.003 MB/s | 0.5 MB | 0 |
+| `chonkie-recursive` | 0.008 s | 0.2 ms | 4.370 MB/s | 0.0 MB | 0 |
+| `chonkie-table` | 0.005 s | 0.1 ms | 6.589 MB/s | 0.0 MB | 0 |
 
 The docling runs are dominated by document conversion, not chunking; treat
 their wall time as conversion cost on 36 small documents, not as a chunker
