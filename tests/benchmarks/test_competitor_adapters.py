@@ -39,10 +39,22 @@ def test_docling_hybrid_adapter_uses_offline_tokenizer() -> None:
         _offline_docling_tokenizer,
     )
 
-    tokenizer = _offline_docling_tokenizer()
+    tokenizer = _offline_docling_tokenizer(240)
     assert tokenizer.count_tokens("hello world") == max(1, len(b"hello world") // 3)
+    assert tokenizer.get_max_tokens() == 240
 
     adapter = DoclingHybridAdapter()
     chunks = adapter.split(SIMPLE_MD, config=BenchmarkConfig(max_tokens=240))
     assert len(chunks) >= 1
     assert all(chunk.token_count >= 1 for chunk in chunks)
+
+
+def test_docling_hybrid_adapter_respects_the_token_budget() -> None:
+    pytest.importorskip("docling", reason="benchmark group not installed")
+    from benchmarks.adapters.competitors import DoclingHybridAdapter
+
+    adapter = DoclingHybridAdapter()
+    source = "# Guide\n\n" + ("Filler paragraph text. " * 200)
+    chunks = adapter.split(source, config=BenchmarkConfig(max_tokens=240))
+    assert len(chunks) > 1
+    assert all(chunk.token_count <= 240 for chunk in chunks)

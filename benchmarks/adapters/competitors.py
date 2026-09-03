@@ -87,25 +87,35 @@ def _convert_docling(converter, source: str, fmt: str):
 
 
 class DoclingHierarchicalAdapter:
+    """Docling HierarchicalChunker: pure structure chunking without a budget."""
+
     name = "docling-hierarchical"
 
     def split(
         self, source: str, *, config: BenchmarkConfig, format: str = "markdown"
     ) -> list[BenchmarkChunk]:
-        del config
+        del config  # HierarchicalChunker has no token-budget parameter by design
         try:
             from docling.document_converter import DocumentConverter
         except ImportError as error:
             raise AdapterUnavailable(
                 "docling is required for docling-hierarchical"
             ) from error
+        try:
+            from docling_core.transforms.chunker import HierarchicalChunker
+        except ImportError as error:
+            raise AdapterUnavailable(
+                "docling-core is required for docling-hierarchical"
+            ) from error
         converter = DocumentConverter()
         try:
             document = _convert_docling(converter, source, format)
-            return _approx_chunks([document.export_to_markdown()])
+            chunker = HierarchicalChunker()
+            return _approx_chunks(chunker.chunk(document))
         except (AttributeError, TypeError) as error:
             raise AdapterUnavailable(
-                "the installed docling version lacks the required Markdown conversion API"
+                "the installed docling version lacks the required Markdown "
+                "conversion or hierarchical chunking API"
             ) from error
 
 
@@ -117,12 +127,18 @@ class ChonkieRecursiveAdapter:
     ) -> list[BenchmarkChunk]:
         del format
         try:
-            from chonkie import RecursiveChunker
+            from chonkie import ByteTokenizer, RecursiveChunker
         except ImportError as error:
             raise AdapterUnavailable(
                 "chonkie is required for chonkie-recursive"
             ) from error
-        return _approx_chunks(RecursiveChunker(chunk_size=config.max_tokens)(source))
+        # chonkie counts with UTF-8 bytes here; the benchmark token unit is
+        # UTF-8 bytes / 3, so translate the budget the same way the table
+        # adapter and the LangChain recursive adapter translate theirs.
+        chunker = RecursiveChunker(
+            tokenizer=ByteTokenizer(), chunk_size=config.max_tokens * 3
+        )
+        return _approx_chunks(chunker(source))
 
 
 class ChonkieTableAdapter:
@@ -149,12 +165,14 @@ class ChonkieTableAdapter:
         return _approx_chunks(chunker.chunk(source))
 
 
-def _offline_docling_tokenizer():
+def _offline_docling_tokenizer(max_tokens: int):
     """Build a docling BaseTokenizer that counts UTF-8 bytes / 3.
 
     The default HybridChunker tokenizer downloads a HuggingFace model; the
     offline approx tokenizer keeps the benchmark hermetic while matching the
-    benchmark token unit. Imported lazily so only docling-core is needed.
+    benchmark token unit. Docling resolves the chunk budget from
+    ``get_max_tokens()``, so the benchmark budget must be returned there.
+    Imported lazily so only docling-core is needed.
     """
     from docling_core.transforms.chunker.tokenizer.base import BaseTokenizer
 
@@ -163,10 +181,12 @@ def _offline_docling_tokenizer():
             return max(1, len(text.encode("utf-8")) // 3)
 
         def get_max_tokens(self) -> int:
-            return 1_000_000
+            return max_tokens
 
         def get_tokenizer(self):
-            return None
+            # HybridChunker delegates overflow refinement to semchunk, which
+            # requires a callable token counter; return the same byte/3 count.
+            return lambda text: max(1, len(text.encode("utf-8")) // 3)
 
     return _ApproxTokenizer()
 
@@ -179,7 +199,6 @@ class DoclingHybridAdapter:
     def split(
         self, source: str, *, config: BenchmarkConfig, format: str = "markdown"
     ) -> list[BenchmarkChunk]:
-        del config
         try:
             from docling.document_converter import DocumentConverter
             from docling_core.transforms.chunker import HybridChunker
@@ -191,7 +210,8 @@ class DoclingHybridAdapter:
         try:
             document = _convert_docling(converter, source, format)
             chunker = HybridChunker(
-                tokenizer=_offline_docling_tokenizer(), merge_peers=True
+                tokenizer=_offline_docling_tokenizer(config.max_tokens),
+                merge_peers=True,
             )
             return _approx_chunks(chunker.chunk(document))
         except (AttributeError, TypeError) as error:

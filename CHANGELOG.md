@@ -47,6 +47,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   LlamaIndex integration tests offline; the LlamaIndex index helper skips its
   default splitter for already-final chunks, and the runnable LlamaIndex demo
   supplies local token counting to avoid implicit tiktoken downloads.
+- Competitor benchmark adapters now receive token budgets equivalent to the
+  native runs: `langchain-recursive` no longer translates the budget twice
+  (its length function already counts UTF-8 bytes ÷ 3), `chonkie-recursive`
+  counts with chonkie's byte tokenizer at the ×3 byte budget,
+  `docling-hybrid` resolves its budget from the offline tokenizer's
+  `get_max_tokens()` instead of an unlimited default and hands the overflow
+  refiner a callable counter, and `docling-hierarchical` uses Docling's real
+  `HierarchicalChunker` instead of exporting the whole document as one chunk.
 
 ### Added
 
@@ -82,6 +90,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   onto Chonkie's `TableChunker` (`chonkie>=1.7`). Both Docling adapters now
   support the `convert_string(content, format)` signature required by
   docling >= 2.120 while keeping compatibility with the older keyword form.
+- Added a cross-adapter comparison aggregator
+  (`uv run python -m benchmarks.compare <results-dir>`): it aggregates the
+  per-run `raw.json` outputs of every adapter into a `summary.json` and a
+  `comparison.md` table source, gates native runs on content-recall,
+  protected-block, and budget oracles, and flags budget/dataset mismatches.
+  The first published comparison baseline (lumberjack section/exact-section
+  under `approx` and `tiktoken` versus all nine competitor variants) is
+  documented in the evaluation docs with its result directory and
+  reproduction commands.
 - Added three runnable end-to-end examples with CI smoke tests:
   `examples/technical_document.py` (structure-aware vs naive splitting with
   heading provenance), `examples/table_chunking.py` (header repetition and

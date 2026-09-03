@@ -20,7 +20,9 @@ class LangChainRecursiveAdapter:
                 "langchain-text-splitters is required for langchain-recursive"
             ) from error
         splitter = RecursiveCharacterTextSplitter(
-            chunk_size=config.max_tokens * 3,
+            # The length function already returns the benchmark token unit
+            # (UTF-8 bytes / 3), so the budget needs no byte translation.
+            chunk_size=config.max_tokens,
             chunk_overlap=0,
             length_function=lambda text: max(1, len(text.encode("utf-8")) // 3),
         )

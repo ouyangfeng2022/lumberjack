@@ -290,11 +290,37 @@ data URI 内嵌的 woff2 字体）存放在被 Git 忽略的 `benchmarks/assets/
 ## Optional competitors / 可选竞品
 
 Competitor adapters are never installed by the core package. The harness
-supplies LangChain Recursive/Markdown, Unstructured basic/by-title, Docling
-hierarchical, and Chonkie recursive adapters when their respective packages are
-installed. Missing dependencies produce a clear skip/error instead of silently
-changing the comparison.
+supplies nine variants when their respective packages are installed: LangChain
+Recursive/Markdown/HTML, Unstructured basic/by-title, Docling
+Hierarchical/Hybrid, and Chonkie Recursive/Table. Missing dependencies produce
+a clear skip/error instead of silently changing the comparison.
 
-竞品 adapter 不会被核心包安装。当前可使用 LangChain Recursive/Markdown、
-Unstructured basic/by-title、Docling hierarchical 和 Chonkie recursive adapter。
-依赖缺失会明确报错/跳过，绝不静默改变比较。
+竞品 adapter 不会被核心包安装。当前可使用九个变体：LangChain
+Recursive/Markdown/HTML、Unstructured basic/by-title、Docling
+Hierarchical/Hybrid、Chonkie Recursive/Table。依赖缺失会明确报错/跳过，绝不静默
+改变比较。
+
+## Comparison report / 对比报告
+
+`compare.py` aggregates every run directory (each containing `raw.json`) under
+one results directory into a cross-adapter `summary.json` and a
+`comparison.md` table source, gated by native oracles (content recall,
+protected blocks, budget violations):
+
+`compare.py` 把同一结果目录下每个 run 子目录（各含 `raw.json`）聚合成跨 adapter
+的 `summary.json` 与 `comparison.md` 表格源，并以原生 oracle（内容 recall、
+protected block、预算违规）做门禁：
+
+```bash
+BASE="benchmarks/results/$(date +%Y%m%d)-$(git rev-parse --short=12 HEAD)"
+for adapter in langchain-recursive docling-hybrid chonkie-table; do
+  uv run python -m benchmarks.run --adapter "$adapter" --output "$BASE/$adapter"
+done
+uv run python -m benchmarks.compare "$BASE"
+```
+
+Published conclusions live in `docs/evaluation/benchmark-results.md` and link
+the exact result directory they were measured on.
+
+已发布的结论保存在 `docs/evaluation/benchmark-results.md`，并链接测量时所用的
+确切结果目录。
