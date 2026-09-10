@@ -16,8 +16,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from haystack import Document as HaystackDocument  # ty: ignore[unresolved-import]
-from haystack import component  # ty: ignore[unresolved-import]
+from haystack import Document as HaystackDocument
+from haystack import component
 
 from lumberjack.models import Document as LumberjackSource
 from lumberjack.models import InputFormat

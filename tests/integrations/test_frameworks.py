@@ -29,9 +29,7 @@ def test_langchain_conversion(chunk: Chunk) -> None:
 
 def test_langchain_vectorstore_retrieves_lumberjack_chunks() -> None:
     pytest.importorskip("langchain_core")
-    from langchain_core.embeddings import (
-        DeterministicFakeEmbedding,  # ty: ignore[unresolved-import]
-    )
+    from langchain_core.embeddings import DeterministicFakeEmbedding
 
     from lumberjack.integrations import build_langchain_vectorstore
 
@@ -65,10 +63,8 @@ def test_llamaindex_index_retrieval_and_query(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pytest.importorskip("llama_index.core")
-    from llama_index.core.embeddings import (
-        MockEmbedding,  # ty: ignore[unresolved-import]
-    )
-    from llama_index.core.llms.mock import MockLLM  # ty: ignore[unresolved-import]
+    from llama_index.core.embeddings import MockEmbedding
+    from llama_index.core.llms.mock import MockLLM
 
     from lumberjack.integrations import build_llamaindex_index
 
@@ -114,9 +110,7 @@ def test_haystack_document_store_retrieves_lumberjack_chunks(
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     pytest.importorskip("haystack")
-    from haystack.components.retrievers.in_memory import (
-        InMemoryBM25Retriever,  # ty: ignore[unresolved-import]
-    )
+    from haystack.components.retrievers.in_memory import InMemoryBM25Retriever
 
     from lumberjack.integrations import build_haystack_document_store
 

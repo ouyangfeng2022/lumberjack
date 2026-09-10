@@ -19,13 +19,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from typing import Any
 
-from langchain_core.documents import (
-    Document as LangchainDocument,  # ty: ignore[unresolved-import]
-)
-from langchain_core.documents.transformers import (
-    BaseDocumentTransformer,  # ty: ignore[unresolved-import]
-)
-from langchain_text_splitters import TextSplitter  # ty: ignore[unresolved-import]
+from langchain_core.documents import Document as LangchainDocument
+from langchain_core.documents.transformers import BaseDocumentTransformer
+from langchain_text_splitters import TextSplitter
 
 from lumberjack.models import Chunk, InputFormat
 from lumberjack.models import Document as LumberjackSource

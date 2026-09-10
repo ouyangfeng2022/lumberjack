@@ -23,17 +23,15 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from llama_index.core.node_parser.interface import (
-    NodeParser,  # ty: ignore[unresolved-import]
-)
-from llama_index.core.readers.base import BaseReader  # ty: ignore[unresolved-import]
-from llama_index.core.schema import (  # ty: ignore[unresolved-import]
+from llama_index.core.node_parser.interface import NodeParser
+from llama_index.core.readers.base import BaseReader
+from llama_index.core.schema import (
     BaseNode,
     MetadataMode,
     NodeRelationship,
     TextNode,
 )
-from llama_index.core.schema import (  # ty: ignore[unresolved-import]
+from llama_index.core.schema import (
     Document as LlamaDocument,
 )
 from pydantic import ConfigDict, Field, PrivateAttr, model_validator

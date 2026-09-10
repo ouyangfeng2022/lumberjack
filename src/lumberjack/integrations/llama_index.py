@@ -24,7 +24,7 @@ def to_llamaindex_node(chunk: Chunk) -> Any:
     embedding and LLM text, leaving ``Chunk.body`` as the sole main content.
     """
     try:
-        from llama_index.core.schema import TextNode  # ty: ignore[unresolved-import]
+        from llama_index.core.schema import TextNode
     except ModuleNotFoundError as error:
         raise ImportError(
             "LlamaIndex integration requires `pip install lumberjack-py[llama-index]`."
@@ -56,7 +56,7 @@ def build_llamaindex_index(chunks: Iterable[Chunk], **kwargs: Any) -> Any:
     LlamaIndex's default splitter.
     """
     try:
-        from llama_index.core import VectorStoreIndex  # ty: ignore[unresolved-import]
+        from llama_index.core import VectorStoreIndex
     except ModuleNotFoundError as error:
         raise ImportError(
             "LlamaIndex integration requires `pip install lumberjack-py[llama-index]`."

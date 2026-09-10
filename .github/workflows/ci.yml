@@ -35,9 +35,13 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        # `web` is an optional-dependency extra (not a group); tests/web/test_web.py
-        # imports fastapi.testclient, so the web server stack must be installed.
-        run: uv sync --group dev --group test --extra tokenizers --extra docx --extra web
+        # Optional extras are installed so `ty check` resolves the lazy
+        # framework imports in src/lumberjack/integrations and the spreadsheet
+        # import in the XLSX parser against the real packages.
+        run: >-
+          uv sync --group dev --group test
+          --extra tokenizers --extra docx --extra web
+          --extra spreadsheets --extra langchain --extra llama-index --extra haystack
 
       - name: Type check
         run: uv run ty check .

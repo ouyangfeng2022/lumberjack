@@ -6,9 +6,7 @@ import pytest
 
 pytest.importorskip("langchain_text_splitters")
 
-from langchain_core.documents import (
-    Document as LangchainDocument,  # ty: ignore[unresolved-import]
-)
+from langchain_core.documents import Document as LangchainDocument
 
 from lumberjack.integrations import (
     LumberjackDocumentTransformer,
