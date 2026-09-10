@@ -13,7 +13,7 @@ from ._metadata import chunk_metadata
 def to_langchain_document(chunk: Chunk) -> Any:
     """Convert one chunk to ``langchain_core.documents.Document``."""
     try:
-        from langchain_core.documents import Document
+        from langchain_core.documents import Document  # ty: ignore[unresolved-import]
     except ModuleNotFoundError as error:
         raise ImportError(
             "LangChain integration requires `pip install lumberjack-py[langchain]`."
@@ -33,7 +33,9 @@ def to_langchain_documents(chunks: Iterable[Chunk]) -> list[Any]:
 def build_langchain_vectorstore(chunks: Iterable[Chunk], *, embeddings: Any) -> Any:
     """Build an in-memory LangChain vector store from Lumberjack chunks."""
     try:
-        from langchain_core.vectorstores import InMemoryVectorStore
+        from langchain_core.vectorstores import (
+            InMemoryVectorStore,  # ty: ignore[unresolved-import]
+        )
     except ModuleNotFoundError as error:
         raise ImportError(
             "LangChain integration requires `pip install lumberjack-py[langchain]`."

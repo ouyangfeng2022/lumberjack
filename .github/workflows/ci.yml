@@ -95,7 +95,7 @@ jobs:
           enable-cache: true
 
       - name: Install integration test dependencies
-        run: uv sync --group test --group integrations
+        run: uv sync --group test --group integrations --extra docx
 
       - name: Test adapters
         run: uv run pytest tests/integrations
@@ -107,14 +107,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Versions are the lowest each demo actually runs on (verified
+          # locally under Python 3.11): langchain-core 0.3.0's FakeEmbeddings
+          # lazily imports numpy, llama-index gained ChatPromptHelper in
+          # 0.14.24, and haystack's Pipeline.run(include_outputs_from=...) is
+          # 2.1.0+.
           - framework: LangChain
             dependency: langchain-core==0.3.0
+            extra: numpy
             test: tests/integrations/test_langchain_demo.py::test_langchain_demo_runs_full_pipeline
           - framework: LlamaIndex
-            dependency: llama-index-core==0.12.0
+            dependency: llama-index-core==0.14.24
+            extra: ""
             test: tests/integrations/test_llamaindex_demo.py::test_llamaindex_demo_runs_full_pipeline
           - framework: Haystack
-            dependency: haystack-ai==2.0.0
+            dependency: haystack-ai==2.1.0
+            extra: ""
             test: tests/integrations/test_haystack_demo.py::test_haystack_demo_runs_full_pipeline
 
     steps:
@@ -132,4 +140,5 @@ jobs:
         run: >-
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
           uv run --no-project --with pytest --with . --with '${{ matrix.dependency }}'
+          --with '${{ matrix.extra }}'
           pytest '${{ matrix.test }}' -q

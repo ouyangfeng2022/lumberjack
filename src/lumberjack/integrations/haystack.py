@@ -13,7 +13,7 @@ from ._metadata import chunk_metadata
 def to_haystack_document(chunk: Chunk) -> Any:
     """Convert one chunk to a ``haystack.Document``."""
     try:
-        from haystack import Document
+        from haystack import Document  # ty: ignore[unresolved-import]
     except ModuleNotFoundError as error:
         raise ImportError(
             "Haystack integration requires `pip install lumberjack-py[haystack]`."
@@ -29,7 +29,9 @@ def to_haystack_documents(chunks: Iterable[Chunk]) -> list[Any]:
 def build_haystack_document_store(chunks: Iterable[Chunk]) -> Any:
     """Write Lumberjack chunks to a ready-to-query Haystack document store."""
     try:
-        from haystack.document_stores.in_memory import InMemoryDocumentStore
+        from haystack.document_stores.in_memory import (
+            InMemoryDocumentStore,  # ty: ignore[unresolved-import]
+        )
     except ModuleNotFoundError as error:
         raise ImportError(
             "Haystack integration requires `pip install lumberjack-py[haystack]`."

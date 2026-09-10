@@ -6,8 +6,10 @@ import pytest
 
 pytest.importorskip("haystack")
 
-from haystack import Pipeline
-from haystack.dataclasses import Document as HaystackDocument
+from haystack import Pipeline  # ty: ignore[unresolved-import]
+from haystack.dataclasses import (
+    Document as HaystackDocument,  # ty: ignore[unresolved-import]
+)
 
 from lumberjack.integrations import LumberjackDocumentSplitter
 

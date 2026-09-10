@@ -62,7 +62,7 @@ class XlsxParser:
         if not isinstance(document.source, bytes | bytearray):
             raise TypeError("XlsxParser.parse expects Document[bytes]")
         try:
-            from openpyxl import load_workbook
+            from openpyxl import load_workbook  # ty: ignore[unresolved-import]
         except ImportError as exc:
             raise ImportError(
                 "XLSX support requires 'openpyxl'. Install lumberjack-py[spreadsheets]."

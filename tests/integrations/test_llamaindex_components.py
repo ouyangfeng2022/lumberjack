@@ -13,11 +13,19 @@ from lumberjack.models import InputFormat
 
 pytest.importorskip("llama_index.core")
 
-from llama_index.core import Document as LlamaDocument
-from llama_index.core.embeddings import MockEmbedding
-from llama_index.core.ingestion import IngestionPipeline
-from llama_index.core.node_parser.interface import NodeParser
-from llama_index.core.schema import BaseNode, NodeRelationship, TextNode
+from llama_index.core import Document as LlamaDocument  # ty: ignore[unresolved-import]
+from llama_index.core.embeddings import MockEmbedding  # ty: ignore[unresolved-import]
+from llama_index.core.ingestion import (
+    IngestionPipeline,  # ty: ignore[unresolved-import]
+)
+from llama_index.core.node_parser.interface import (
+    NodeParser,  # ty: ignore[unresolved-import]
+)
+from llama_index.core.schema import (  # ty: ignore[unresolved-import]
+    BaseNode,
+    NodeRelationship,
+    TextNode,
+)
 
 from lumberjack.integrations.llama_index_pipeline import (
     LumberjackNodeParser,
@@ -120,7 +128,7 @@ def test_node_parser_runs_inside_ingestion_pipeline() -> None:
 
 
 def test_node_parser_feeds_vector_store_index(_local_tiktoken) -> None:
-    from llama_index.core import VectorStoreIndex
+    from llama_index.core import VectorStoreIndex  # ty: ignore[unresolved-import]
 
     nodes = LumberjackNodeParser(max_tokens=64).get_nodes_from_documents([_document()])
     built = VectorStoreIndex(
@@ -341,9 +349,13 @@ def test_emit_parents_serialization_round_trip() -> None:
 
 
 def test_auto_merging_retriever_merges_to_section_parent(_local_tiktoken) -> None:
-    from llama_index.core import VectorStoreIndex
-    from llama_index.core.retrievers import AutoMergingRetriever
-    from llama_index.core.storage.storage_context import StorageContext
+    from llama_index.core import VectorStoreIndex  # ty: ignore[unresolved-import]
+    from llama_index.core.retrievers import (
+        AutoMergingRetriever,  # ty: ignore[unresolved-import]
+    )
+    from llama_index.core.storage.storage_context import (
+        StorageContext,  # ty: ignore[unresolved-import]
+    )
 
     section = "\n".join(
         f"Detail paragraph {i} with enough words to become its own chunk."
