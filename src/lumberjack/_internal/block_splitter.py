@@ -19,7 +19,12 @@ if TYPE_CHECKING:
     from ..models import DocumentBlock
     from ..protocols import TokenizerProtocol
 
-SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?\u3002\uff01\uff1f])\s+")
+SENTENCE_BREAK_RE = re.compile(
+    # ASCII sentence punctuation only ends a sentence before whitespace (so
+    # "3.14" stays intact); CJK fullwidth punctuation ends a sentence at a
+    # zero-width boundary because no space follows it.
+    r"(?<=[.!?])(?=\s)|(?<=[\u3002\uff01\uff1f])"
+)
 PROTECTED_SPAN_RE = re.compile(r"<https?://[^\s>]+>|https?://[^\s)>\]]+")
 TABLE_DELIMITER_CELL_RE = re.compile(r":?-+(:?-+)*:?")
 
@@ -129,8 +134,12 @@ class BlockSplitter:
         marker, length = _safe_fence_marker(literal, info)
         open_fence = f"{marker * length}{info}".rstrip()
         close_fence = marker * length
-        empty_render = f"{open_fence}\n\n{close_fence}"
-        wrapper_tokens = self._count(empty_render)
+        # Sum the two wrapper halves separately: for BPE tokenizers the
+        # joined form may merge the "\n\n" into one token and undercount the
+        # real per-piece overhead of open+"\n" and "\n"+close.
+        wrapper_tokens = self._count(f"{open_fence}\n") + self._count(
+            f"\n{close_fence}"
+        )
         if wrapper_tokens >= max_tokens:
             return [(block.text, self._count(block.text))]
 
@@ -399,14 +408,19 @@ class BlockSplitter:
                 if packed is not None:
                     return packed
 
+        # Zero-width boundaries keep each part's original whitespace, so
+        # packing with an empty separator reproduces the text exactly instead
+        # of inserting spaces between CJK sentences.
         sentence_parts = [
-            part.strip() for part in SENTENCE_BREAK_RE.split(text) if part.strip()
+            part
+            for part in SENTENCE_BREAK_RE.split(text)
+            if part and not part.isspace()
         ]
         if len(sentence_parts) > 1:
             packed = self._pack_fitting_parts(
                 sentence_parts,
                 max_tokens,
-                separator=" ",
+                separator="",
             )
             if packed is not None:
                 return packed
@@ -538,7 +552,10 @@ class BlockSplitter:
             if lower == start:
                 lower = start + 1
 
-            piece = text[start:lower].strip()
+            # No stripping: pieces must reassemble to the original text so
+            # code indentation survives (a cut inside a whitespace run must
+            # not shrink the following line's indent).
+            piece = text[start:lower]
             if piece:
                 result.append((piece, self._count(piece)))
             start = lower

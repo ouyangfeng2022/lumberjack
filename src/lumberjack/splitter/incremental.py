@@ -410,7 +410,11 @@ class IncrementalCountingMixin(BaseSplitter):
                             prefix_tokens, block_tokens
                         ),
                         split_origin="fragment",
-                        chunk_type="paragraph",
+                        chunk_type=block.kind,
+                        # Unsplittable oversized block: marked protected
+                        # instead of silently emitting an unmarked
+                        # over-budget chunk.
+                        protected=True,
                     )
                 )
                 current_parts = []

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Literal
 
 from .._internal.rendering import join_rendered_blocks
@@ -333,7 +334,7 @@ class ExactCountingMixin(BaseSplitter):
                 headings,
                 own_heading=headings[-1] if headings else None,
                 origin="fragment",
-                chunk_type="paragraph",
+                chunk_type=block.kind,
             )
 
             if (
@@ -346,7 +347,10 @@ class ExactCountingMixin(BaseSplitter):
                     default_budget=budget,
                 )
                 if block_pieces is None:
-                    drafts.append(block_draft)
+                    # Unsplittable oversized block: report it as protected
+                    # instead of silently emitting an unmarked over-budget
+                    # chunk (mirrors the record splitter's contract).
+                    drafts.append(replace(block_draft, protected=True))
                 else:
                     for piece, piece_tokens in block_pieces:
                         pe = make_entry(block, piece, piece_tokens)

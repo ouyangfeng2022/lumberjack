@@ -932,3 +932,20 @@ def test_block_kinds_reflect_parser_configuration() -> None:
     assert "lheading" not in kinds
     # hr is skipped
     assert "hr" not in kinds
+
+
+@pytest.mark.parametrize(
+    ("source", "is_math"),
+    [
+        ("$x$ costs 3", True),
+        ("$x^2$ is 4", True),
+        ("a $ b $ c", False),
+        ("price $ 5 and $ 10", False),
+    ],
+)
+def test_markdown_parser_dollar_boundaries_survive_paragraph_edges(
+    source: str, is_math: bool
+) -> None:
+    tree = MarkdownParser().parse(source, document_title="edges.md")
+    inlines = tree.root.blocks[0].inlines
+    assert any(i.kind == "math_inline" for i in inlines) is is_math

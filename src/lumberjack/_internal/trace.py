@@ -6,7 +6,7 @@ import json
 from collections.abc import Iterable
 from typing import Literal, cast
 
-from ..models import PipelineTrace
+from ..models import PipelineTrace, _json_value
 
 TraceStage = Literal[
     "input", "extraction", "document", "drafts", "chunks", "diagnostics"
@@ -31,9 +31,19 @@ def select_trace_stages(
     selected = tuple(dict.fromkeys(stages))
     if max_bytes <= 0:
         raise ValueError("trace max_bytes must be greater than 0")
-    payload = trace.to_dict()
-    result = {stage: payload[stage] for stage in selected}
-    encoded = json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode()
+    unknown = [stage for stage in selected if stage not in TRACE_STAGES]
+    if unknown:
+        raise ValueError(
+            f"Unknown trace stage(s): {', '.join(unknown)}. "
+            f"Valid stages: {', '.join(TRACE_STAGES)}"
+        )
+    # Serialize only the requested stages; materializing the whole trace
+    # would double peak memory for large documents.
+    result = {stage: _json_value(getattr(trace, stage)) for stage in selected}
+    try:
+        encoded = json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode()
+    except TypeError as exc:
+        raise ValueError(f"Trace stage is not JSON serializable: {exc}") from exc
     if len(encoded) > max_bytes:
         raise ValueError(
             f"Selected trace stages exceed the {max_bytes}-byte response limit"

@@ -10,6 +10,7 @@ CodeLanguage: TypeAlias = Literal[
     "python",
     "javascript",
     "typescript",
+    "tsx",
     "bash",
     "c",
     "cpp",
@@ -62,6 +63,25 @@ _LANGUAGE_SPECS: dict[CodeLanguage, tuple[str, str, frozenset[str]]] = {
     "typescript": (
         "tree_sitter_typescript",
         "language_typescript",
+        frozenset(
+            {
+                "abstract_class_declaration",
+                "class_declaration",
+                "enum_declaration",
+                "function_declaration",
+                "generator_function_declaration",
+                "interface_declaration",
+                "lexical_declaration",
+                "type_alias_declaration",
+                "variable_declaration",
+            }
+        ),
+    ),
+    # JSX files must use the tsx grammar: language_typescript has no JSX rules,
+    # so JSX-heavy files would parse with syntax errors.
+    "tsx": (
+        "tree_sitter_typescript",
+        "language_tsx",
         frozenset(
             {
                 "abstract_class_declaration",

@@ -51,11 +51,28 @@ class DemoSafetyMiddleware:
         )
 
         if is_api_request and not self._allow_request(scope):
-            await _send_json(send, 429, {"detail": "rate limit exceeded; retry later"})
+            logger.warning("%s %s -> 429 (rate limit)", scope.get("method", "?"), path)
+            await _send_json(
+                send,
+                429,
+                {"detail": "rate limit exceeded; retry later"},
+                extra_headers=(
+                    (
+                        b"retry-after",
+                        str(self.limits.rate_limit_window_seconds).encode("ascii"),
+                    ),
+                ),
+            )
             return
 
         content_length = _content_length(scope)
         if content_length is not None and content_length > self.limits.max_body_bytes:
+            logger.warning(
+                "%s %s -> 413 (body %d bytes)",
+                scope.get("method", "?"),
+                path,
+                content_length,
+            )
             await _send_json(
                 send,
                 413,
@@ -157,7 +174,13 @@ class DemoSafetyMiddleware:
         window = self._windows.get(key)
         if window is None or now - window[0] >= self.limits.rate_limit_window_seconds:
             if len(self._windows) >= 10_000:
-                self._windows.clear()
+                # Evict the oldest window instead of clearing everything: a
+                # full clear lets an attacker generating many client keys
+                # reset everyone's (including their own) limit state.
+                for oldest in sorted(self._windows, key=self._windows.__getitem__)[
+                    : len(self._windows) // 2
+                ]:
+                    del self._windows[oldest]
             self._windows[key] = (now, 1)
             return True
         start, count = window
@@ -181,7 +204,13 @@ async def _noop_receive() -> dict[str, Any]:
     return {"type": "http.disconnect"}
 
 
-async def _send_json(send: Send, status: int, payload: dict[str, Any]) -> None:
+async def _send_json(
+    send: Send,
+    status: int,
+    payload: dict[str, Any],
+    *,
+    extra_headers: tuple[tuple[bytes, bytes], ...] = (),
+) -> None:
     body = json.dumps(payload).encode("utf-8")
     await send(
         {
@@ -191,6 +220,7 @@ async def _send_json(send: Send, status: int, payload: dict[str, Any]) -> None:
                 (b"content-type", b"application/json"),
                 (b"content-length", str(len(body)).encode("ascii")),
                 *_SECURITY_HEADERS,
+                *extra_headers,
             ],
         }
     )

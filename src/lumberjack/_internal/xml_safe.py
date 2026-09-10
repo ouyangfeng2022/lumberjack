@@ -20,9 +20,11 @@ def parse_untrusted_xml(payload: bytes | str) -> ElementTree.Element:
 
     The standard-library ElementTree expands internal DTD entities, so a
     crafted payload could exhaust memory (billion laughs). Reject DTD and
-    entity declarations up front (covering str plus UTF-8/UTF-16 bytes),
-    bound the payload size, and forbid DTDs on the underlying expat parser
-    as a final layer that also covers other encodings.
+    entity declarations up front (covering str plus UTF-8/UTF-16 bytes) and
+    bound the payload size. The marker scan is the sole enforcement layer:
+    ``<!DOCTYPE``/``<!ENTITY`` are unsplittable, case-sensitive literals in
+    every encoding expat supports, so a declaration cannot sneak past it
+    (pyexpat exposes no portable ForbidDTD hook to double-check with).
     """
     if isinstance(payload, bytes) and len(payload) > _MAX_PAYLOAD_BYTES:
         raise ValueError(
@@ -33,8 +35,4 @@ def parse_untrusted_xml(payload: bytes | str) -> ElementTree.Element:
             raise ValueError("XML payload declares a DTD or entity; rejected")
     elif any(marker in payload for marker in _REJECTED_BYTES_MARKERS):
         raise ValueError("XML payload declares a DTD or entity; rejected")
-    parser = ElementTree.XMLParser()
-    forbid_dtd = getattr(parser, "parser", None)
-    if forbid_dtd is not None and hasattr(forbid_dtd, "ForbidDTD"):
-        forbid_dtd.ForbidDTD()
-    return ElementTree.fromstring(payload, parser=parser)
+    return ElementTree.fromstring(payload)

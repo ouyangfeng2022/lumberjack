@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import re
 from dataclasses import dataclass
 
@@ -307,6 +308,9 @@ class HTMLTableParser:
         text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
         # Remove all other tags (but preserve newlines from <br>)
         text = self._strip_tags_re.sub(" ", text)
+        # Decode character references so cells match the surrounding text,
+        # which the parser decodes via convert_charrefs.
+        text = html.unescape(text)
         # Clean up whitespace but preserve newlines
         lines = text.split("\n")
         cleaned_lines = [" ".join(line.split()) for line in lines]

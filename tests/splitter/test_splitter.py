@@ -2741,3 +2741,37 @@ def test_refenced_code_pieces_outlive_inner_backtick_runs() -> None:
         inner_pieces.append(inner)
 
     assert "\n".join(inner_pieces) == literal
+
+
+def test_sentence_fallback_reaches_cjk_and_reassembles_exactly() -> None:
+    from lumberjack._internal.block_splitter import BlockSplitter
+
+    splitter = BlockSplitter(CharacterTokenizer(), max_tokens=20, block_options={})
+    cjk = "第一句内容这里。第二句内容那里。第三句结束。" * 3
+    pieces = splitter.split_text(cjk, max_tokens=15)
+    assert len(pieces) > 1
+    assert "".join(text for text, _ in pieces) == cjk
+
+    spaced = "  ".join(["First one.", "Second one.", "Third one."] * 3)
+    pieces = splitter.split_text(spaced, max_tokens=25)
+    assert "".join(text for text, _ in pieces) == spaced
+
+
+def test_unsplittable_oversized_blocks_are_marked_protected() -> None:
+    from lumberjack._internal.pipeline import split_source
+    from lumberjack.block import BlockConfig, BlockKind
+
+    source = "# T\n\n```python\n" + "x = 1  # " + "v" * 400 + "\n" * 5 + "```\n"
+    for splitter_name in ("section", "exact-section"):
+        result = split_source(
+            source,
+            format="markdown",
+            max_tokens=40,
+            splitter=splitter_name,
+            block_options=[BlockConfig(BlockKind.CODE_FENCE, split=False)],
+        )
+        oversized = [c for c in result.chunks if c.token_count > 40]
+        assert oversized, splitter_name
+        assert all(c.protected and c.chunk_type == "code_fence" for c in oversized), (
+            splitter_name
+        )

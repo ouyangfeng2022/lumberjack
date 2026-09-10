@@ -65,6 +65,7 @@ class TextSplitRequest(BaseModel):
         "python",
         "javascript",
         "typescript",
+        "tsx",
         "bash",
         "c",
         "cpp",
@@ -207,7 +208,7 @@ def _parse_block_configs(
     try:
         return parse_block_config_mapping(raw)
     except (TypeError, ValueError) as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        raise HTTPException(status_code=400, detail=_sanitize_detail(str(e))) from e
 
 
 def _parse_form_block_configs(raw: str) -> list[BlockOption] | None:
@@ -216,7 +217,7 @@ def _parse_form_block_configs(raw: str) -> list[BlockOption] | None:
     try:
         return parse_block_config_json(raw)
     except (TypeError, ValueError) as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        raise HTTPException(status_code=400, detail=_sanitize_detail(str(e))) from e
 
 
 @router.get("/health")
@@ -319,6 +320,7 @@ async def split_file(
         "python",
         "javascript",
         "typescript",
+        "tsx",
         "bash",
         "c",
         "cpp",
@@ -374,7 +376,7 @@ async def split_file(
             if fmt in {"docx", "sqlite", "xlsx"}:
                 content = raw
             else:
-                content = raw.decode("utf-8")
+                content = raw.decode("utf-8-sig")
             tokenizer_instance = _TOKENIZERS.create(tokenizer)
             trace_payload: dict[str, object] | None = None
             if trace_stages:

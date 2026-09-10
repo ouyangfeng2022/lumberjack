@@ -95,10 +95,15 @@ def render_doc_tree(tree: DocTree) -> str:
     return "\n\n".join(parts)
 
 
-def _section_parent_id(source: BaseNode, path: tuple[tuple[int, str], ...]) -> str:
-    """Deterministic parent-node id derived from the section heading path."""
+def _section_parent_id(
+    source: BaseNode, path: tuple[tuple[int, str], ...], *, run: int = 0
+) -> str:
+    """Deterministic parent-node id derived from the section heading path.
+
+    ``run`` disambiguates repeated identical paths within one document.
+    """
     titles = "/".join(title for _, title in path)
-    digest = hashlib.sha1(titles.encode("utf-8")).hexdigest()[:10]
+    digest = hashlib.sha1(f"{run}:{titles}".encode()).hexdigest()[:10]
     return f"{source.node_id}:parent:{digest}"
 
 
@@ -312,19 +317,31 @@ class LumberjackNodeParser(NodeParser):
         excluded_embed: set[str],
         excluded_llm: set[str],
     ) -> list[TextNode]:
-        """Group leaves by their real section path and emit one parent each."""
-        groups: dict[tuple[tuple[int, str], ...], list[tuple[Any, TextNode]]] = {}
+        """Group leaves by their real section path and emit one parent each.
+
+        Grouping keys on the heading path *plus run identity*: chunks of one
+        section are contiguous, so a repeated identical path (two unrelated
+        ``# Introduction`` sections) starts a new group instead of merging
+        the two sections into one parent node.
+        """
+        groups: list[
+            tuple[int, tuple[tuple[int, str], ...], list[tuple[Any, TextNode]]]
+        ] = []
+        current_path: tuple[tuple[int, str], ...] | None = None
         for chunk, leaf in pairs:
             path = chunk.ancestor_headings + (
                 (chunk.own_heading,) if chunk.own_heading is not None else ()
             )
             if not path:
                 continue
-            groups.setdefault(path, []).append((chunk, leaf))
+            if not groups or path != current_path:
+                groups.append((len(groups), path, []))
+                current_path = path
+            groups[-1][2].append((chunk, leaf))
 
         parents: list[TextNode] = []
-        for path, group in groups.items():
-            parent_id = _section_parent_id(source, path)
+        for run, path, group in groups:
+            parent_id = _section_parent_id(source, path, run=run)
             body = "\n\n".join(
                 chunk.body.strip() for chunk, _ in group if chunk.body.strip()
             )

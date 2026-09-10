@@ -86,6 +86,11 @@ def _split_sql_statements(source: str) -> list[tuple[str, int, int]]:
             newline = source.find("\n", index)
             index = length if newline == -1 else newline
             continue
+        if character == "#" and (index + 1 >= length or source[index + 1].isspace()):
+            # MySQL line comment; PostgreSQL operators like #>> stay intact.
+            newline = source.find("\n", index)
+            index = length if newline == -1 else newline
+            continue
         if following == "/*":
             depth = 1
             index += 2
@@ -309,7 +314,7 @@ class SourceCodeParser:
                         "symbol_index": index,
                     },
                 )
-        if not builder.current_section.blocks and source:
+        if not builder.current_section.blocks and source.strip():
             builder.add_record(
                 source,
                 locations=(
@@ -355,13 +360,29 @@ class NotebookParser:
             notebook.get("cells"), list
         ):
             raise ValueError("Invalid notebook: expected a cells array")
-        language = notebook.get("metadata", {}).get("kernelspec", {}).get("language")
+        metadata = notebook.get("metadata", {})
+        if not isinstance(metadata, dict):
+            raise ValueError("Invalid notebook: expected a metadata object")
+        kernelspec = metadata.get("kernelspec", {})
+        language = kernelspec.get("language") if isinstance(kernelspec, dict) else None
         builder = _builder(source_document)
         for index, cell in enumerate(notebook["cells"]):
             if not isinstance(cell, dict):
                 continue
             source = cell.get("source", [])
-            text = "".join(source) if isinstance(source, list) else str(source)
+            if isinstance(source, list):
+                if not all(isinstance(part, str) for part in source):
+                    raise ValueError(
+                        f"Invalid notebook: cell {index} source lines must be strings"
+                    )
+                text = "".join(source)
+            elif isinstance(source, str):
+                text = source
+            else:
+                raise ValueError(
+                    f"Invalid notebook: cell {index} source must be a string "
+                    "or an array of strings"
+                )
             if not text:
                 continue
             builder.add_record(

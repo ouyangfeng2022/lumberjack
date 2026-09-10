@@ -470,3 +470,43 @@ def test_html_parser_survives_stray_open_head_inside_body() -> None:
 
     _collect(tree.root)
     assert "first" in texts
+
+
+def test_html_parser_unclosed_title_keeps_text_as_content() -> None:
+    html = "<title>Doc <p>visible</p>"
+    tree = HTMLParser().parse(html, document_title="unclosed-title.html")
+
+    texts: list[str] = []
+
+    def _collect(section) -> None:
+        texts.extend(block.text for block in section.blocks)
+        for child in section.children:
+            _collect(child)
+
+    _collect(tree.root)
+    assert any("visible" in text for text in texts)
+
+
+def test_html_parser_svg_title_is_content_not_document_title() -> None:
+    html = (
+        "<html><head><title>Real</title></head>"
+        "<body><svg><title>img</title></svg><p>t</p></body></html>"
+    )
+    tree = HTMLParser().parse(html)
+    assert tree.title == "Real"
+
+    texts: list[str] = []
+
+    def _collect(section) -> None:
+        texts.extend(block.text for block in section.blocks)
+        for child in section.children:
+            _collect(child)
+
+    _collect(tree.root)
+    assert any("img" in text for text in texts)
+
+
+def test_html_parser_keeps_heading_open_across_svg_children() -> None:
+    html = "<h2>heading with <svg><circle/></svg> inline</h2><p>body</p>"
+    tree = HTMLParser().parse(html, document_title="svg-heading.html")
+    assert tree.root.children and tree.root.children[0].title == "heading with inline"

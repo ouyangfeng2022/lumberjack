@@ -34,6 +34,7 @@ def test_cli_public_defaults_and_choices() -> None:
         "python",
         "javascript",
         "typescript",
+        "tsx",
         "bash",
         "c",
         "cpp",

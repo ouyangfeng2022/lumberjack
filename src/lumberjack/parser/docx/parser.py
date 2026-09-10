@@ -132,31 +132,72 @@ def _relationship_source_directory(name: str) -> str:
     return posixpath.dirname(parent)
 
 
+def _first_start_tag_span(payload: bytes) -> tuple[int, int]:
+    """Byte span of the first element start tag (the XML root)."""
+    index = payload.find(b"<")
+    while index != -1:
+        following = payload[index + 1 : index + 9]
+        if following.startswith(b"!--"):
+            end_comment = payload.find(b"-->", index)
+            index = payload.find(b"<", end_comment if end_comment != -1 else index + 4)
+        elif payload[index + 1 : index + 2] in (b"?", b"!"):
+            index = payload.find(b"<", index + 1)
+        else:
+            break
+    if index == -1:
+        return 0, 0
+    end = index
+    quote = b""
+    while end < len(payload):
+        char = payload[end : end + 1]
+        if quote:
+            if char == quote:
+                quote = b""
+        elif char in (b'"', b"'"):
+            quote = char
+        elif char == b">":
+            return index, end + 1
+        end += 1
+    return index, len(payload)
+
+
 def _normalize_strict_namespaces(
     payload: bytes, *, relationships_part: bool
 ) -> tuple[bytes, bool]:
-    """Normalize namespace and relationship-Type attributes, not text content."""
+    """Normalize namespace and relationship-Type attributes, not text content.
+
+    Namespace rewrites are confined to the root element's start tag: body
+    text quoting a namespace URI verbatim must survive untouched, and Strict
+    OOXML documents declare their namespaces there.
+    """
     updated = payload
+    if not relationships_part:
+        start, end = _first_start_tag_span(payload)
+        head, scope, tail = payload[:start], payload[start:end], payload[end:]
+    else:
+        # .rels parts contain only Relationship elements (no text nodes).
+        head, scope, tail = b"", payload, b""
     for strict, transitional in _STRICT_NAMESPACE_REPLACEMENTS.items():
         namespace_declaration = re.compile(
             rb"(\bxmlns(?::[A-Za-z_][\w.-]*)?\s*=\s*[\"'])"
             + re.escape(strict)
             + rb"([\"'])"
         )
-        updated = namespace_declaration.sub(
+        scope = namespace_declaration.sub(
             lambda match, replacement=transitional: (
                 match.group(1) + replacement + match.group(2)
             ),
-            updated,
+            scope,
         )
         if relationships_part:
             relationship_type = re.compile(
                 rb"(\bType\s*=\s*[\"'])" + re.escape(strict) + rb"(?=/)"
             )
-            updated = relationship_type.sub(
+            scope = relationship_type.sub(
                 lambda match, replacement=transitional: match.group(1) + replacement,
-                updated,
+                scope,
             )
+    updated = head + scope + tail
     return updated, updated != payload
 
 
@@ -304,23 +345,48 @@ def _visible_descendants(element: Any):
         yield from _visible_descendants(child)
 
 
-def _paragraph_property_chain(para: Any):
-    """Yield direct and inherited paragraph properties in precedence order."""
+def _paragraph_property_chain(
+    para: Any, cache: dict[str, tuple[Any, ...]] | None = None
+):
+    """Yield direct and inherited paragraph properties in precedence order.
+
+    ``cache`` memoizes the inherited chain per style id so long documents with
+    deep style inheritance do not re-walk the styles part for every paragraph.
+    """
     yield getattr(para._p, "pPr", None)
     style = para.style
-    visited: set[str] = set()
-    while style is not None:
-        style_id = str(style.style_id)
-        if style_id in visited:
-            raise ValueError(f"cyclic DOCX paragraph style inheritance at {style_id!r}")
-        visited.add(style_id)
-        yield getattr(style.element, "pPr", None)
-        style = style.base_style
+    if style is None:
+        return
+    resolved = {} if cache is None else cache
+    style_id = str(style.style_id)
+    chain = resolved.get(style_id)
+    if chain is None:
+        walked: list[Any] = []
+        visited: set[str] = set()
+        current = style
+        while current is not None:
+            current_id = str(current.style_id)
+            if current_id in visited:
+                raise ValueError(
+                    f"cyclic DOCX paragraph style inheritance at {current_id!r}"
+                )
+            visited.add(current_id)
+            cached_tail = resolved.get(current_id)
+            if cached_tail is not None:
+                walked.extend(cached_tail)
+                break
+            walked.append(getattr(current.element, "pPr", None))
+            current = current.base_style
+        chain = tuple(walked)
+        resolved[style_id] = chain
+    yield from chain
 
 
-def _heading_level(para: Any) -> int | None:
+def _heading_level(
+    para: Any, cache: dict[str, tuple[Any, ...]] | None = None
+) -> int | None:
     """Resolve a heading only from the OOXML outline level, never its style name."""
-    for properties in _paragraph_property_chain(para):
+    for properties in _paragraph_property_chain(para, cache):
         outline = getattr(properties, "outlineLvl", None)
         if outline is None:
             continue
@@ -444,11 +510,13 @@ def _resolve_number_format(
     )
 
 
-def _list_info(para: Any) -> _ListInfo | None:
+def _list_info(
+    para: Any, cache: dict[str, tuple[Any, ...]] | None = None
+) -> _ListInfo | None:
     """Resolve list identity and format from effective OOXML numbering data."""
     num_id: int | None = None
     level: int | None = None
-    for properties in _paragraph_property_chain(para):
+    for properties in _paragraph_property_chain(para, cache):
         numbering_properties = getattr(properties, "numPr", None)
         if numbering_properties is None:
             continue
@@ -485,6 +553,10 @@ def _list_info(para: Any) -> _ListInfo | None:
 def _run_to_inlines(run: Any) -> tuple[DocumentInline, ...]:
     """Convert one DOCX run, including drawings, to inline nodes."""
     inlines: list[DocumentInline] = []
+    if run.font.hidden:
+        # w:vanish marks hidden text (white text, stale comments) that must
+        # not enter RAG chunks as visible content.
+        return ()
     text = run.text
     if text:
         font = run.font
@@ -638,8 +710,23 @@ def _element_inlines(element: Any, para: Any) -> list[DocumentInline]:
                 (item for item in child if _local_name(item) == "Fallback"),
                 None,
             )
+            start = len(inlines)
             if fallback is not None:
                 inlines.extend(_element_inlines(fallback, para))
+            if not any(item.kind == "image" for item in inlines[start:]):
+                # Floating drawings keep their a:blip only in the Choice
+                # branch (the Fallback carries VML); recover the image so it
+                # is not silently lost.
+                choice = next(
+                    (item for item in child if _local_name(item) == "Choice"),
+                    None,
+                )
+                if choice is not None:
+                    inlines.extend(
+                        item
+                        for item in _element_inlines(choice, para)
+                        if item.kind == "image"
+                    )
             continue
         if tag in {"oMath", "oMathPara"}:
             literal = _omml_literal(child)
@@ -664,7 +751,7 @@ def _element_inlines(element: Any, para: Any) -> list[DocumentInline]:
                     children=children,
                     attrs={
                         "destination": _hyperlink_destination(item),
-                        "title": "",
+                        "title": _attribute(child, "tooltip") or "",
                     },
                 )
             )
@@ -690,7 +777,8 @@ def _render_inlines(inlines: tuple[DocumentInline, ...]) -> str:
         elif inline.kind == "code_span":
             parts.append(f"`{inline.text}`")
         elif inline.kind == "math_inline":
-            parts.append(f"${inline.attrs.get('literal', inline.text)}$")
+            literal = str(inline.attrs.get("literal", inline.text))
+            parts.append(f"${literal.replace('$', chr(92) + '$')}$")
         elif inline.kind == "link":
             destination = str(inline.attrs.get("destination") or "")
             parts.append(f"[{children}]({destination})" if destination else children)
@@ -858,7 +946,11 @@ class DocxParser(ParserProtocol):
 
         # Apply only package defects established directly from OPC metadata.
         repaired_data, repairs = _repair_docx_package(data)
-        doc = create_docx_document(BytesIO(repaired_data if repairs else data))
+        try:
+            doc = create_docx_document(BytesIO(repaired_data if repairs else data))
+        except SyntaxError as exc:
+            # expat ParseError / lxml XMLSyntaxError on malformed XML parts.
+            raise ValueError(f"Invalid DOCX XML part: {exc}") from exc
         if repairs:
             metadata["docx_repairs"] = list(repairs)
 

@@ -8,7 +8,8 @@ from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 
 import pytest
 
-from lumberjack.models import DocTree, DocumentBlock, SectionNode
+from lumberjack.models import DocTree, Document, DocumentBlock, SectionNode
+from lumberjack.parser.auto import AutoParser
 from lumberjack.parser.code import NotebookParser, SourceCodeParser, SQLParser
 from lumberjack.parser.docx import DocxParser
 from lumberjack.parser.html import HTMLParser
@@ -1134,3 +1135,90 @@ def test_xml_parser_handles_deeply_nested_elements() -> None:
     payload = "<r>" * depth + "</r>" * depth
     tree = XMLParser().parse(payload, document_title="deep.xml")
     assert tree.root.blocks
+
+
+def test_utf8_bom_does_not_leak_into_any_text_parser() -> None:
+    bom = "\ufeff"
+
+    tree = DelimitedTextParser().parse(f"{bom}name,value\nAda,36")
+    assert "\ufeff" not in tree.root.blocks[0].text
+
+    markdown = MarkdownParser().parse(f"{bom}# Title\n\nbody")
+    assert markdown.root.children and markdown.root.children[0].title == "Title"
+
+    html = HTMLParser().parse(f"{bom}<h1>Head</h1>")
+    assert html.root.children and html.root.children[0].title == "Head"
+
+    sniffed = AutoParser().parse(
+        b"\xef\xbb\xbf<!doctype html>\n<html><body><p>hi</p></body></html>",
+        format="auto",
+    )
+    assert sniffed.root.blocks
+
+
+def test_csv_field_limit_raises_value_error_not_csv_error() -> None:
+    oversized = '"' + "x" * 200_000 + '"'
+    with pytest.raises(ValueError, match="Invalid csv input"):
+        DelimitedTextParser().parse(f"name\n{oversized}")
+
+
+def test_sql_parser_handles_mysql_hash_comments() -> None:
+    tree = SQLParser().parse("# comment; body\nSELECT 1;")
+    statements = [block.text for block in tree.root.blocks]
+    assert statements == ["# comment; body\nSELECT 1;"]
+    # PostgreSQL jsonb operators must survive the hash rule.
+    kept = SQLParser().parse("SELECT data #>> '{a}' FROM t;")
+    assert [block.text for block in kept.root.blocks] == [
+        "SELECT data #>> '{a}' FROM t;"
+    ]
+
+
+def test_notebook_parser_validates_cell_source_shapes() -> None:
+    with pytest.raises(ValueError, match="source lines must be strings"):
+        NotebookParser().parse('{"cells": [{"cell_type": "code", "source": [1]}]}')
+    with pytest.raises(ValueError, match="source must be a string"):
+        NotebookParser().parse('{"cells": [{"cell_type": "code", "source": 5}]}')
+    with pytest.raises(ValueError, match="expected a metadata object"):
+        NotebookParser().parse('{"cells": [], "metadata": []}')
+
+
+def test_source_parser_skips_whitespace_only_files() -> None:
+    tree = SourceCodeParser(language="python").parse(
+        Document(source="   \n\t\n", format="python")
+    )
+    assert not tree.root.blocks
+
+
+def test_docx_parser_skips_hidden_runs_and_reads_tooltips() -> None:
+    def build(document) -> None:
+        paragraph = document.add_paragraph()
+        paragraph.add_run("visible ")
+        hidden = paragraph.add_run("hidden-secret")
+        hidden.font.hidden = True
+        paragraph.add_run(" tail")
+        _add_hyperlink(paragraph, "link", "https://example.com/x")
+
+    payload = _docx_bytes(build)
+
+    def _add_tooltip(name: str, data: bytes) -> bytes:
+        if name != "word/document.xml":
+            return data
+        patched = data.replace(
+            b"<w:hyperlink ", b'<w:hyperlink w:tooltip="tip text" ', 1
+        )
+        assert patched != data
+        return patched
+
+    tree = DocxParser().parse(
+        _rewrite_docx(payload, _add_tooltip), document_title="hidden.docx"
+    )
+    text = _tree_text(tree)
+    assert "visible" in text and "hidden-secret" not in text
+    inlines = [
+        inline
+        for section in _walk_sections(tree.root)
+        for block in section.blocks
+        for inline in (block.inlines or ())
+    ]
+    tooltips = [i.attrs.get("title") for i in inlines if i.kind == "link"]
+    assert "tip text" in tooltips

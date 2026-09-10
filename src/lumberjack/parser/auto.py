@@ -46,6 +46,7 @@ DetectedFormat = Literal[
     "python",
     "javascript",
     "typescript",
+    "tsx",
     "bash",
     "c",
     "cpp",
@@ -82,6 +83,7 @@ _VALID_FORMATS = frozenset(
         "python",
         "javascript",
         "typescript",
+        "tsx",
         "bash",
         "c",
         "cpp",
@@ -143,8 +145,10 @@ def _format_from_suffix(path: str | Path | None) -> DetectedFormat | None:
         return "python"
     if suffix in {".js", ".mjs", ".cjs"}:
         return "javascript"
-    if suffix in {".ts", ".tsx"}:
+    if suffix == ".ts":
         return "typescript"
+    if suffix == ".tsx":
+        return "tsx"
     if suffix == ".ipynb":
         return "notebook"
     code_suffixes: dict[str, CodeLanguage] = {
@@ -241,7 +245,7 @@ class AutoParser:
 
         if isinstance(data, bytes):
             try:
-                text = data.decode("utf-8")
+                text = data.decode("utf-8-sig")
             except UnicodeDecodeError as exc:
                 raise ValueError(
                     "Non-DOCX bytes must contain valid UTF-8 text"
@@ -267,6 +271,7 @@ class AutoParser:
                     "python",
                     "javascript",
                     "typescript",
+                    "tsx",
                     "bash",
                     "c",
                     "cpp",
@@ -309,7 +314,7 @@ class AutoParser:
             return "docx"
         if isinstance(data, bytes):
             try:
-                text = data.decode("utf-8")
+                text = data.decode("utf-8-sig")
             except UnicodeDecodeError as exc:
                 raise ValueError(
                     "Unable to infer format from non-DOCX binary input"

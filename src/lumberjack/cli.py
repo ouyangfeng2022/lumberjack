@@ -7,16 +7,26 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from ._internal.formats import detect_format
+from ._internal.formats import detect_format, has_known_suffix
 from ._internal.options import parse_block_config_mapping
-from ._internal.pipeline import BUILTIN_SPLITTER_NAMES, split_source, trace_source
+from ._internal.pipeline import (
+    BUILTIN_SPLITTER_NAMES,
+    TokenizerRegistry,
+    split_source,
+    trace_source,
+)
 from ._internal.trace import TRACE_STAGES, TraceStage, select_trace_stages
 from .block import BlockOption
 from .models import SplitResult
 from .parser import InputFormat
+from .protocols import TokenizerProtocol
 from .serialization import split_result_to_dict
 
 _BLOCK_FIELDS = frozenset({"isolated", "split", "max_tokens", "repeat_header"})
+
+# Tokenizers are loaded once per process so batch runs do not re-instantiate
+# (and for transformers, re-download) a tokenizer per input file.
+_TOKENIZERS = TokenizerRegistry()
 
 
 def _parse_bool(value: str) -> bool:
@@ -102,6 +112,7 @@ def build_parser() -> argparse.ArgumentParser:
             "python",
             "javascript",
             "typescript",
+            "tsx",
             "bash",
             "c",
             "cpp",
@@ -129,7 +140,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     batch_options = parser.add_argument_group("batch processing")
     batch_options.add_argument(
-        "--output-dir", help="Write one JSON result per input directory"
+        "--output-dir", help="Write one JSON result per input file"
     )
     batch_options.add_argument(
         "--recursive", action="store_true", help="Recurse when input is a directory"
@@ -233,31 +244,43 @@ def main() -> None:
     batch_mode = (
         len(input_paths) != 1 or Path(args.input).is_dir() or _is_glob(args.input)
     )
+    if args.trace_max_bytes <= 0:
+        parser.error("--trace-max-bytes must be a positive integer")
+    if args.output and not input_paths and not Path(args.input).is_dir():
+        parser.error(f"no input files matched {args.input!r}")
     if args.output and (batch_mode or args.jsonl or args.output_dir):
         parser.error(
-            "--output only supports one non-JSONL input; use --output-dir for batches"
+            "--output only supports one input file; use --output-dir for batches"
         )
-    if args.output_dir and args.output:
-        parser.error("--output-dir cannot be combined with --output")
 
     try:
         block_options = _parse_cli_block_options(args)
     except (TypeError, ValueError) as error:
         parser.error(str(error))
 
+    try:
+        tokenizer = _TOKENIZERS.create(args.tokenizer)
+    except ValueError as error:
+        parser.error(str(error))
+
     failures = 0
     single_payload: dict[str, object] | None = None
+    single_trace: dict[str, object] | None = None
     for input_path in input_paths:
         try:
-            result, trace_payload = _split_one(input_path, args, block_options)
+            result, trace_payload = _split_one(
+                input_path, args, block_options, tokenizer
+            )
             payload = split_result_to_dict(result)
-            if trace_payload is not None:
-                payload["trace"] = trace_payload
             record: dict[str, object] = {
                 "input_id": str(input_path),
                 "status": "success",
                 "result": payload,
             }
+            if trace_payload is not None:
+                # Sibling of "result": the chunk-v1 payload forbids extra
+                # properties, so the trace must not be merged into it.
+                record["trace"] = trace_payload
             _write_batch_file(record, input_path, args, root=batch_root)
         except Exception as error:
             record = {
@@ -277,6 +300,7 @@ def main() -> None:
             print(json.dumps(record, ensure_ascii=False))
         else:
             single_payload = payload
+            single_trace = trace_payload
 
     if batch_mode or args.jsonl:
         if not input_paths:
@@ -288,9 +312,15 @@ def main() -> None:
     if single_payload is None:
         # The lone input failed; its error was already reported on stderr.
         raise SystemExit(1)
-    payload = json.dumps(single_payload, ensure_ascii=False, indent=2)
+    if single_trace is not None:
+        envelope = {"result": single_payload, "trace": single_trace}
+        payload = json.dumps(envelope, ensure_ascii=False, indent=2)
+    else:
+        payload = json.dumps(single_payload, ensure_ascii=False, indent=2)
     if args.output:
-        Path(args.output).write_text(payload, encoding="utf-8")
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(payload, encoding="utf-8")
         print(f"Wrote output to {args.output}", file=sys.stderr)
     else:
         print(payload)
@@ -298,6 +328,11 @@ def main() -> None:
 
 def _is_glob(value: str) -> bool:
     return glob.has_magic(value)
+
+
+def _format_from_suffix(path: Path) -> str | None:
+    """Known-suffix gate for directory batches (None means "skip")."""
+    return path.name if has_known_suffix(path.name) else None
 
 
 def _expand_inputs(value: str, *, recursive: bool) -> tuple[list[Path], Path | None]:
@@ -311,10 +346,17 @@ def _expand_inputs(value: str, *, recursive: bool) -> tuple[list[Path], Path | N
     path = Path(value)
     if path.is_dir():
         iterator = path.rglob("*") if recursive else path.glob("*")
-        return (
-            sorted(item for item in iterator if item.is_file()),
-            path,
-        )
+        candidates = [
+            item
+            for item in iterator
+            # Skip dotfiles (matching shell glob semantics) and files whose
+            # suffix maps to no supported format, so a stray binary in the
+            # tree is not silently chunked as Markdown.
+            if item.is_file()
+            and not item.name.startswith(".")
+            and _format_from_suffix(item) is not None
+        ]
+        return sorted(candidates), path
     if _is_glob(value):
         prefix = value[: next((i for i, ch in enumerate(value) if ch in "*?["), 0)]
         root = Path(prefix) if prefix else Path(".")
@@ -330,7 +372,10 @@ def _expand_inputs(value: str, *, recursive: bool) -> tuple[list[Path], Path | N
 
 
 def _split_one(
-    input_path: Path, args: argparse.Namespace, block_options: list[BlockOption]
+    input_path: Path,
+    args: argparse.Namespace,
+    block_options: list[BlockOption],
+    tokenizer: TokenizerProtocol,
 ) -> tuple[SplitResult, dict[str, object] | None]:
     input_format = detect_format(input_path, args.input_format)
     if args.trace_stage:
@@ -341,7 +386,7 @@ def _split_one(
             ideal_max_tokens_ratio=args.ideal_max_tokens_ratio,
             merge_below_ratio=args.merge_below_ratio,
             block_options=block_options,
-            tokenizer=args.tokenizer,
+            tokenizer=tokenizer,
             splitter=args.splitter,
             heading_sensitive=args.heading_sensitive,
             max_heading_level=args.max_heading_level,
@@ -360,7 +405,7 @@ def _split_one(
         ideal_max_tokens_ratio=args.ideal_max_tokens_ratio,
         merge_below_ratio=args.merge_below_ratio,
         block_options=block_options,
-        tokenizer=args.tokenizer,
+        tokenizer=tokenizer,
         splitter=args.splitter,
         heading_sensitive=args.heading_sensitive,
         max_heading_level=args.max_heading_level,

@@ -84,7 +84,7 @@ RUN --mount=type=cache,target=/root/.local/share/uv \
 # Stage 3: Minimal runtime image — venv only,
 # no build tools, no source tree.
 # ──────────────────────────────────────────────
-FROM python:3.13-slim AS runtime
+FROM python:3.13-slim-bookworm AS runtime
 
 ARG COMMIT=""
 
@@ -117,6 +117,11 @@ ENV HF_HOME=/app/.cache/huggingface
 
 # Expose the default lumberjack-serve port
 EXPOSE 9612
+
+# Run as an unprivileged user; the server processes untrusted uploads, so the
+# process must not run as root. The caches above are world-readable.
+RUN useradd --system --create-home --uid 10001 lumberjack
+USER lumberjack
 
 # Entrypoint is the binary only; default args live in CMD so docker-compose
 # can override them cleanly (CMD is replaced, ENTRYPOINT is kept).

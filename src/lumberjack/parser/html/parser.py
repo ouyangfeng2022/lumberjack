@@ -180,7 +180,7 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         source_path: str | None,
     ) -> None:
         super().__init__(convert_charrefs=True)
-        self._source = source
+        self._source = source.removeprefix("\ufeff")
         self._line_offsets = _line_offsets(source)
         self._document_title = document_title
         self._metadata = dict(metadata_overrides)
@@ -197,6 +197,7 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         self._skip_depth = 0
         self._head_depth = 0
         self._body_seen = False
+        self._foreign_depth = 0
         self._inline_stack: list[str] = []
 
     def build(self) -> DocTree:
@@ -232,17 +233,28 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
             self._skip_depth += 1
             return
         if tag == "title":
-            self._collect_title = True
-            self._title_parts = []
+            # Only the document's own <title> (in head or a bare fragment)
+            # sets metadata; titles nested in <svg>/<math> or the body are
+            # plain text.
+            if not self._body_seen and not self._foreign_depth:
+                self._collect_title = True
+                self._title_parts = []
             return
         if tag == "meta":
             self._capture_meta(attrs)
             return
         if self._skip_depth or self._head_depth:
             return
+        if tag in {"svg", "math"}:
+            self._foreign_depth += 1
 
-        if self._heading is not None and tag not in self._HEADING_PHRASING_TAGS:
-            # Non-phrasing content implies the end of an open heading.
+        if (
+            self._heading is not None
+            and not self._foreign_depth
+            and tag not in self._HEADING_PHRASING_TAGS
+        ):
+            # Non-phrasing content implies the end of an open heading;
+            # inside svg/math every child counts as phrasing.
             self._add_heading_or_paragraph()
 
         if tag in self._BOUNDARY_TAGS:
@@ -341,11 +353,12 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         if tag in {"script", "style"}:
             self._skip_depth = max(0, self._skip_depth - 1)
             return
+        if tag in {"svg", "math"}:
+            self._foreign_depth = max(0, self._foreign_depth - 1)
+            return
         if tag == "title":
-            self._collect_title = False
-            title = _clean_text("".join(self._title_parts))
-            if title:
-                self._metadata.setdefault("title", title)
+            if self._collect_title:
+                self._finish_title_collection()
             return
         if self._skip_depth or self._head_depth:
             return
@@ -517,9 +530,22 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
             )
         )
 
+    def _finish_title_collection(self) -> None:
+        self._collect_title = False
+        title = _clean_text("".join(self._title_parts))
+        if title:
+            self._metadata.setdefault("title", title)
+
     def _flush_open_constructs(self) -> None:
         """Emit content that is still open when the document ends abruptly."""
         line = self.getpos()[0]
+        if self._collect_title:
+            # An unclosed <title> swallowed the remaining text; keep it as
+            # body content instead of dropping it silently.
+            leftover = _clean_text("".join(self._title_parts))
+            self._finish_title_collection()
+            if leftover:
+                self._add_text(leftover)
         if self._heading is not None:
             self._add_heading_or_paragraph()
         while self._item_stack:

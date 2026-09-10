@@ -32,6 +32,7 @@ InputFormat: TypeAlias = Literal[
     "python",
     "javascript",
     "typescript",
+    "tsx",
     "bash",
     "c",
     "cpp",
@@ -127,6 +128,11 @@ class Document:
     document_title: str | None = None
     metadata_overrides: dict[str, object] = field(default_factory=dict)
     source_path: str | Path | None = None
+
+    def __post_init__(self) -> None:
+        # An explicit ``metadata_overrides=None`` must behave like the default.
+        if self.metadata_overrides is None:
+            object.__setattr__(self, "metadata_overrides", {})
 
 
 @dataclass(slots=True, frozen=True)
@@ -459,9 +465,10 @@ def render_draft_body(entries: list[Entry], external_headings: HeadingPath) -> s
     parts: list[str] = []
     previous_headings = external_headings
     for entry in entries:
+        # The common prefix is always a real prefix of entry.headings, so the
+        # relative path keeps every entry-specific heading even when a custom
+        # splitter violates the "external is a shared ancestor" invariant.
         shared = common_heading_path((previous_headings, entry.headings))
-        if len(shared) < len(external_headings):
-            shared = external_headings
         relative_headings = entry.headings[len(shared) :]
         entry_parts: list[str] = []
         if relative_headings:

@@ -84,6 +84,10 @@ def detect_format(source: str | bytes | Path, format: str) -> str:
         return format
 
     if isinstance(source, bytes):
+        if source.startswith(b"SQLite format 3\x00"):
+            return "sqlite"
+        if source.startswith(b"PK\x03\x04") and b"xl/" in source[:2000]:
+            return "xlsx"
         return "docx"
 
     if isinstance(source, Path):
@@ -92,77 +96,78 @@ def detect_format(source: str | bytes | Path, format: str) -> str:
     return "markdown"
 
 
+_SUFFIX_FORMATS: dict[str, str] = {
+    ".docx": "docx",
+    ".html": "html",
+    ".htm": "html",
+    ".md": "markdown",
+    ".markdown": "markdown",
+    ".txt": "text",
+    ".text": "text",
+    ".log": "log",
+    ".csv": "csv",
+    ".tsv": "tsv",
+    ".jsonl": "jsonl",
+    ".ndjson": "jsonl",
+    ".json": "json",
+    ".xml": "xml",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".xlsx": "xlsx",
+    ".toml": "toml",
+    ".sqlite": "sqlite",
+    ".sqlite3": "sqlite",
+    ".db": "sqlite",
+    ".sql": "sql",
+    ".py": "python",
+    ".js": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".ts": "typescript",
+    ".tsx": "tsx",
+    ".sh": "bash",
+    ".bash": "bash",
+    ".c": "c",
+    ".h": "c",
+    ".cc": "cpp",
+    ".cpp": "cpp",
+    ".cxx": "cpp",
+    ".hpp": "cpp",
+    ".cs": "csharp",
+    ".go": "go",
+    ".java": "java",
+    ".kt": "kotlin",
+    ".kts": "kotlin",
+    ".lua": "lua",
+    ".php": "php",
+    ".rb": "ruby",
+    ".rs": "rust",
+    ".swift": "swift",
+    ".zig": "zig",
+    ".ipynb": "notebook",
+}
+
+
+def has_known_suffix(filename: str) -> bool:
+    """True when the filename's suffix maps to a supported input format."""
+    return Path(filename).suffix.lower() in _SUFFIX_FORMATS
+
+
 def detect_format_from_filename(filename: str) -> str:
-    """Detect an input format from a filename extension."""
-    suffix = Path(filename).suffix.lower()
-    if suffix == ".docx":
-        return "docx"
-    if suffix in {".html", ".htm"}:
-        return "html"
-    if suffix == ".log":
-        return "log"
-    if suffix == ".csv":
-        return "csv"
-    if suffix == ".tsv":
-        return "tsv"
-    if suffix in {".jsonl", ".ndjson"}:
-        return "jsonl"
-    if suffix == ".json":
-        return "json"
-    if suffix == ".xml":
-        return "xml"
-    if suffix in {".yaml", ".yml"}:
-        return "yaml"
-    if suffix == ".xlsx":
-        return "xlsx"
-    if suffix == ".toml":
-        return "toml"
-    if suffix in {".sqlite", ".sqlite3", ".db"}:
-        return "sqlite"
-    if suffix == ".sql":
-        return "sql"
-    if suffix == ".py":
-        return "python"
-    if suffix in {".js", ".mjs", ".cjs"}:
-        return "javascript"
-    if suffix in {".ts", ".tsx"}:
-        return "typescript"
-    code_suffixes = {
-        ".sh": "bash",
-        ".bash": "bash",
-        ".c": "c",
-        ".h": "c",
-        ".cc": "cpp",
-        ".cpp": "cpp",
-        ".cxx": "cpp",
-        ".hpp": "cpp",
-        ".cs": "csharp",
-        ".go": "go",
-        ".java": "java",
-        ".kt": "kotlin",
-        ".kts": "kotlin",
-        ".lua": "lua",
-        ".php": "php",
-        ".rb": "ruby",
-        ".rs": "rust",
-        ".swift": "swift",
-        ".zig": "zig",
-    }
-    if suffix in code_suffixes:
-        return code_suffixes[suffix]
-    if suffix == ".ipynb":
-        return "notebook"
-    if suffix in {".txt", ".text"}:
-        return "text"
-    return "markdown"
+    """Detect an input format from a filename extension.
+
+    Unknown suffixes fall back to ``markdown`` so a bare or oddly named text
+    file still parses; use :func:`has_known_suffix` to distinguish them.
+    """
+    return _SUFFIX_FORMATS.get(Path(filename).suffix.lower(), "markdown")
 
 
 def read_text_input(source: str | bytes | Path) -> str:
     """Read a UTF-8 textual input from any supported source shape."""
     if isinstance(source, Path):
-        return source.read_text(encoding="utf-8")
+        return source.read_text(encoding="utf-8-sig")
     if isinstance(source, bytes):
-        return source.decode("utf-8")
+        return source.decode("utf-8-sig")
     return source
 
 

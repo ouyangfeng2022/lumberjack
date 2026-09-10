@@ -229,3 +229,37 @@ def test_cli_output_dir_mirrors_relative_paths(tmp_path: Path, monkeypatch) -> N
     assert top["status"] == "success"
     assert nested["status"] == "success"
     assert top["input_id"] != nested["input_id"]
+
+
+def test_cli_directory_batch_skips_unknown_suffixes_and_hidden_files(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    (tmp_path / "a.md").write_text("# A", encoding="utf-8")
+    (tmp_path / "blob.bin").write_bytes(b"\x00\x01binary")
+    (tmp_path / ".hidden.md").write_text("# H", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["lumber", str(tmp_path)])
+
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+
+    assert excinfo.value.code == 0
+    records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert [Path(r["input_id"]).name for r in records] == ["a.md"]
+
+
+def test_cli_trace_rides_beside_the_chunk_payload(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    guide = tmp_path / "guide.md"
+    guide.write_text("# Guide\n\nBody", encoding="utf-8")
+    monkeypatch.setattr(
+        sys, "argv", ["lumber", str(guide), "--trace-stage", "document"]
+    )
+
+    main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert list(payload) == ["result", "trace"]
+    assert payload["result"]["schema_version"] == "lumberjack.chunk.v1"
+    assert "trace" not in payload["result"]
+    assert payload["trace"]["document"]["title"] == "Guide"

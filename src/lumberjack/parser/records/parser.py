@@ -40,7 +40,8 @@ def _document(
 def _text(document: Document) -> str:
     if not isinstance(document.source, str):
         raise TypeError(f"{document.format} input must be UTF-8 text")
-    return document.source
+    # A UTF-8 BOM may survive when callers hand over already-decoded text.
+    return document.source.removeprefix("\ufeff")
 
 
 def _source_path(document: Document) -> str | None:
@@ -219,11 +220,17 @@ class DelimitedTextParser:
     ) -> DocTree:
         source_document = _document(
             document,
-            format="csv",
+            format="tsv" if self.delimiter == "\t" else "csv",
             document_title=document_title,
             metadata_overrides=metadata_overrides,
             source_path=source_path,
         )
+        try:
+            return self._parse_rows(source_document)
+        except csv.Error as exc:
+            raise ValueError(f"Invalid {source_document.format} input: {exc}") from exc
+
+    def _parse_rows(self, source_document: Document) -> DocTree:
         reader = csv.reader(
             io.StringIO(_text(source_document), newline=""),
             delimiter=self.delimiter,

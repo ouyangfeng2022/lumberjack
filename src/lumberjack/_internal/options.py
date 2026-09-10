@@ -39,9 +39,12 @@ def block_config_from_mapping(kind: str, config: Mapping[str, Any]) -> BlockOpti
     if normalized == BlockKind.HTML_TABLE:
         return HTMLTableConfig(**base, repeat_header=config.get("repeat_header", True))
     try:
-        return BlockConfig(BlockKind(normalized), **base)
+        kind_enum = BlockKind(normalized)
     except ValueError:
+        # Genuinely unknown kind: treat it as a plugin-defined custom kind.
         return CustomBlockConfig(normalized, **base)
+    # Let BlockConfig's own validation errors surface verbatim.
+    return BlockConfig(kind_enum, **base)
 
 
 def parse_block_config_mapping(

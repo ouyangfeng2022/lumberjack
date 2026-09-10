@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from base64 import b64encode
 from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,8 @@ DOC_TREE_SCHEMA_VERSION = "lumberjack.doc-tree.v1"
 def _json_value(value: object) -> Any:
     if isinstance(value, Path):
         return str(value)
+    if isinstance(value, bytes):
+        return {"encoding": "base64", "data": b64encode(value).decode("ascii")}
     if is_dataclass(value) and not isinstance(value, type):
         return {
             field.name: _json_value(getattr(value, field.name))
@@ -42,9 +45,16 @@ def chunk_to_dict(chunk: Chunk) -> dict[str, Any]:
     return value
 
 
+def _location_from_dict(item: dict[str, Any]) -> SourceLocation:
+    """Restore a source location, converging JSON arrays back to tuples."""
+    if isinstance(item.get("bounding_box"), list):
+        item = {**item, "bounding_box": tuple(item["bounding_box"])}
+    return SourceLocation(**item)
+
+
 def chunk_from_dict(payload: dict[str, Any]) -> Chunk:
     """Deserialize a v1 chunk payload, restoring tuple-valued model fields."""
-    locations = tuple(SourceLocation(**item) for item in payload["source_locations"])
+    locations = tuple(_location_from_dict(item) for item in payload["source_locations"])
     own_heading = payload["own_heading"]
     return Chunk(
         chunk_id=str(payload["chunk_id"]),
@@ -86,8 +96,11 @@ def split_result_from_dict(payload: dict[str, Any], document: DocTree) -> SplitR
     """Deserialize a result envelope; callers supply its separately parsed DocTree."""
     if payload.get("schema_version") != CHUNK_SCHEMA_VERSION:
         raise ValueError("unsupported chunk schema version")
+    chunks = payload.get("chunks")
+    if not isinstance(chunks, list):
+        raise ValueError("result envelope is missing its chunks array")
     return SplitResult(
-        document=document, chunks=[chunk_from_dict(item) for item in payload["chunks"]]
+        document=document, chunks=[chunk_from_dict(item) for item in chunks]
     )
 
 
@@ -112,7 +125,7 @@ def _block_from_dict(value: dict[str, Any]) -> DocumentBlock:
         start_line=value.get("start_line"),
         end_line=value.get("end_line"),
         source_locations=tuple(
-            SourceLocation(**item) for item in value.get("source_locations", [])
+            _location_from_dict(item) for item in value.get("source_locations", [])
         ),
         children=tuple(_block_from_dict(item) for item in value.get("children", [])),
         inlines=tuple(_inline_from_dict(item) for item in value.get("inlines", [])),
@@ -128,7 +141,7 @@ def _section_from_dict(value: dict[str, Any]) -> SectionNode:
         index=value.get("index", 0),
         start_line=value.get("start_line"),
         source_locations=tuple(
-            SourceLocation(**item) for item in value.get("source_locations", [])
+            _location_from_dict(item) for item in value.get("source_locations", [])
         ),
         title_inlines=tuple(
             _inline_from_dict(item) for item in value.get("title_inlines", [])

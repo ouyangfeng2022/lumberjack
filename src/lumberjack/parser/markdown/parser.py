@@ -14,7 +14,7 @@ from mdit_py_plugins.front_matter import front_matter_plugin
 from lumberjack.block import BlockKind
 
 from ..._internal.rendering import join_rendered_blocks
-from .plugins import brackets_math_plugin
+from .plugins import brackets_math_plugin, corrected_math_inline
 
 if TYPE_CHECKING:
     from markdown_it.token import Token
@@ -501,6 +501,10 @@ class MarkdownItParser(ParserProtocol):
         # A digit adjacent *outside* a delimiter is usually currency, such as
         # ``$5 and $10``. Digits inside math (``$2x$``) remain supported.
         self._parser.use(dollarmath_plugin, allow_space=True, allow_digits=False)
+        # Replace dollarmath's inline rule: its digit boundary check reads a
+        # negative index at paragraph start and its spaced form accepts
+        # wordy prose like "a $ b $ c" (see plugins/dollar_inline.py).
+        self._parser.inline.ruler.at("math_inline", corrected_math_inline)
         self._parser.use(front_matter_plugin)
         self._parser.use(brackets_math_plugin)
         for plugin in plugins:
@@ -538,6 +542,8 @@ class MarkdownItParser(ParserProtocol):
                 source_path=source_path,
             )
         data = document.source
+        if isinstance(data, str):
+            data = data.removeprefix("\ufeff")
         if not isinstance(data, str):
             msg = (
                 f"MarkdownParser.parse expects Document[str], got {type(data).__name__}"

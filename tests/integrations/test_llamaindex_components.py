@@ -376,3 +376,24 @@ def test_auto_merging_retriever_merges_to_section_parent(_local_tiktoken) -> Non
         t for t in texts if t.startswith("# Guide\n\n## Big\n\nDetail paragraph 0")
     ]
     assert len(merged) == 1
+
+
+def test_emit_parents_keeps_repeated_identical_sections_separate() -> None:
+    markdown = (
+        "# Introduction\n\nFirst intro body.\n\n"
+        "# Methods\n\nMiddle content.\n\n"
+        "# Introduction\n\nSecond intro body, same heading path.\n"
+    )
+    parser = LumberjackNodeParser(max_tokens=40, emit_parents=True)
+    nodes = parser.get_nodes_from_documents(
+        [LlamaDocument(text=markdown, metadata={"file_path": "dup.md"})]
+    )
+    parents = [n for n in nodes if n.metadata["chunk_type"] == "section"]
+
+    intros = [p for p in parents if p.metadata["own_heading"][1] == "Introduction"]
+    assert len(intros) == 2, "repeated identical paths must not merge into one parent"
+    assert intros[0].id_ != intros[1].id_
+    intro_texts = [cast("TextNode", node).text for node in intros]
+    assert "First intro body." in intro_texts[0]
+    assert "Second intro body" in intro_texts[1]
+    assert "First intro body." not in intro_texts[1]

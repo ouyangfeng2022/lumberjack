@@ -8,6 +8,7 @@ defaults are conservative for a small demo deployment.
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 
@@ -29,16 +30,23 @@ class ServerLimits:
     rate_limit_window_seconds: float = _DEFAULT_RATE_LIMIT_WINDOW_SECONDS
 
     def __post_init__(self) -> None:
+        # NaN compares False against everything, so plain <= 0 checks would
+        # silently accept it (disabling the timeout or wedging the rate
+        # window); reject non-finite values explicitly.
         if self.max_body_bytes <= 0:
             raise ValueError("max_body_bytes must be positive")
         if self.max_concurrent_splits <= 0:
             raise ValueError("max_concurrent_splits must be positive")
-        if self.split_timeout_seconds <= 0:
-            raise ValueError("split_timeout_seconds must be positive")
+        if not math.isfinite(self.split_timeout_seconds) or (
+            self.split_timeout_seconds <= 0
+        ):
+            raise ValueError("split_timeout_seconds must be a positive number")
         if self.rate_limit_requests <= 0:
             raise ValueError("rate_limit_requests must be positive")
-        if self.rate_limit_window_seconds <= 0:
-            raise ValueError("rate_limit_window_seconds must be positive")
+        if not math.isfinite(self.rate_limit_window_seconds) or (
+            self.rate_limit_window_seconds <= 0
+        ):
+            raise ValueError("rate_limit_window_seconds must be a positive number")
 
     @classmethod
     def from_env(cls) -> ServerLimits:

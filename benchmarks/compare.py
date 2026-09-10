@@ -24,6 +24,7 @@ from pathlib import Path
 from statistics import quantiles
 from typing import Any
 
+from benchmarks import PROVENANCE_NOTE
 from benchmarks.run import ROOT
 
 QUALITY_METRICS = (
@@ -33,12 +34,6 @@ QUALITY_METRICS = (
     "block_break_rate",
     "chunk_utilization",
     "provenance_coverage",
-)
-# Standard note attached by ``benchmarks.run`` to every non-native adapter;
-# it is a comparability statement, not an oracle diagnostic.
-PROVENANCE_NOTE = (
-    "adapter output has no normalized source-line provenance; "
-    "provenance coverage is not directly comparable"
 )
 
 

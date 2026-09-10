@@ -48,6 +48,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A UTF-8 BOM no longer leaks into any text parser: it is stripped at every
+  parser entry and the format sniffers, so BOM-prefixed Markdown keeps its
+  first heading, CSV keeps a clean header, and `<!doctype html>` sniffing
+  still detects HTML.
+- CSV/TSV inputs with an over-long quoted field now fail with a clean
+  `ValueError` instead of a raw `_csv.Error`, and TSV error messages name
+  TSV instead of CSV.
+- SQL parsing now treats MySQL-style `#` line comments as comments (without
+  breaking PostgreSQL `#>>`/`#>` operators), and notebook parsing validates
+  `cells`/`metadata`/`source` shapes instead of crashing on malformed
+  payloads. Whitespace-only source files no longer produce an empty record.
+- HTML parsing keeps the text of an unclosed `<title>` as body content,
+  never treats an `<svg>`/`<math>` inner `<title>` as the document title,
+  and keeps headings open across SVG/MathML children.
+- DOCX parsing now skips hidden (`w:vanish`) runs, records hyperlink
+  tooltips, recovers images that exist only in the `AlternateContent`
+  Choice branch, and reports malformed XML parts as a `ValueError`. The
+  Strict-OOXML namespace rewrite is confined to the root start tag, so body
+  text quoting a namespace URI survives untouched, and style inheritance is
+  cached so large documents no longer re-walk the styles part per paragraph.
+- Dollar math boundaries are now correct at paragraph edges: `$x$ costs 3`
+  is math again (the upstream rule read a negative index at position 0),
+  while `a $ b $ c` and `price $ 5 and $ 10` stay prose.
+- CJK text now reaches the sentence-level fallback (fullwidth punctuation
+  splits at a zero-width boundary) and re-packs exactly; hard splits keep
+  leading indentation so split code chunks reassemble to the original text.
+- Unsplittable oversized blocks (e.g. `split=False` code fences) are now
+  marked `protected` and keep their real `chunk_type` in every splitter,
+  matching the record splitter's contract.
+- HTML entities are decoded in table cells, matching the surrounding text.
+- `.tsx` files now parse with the JSX-capable grammar instead of the
+  plain-typescript one.
+- CLI batch runs load the tokenizer once per process (no per-file
+  transformers re-download), write the trace beside the result instead of
+  inside the schema-versioned payload, skip hidden files and unknown
+  suffixes when expanding a directory, and `-o` creates parent directories.
+  `--trace-max-bytes` values are validated up front.
+- The web rate limiter returns a `Retry-After` header, evicts only the
+  oldest windows instead of clearing all state, and its `429`/`413` paths
+  log like every other request. Non-finite limit values (`nan`/`inf`) now
+  fail at startup instead of silently disabling the timeout or the window,
+  and block-config error details are sanitized like pipeline errors.
+- LlamaIndex `emit_parents` keeps repeated identical section paths as
+  separate parent nodes instead of merging unrelated sections.
+- Serialization round-trips `bounding_box` back to a tuple, serializes
+  bytes uniformly, and rejects a missing chunks array with `ValueError`;
+  trace stage selection validates names and only serializes the requested
+  stages.
 - HTML parsing no longer drops the entire body when `</head>` is missing or
   a stray `<head>` appears after `<body>`: `<body>` implies `</head>` and
   post-body `<head>` tokens are ignored, matching browser behavior.
@@ -92,6 +140,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added a `tsx` source-code format (`.tsx`), parsed with the JSX-aware
+  grammar when the `code-parsing` extra is installed.
 - Added `GET /health` and `GET /version` endpoints (also under
   `/lumber/api`) reporting the running package version and, when the
   `LUMBERJACK_BUILD_COMMIT` environment variable is set at deploy time, the

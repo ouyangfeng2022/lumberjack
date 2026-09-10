@@ -377,3 +377,45 @@ def test_multipart_file_parts_stay_in_memory(monkeypatch: pytest.MonkeyPatch) ->
     assert response.status_code == 200
     assert spool_sizes
     assert all(size >= len(content) for size in spool_sizes)
+
+
+def test_non_finite_limit_values_fail_at_startup() -> None:
+    for field in ("split_timeout_seconds", "rate_limit_window_seconds"):
+        for bad in (float("nan"), float("inf")):
+            with pytest.raises(ValueError, match=field):
+                ServerLimits(**{field: bad})  # ty: ignore[invalid-argument-type]
+
+
+def test_rate_limited_response_carries_retry_after() -> None:
+    app = _app(rate_limit_requests=1, rate_limit_window_seconds=60)
+    assert (
+        _post(app, "/lumber/api/split/text", json={"text": SIMPLE_MD}).status_code
+        == 200
+    )
+    limited = _post(app, "/lumber/api/split/text", json={"text": SIMPLE_MD})
+    assert limited.status_code == 429
+    assert int(limited.headers["retry-after"]) == 60
+
+
+def test_rate_window_eviction_does_not_reset_unrelated_clients() -> None:
+    from lumberjack.web.middleware import DemoSafetyMiddleware
+
+    middleware = DemoSafetyMiddleware.__new__(DemoSafetyMiddleware)
+    middleware.limits = ServerLimits()
+    middleware._windows = {f"client-{i}": (float(i), 1) for i in range(10_001)}
+    middleware._windows["client-10000"] = (99999.0, 1)
+
+    assert middleware._allow_request({"client": ("fresh", 1)})
+    assert "client-10000" in middleware._windows
+    assert "client-0" not in middleware._windows
+
+
+def test_block_config_error_details_are_sanitized() -> None:
+    app = _app()
+    response = _post(
+        app,
+        "/lumber/api/split/text",
+        json={"text": SIMPLE_MD, "block_configs": {"code_fence": {"max-tokens": -5}}},
+    )
+    assert response.status_code == 400
+    assert "/home/" not in response.json()["detail"]

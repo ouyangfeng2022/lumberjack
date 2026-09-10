@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from benchmarks import PROVENANCE_NOTE
 from benchmarks.adapters.base import AdapterUnavailable, BenchmarkAdapter
 from benchmarks.adapters.competitors import (
     ChonkieRecursiveAdapter,
@@ -108,10 +109,7 @@ def run_benchmark(
         values.update(summarize_samples(samples, len(source.encode("utf-8"))))
         diagnostics = list(quality.diagnostics)
         if adapter.name != "lumberjack":
-            diagnostics.append(
-                "adapter output has no normalized source-line provenance; "
-                "provenance coverage is not directly comparable"
-            )
+            diagnostics.append(PROVENANCE_NOTE)
         results.append(
             DocumentResult(
                 document_id=item["id"],
