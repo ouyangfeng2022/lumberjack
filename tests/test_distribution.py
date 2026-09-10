@@ -87,7 +87,10 @@ def test_wheel_contains_typed_package_without_web_assets(
         "starlette<1.0.0",
         "uvicorn>=0.34.0",
     }
-    assert requirements_by_extra["langchain"] == {"langchain-core>=0.3"}
+    assert requirements_by_extra["langchain"] == {
+        "langchain-core>=0.3",
+        "langchain-text-splitters>=0.3",
+    }
     assert requirements_by_extra["llama-index"] == {"llama-index-core>=0.12"}
     assert requirements_by_extra["haystack"] == {"haystack-ai>=2.0"}
     assert requirements_by_extra["all"] == (
