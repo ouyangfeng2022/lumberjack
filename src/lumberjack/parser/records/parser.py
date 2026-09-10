@@ -8,7 +8,7 @@ import json
 from collections.abc import Iterable, Mapping
 from importlib import import_module
 from pathlib import Path
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 from xml.etree import ElementTree
 
 import yaml
@@ -523,23 +523,33 @@ class XMLParser:
             )
             record_index += 1
 
-        def visit(element: ElementTree.Element, path: str) -> None:
-            nonlocal record_index
+        # Iterative DFS with an explicit stack: hostile inputs may nest XML
+        # elements far deeper than the interpreter recursion limit.
+        stack: list[tuple[Any, ...]] = [("visit", root, f"/{_tag_name(root.tag)}[1]")]
+        while stack:
+            item = stack.pop()
+            if item[0] == "tail":
+                _, parent_tag, parent_path, tail_text = item
+                add_text_segment(parent_path, parent_tag, tail_text)
+                continue
+            _, element, path = item
             children = list(element)
             if children:
                 lead = (element.text or "").strip()
                 if lead:
                     add_text_segment(path, _tag_name(element.tag), lead)
+                entries: list[tuple[Any, ...]] = []
                 counts: dict[str, int] = {}
                 for child in children:
                     name = _tag_name(child.tag)
                     counts[name] = counts.get(name, 0) + 1
                     child_path = f"{path}/{name}[{counts[name]}]"
-                    visit(child, child_path)
+                    entries.append(("visit", child, child_path))
                     tail = (child.tail or "").strip()
                     if tail:
-                        add_text_segment(path, _tag_name(element.tag), tail)
-                return
+                        entries.append(("tail", _tag_name(element.tag), path, tail))
+                stack.extend(reversed(entries))
+                continue
             text = (element.text or "").strip()
             builder.add_record(
                 f"{path}: {text}",
@@ -557,8 +567,6 @@ class XMLParser:
                 },
             )
             record_index += 1
-
-        visit(root, f"/{_tag_name(root.tag)}[1]")
         return builder.build()
 
 

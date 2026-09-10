@@ -63,6 +63,17 @@ class DemoSafetyMiddleware:
             )
             return
 
+        if content_length is None:
+            # Requests without a Content-Length header (e.g. chunked
+            # transfer encoding) cannot be pre-checked, so the body is
+            # buffered here up to the limit before the application sees any
+            # of it. Oversized bodies are rejected mid-stream without ever
+            # reaching the app, which keeps memory bounded by the limit.
+            buffered, replays = await self._buffer_limited_body(receive, send)
+            if buffered is None:
+                return
+            receive = replays
+
         started = time.perf_counter()
         status_code = 0
 
@@ -94,6 +105,51 @@ class DemoSafetyMiddleware:
                     "%s %s -> %d (%.1fms)", method, path, status_code, duration_ms
                 )
 
+    async def _buffer_limited_body(
+        self, receive: Receive, send: Send
+    ) -> tuple[list[dict[str, Any]] | None, Receive]:
+        """Buffer a Content-Length-less body up to the configured limit.
+
+        Returns ``(messages, replay)`` where ``replay`` re-delivers the
+        buffered messages to the application. When the body exceeds the
+        limit, a 413 response is sent here and ``messages`` is ``None`` (the
+        application never runs).
+        """
+        messages: list[dict[str, Any]] = []
+        total = 0
+        while True:
+            message = await receive()
+            messages.append(message)
+            if message["type"] == "http.disconnect":
+                break
+            if message["type"] == "http.request":
+                total += len(message.get("body", b"") or b"")
+                if total > self.limits.max_body_bytes:
+                    await _send_json(
+                        send,
+                        413,
+                        {
+                            "detail": (
+                                "request body exceeds "
+                                f"{self.limits.max_body_bytes} bytes"
+                            )
+                        },
+                    )
+                    return None, _noop_receive
+                if not message.get("more_body", False):
+                    break
+        index = 0
+
+        async def replay() -> dict[str, Any]:
+            nonlocal index
+            if index < len(messages):
+                item = messages[index]
+                index += 1
+                return item
+            return await receive()
+
+        return messages, replay
+
     def _allow_request(self, scope: Scope) -> bool:
         client = scope.get("client")
         key = client[0] if client else "unknown"
@@ -119,6 +175,10 @@ def _content_length(scope: Scope) -> int | None:
             except ValueError:
                 return None
     return None
+
+
+async def _noop_receive() -> dict[str, Any]:
+    return {"type": "http.disconnect"}
 
 
 async def _send_json(send: Send, status: int, payload: dict[str, Any]) -> None:

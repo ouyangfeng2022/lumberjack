@@ -229,7 +229,7 @@ def main() -> None:
     """CLI entry point: parse arguments, split a file, and output results."""
     parser = build_parser()
     args = parser.parse_args()
-    input_paths = _expand_inputs(args.input, recursive=args.recursive)
+    input_paths, batch_root = _expand_inputs(args.input, recursive=args.recursive)
     batch_mode = (
         len(input_paths) != 1 or Path(args.input).is_dir() or _is_glob(args.input)
     )
@@ -245,7 +245,8 @@ def main() -> None:
     except (TypeError, ValueError) as error:
         parser.error(str(error))
 
-    records = []
+    failures = 0
+    single_payload: dict[str, object] | None = None
     for input_path in input_paths:
         try:
             result, trace_payload = _split_one(input_path, args, block_options)
@@ -257,7 +258,7 @@ def main() -> None:
                 "status": "success",
                 "result": payload,
             }
-            _write_batch_file(record, input_path, args)
+            _write_batch_file(record, input_path, args, root=batch_root)
         except Exception as error:
             record = {
                 "input_id": str(input_path),
@@ -265,15 +266,29 @@ def main() -> None:
                 "error": f"{type(error).__name__}: {error}",
             }
             print(record["error"], file=sys.stderr)
+            if batch_mode or args.jsonl:
+                print(json.dumps(record, ensure_ascii=False))
+            failures += 1
             if args.fail_fast:
-                raise
-        records.append(record)
+                raise SystemExit(1) from error
+            continue
         print(f"processed {input_path}", file=sys.stderr)
+        if batch_mode or args.jsonl:
+            print(json.dumps(record, ensure_ascii=False))
+        else:
+            single_payload = payload
 
     if batch_mode or args.jsonl:
-        print("\n".join(json.dumps(record, ensure_ascii=False) for record in records))
-        return
-    payload = json.dumps(records[0]["result"], ensure_ascii=False, indent=2)
+        if not input_paths:
+            print(
+                f"no input files matched {args.input!r}; nothing to do",
+                file=sys.stderr,
+            )
+        raise SystemExit(1 if failures else 0)
+    if single_payload is None:
+        # The lone input failed; its error was already reported on stderr.
+        raise SystemExit(1)
+    payload = json.dumps(single_payload, ensure_ascii=False, indent=2)
     if args.output:
         Path(args.output).write_text(payload, encoding="utf-8")
         print(f"Wrote output to {args.output}", file=sys.stderr)
@@ -285,18 +300,33 @@ def _is_glob(value: str) -> bool:
     return glob.has_magic(value)
 
 
-def _expand_inputs(value: str, *, recursive: bool) -> list[Path]:
+def _expand_inputs(value: str, *, recursive: bool) -> tuple[list[Path], Path | None]:
+    """Expand one input argument into file paths plus an output-mirroring root.
+
+    The root is the directory that expanded paths are relative to (the input
+    directory, or the literal prefix of a glob). ``--output-dir`` mirrors the
+    structure under it so same-named files in different directories cannot
+    collide.
+    """
     path = Path(value)
     if path.is_dir():
         iterator = path.rglob("*") if recursive else path.glob("*")
-        return sorted(item for item in iterator if item.is_file())
-    if _is_glob(value):
-        return sorted(
-            Path(item)
-            for item in glob.glob(value, recursive=recursive)
-            if Path(item).is_file()
+        return (
+            sorted(item for item in iterator if item.is_file()),
+            path,
         )
-    return [path]
+    if _is_glob(value):
+        prefix = value[: next((i for i, ch in enumerate(value) if ch in "*?["), 0)]
+        root = Path(prefix) if prefix else Path(".")
+        return (
+            sorted(
+                Path(item)
+                for item in glob.glob(value, recursive=recursive)
+                if Path(item).is_file()
+            ),
+            root,
+        )
+    return [path], None
 
 
 def _split_one(
@@ -338,11 +368,22 @@ def _split_one(
 
 
 def _write_batch_file(
-    record: dict[str, object], input_path: Path, args: argparse.Namespace
+    record: dict[str, object],
+    input_path: Path,
+    args: argparse.Namespace,
+    *,
+    root: Path | None,
 ) -> None:
     if not args.output_dir:
         return
-    destination = Path(args.output_dir) / f"{input_path.name}.json"
+    if root is not None:
+        try:
+            relative = input_path.relative_to(root)
+        except ValueError:
+            relative = Path(input_path.name)
+    else:
+        relative = Path(input_path.name)
+    destination = Path(args.output_dir) / Path(f"{relative}.json")
     if destination.exists() and not args.overwrite:
         raise FileExistsError(f"refusing to overwrite {destination}; pass --overwrite")
     destination.parent.mkdir(parents=True, exist_ok=True)

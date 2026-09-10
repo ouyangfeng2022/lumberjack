@@ -1074,3 +1074,63 @@ def test_source_code_parser_symbol_fallback_matches_tree_sitter_contract(
 
     assert len(tree.root.blocks) == expected
     assert all(block.kind == "record" for block in tree.root.blocks)
+
+
+def test_docx_parser_survives_dangling_hyperlink_relationship() -> None:
+    def build(document) -> None:
+        paragraph = document.add_paragraph()
+        _add_hyperlink(paragraph, "example", "https://example.com/path")
+
+    payload = _docx_bytes(build)
+
+    def _break_relationship(name: str, data: bytes) -> bytes:
+        if name != "word/document.xml":
+            return data
+        import re
+
+        broken = re.sub(
+            rb'(<w:hyperlink [^>]*r:id=")rId\d+(")', rb"\1rIdDoesNotExist\2", data
+        )
+        assert broken != data
+        return broken
+
+    tree = DocxParser().parse(
+        _rewrite_docx(payload, _break_relationship), document_title="dangling.docx"
+    )
+    assert "example" in _tree_text(tree)
+
+
+def test_docx_parser_keeps_nested_content_inside_hyperlinks() -> None:
+    def build(document) -> None:
+        paragraph = document.add_paragraph()
+        _add_hyperlink(paragraph, "plain", "https://example.com/path")
+
+    payload = _docx_bytes(build)
+
+    def _wrap_content(name: str, data: bytes) -> bytes:
+        if name != "word/document.xml":
+            return data
+        injected = data.replace(
+            b"</w:hyperlink>",
+            b'<w:ins w:id="1" w:author="a" w:date="2024-01-01T00:00:00Z">'
+            b"<w:r><w:t> inserted-in-link</w:t></w:r></w:ins>"
+            b"<m:oMath><m:r><m:t>E=mc</m:t></m:r></m:oMath></w:hyperlink>",
+        )
+        assert injected != data
+        return injected
+
+    tree = DocxParser().parse(
+        _rewrite_docx(payload, _wrap_content), document_title="nested-link.docx"
+    )
+    text = _tree_text(tree)
+    assert "inserted-in-link" in text
+    assert "E=mc" in text
+
+
+def test_xml_parser_handles_deeply_nested_elements() -> None:
+    # Hostile XML can nest elements far beyond the interpreter recursion
+    # limit; the traversal must stay iterative and still produce records.
+    depth = 30_000
+    payload = "<r>" * depth + "</r>" * depth
+    tree = XMLParser().parse(payload, document_title="deep.xml")
+    assert tree.root.blocks

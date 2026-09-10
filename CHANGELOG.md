@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Requests without a `Content-Length` header (chunked transfer encoding) are
+  now size-limited too: the middleware buffers the body itself and rejects
+  with `413` as soon as the limit is crossed, so oversized chunked payloads
+  can no longer be fully buffered in memory (or spilled to disk) before
+  rejection.
+- Split concurrency slots are now held until the worker thread actually
+  finishes: a timed-out split keeps occupying its slot while it drains, so
+  abandoned slow splits cannot accumulate zombie threads beyond the
+  configured concurrency limit.
+- Multipart file uploads now stay in memory for any body the size limit
+  accepts (the spool threshold follows `LUMBERJACK_WEB_MAX_BODY_BYTES`),
+  upholding the documented in-memory-only privacy guarantee.
+- Unhandled server errors now also carry `X-Content-Type-Options` and
+  `Referrer-Policy`: the demo middleware wraps the whole ASGI stack,
+  including Starlette's server-error responses.
 - Public web deployments now enforce resource limits: requests and uploads
   above a size ceiling return `413`, split execution runs under a concurrency
   limit and a wall-clock timeout (`503` on expiry), and split API calls are
@@ -20,9 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guarantees: uploads are processed in memory only and logs never contain
   document content.
 - Untrusted XML parsing (DOCX parts, XML records, parser benchmarks) now
-  rejects payloads containing DTD or entity declarations before parsing, and
-  forbids DTDs on the underlying expat parser, closing the internal-entity
-  expansion (billion laughs) resource-exhaustion vector.
+  rejects payloads containing DTD or entity declarations before parsing,
+  closing the internal-entity expansion (billion laughs)
+  resource-exhaustion vector.
 - SQLite parsing now reads table schemas and row values from the connection's
   dump output, so the parser executes fixed SQL statements only and
   document-supplied table identifiers are never interpolated into a query.
@@ -33,6 +48,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- HTML parsing no longer drops the entire body when `</head>` is missing or
+  a stray `<head>` appears after `<body>`: `<body>` implies `</head>` and
+  post-body `<head>` tokens are ignored, matching browser behavior.
+- DOCX parsing keeps nested content inside hyperlinks (revision-wrapped
+  runs, inline OMML math) instead of silently dropping it, and a hyperlink
+  referencing a missing relationship id now degrades to a link without a
+  destination instead of crashing the parse.
+- XML record parsing handles arbitrarily deep element nesting: the
+  document-order traversal is iterative now, so hostile payloads cannot
+  trigger a `RecursionError` during record extraction.
+- Splitting an oversized fenced code block whose content itself contains
+  ` ``` ` lines now re-fences each piece with a longer marker, so the inner
+  fence can no longer close the wrapper early and corrupt the chunk's
+  Markdown.
+- The CLI now reports failures correctly: a failed single input exits with a
+  clean error message instead of a `KeyError` traceback, batch runs exit
+  non-zero when any input fails, empty batches print nothing to stdout, and
+  `--output-dir` mirrors the input directory structure so same-named files
+  in different directories cannot collide or silently overwrite each other.
 - Pipeline runs no longer crash on a custom tokenizer that exposes a
   non-callable `clear_cache` attribute: the per-run cache reset only calls
   callable hooks now.

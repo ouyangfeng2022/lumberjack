@@ -607,65 +607,75 @@ def _omml_literal(element: Any) -> str:
     )
 
 
-def _runs_to_inlines(para: Any) -> tuple[DocumentInline, ...]:
-    """Convert paragraph content through transparent OOXML inline wrappers."""
+def _hyperlink_destination(item: Any) -> str:
+    """Return the link target, degrading gracefully on a dangling r:id."""
+    try:
+        target = item.url
+    except KeyError:
+        # A corrupted or hand-edited package can reference a relationship
+        # id that does not exist; keep the link text and drop the target.
+        target = None
+    destination = str(target or "")
+    fragment = str(getattr(item, "fragment", "") or "")
+    if not destination and fragment:
+        destination = f"#{fragment}"
+    return destination
+
+
+def _element_inlines(element: Any, para: Any) -> list[DocumentInline]:
+    """Collect visible inlines from an OOXML element tree, link-aware."""
     from docx.text.hyperlink import Hyperlink
     from docx.text.run import Run
 
     inlines: list[DocumentInline] = []
     hidden_wrappers = {"del", "moveFrom"}
-
-    def collect(element: Any) -> None:
-        for child in element:
-            tag = _local_name(child)
-            if tag in hidden_wrappers:
-                continue
-            if tag == "AlternateContent":
-                fallback = next(
-                    (item for item in child if _local_name(item) == "Fallback"),
-                    None,
-                )
-                if fallback is not None:
-                    collect(fallback)
-                continue
-            if tag in {"oMath", "oMathPara"}:
-                literal = _omml_literal(child)
-                if literal:
-                    inlines.append(
-                        DocumentInline(
-                            kind="math_inline",
-                            text=literal,
-                            attrs={"literal": literal, "syntax": "omml"},
-                        )
-                    )
-                continue
-            if tag == "r":
-                inlines.extend(_run_to_inlines(Run(child, para)))
-                continue
-            if tag == "hyperlink":
-                item = Hyperlink(child, para)
-                children = tuple(
-                    inline for run in item.runs for inline in _run_to_inlines(run)
-                )
-                destination = str(item.url or "")
-                fragment = str(getattr(item, "fragment", "") or "")
-                if not destination and fragment:
-                    destination = f"#{fragment}"
+    for child in element:
+        tag = _local_name(child)
+        if tag in hidden_wrappers:
+            continue
+        if tag == "AlternateContent":
+            fallback = next(
+                (item for item in child if _local_name(item) == "Fallback"),
+                None,
+            )
+            if fallback is not None:
+                inlines.extend(_element_inlines(fallback, para))
+            continue
+        if tag in {"oMath", "oMathPara"}:
+            literal = _omml_literal(child)
+            if literal:
                 inlines.append(
                     DocumentInline(
-                        kind="link",
-                        children=children,
-                        attrs={
-                            "destination": destination,
-                            "title": "",
-                        },
+                        kind="math_inline",
+                        text=literal,
+                        attrs={"literal": literal, "syntax": "omml"},
                     )
                 )
-                continue
-            collect(child)
+            continue
+        if tag == "r":
+            inlines.extend(_run_to_inlines(Run(child, para)))
+            continue
+        if tag == "hyperlink":
+            item = Hyperlink(child, para)
+            children = tuple(_element_inlines(child, para))
+            inlines.append(
+                DocumentInline(
+                    kind="link",
+                    children=children,
+                    attrs={
+                        "destination": _hyperlink_destination(item),
+                        "title": "",
+                    },
+                )
+            )
+            continue
+        inlines.extend(_element_inlines(child, para))
+    return inlines
 
-    collect(para._p)
-    return tuple(inlines)
+
+def _runs_to_inlines(para: Any) -> tuple[DocumentInline, ...]:
+    """Convert paragraph content through transparent OOXML inline wrappers."""
+    return tuple(_element_inlines(para._p, para))
 
 
 def _render_inlines(inlines: tuple[DocumentInline, ...]) -> str:

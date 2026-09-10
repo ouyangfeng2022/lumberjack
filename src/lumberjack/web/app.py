@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import cast
 
-import anyio
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.formparsers import MultiPartParser
 
+from .gate import SplitExecutionGate
 from .limits import ServerLimits, package_version
-from .middleware import DemoSafetyMiddleware
+from .middleware import ASGIApp, DemoSafetyMiddleware
 from .routes import health, version
 from .routes import router as api_router
 
@@ -19,11 +21,11 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 def create_app(
     *, serve_static: bool = True, limits: ServerLimits | None = None
-) -> FastAPI:
-    """Create the FastAPI application.
+) -> ASGIApp:
+    """Create the lumberjack web application.
 
-    The API routes are always registered. The web UI's static assets (produced by
-    ``lumberjack_webui``'s build) are mounted only when present, so the server can
+    The API routes are always registered. The web UI's static assets (produced
+    by ``lumberjack_webui``'s build) are mounted only when present, so the server can
     run as a pure API backend when the frontend hasn't been built — e.g. in CI,
     where those assets are excluded from version control.
 
@@ -31,6 +33,10 @@ def create_app(
     ``LUMBERJACK_WEB_*`` environment variables unless ``limits`` is passed
     explicitly. Health and version endpoints are registered both under
     ``/lumber/api`` and at the top level for load balancers.
+
+    The returned object is a pure-ASGI wrapper around FastAPI: the demo safety
+    middleware must sit *outside* Starlette's server-error middleware so even
+    unhandled-exception 500 responses carry the security headers.
 
     Args:
         serve_static: Mount the built Web UI when available. Tests that exercise
@@ -40,11 +46,13 @@ def create_app(
     resolved_limits = limits if limits is not None else ServerLimits.from_env()
     app = FastAPI(title="Lumberjack Markdown Splitter")
     app.state.limits = resolved_limits
-    app.state.split_limiter = anyio.CapacityLimiter(
-        resolved_limits.max_concurrent_splits
-    )
+    app.state.split_gate = SplitExecutionGate(resolved_limits.max_concurrent_splits)
 
-    app.add_middleware(DemoSafetyMiddleware, limits=resolved_limits)
+    # File parts must never roll over to a real temporary file: the docs
+    # promise uploads are processed in memory only, so the spool threshold
+    # must exceed any body the size limit still accepts. (Class-wide on
+    # purpose — one process serves one deployment configuration.)
+    MultiPartParser.spool_max_size = max(resolved_limits.max_body_bytes, 1024 * 1024)
 
     app.include_router(api_router, prefix="/lumber/api", tags=["lumber"])
 
@@ -75,4 +83,4 @@ def create_app(
         resolved_limits.rate_limit_window_seconds,
     )
 
-    return app
+    return DemoSafetyMiddleware(cast(ASGIApp, app), limits=resolved_limits)

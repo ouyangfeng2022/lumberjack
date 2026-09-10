@@ -2683,3 +2683,61 @@ Two body.
     chunks = saw(splitter, document)
 
     assert len(chunks) == 3
+
+
+def test_refenced_code_pieces_outlive_inner_backtick_runs() -> None:
+    # An oversized fence whose content itself contains ``` lines must be
+    # re-fenced with a longer marker, otherwise the inner run closes the
+    # wrapper early and corrupts the chunk's Markdown structure.
+    source = (
+        "# Guide\n\n````md\n"
+        + "filler line\n" * 40
+        + "```\ncode sample\n```\n"
+        + "trailer line\n" * 20
+        + "````\n"
+    )
+    document = MarkdownParser().parse(source, document_title="nested-fences.md")
+
+    def _blocks(node):
+        yield from node.blocks
+        for child in node.children:
+            yield from _blocks(child)
+
+    literal = next(
+        block.attrs["literal"]
+        for block in _blocks(document.root)
+        if block.attrs.get("literal")
+    )
+    splitter = SiblingSplitter(
+        tokenizer=CharacterTokenizer(),
+        **splitter_options(
+            max_tokens=60,
+            ideal_max_tokens_ratio=1,
+            merge_below_ratio=0.0,
+            block_options={"code_fence": BaseParams()},
+        ),
+    )
+
+    chunks = saw(splitter, document)
+    assert len(chunks) > 1
+
+    import re as _re
+
+    inner_pieces: list[str] = []
+    for chunk in chunks:
+        lines = chunk.body.splitlines()
+        if not lines or lines[0][:1] not in ("`", "~"):
+            continue
+        marker = lines[0][0]
+        open_len = len(lines[0]) - len(lines[0].lstrip(marker))
+        close_len = len(lines[-1]) - len(lines[-1].lstrip(marker))
+        assert close_len == open_len >= 3
+        inner = "\n".join(lines[1:-1])
+        longest = max(
+            (len(run) for run in _re.findall(_re.escape(marker) + "+", inner)),
+            default=0,
+        )
+        assert open_len > longest, chunk.body
+        inner_pieces.append(inner)
+
+    assert "\n".join(inner_pieces) == literal

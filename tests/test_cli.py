@@ -147,8 +147,10 @@ def test_cli_directory_emits_jsonl_and_keeps_progress_off_stdout(
     (tmp_path / "b.md").write_text("# B", encoding="utf-8")
     monkeypatch.setattr(sys, "argv", ["lumber", str(tmp_path)])
 
-    main()
+    with pytest.raises(SystemExit) as excinfo:
+        main()
 
+    assert excinfo.value.code == 0
     captured = capsys.readouterr()
     records = [json.loads(line) for line in captured.out.splitlines()]
     assert [record["status"] for record in records] == ["success", "success"]
@@ -157,3 +159,73 @@ def test_cli_directory_emits_jsonl_and_keeps_progress_off_stdout(
         for record in records
     )
     assert "processed" in captured.err
+
+
+def test_cli_single_failed_input_exits_cleanly(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    missing = tmp_path / "missing.md"
+    monkeypatch.setattr(sys, "argv", ["lumber", str(missing), "--max-tokens", "100"])
+
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+
+    assert excinfo.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "FileNotFoundError" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_cli_batch_failure_reflected_in_exit_code(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    (tmp_path / "good.md").write_text("# Good", encoding="utf-8")
+    (tmp_path / "bad.md").write_bytes(b"\xff\xfe\x00broken")
+    monkeypatch.setattr(sys, "argv", ["lumber", str(tmp_path)])
+
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+
+    assert excinfo.value.code == 1
+    records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert {record["status"] for record in records} == {"success", "error"}
+
+
+def test_cli_empty_batch_exit_code_and_silent_stdout(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
+    monkeypatch.setattr(sys, "argv", ["lumber", str(empty_dir)])
+
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+
+    assert excinfo.value.code == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "no input files matched" in captured.err
+
+
+def test_cli_output_dir_mirrors_relative_paths(tmp_path: Path, monkeypatch) -> None:
+    docs = tmp_path / "docs"
+    (docs / "sub").mkdir(parents=True)
+    (docs / "a.md").write_text("# A", encoding="utf-8")
+    (docs / "sub" / "a.md").write_text("# Sub A", encoding="utf-8")
+    out_dir = tmp_path / "out"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["lumber", str(docs), "--recursive", "--output-dir", str(out_dir)],
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+
+    assert excinfo.value.code == 0
+    top = json.loads((out_dir / "a.md.json").read_text(encoding="utf-8"))
+    nested = json.loads((out_dir / "sub" / "a.md.json").read_text(encoding="utf-8"))
+    assert top["status"] == "success"
+    assert nested["status"] == "success"
+    assert top["input_id"] != nested["input_id"]

@@ -438,3 +438,35 @@ def test_html_table_with_complex_attributes():
 
     data_row = table.rows[0]
     assert data_row.cells[0].row_span == 2
+
+
+def test_html_parser_body_tag_implies_head_close() -> None:
+    # A missing </head> must not swallow the body: HTML5 implies </head>
+    # before <body>, matching how browsers render the document.
+    html = "<html><head><title>T</title><body><p>visible</p></body></html>"
+    tree = HTMLParser().parse(html, document_title="no-head-close.html")
+
+    texts: list[str] = []
+
+    def _collect(section) -> None:
+        texts.extend(block.text for block in section.blocks)
+        for child in section.children:
+            _collect(child)
+
+    _collect(tree.root)
+    assert texts == ["visible"]
+
+
+def test_html_parser_survives_stray_open_head_inside_body() -> None:
+    html = "<html><body><p>first</p><head><p>second</p></body></html>"
+    tree = HTMLParser().parse(html, document_title="stray-head.html")
+
+    texts: list[str] = []
+
+    def _collect(section) -> None:
+        texts.extend(block.text for block in section.blocks)
+        for child in section.children:
+            _collect(child)
+
+    _collect(tree.root)
+    assert "first" in texts

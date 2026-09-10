@@ -24,6 +24,24 @@ PROTECTED_SPAN_RE = re.compile(r"<https?://[^\s>]+>|https?://[^\s)>\]]+")
 TABLE_DELIMITER_CELL_RE = re.compile(r":?-+(:?-+)*:?")
 
 
+def _longest_char_run(text: str, char: str) -> int:
+    return max((len(run) for run in re.findall(re.escape(char) + "+", text)), default=0)
+
+
+def _safe_fence_marker(literal: str, info: str) -> tuple[str, int]:
+    """Pick a fence marker/length that cannot be closed by the content itself.
+
+    Re-fenced segments must use a fence longer than any run of the same
+    character inside the code literal, otherwise a nested ````` ``` ```` line
+    in the content closes the wrapper early and corrupts the Markdown. When
+    the info string contains a backtick (only possible for tilde-origin
+    fences), fall back to a tilde fence.
+    """
+    if "`" in info:
+        return "~", max(3, _longest_char_run(literal, "~") + 1)
+    return "`", max(3, _longest_char_run(literal, "`") + 1)
+
+
 class BlockSplitter:
     """Splits oversized text blocks into token-bounded pieces."""
 
@@ -108,8 +126,9 @@ class BlockSplitter:
     ) -> list[tuple[str, int]]:
         info = str(block.attrs.get("info") or block.attrs.get("language") or "").strip()
         literal = str(block.attrs.get("literal") or "")
-        open_fence = f"```{info}".rstrip()
-        close_fence = "```"
+        marker, length = _safe_fence_marker(literal, info)
+        open_fence = f"{marker * length}{info}".rstrip()
+        close_fence = marker * length
         empty_render = f"{open_fence}\n\n{close_fence}"
         wrapper_tokens = self._count(empty_render)
         if wrapper_tokens >= max_tokens:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import io
-from typing import Any
+from typing import Any, cast
 
 import anyio
 import pytest
@@ -41,7 +41,7 @@ class ASGITestClient:
 
 @pytest.fixture
 def client() -> ASGITestClient:
-    return ASGITestClient(create_app(serve_static=False))
+    return ASGITestClient(cast(Any, create_app(serve_static=False)))
 
 
 SIMPLE_MD = "# Hello\n\nThis is a test paragraph.\n\n## Section\n\nAnother paragraph."

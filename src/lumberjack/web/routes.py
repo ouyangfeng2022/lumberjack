@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import threading
 from collections.abc import Callable
 from typing import Any, Literal, TypeVar, cast
 
@@ -21,6 +22,7 @@ from lumberjack.models import Chunk, DocTree, SourceLocation
 from lumberjack.parser import InputFormat
 from lumberjack.serialization import CHUNK_SCHEMA_VERSION, chunk_to_dict
 
+from .gate import SplitExecutionGate
 from .limits import ServerLimits, build_commit, package_version
 
 router = APIRouter()
@@ -145,24 +147,44 @@ def _pipeline_http_error(error: Exception) -> HTTPException:
 
 
 async def _run_split(request: Request, work: Callable[[], _T]) -> _T:
-    """Run one split under the concurrency limit and the split timeout.
+    """Run one split under the concurrency gate and the split timeout.
 
     The blocking pipeline work is offloaded to a worker thread so a slow or
     oversized document cannot stall the event loop. When the timeout expires
     the request fails with ``503`` even though the abandoned worker thread may
-    finish in the background.
+    finish in the background — the worker keeps its concurrency slot until it
+    actually finishes, so the configured limit cannot be exhausted by zombie
+    threads.
     """
     limits = _limits(request)
-    limiter = request.app.state.split_limiter
-    with anyio.move_on_after(limits.split_timeout_seconds):
-        async with limiter:
+    gate: SplitExecutionGate = request.app.state.split_gate
+    lease = -1
+    thread_started = threading.Event()
+
+    def worker() -> _T:
+        thread_started.set()
+        try:
+            return work()
+        finally:
+            gate.release(lease)
+
+    try:
+        with anyio.move_on_after(limits.split_timeout_seconds):
+            lease = await gate.acquire()
             return await anyio.to_thread.run_sync(  # ty: ignore[unresolved-attribute]
-                work, abandon_on_cancel=True
+                worker, abandon_on_cancel=True
             )
-    raise HTTPException(
-        status_code=503,
-        detail="split exceeded the configured time budget; reduce the input size",
-    )
+        raise HTTPException(
+            status_code=503,
+            detail="split exceeded the configured time budget; reduce the input size",
+        )
+    except BaseException:
+        # The worker never started, so its finally-block will not fire; the
+        # same lease is released here instead (release is idempotent, so the
+        # race with a just-started thread is harmless).
+        if lease >= 0 and not thread_started.is_set():
+            gate.release(lease)
+        raise
 
 
 def _limits(request: Request) -> ServerLimits:

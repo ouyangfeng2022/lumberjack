@@ -196,6 +196,7 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         self._collect_title = False
         self._skip_depth = 0
         self._head_depth = 0
+        self._body_seen = False
         self._inline_stack: list[str] = []
 
     def build(self) -> DocTree:
@@ -216,9 +217,16 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         tag = tag.lower()
         line, column = self.getpos()
         if tag == "head":
-            self._head_depth += 1
+            # HTML5 ignores <head> start tags once <body> was seen, so a
+            # stray open tag cannot swallow the rest of the document.
+            if not self._body_seen:
+                self._head_depth += 1
             return
         if tag == "body":
+            # HTML5 implies ``</head>`` before ``<body>``, so an unclosed
+            # ``<head>`` must not swallow the body content.
+            self._head_depth = 0
+            self._body_seen = True
             return
         if tag in {"script", "style"}:
             self._skip_depth += 1

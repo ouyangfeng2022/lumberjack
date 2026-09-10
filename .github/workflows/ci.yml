@@ -126,7 +126,10 @@ jobs:
           enable-cache: true
 
       - name: Test declared minimum dependency
+        # Install the project itself (``--with .``) so its runtime
+        # dependencies (markdown-it-py, pyyaml) are present; PYTHONPATH alone
+        # cannot provide them.
         run: >-
-          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src
-          uv run --no-project --with pytest --with '${{ matrix.dependency }}'
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+          uv run --no-project --with pytest --with . --with '${{ matrix.dependency }}'
           pytest '${{ matrix.test }}' -q
