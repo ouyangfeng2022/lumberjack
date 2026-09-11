@@ -3,14 +3,14 @@ from __future__ import annotations
 import sqlite3
 
 from lumberjack.parser import SQLiteParser
+from tests.helpers import sqlite_bytes
 
 
 def test_sqlite_parser_preserves_table_rows_and_columns() -> None:
     connection = sqlite3.connect(":memory:")
     connection.execute("CREATE TABLE people (name TEXT, age INTEGER)")
     connection.execute("INSERT INTO people VALUES ('Ada', 36)")
-    serialize = getattr(connection, "serialize")  # noqa: B009
-    payload = serialize()
+    payload = sqlite_bytes(connection)
     connection.close()
 
     tree = SQLiteParser().parse(payload, source_path="people.sqlite")
@@ -33,8 +33,7 @@ def test_sqlite_parser_round_trips_null_blob_and_embedded_quotes() -> None:
         ('it\'s "quoted"', None, b"\xab\xcd", -3.5),
     )
     connection.execute("INSERT INTO things VALUES ('plain', '', X'00FF', 1e4)")
-    serialize = getattr(connection, "serialize")  # noqa: B009
-    payload = serialize()
+    payload = sqlite_bytes(connection)
     connection.close()
 
     tree = SQLiteParser().parse(payload, document_title="things.db")
@@ -60,8 +59,7 @@ def test_sqlite_parser_supports_varchar_parens_in_column_types() -> None:
     connection = sqlite3.connect(":memory:")
     connection.execute("CREATE TABLE catalog (code VARCHAR(10), amount DECIMAL(8,2))")
     connection.execute("INSERT INTO catalog VALUES ('ABC', 12.5)")
-    serialize = getattr(connection, "serialize")  # noqa: B009
-    payload = serialize()
+    payload = sqlite_bytes(connection)
     connection.close()
 
     tree = SQLiteParser().parse(payload, document_title="catalog.db")

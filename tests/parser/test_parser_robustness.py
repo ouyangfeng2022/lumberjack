@@ -24,6 +24,7 @@ from lumberjack.parser.records import (
 )
 from lumberjack.parser.sqlite import SQLiteParser
 from lumberjack.parser.xlsx import XlsxParser
+from tests.helpers import sqlite_bytes
 
 MARKDOWN_BLOCK_CASES = {
     "paragraph": "{inline}\n",
@@ -1031,8 +1032,7 @@ def test_sqlite_parser_quotes_hostile_table_names() -> None:
     connection = sqlite3.connect(":memory:")
     connection.execute('CREATE TABLE "t"" --drop" (value TEXT)')
     connection.execute('INSERT INTO "t"" --drop" VALUES (\'kept\')')
-    serialize = getattr(connection, "serialize")  # noqa: B009
-    payload = serialize()
+    payload = sqlite_bytes(connection)
     connection.close()
 
     tree = SQLiteParser().parse(payload, document_title="hostile.db")

@@ -9,6 +9,7 @@ need to be interpolated into a query.
 from __future__ import annotations
 
 import sqlite3
+import tempfile
 from pathlib import Path
 from typing import ClassVar
 
@@ -166,9 +167,10 @@ def _insert_values(line: str) -> tuple[str, tuple[object, ...]] | None:
 class SQLiteParser:
     """Parse SQLite table rows as atomic records.
 
-    Byte inputs require Python 3.11's ``sqlite3.Connection.deserialize``;
-    callers on older Python versions should pass a temporary extraction through
-    an application-specific adapter instead of mutating the input database.
+    Byte inputs are loaded into an in-memory database either through
+    ``sqlite3.Connection.deserialize`` (Python 3.11+) or a temporary-file
+    extraction (Python 3.10), so every supported runtime accepts the same
+    SQLite file format.
     """
 
     default_block_kinds: ClassVar[frozenset[str]] = frozenset({"tabular_row"})
@@ -195,12 +197,20 @@ class SQLiteParser:
             )
         if not isinstance(document.source, bytes | bytearray):
             raise TypeError("SQLiteParser.parse expects Document[bytes]")
+        source_bytes = bytes(document.source)
         connection = sqlite3.connect(":memory:")
         try:
             deserialize = getattr(connection, "deserialize", None)
-            if deserialize is None:
-                raise ImportError("SQLite byte parsing requires Python 3.11 or later")
-            deserialize(bytes(document.source))
+            if deserialize is not None:
+                deserialize(source_bytes)
+            else:
+                # Python 3.10 lacks deserialize; load the same SQLite file
+                # format through a temporary file instead.
+                connection.close()
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "input.sqlite"
+                    path.write_bytes(source_bytes)
+                    connection = sqlite3.connect(path)
             title = document.document_title or (
                 Path(document.source_path).stem if document.source_path else "Anonymous"
             )

@@ -32,6 +32,30 @@ from lumberjack.tokenizer import (
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 
+def sqlite_bytes(connection) -> bytes:
+    """Return a SQLite database file's bytes on every supported Python.
+
+    ``Connection.serialize`` is Python 3.11+; on older runtimes the same
+    file format is produced via a temporary-file backup.
+    """
+    import sqlite3
+    import tempfile
+    from pathlib import Path
+
+    serialize = getattr(connection, "serialize", None)
+    if serialize is not None:
+        return serialize()
+    # Flush any open write transaction first: sqlite's backup API retries
+    # forever on a busy source, which would hang on uncommitted writers.
+    connection.commit()
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "payload.sqlite"
+        target = sqlite3.connect(path)
+        connection.backup(target)
+        target.close()
+        return path.read_bytes()
+
+
 class CharacterTokenizer:
     """Test-only tokenizer that counts each character as one token."""
 

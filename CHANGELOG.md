@@ -48,6 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQLite byte inputs now parse on every supported runtime: Python 3.10 loads
+  the database through a temporary-file extraction instead of the 3.11-only
+  `deserialize` API (which remains the fast path on 3.11+), and the benchmark
+  corpus generator no longer depends on `serialize`.
 - A UTF-8 BOM no longer leaks into any text parser: it is stripped at every
   parser entry and the format sniffers, so BOM-prefixed Markdown keeps its
   first heading, CSV keeps a clean header, and `<!doctype html>` sniffing

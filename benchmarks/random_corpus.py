@@ -21,10 +21,12 @@ import io
 import json
 import random
 import sqlite3
+import tempfile
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from xml.sax.saxutils import escape as xml_escape
 from xml.sax.saxutils import quoteattr as xml_quoteattr
@@ -880,6 +882,22 @@ _SQLITE_SCHEMA_CATALOG: tuple[
 )
 
 
+def _sqlite_bytes(connection) -> bytes:
+    """Serialize an in-memory SQLite database on every supported Python."""
+    serialize = getattr(connection, "serialize", None)
+    if serialize is not None:
+        return serialize()
+    # Flush any open write transaction first: sqlite's backup API retries
+    # forever on a busy source, which would hang on uncommitted writers.
+    connection.commit()
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "payload.sqlite"
+        target = sqlite3.connect(path)
+        connection.backup(target)
+        target.close()
+        return path.read_bytes()
+
+
 def _generate_sqlite(rng: random.Random) -> RandomDocument:
     oracle = _Oracle(rng, "LJ_DB_")
     connection = sqlite3.connect(":memory:")
@@ -924,7 +942,7 @@ def _generate_sqlite(rng: random.Random) -> RandomDocument:
                 row_total += 1
                 visible.extend(str(value) for value in values if value is not None)
         connection.commit()
-        source = connection.serialize()
+        source = _sqlite_bytes(connection)
     finally:
         connection.close()
 
