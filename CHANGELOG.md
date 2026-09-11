@@ -128,8 +128,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   record was duplicated into the next chunk and output grew quadratically on
   long flat documents. Multi-chunk record documents now emit each record
   exactly once, in input order.
-- Seeded XLSX parser-benchmark documents now normalize ZIP member timestamps,
-  so repeated generation produces identical bytes. CI also runs tokenizer and
+- Seeded XLSX parser-benchmark documents now normalize ZIP member timestamps
+  and the openpyxl-stamped `docProps/core.xml` wall-clock times, so repeated
+  generation produces identical bytes even across second boundaries. CI also runs tokenizer and
   LlamaIndex integration tests offline; the LlamaIndex index helper skips its
   default splitter for already-final chunks, and the runnable LlamaIndex demo
   supplies local token counting to avoid implicit tiktoken downloads.

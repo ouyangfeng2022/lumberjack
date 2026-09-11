@@ -20,6 +20,7 @@ import csv
 import io
 import json
 import random
+import re
 import sqlite3
 import tempfile
 import zipfile
@@ -50,6 +51,7 @@ from lumberjack.parser.xlsx import XlsxParser
 
 ADVERSARIAL_RATIO = 0.15
 _FIXED_ZIP_TIMESTAMP = (2026, 1, 1, 0, 0, 0)
+_FIXED_CORE_TIMESTAMP = "2026-01-01T00:00:00Z"
 
 _WORDS = (
     "lumber",
@@ -688,10 +690,21 @@ def _generate_xml(rng: random.Random) -> RandomDocument:
 # Spreadsheets and SQLite
 
 
+_CORE_XML_TIMESTAMP_RE = re.compile(
+    rb"(<dc:created|<dcterms:created|<dcterms:modified)([^>]*>)[^<]*"
+)
+
+
 def _normalize_zip_timestamps(payload: bytes) -> bytes:
-    """Rewrite ZIP members with a fixed timestamp for deterministic XLSX bytes."""
+    """Rewrite ZIP members with fixed timestamps for deterministic XLSX bytes.
+
+    Beyond the ZIP member date_time fields, openpyxl force-stamps
+    ``docProps/core.xml`` with the wall-clock modified time at save, so that
+    member is rewritten with a fixed ISO timestamp as well.
+    """
     source = io.BytesIO(payload)
     result = io.BytesIO()
+    fixed_iso = _FIXED_CORE_TIMESTAMP.encode("ascii")
     with (
         zipfile.ZipFile(source) as archive,
         zipfile.ZipFile(result, "w", compression=zipfile.ZIP_DEFLATED) as normalized,
@@ -702,7 +715,15 @@ def _normalize_zip_timestamps(payload: bytes) -> bytes:
             info.external_attr = member.external_attr
             info.internal_attr = member.internal_attr
             info.create_system = member.create_system
-            normalized.writestr(info, archive.read(member))
+            data = archive.read(member)
+            if member.filename == "docProps/core.xml":
+                # A lambda avoids the "\2" + "2026..." template being read
+                # as one long group reference.
+                data = _CORE_XML_TIMESTAMP_RE.sub(
+                    lambda match: match.group(1) + match.group(2) + fixed_iso,
+                    data,
+                )
+            normalized.writestr(info, data)
     return result.getvalue()
 
 
