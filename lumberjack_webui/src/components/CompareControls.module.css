@@ -1,0 +1,70 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.presetRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.presetLabel {
+  color: var(--ink-muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
+
+.select {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--ink-secondary);
+  font-size: 0.6875rem;
+}
+
+.customGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1) var(--space-2);
+}
+
+.customChip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--ink-secondary);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.625rem;
+  cursor: pointer;
+}
+
+.customChip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.customHint {
+  grid-column: 1 / -1;
+  color: var(--ink-muted);
+  font-size: 0.625rem;
+}

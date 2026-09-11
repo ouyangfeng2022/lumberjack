@@ -33,6 +33,12 @@ fi
 
 BUILD_VERSION="${VERSION#v}"
 
+# ── Commit detection (surfaced via GET /version) ───────────
+COMMIT="${COMMIT:-}"
+if [ -z "$COMMIT" ]; then
+    COMMIT="$(git -C "${PROJECT_ROOT}" rev-parse --short HEAD 2>/dev/null || true)"
+fi
+
 # ── Image naming ───────────────────────────────────────────
 if [ -z "$TAG" ]; then
     TAG="${VERSION#v}"
@@ -63,6 +69,7 @@ for platform in "${PLATFORM_LIST[@]}"; do
         --platform "${platform}" \
         --network=host \
         --build-arg VERSION="${BUILD_VERSION}" \
+        --build-arg COMMIT="${COMMIT}" \
         -t "${IMAGE_NAME}:${TAG}" \
         --output type=docker,dest="${this_tar}" \
         "${PROJECT_ROOT}"

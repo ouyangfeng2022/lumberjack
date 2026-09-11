@@ -66,6 +66,7 @@ class _ListItem:
 class _ListCollector:
     ordered: bool
     start_line: int | None
+    implicit: bool = False
     items: list[_ListItem] = field(default_factory=list)
 
 
@@ -80,8 +81,86 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
     """Event-driven builder that normalizes HTML into the shared DocTree model."""
 
     _BLOCK_TAGS: ClassVar[frozenset[str]] = frozenset({"p", "pre", "blockquote"})
+    _BOUNDARY_TAGS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "address",
+            "article",
+            "aside",
+            "details",
+            "div",
+            "dl",
+            "dd",
+            "dt",
+            "figcaption",
+            "figure",
+            "footer",
+            "form",
+            "header",
+            "hr",
+            "main",
+            "nav",
+            "section",
+            "summary",
+        }
+    )
     _HEADING_TAGS: ClassVar[frozenset[str]] = frozenset(
         {"h1", "h2", "h3", "h4", "h5", "h6"}
+    )
+    # Phrasing content that continues an open heading instead of closing it.
+    _HEADING_PHRASING_TAGS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "a",
+            "abbr",
+            "acronym",
+            "audio",
+            "b",
+            "bdi",
+            "bdo",
+            "big",
+            "br",
+            "button",
+            "canvas",
+            "cite",
+            "code",
+            "data",
+            "datalist",
+            "embed",
+            "em",
+            "font",
+            "i",
+            "iframe",
+            "img",
+            "input",
+            "kbd",
+            "label",
+            "map",
+            "mark",
+            "math",
+            "meter",
+            "nobr",
+            "object",
+            "output",
+            "picture",
+            "progress",
+            "q",
+            "s",
+            "samp",
+            "select",
+            "small",
+            "span",
+            "strike",
+            "strong",
+            "sub",
+            "sup",
+            "svg",
+            "textarea",
+            "time",
+            "tt",
+            "u",
+            "var",
+            "video",
+            "wbr",
+        }
     )
     _INLINE_KIND_BY_TAG: ClassVar[dict[str, str]] = {
         "strong": "strong",
@@ -101,7 +180,7 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         source_path: str | None,
     ) -> None:
         super().__init__(convert_charrefs=True)
-        self._source = source
+        self._source = source.removeprefix("\ufeff")
         self._line_offsets = _line_offsets(source)
         self._document_title = document_title
         self._metadata = dict(metadata_overrides)
@@ -111,19 +190,20 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         self._heading: _TextCollector | None = None
         self._block: _TextCollector | None = None
         self._list_stack: list[_ListCollector] = []
-        self._list_item: _TextCollector | None = None
+        self._item_stack: list[tuple[_ListCollector, _TextCollector]] = []
         self._table_stack: list[_TableCollector] = []
         self._title_parts: list[str] = []
         self._collect_title = False
         self._skip_depth = 0
         self._head_depth = 0
         self._body_seen = False
+        self._foreign_depth = 0
         self._inline_stack: list[str] = []
 
     def build(self) -> DocTree:
         self.feed(self._source)
         self.close()
-        self._close_block(self.getpos()[0])
+        self._flush_open_constructs()
         final_title = self._resolve_document_title()
         self._root.title = final_title
         return DocTree(
@@ -138,22 +218,50 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         tag = tag.lower()
         line, column = self.getpos()
         if tag == "head":
-            self._head_depth += 1
+            # HTML5 ignores <head> start tags once <body> was seen, so a
+            # stray open tag cannot swallow the rest of the document.
+            if not self._body_seen:
+                self._head_depth += 1
             return
         if tag == "body":
+            # HTML5 implies ``</head>`` before ``<body>``, so an unclosed
+            # ``<head>`` must not swallow the body content.
+            self._head_depth = 0
             self._body_seen = True
             return
         if tag in {"script", "style"}:
             self._skip_depth += 1
             return
         if tag == "title":
-            self._collect_title = True
-            self._title_parts = []
+            # Only the document's own <title> (in head or a bare fragment)
+            # sets metadata; titles nested in <svg>/<math> or the body are
+            # plain text.
+            if not self._body_seen and not self._foreign_depth:
+                self._collect_title = True
+                self._title_parts = []
             return
         if tag == "meta":
             self._capture_meta(attrs)
             return
         if self._skip_depth or self._head_depth:
+            return
+        if tag in {"svg", "math"}:
+            self._foreign_depth += 1
+
+        if (
+            self._heading is not None
+            and not self._foreign_depth
+            and tag not in self._HEADING_PHRASING_TAGS
+        ):
+            # Non-phrasing content implies the end of an open heading;
+            # inside svg/math every child counts as phrasing.
+            self._add_heading_or_paragraph()
+
+        if tag in self._BOUNDARY_TAGS:
+            # Block-level containers separate adjacent text runs the way a
+            # browser renders them, so ``<dt>a</dt><dt>b</dt>`` does not glue
+            # into one word.
+            self._add_text("\n")
             return
 
         if tag == "table":
@@ -180,15 +288,42 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
             )
             return
         if tag in {"ul", "ol"}:
-            self._close_block(line)
+            if self._list_stack and self._list_stack[-1].implicit:
+                # An explicit list replaces an implicit one created by bare
+                # ``<li>`` elements, emitting what collected so far.
+                while self._item_stack:
+                    self._close_list_item(line)
+                self._close_list(line)
+            else:
+                self._close_block(line)
             self._list_stack.append(
                 _ListCollector(ordered=tag == "ol", start_line=line)
             )
             return
         if tag == "li":
-            self._list_item = _TextCollector(kind=BlockKind.LIST_ITEM, start_line=line)
+            self._close_block(line)
+            if (
+                self._item_stack
+                and self._list_stack
+                and self._item_stack[-1][0] is self._list_stack[-1]
+            ):
+                # A new ``<li>`` implies the end of the previous item in the
+                # same list.
+                self._close_list_item(line)
+            if not self._list_stack:
+                # Bare ``<li>`` without a list wrapper: create an implicit
+                # list so the items still become list blocks.
+                self._list_stack.append(
+                    _ListCollector(ordered=False, start_line=line, implicit=True)
+                )
+            self._item_stack.append(
+                (
+                    self._list_stack[-1],
+                    _TextCollector(kind=BlockKind.LIST_ITEM, start_line=line),
+                )
+            )
             return
-        if tag in self._BLOCK_TAGS and self._list_item is None:
+        if tag in self._BLOCK_TAGS and not self._item_stack:
             self._close_block(line)
             kind_by_tag = {
                 "blockquote": BlockKind.BLOCKQUOTE,
@@ -218,13 +353,24 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         if tag in {"script", "style"}:
             self._skip_depth = max(0, self._skip_depth - 1)
             return
+        if tag in {"svg", "math"}:
+            self._foreign_depth = max(0, self._foreign_depth - 1)
+            return
         if tag == "title":
-            self._collect_title = False
-            title = _clean_text("".join(self._title_parts))
-            if title:
-                self._metadata.setdefault("title", title)
+            if self._collect_title:
+                self._finish_title_collection()
             return
         if self._skip_depth or self._head_depth:
+            return
+
+        if self._heading is not None and tag in self._HEADING_TAGS:
+            # Any heading end tag closes an open heading, matching the HTML5
+            # "generate implied end tags" behavior.
+            self._add_heading_or_paragraph()
+            return
+
+        if tag in self._BOUNDARY_TAGS:
+            self._add_text("\n")
             return
 
         if self._table_stack:
@@ -236,16 +382,16 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
                     self._add_table_block(table, self._end_tag_offset(line, column))
             return
 
-        if self._heading is not None and tag == self._heading.kind:
-            self._add_heading_or_paragraph()
-            return
         if self._block is not None and tag in self._BLOCK_TAGS:
             self._close_block(line)
             return
-        if self._list_item is not None and tag == "li":
+        if tag == "li" and self._item_stack:
             self._close_list_item(line)
             return
         if tag in {"ul", "ol"}:
+            while self._item_stack and self._item_stack[-1][0] is self._list_stack[-1]:
+                # Closing a list implies the end of its still-open items.
+                self._close_list_item(line)
             self._close_list(line)
             return
         if tag in self._INLINE_KIND_BY_TAG and self._inline_stack:
@@ -272,11 +418,11 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         kind = inline_kind or (self._inline_stack[-1] if self._inline_stack else "text")
         if self._heading is not None:
             self._heading.add_text(text, kind)
-        elif self._list_item is not None:
-            self._list_item.add_text(text, kind)
+        elif self._item_stack:
+            self._item_stack[-1][1].add_text(text, kind)
         elif self._block is not None:
             self._block.add_text(text, kind)
-        elif text.strip() and self._body_seen:
+        elif text.strip():
             line = self.getpos()[0]
             self._block = _TextCollector(kind=BlockKind.PARAGRAPH, start_line=line)
             self._block.add_text(text, kind)
@@ -330,25 +476,36 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
         self._block = None
 
     def _close_list_item(self, end_line: int) -> None:
-        if self._list_item is None:
+        if not self._item_stack:
             return
-        text = self._list_item.rendered_text()
-        if text and self._list_stack:
-            self._list_stack[-1].items.append(
+        owner, item = self._item_stack.pop()
+        text = item.rendered_text()
+        if text:
+            owner.items.append(
                 _ListItem(
                     text=text,
-                    start_line=self._list_item.start_line,
+                    start_line=item.start_line,
                     end_line=end_line,
-                    inlines=tuple(self._list_item.inlines),
+                    inlines=tuple(item.inlines),
                 )
             )
-        self._list_item = None
 
     def _close_list(self, end_line: int) -> None:
         if not self._list_stack:
             return
         list_block = self._list_stack.pop()
         if not list_block.items:
+            return
+        if self._list_stack:
+            # A nested list closed while an outer list is still open: its
+            # items belong to the enclosing item (or, for invalid sibling
+            # nesting, to the enclosing list) so text and order survive.
+            marker = "1." if list_block.ordered else "-"
+            rendered = "\n".join(f"{marker} {item.text}" for item in list_block.items)
+            if self._item_stack:
+                self._item_stack[-1][1].add_text(f"\n{rendered}")
+            else:
+                self._list_stack[-1].items.extend(list_block.items)
             return
         children = tuple(
             DocumentBlock(
@@ -372,6 +529,33 @@ class _HTMLDocumentBuilder(_StdlibHTMLParser):
                 attrs={"ordered": list_block.ordered},
             )
         )
+
+    def _finish_title_collection(self) -> None:
+        self._collect_title = False
+        title = _clean_text("".join(self._title_parts))
+        if title:
+            self._metadata.setdefault("title", title)
+
+    def _flush_open_constructs(self) -> None:
+        """Emit content that is still open when the document ends abruptly."""
+        line = self.getpos()[0]
+        if self._collect_title:
+            # An unclosed <title> swallowed the remaining text; keep it as
+            # body content instead of dropping it silently.
+            leftover = _clean_text("".join(self._title_parts))
+            self._finish_title_collection()
+            if leftover:
+                self._add_text(leftover)
+        if self._heading is not None:
+            self._add_heading_or_paragraph()
+        while self._item_stack:
+            self._close_list_item(line)
+        while self._list_stack:
+            self._close_list(line)
+        while self._table_stack:
+            table = self._table_stack.pop()
+            self._add_table_block(table, len(self._source))
+        self._close_block(line)
 
     def _add_table_block(self, table: _TableCollector, end_offset: int) -> None:
         table_html = self._source[table.start_offset : end_offset].strip()

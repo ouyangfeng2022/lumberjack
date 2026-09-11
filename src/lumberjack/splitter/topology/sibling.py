@@ -87,6 +87,12 @@ class SiblingTopologyMixin(BaseSplitter):
             if current is None:
                 current = draft
                 return
+            if self._merge_bound_exceeds(
+                current, draft, node.path, self.ideal_max_tokens
+            ):
+                drafts.append(current)
+                current = draft
+                return
             merged = self._merge_drafts(current, draft, expected_common=node.path)
             if self._draft_budget_tokens(merged) <= self.ideal_max_tokens:
                 current = merged

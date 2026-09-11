@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import io
-from typing import Any
+from typing import Any, cast
 
 import anyio
 import pytest
@@ -41,7 +41,7 @@ class ASGITestClient:
 
 @pytest.fixture
 def client() -> ASGITestClient:
-    return ASGITestClient(create_app(serve_static=False))
+    return ASGITestClient(cast(Any, create_app(serve_static=False)))
 
 
 SIMPLE_MD = "# Hello\n\nThis is a test paragraph.\n\n## Section\n\nAnother paragraph."
@@ -65,6 +65,80 @@ def test_split_with_text(client: ASGITestClient) -> None:
     assert "token_count" in chunk
     assert "estimated_token_count" in chunk
     assert "ancestor_headings" in chunk
+
+
+def test_split_text_accepts_jsonl_with_record_splitter(client: ASGITestClient) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={
+            "text": '{"name": "Ada"}\n{"name": "Grace"}',
+            "input_format": "jsonl",
+            "splitter": "record",
+            "max_tokens": 100,
+        },
+    )
+
+    assert response.status_code == 200
+    chunk = response.json()["chunks"][0]
+    assert chunk["chunk_type"] == "record"
+    assert [location["json_path"] for location in chunk["source_locations"]] == [
+        "$[0]",
+        "$[1]",
+    ]
+
+
+def test_split_text_accepts_json_with_record_splitter(client: ASGITestClient) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={
+            "text": '{"service": {"port": 8080}}',
+            "input_format": "json",
+            "splitter": "record",
+            "max_tokens": 100,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["chunks"][0]["source_locations"][0]["json_path"] == (
+        '$["service"]["port"]'
+    )
+
+
+def test_split_text_accepts_registered_code_format(client: ASGITestClient) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={
+            "text": "func Run() {}",
+            "input_format": "go",
+            "splitter": "record",
+            "max_tokens": 100,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["chunks"][0]["chunk_type"] == "record"
+
+
+def test_split_text_includes_only_requested_bounded_trace_stages(
+    client: ASGITestClient,
+) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={"text": SIMPLE_MD, "trace_stages": ["diagnostics"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["trace"] == {"diagnostics": []}
+
+
+def test_split_text_rejects_trace_above_response_limit(client: ASGITestClient) -> None:
+    response = client.post(
+        "/lumber/api/split/text",
+        json={"text": SIMPLE_MD, "trace_stages": ["document"], "trace_max_bytes": 1},
+    )
+
+    assert response.status_code == 400
+    assert "response limit" in response.json()["detail"]
 
 
 def test_split_text_accepts_html_format(client: ASGITestClient) -> None:

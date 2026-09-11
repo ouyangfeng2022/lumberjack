@@ -11,18 +11,48 @@ from lumberjack.models import (
     DocTree,
     DocumentBlock,
     DocumentInline,
+    DocumentResult,
+    ExtractionResult,
+    PipelineDiagnostic,
+    PipelineTrace,
+    SourceLocation,
     SplitResult,
 )
 from lumberjack.normalizer import TextNormalizer
-from lumberjack.parser import AutoParser, DocxParser, HTMLParser, MarkdownParser
+from lumberjack.parser import (
+    AutoParser,
+    DelimitedTextParser,
+    DocTreeBuilder,
+    DocxParser,
+    HTMLParser,
+    JSONLinesParser,
+    JSONParser,
+    LogParser,
+    MarkdownParser,
+    NotebookParser,
+    SourceCodeParser,
+    SQLiteParser,
+    SQLParser,
+    TextParser,
+    TOMLParser,
+    XlsxParser,
+    XMLParser,
+    YAMLParser,
+)
 from lumberjack.protocols import (
+    ExtractionParserProtocol,
     ParserProtocol,
     SplitterProtocol,
     TextNormalizerProtocol,
     TextTransformerProtocol,
     TokenizerProtocol,
 )
-from lumberjack.splitter import ExactSiblingSplitter, SectionSplitter, SiblingSplitter
+from lumberjack.splitter import (
+    ExactSiblingSplitter,
+    RecordSplitter,
+    SectionSplitter,
+    SiblingSplitter,
+)
 from lumberjack.tokenizer import ApproxByteTokenizer
 from lumberjack.transformer import PlainTextTransformer, TextTransformer
 
@@ -34,12 +64,42 @@ def test_top_level_exports_lumberjack_and_document() -> None:
 
 
 def test_public_lumber_pipeline_components() -> None:
-    assert AutoParser and MarkdownParser and HTMLParser and DocxParser
-    assert SiblingSplitter and ExactSiblingSplitter and ApproxByteTokenizer
+    assert (
+        AutoParser
+        and MarkdownParser
+        and HTMLParser
+        and DocxParser
+        and TextParser
+        and LogParser
+        and DelimitedTextParser
+        and JSONLinesParser
+        and JSONParser
+        and XMLParser
+        and YAMLParser
+        and XlsxParser
+        and TOMLParser
+        and NotebookParser
+        and SQLParser
+        and SourceCodeParser
+        and SQLiteParser
+        and DocTreeBuilder
+    )
+    assert (
+        SiblingSplitter
+        and ExactSiblingSplitter
+        and RecordSplitter
+        and ApproxByteTokenizer
+    )
     assert TextNormalizer and TextTransformer and PlainTextTransformer
     assert DocTree and ChunkDraft and Chunk and DocumentBlock and DocumentInline
-    assert SplitResult
-    assert ParserProtocol and SplitterProtocol and TokenizerProtocol
+    assert SplitResult and DocumentResult
+    assert SourceLocation and ExtractionResult and PipelineDiagnostic and PipelineTrace
+    assert (
+        ParserProtocol
+        and ExtractionParserProtocol
+        and SplitterProtocol
+        and TokenizerProtocol
+    )
     assert TextNormalizerProtocol and TextTransformerProtocol
 
 
@@ -78,4 +138,6 @@ def test_chunk_serialization_fields() -> None:
         "document_path",
         "start_line",
         "end_line",
+        "source_locations",
+        "protected",
     ]

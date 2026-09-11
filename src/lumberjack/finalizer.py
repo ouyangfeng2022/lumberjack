@@ -7,6 +7,7 @@ from .models import (
     Chunk,
     ChunkDraft,
     DocTree,
+    SourceLocation,
     render_draft_body,
     render_heading_path,
 )
@@ -38,22 +39,60 @@ class ChunkFinalizer:
     def finalize(self, document: DocTree, drafts: Iterable[ChunkDraft]) -> list[Chunk]:
         finished: list[Chunk] = []
         for draft in drafts:
-            body = render_draft_body(draft.entries, draft.headings)
-            body = self.transformer.transform(self.normalizer.normalize(body))
+            rendered = render_draft_body(draft.entries, draft.headings)
+            body = self.transformer.transform(self.normalizer.normalize(rendered))
             if self.skip_empty_sections and not body.strip():
                 continue
 
-            heading_text = render_heading_path(draft.headings)
-            headings_token_count = self.tokenizer.count(heading_text, cache=True)
-            body_token_count = self.tokenizer.count(body, cache=True)
-            token_count = (
-                headings_token_count
-                + self.tokenizer.count(RENDER_SEPARATOR, cache=True)
-                + body_token_count
-            )
+            if draft.counting_mode == "exact" and body == rendered:
+                # The text stages left the rendered body untouched, so the
+                # exact splitter's full recount already covers this chunk —
+                # re-encoding it here would duplicate the work.
+                headings_token_count = draft.headings_token_count
+                body_token_count = draft.body_token_count
+                token_count = draft.token_count
+            else:
+                heading_text = render_heading_path(draft.headings)
+                headings_token_count = self.tokenizer.count(heading_text, cache=True)
+                body_token_count = self.tokenizer.count(body, cache=True)
+                token_count = (
+                    headings_token_count
+                    + self.tokenizer.count(RENDER_SEPARATOR, cache=True)
+                    + body_token_count
+                )
             ancestor_headings = (
                 draft.headings[:-1] if draft.own_heading is not None else draft.headings
             )
+            start_line = min(
+                (
+                    entry.start_line
+                    for entry in draft.entries
+                    if entry.start_line is not None
+                ),
+                default=None,
+            )
+            end_line = max(
+                (
+                    entry.end_line
+                    for entry in draft.entries
+                    if entry.end_line is not None
+                ),
+                default=None,
+            )
+            locations = _unique_locations(
+                location
+                for entry in draft.entries
+                for location in entry.source_locations
+            )
+            if not locations and start_line is not None and end_line is not None:
+                locations = (
+                    SourceLocation(
+                        source=document.source_path,
+                        line_start=start_line,
+                        line_end=end_line,
+                    ),
+                )
+
             finished.append(
                 Chunk(
                     chunk_id=f"chunk-{len(finished) + 1:04d}",
@@ -79,25 +118,20 @@ class ChunkFinalizer:
                     ),
                     document_title=document.title,
                     document_path=document.source_path,
-                    start_line=min(
-                        (
-                            entry.start_line
-                            for entry in draft.entries
-                            if entry.start_line is not None
-                        ),
-                        default=None,
-                    ),
-                    end_line=max(
-                        (
-                            entry.end_line
-                            for entry in draft.entries
-                            if entry.end_line is not None
-                        ),
-                        default=None,
-                    ),
+                    start_line=start_line,
+                    end_line=end_line,
+                    source_locations=locations,
+                    protected=draft.protected,
                 )
             )
         return finished
+
+
+def _unique_locations(
+    locations: Iterable[SourceLocation],
+) -> tuple[SourceLocation, ...]:
+    """Deduplicate locations without changing parser-defined order."""
+    return tuple(dict.fromkeys(locations))
 
 
 __all__ = ["ChunkFinalizer", "render_draft_body"]

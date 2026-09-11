@@ -195,6 +195,7 @@ export default function SplitOptions({ options, onChange }: Props) {
               <option value="section">{t('opts_splitter_section')}</option>
               <option value="exact-section">{t('opts_splitter_exact_section')}</option>
               <option value="incremental-section">{t('opts_splitter_incremental_section')}</option>
+              <option value="record">{t('opts_splitter_record')}</option>
             </select>
             <small>{t('opts_counting_help')}</small>
           </div>

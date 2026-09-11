@@ -7,17 +7,384 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Requests without a `Content-Length` header (chunked transfer encoding) are
+  now size-limited too: the middleware buffers the body itself and rejects
+  with `413` as soon as the limit is crossed, so oversized chunked payloads
+  can no longer be fully buffered in memory (or spilled to disk) before
+  rejection.
+- Split concurrency slots are now held until the worker thread actually
+  finishes: a timed-out split keeps occupying its slot while it drains, so
+  abandoned slow splits cannot accumulate zombie threads beyond the
+  configured concurrency limit.
+- Multipart file uploads now stay in memory for any body the size limit
+  accepts (the spool threshold follows `LUMBERJACK_WEB_MAX_BODY_BYTES`),
+  upholding the documented in-memory-only privacy guarantee.
+- Unhandled server errors now also carry `X-Content-Type-Options` and
+  `Referrer-Policy`: the demo middleware wraps the whole ASGI stack,
+  including Starlette's server-error responses.
+- Public web deployments now enforce resource limits: requests and uploads
+  above a size ceiling return `413`, split execution runs under a concurrency
+  limit and a wall-clock timeout (`503` on expiry), and split API calls are
+  rate limited per client (`429`). All limits are configurable through
+  `LUMBERJACK_WEB_*` environment variables and invalid values fail at startup.
+  Error details are sanitized so parser failures cannot leak server file
+  paths, and every response carries `X-Content-Type-Options` and
+  `Referrer-Policy` headers. The web API documentation now states the privacy
+  guarantees: uploads are processed in memory only and logs never contain
+  document content.
+- Untrusted XML parsing (DOCX parts, XML records, parser benchmarks) now
+  rejects payloads containing DTD or entity declarations before parsing,
+  closing the internal-entity expansion (billion laughs)
+  resource-exhaustion vector.
+- SQLite parsing now reads table schemas and row values from the connection's
+  dump output, so the parser executes fixed SQL statements only and
+  document-supplied table identifiers are never interpolated into a query.
+- The benchmark corpus fetcher now validates download URLs before fetching:
+  only `http`/`https` schemes are allowed and hosts resolving to loopback,
+  private, link-local, multicast, reserved, or unspecified addresses are
+  refused, including redirect targets.
+
+### Fixed
+
+- SQLite byte inputs now parse on every supported runtime: Python 3.10 loads
+  the database through a temporary-file extraction instead of the 3.11-only
+  `deserialize` API (which remains the fast path on 3.11+), and the benchmark
+  corpus generator no longer depends on `serialize`.
+- A UTF-8 BOM no longer leaks into any text parser: it is stripped at every
+  parser entry and the format sniffers, so BOM-prefixed Markdown keeps its
+  first heading, CSV keeps a clean header, and `<!doctype html>` sniffing
+  still detects HTML.
+- CSV/TSV inputs with an over-long quoted field now fail with a clean
+  `ValueError` instead of a raw `_csv.Error`, and TSV error messages name
+  TSV instead of CSV.
+- SQL parsing now treats MySQL-style `#` line comments as comments (without
+  breaking PostgreSQL `#>>`/`#>` operators), and notebook parsing validates
+  `cells`/`metadata`/`source` shapes instead of crashing on malformed
+  payloads. Whitespace-only source files no longer produce an empty record.
+- HTML parsing keeps the text of an unclosed `<title>` as body content,
+  never treats an `<svg>`/`<math>` inner `<title>` as the document title,
+  and keeps headings open across SVG/MathML children.
+- DOCX parsing now skips hidden (`w:vanish`) runs, records hyperlink
+  tooltips, recovers images that exist only in the `AlternateContent`
+  Choice branch, and reports malformed XML parts as a `ValueError`. The
+  Strict-OOXML namespace rewrite is confined to the root start tag, so body
+  text quoting a namespace URI survives untouched, and style inheritance is
+  cached so large documents no longer re-walk the styles part per paragraph.
+- Dollar math boundaries are now correct at paragraph edges: `$x$ costs 3`
+  is math again (the upstream rule read a negative index at position 0),
+  while `a $ b $ c` and `price $ 5 and $ 10` stay prose.
+- CJK text now reaches the sentence-level fallback (fullwidth punctuation
+  splits at a zero-width boundary) and re-packs exactly; hard splits keep
+  leading indentation so split code chunks reassemble to the original text.
+- Unsplittable oversized blocks (e.g. `split=False` code fences) are now
+  marked `protected` and keep their real `chunk_type` in every splitter,
+  matching the record splitter's contract.
+- HTML entities are decoded in table cells, matching the surrounding text.
+- `.tsx` files now parse with the JSX-capable grammar instead of the
+  plain-typescript one.
+- CLI batch runs load the tokenizer once per process (no per-file
+  transformers re-download), write the trace beside the result instead of
+  inside the schema-versioned payload, skip hidden files and unknown
+  suffixes when expanding a directory, and `-o` creates parent directories.
+  `--trace-max-bytes` values are validated up front.
+- The web rate limiter returns a `Retry-After` header, evicts only the
+  oldest windows instead of clearing all state, and its `429`/`413` paths
+  log like every other request. Non-finite limit values (`nan`/`inf`) now
+  fail at startup instead of silently disabling the timeout or the window,
+  and block-config error details are sanitized like pipeline errors.
+- LlamaIndex `emit_parents` keeps repeated identical section paths as
+  separate parent nodes instead of merging unrelated sections.
+- Serialization round-trips `bounding_box` back to a tuple, serializes
+  bytes uniformly, and rejects a missing chunks array with `ValueError`;
+  trace stage selection validates names and only serializes the requested
+  stages.
+- HTML parsing no longer drops the entire body when `</head>` is missing or
+  a stray `<head>` appears after `<body>`: `<body>` implies `</head>` and
+  post-body `<head>` tokens are ignored, matching browser behavior.
+- DOCX parsing keeps nested content inside hyperlinks (revision-wrapped
+  runs, inline OMML math) instead of silently dropping it, and a hyperlink
+  referencing a missing relationship id now degrades to a link without a
+  destination instead of crashing the parse.
+- XML record parsing handles arbitrarily deep element nesting: the
+  document-order traversal is iterative now, so hostile payloads cannot
+  trigger a `RecursionError` during record extraction.
+- Splitting an oversized fenced code block whose content itself contains
+  ` ``` ` lines now re-fences each piece with a longer marker, so the inner
+  fence can no longer close the wrapper early and corrupt the chunk's
+  Markdown.
+- The CLI now reports failures correctly: a failed single input exits with a
+  clean error message instead of a `KeyError` traceback, batch runs exit
+  non-zero when any input fails, empty batches print nothing to stdout, and
+  `--output-dir` mirrors the input directory structure so same-named files
+  in different directories cannot collide or silently overwrite each other.
+- Pipeline runs no longer crash on a custom tokenizer that exposes a
+  non-callable `clear_cache` attribute: the per-run cache reset only calls
+  callable hooks now.
+- The `record` splitter no longer re-packs already-emitted records into
+  subsequent chunks: when a packed group exceeded the budget, the running
+  candidate list was not reset alongside the current group, so every earlier
+  record was duplicated into the next chunk and output grew quadratically on
+  long flat documents. Multi-chunk record documents now emit each record
+  exactly once, in input order.
+- Seeded XLSX parser-benchmark documents now normalize ZIP member timestamps
+  and the openpyxl-stamped `docProps/core.xml` wall-clock times, so repeated
+  generation produces identical bytes even across second boundaries. CI also runs tokenizer and
+  LlamaIndex integration tests offline; the LlamaIndex index helper skips its
+  default splitter for already-final chunks, and the runnable LlamaIndex demo
+  supplies local token counting to avoid implicit tiktoken downloads.
+- Competitor benchmark adapters now receive token budgets equivalent to the
+  native runs: `langchain-recursive` no longer translates the budget twice
+  (its length function already counts UTF-8 bytes ÷ 3), `chonkie-recursive`
+  counts with chonkie's byte tokenizer at the ×3 byte budget,
+  `docling-hybrid` resolves its budget from the offline tokenizer's
+  `get_max_tokens()` instead of an unlimited default and hands the overflow
+  refiner a callable counter, and `docling-hierarchical` uses Docling's real
+  `HierarchicalChunker` instead of exporting the whole document as one chunk.
+
 ### Added
 
+- Added a `tsx` source-code format (`.tsx`), parsed with the JSX-aware
+  grammar when the `code-parsing` extra is installed.
+- Added `GET /health` and `GET /version` endpoints (also under
+  `/lumber/api`) reporting the running package version and, when the
+  `LUMBERJACK_BUILD_COMMIT` environment variable is set at deploy time, the
+  deployed commit. Health probes are exempt from rate limiting.
+- The Web UI gained a splitter comparison mode: built-in sample documents
+  (technical, wide tables, long paragraphs, mixed Chinese/English, and
+  code-heavy), topology and exact-vs-incremental presets plus custom splitter
+  selections rendered side by side, a source-line boundary map that colors
+  every line by its chunk, chunk cards showing `token_count`,
+  `estimated_token_count` with the relative error, block kind, protected
+  marking, heading breadcrumbs, and non-line source locations, copyable
+  Python/CLI configuration for the current options, and JSON/JSONL result
+  downloads.
+- The benchmark dataset grew from 6 to 36 CC0 documents: five documents per
+  scenario (technical, tables, code/formula, short sections, long paragraphs,
+  mixed language) plus three Markdown/HTML cross-format equivalence groups
+  sharing a `group` id. Benchmark adapters now receive the document format,
+  so HTML corpus entries are parsed as HTML. The dataset version is
+  `2026.08.27`.
+
+### Added
+
+- Added a `langchain-html` benchmark adapter (`HTMLHeaderTextSplitter`) so
+  HTML corpus entries can be compared against LangChain's own HTML splitting;
+  the `benchmark` dependency group now includes `beautifulsoup4`.
+- Added `docling-hybrid` and `chonkie-table` benchmark adapters, completing
+  the nine-variant competitor set. The hybrid adapter feeds Docling's
+  `HybridChunker` with an offline UTF-8-bytes tokenizer so benchmark runs
+  never download a HuggingFace model; the table adapter maps the token budget
+  onto Chonkie's `TableChunker` (`chonkie>=1.7`). Both Docling adapters now
+  support the `convert_string(content, format)` signature required by
+  docling >= 2.120 while keeping compatibility with the older keyword form.
+- Added a cross-adapter comparison aggregator
+  (`uv run python -m benchmarks.compare <results-dir>`): it aggregates the
+  per-run `raw.json` outputs of every adapter into a `summary.json` and a
+  `comparison.md` table source, gates native runs on content-recall,
+  protected-block, and budget oracles, and flags budget/dataset mismatches.
+  The first published comparison baseline (lumberjack section/exact-section
+  under `approx` and `tiktoken` versus all nine competitor variants) is
+  documented in the evaluation docs with its result directory and
+  reproduction commands.
+- Added three runnable end-to-end examples with CI smoke tests:
+  `examples/technical_document.py` (structure-aware vs naive splitting with
+  heading provenance), `examples/table_chunking.py` (header repetition and
+  unsplittable tables under a tight budget), and
+  `examples/incremental_counting.py` (exact vs incremental counting with
+  tokenizer call counts, wall time, and estimate error). The splitter
+  decision guide (`docs/splitter-strategies.md`, bilingual) was expanded to a
+  full when-to-use/trade-off reference for every topology, counting mode, and
+  budget knob.
+- Added optional LangChain, LlamaIndex, and Haystack adapters for final
+  `Chunk` objects.  All preserve JSON-safe chunk metadata and provenance while
+  keeping `Chunk.body` as framework content; the LlamaIndex adapter also builds
+  a ready-to-retrieve `VectorStoreIndex`. Runnable LangChain, LlamaIndex, and
+  Haystack demos cover splitting, indexing, retrieval, and query/prompt
+  construction. Install the corresponding
+  `langchain`, `llama-index`, or `haystack` extra to use one.
+- Added native RAG pipeline components that plug Lumberjack into each
+  framework's own ingestion flow, replacing the built-in splitter:
+  `lumberjack.integrations.LumberjackNodeParser` (LlamaIndex `NodeParser`
+  with `SOURCE`/`PREVIOUS`/`NEXT` relationships, deterministic node ids, and
+  suffix-based fallback routing) and `LumberjackReader` (a `BaseReader`
+  rendering Markdown/HTML/DOCX into canonical Markdown), plus
+  `LumberjackTextSplitter` / `LumberjackDocumentTransformer` (LangChain
+  `TextSplitter` / indexing transformer) and `LumberjackDocumentSplitter`
+  (a Haystack `@component`). The `langchain` extra now also installs
+  `langchain-text-splitters`; all components are imported lazily so the core
+  install stays framework-free.
+- Added `emit_parents` to the LlamaIndex `LumberjackNodeParser`: it now emits
+  one parent `TextNode` per real heading section, grouped from the leaf chunks
+  under that section, with `PARENT`/`CHILD` relationships and deterministic
+  parent ids, so `AutoMergingRetriever` merges retrieval hits into the actual
+  section text instead of token-window pseudo-hierarchies.
+- Added runnable module entries for stage-level inspection:
+  `python -m lumberjack.parser FILE` prints the parsed `DocTree` as versioned
+  JSON (or a section outline with `--outline`), and
+  `python -m lumberjack.splitter FILE` prints the same chunk-result JSON
+  envelope as the `lumber` CLI with the core split options
+  (`--splitter`, `--tokenizer`, `--max-tokens`, ratio and heading controls).
+  Both accept `-` to read text from stdin.
+- Added large-scale randomized parser verification: seeded generators build
+  documents for HTML, TXT/LOG, CSV/TSV, JSON/JSONL/YAML/TOML/XML, XLSX, SQLite,
+  Python/JavaScript/TypeScript, notebooks, and SQL, and check each parser
+  against generated visible-text recall, exact element counts, and clean
+  rejection of damaged payloads (`benchmarks/random_run.py`).
+- Added two version-pinned HTML corpora to the parser benchmark: html5lib
+  tree-construction adversarial fragments and MDN Learning Area real-world
+  pages, with an independent HTML visible-text reference extractor.
+- Added combinatorial and adversarial robustness tests for the HTML, records,
+  spreadsheet, database, and source parsers, including deterministic generated
+  corpora and invalid-input rejection checks.
+
+### Changed
+
+- The default `approx` tokenizer no longer materializes a per-byte integer
+  tuple inside `count()`: counting now takes the UTF-8 byte length directly,
+  which is roughly 90x cheaper per call and speeds up splits with the default
+  engine by about 10% end to end.
+- Exact-mode budget decisions skip provably doomed candidate encodings via
+  sound part-sum lower bounds (two tokens of slack per join, assuming the
+  join-counting property now documented on `TokenizerProtocol`):
+  oversized-block piece and list-item packing, sibling merge attempts, and
+  record packing no longer render and count joins whose parts already exceed
+  the budget. Exact subtree fit pruning now includes descendant headings in
+  the bound and subtracts the per-join slack, making it a constructive lower
+  bound instead of a practical estimate. Accepted candidates are still
+  verified by full recounts, and chunk output is unchanged for tokenizers
+  honoring the documented contract; a custom tokenizer that collapses joined
+  text violates it and may see differently grouped chunks.
+- Oversized-block splitting (`BlockSplitter`) now counts through the owning
+  splitter's per-split memo instead of calling the tokenizer directly: full
+  oversized-block texts, produced pieces, list items, and table row pieces
+  are encoded once per split and shared with the exact draft builder.
+  Together with the finalize and pruning changes below, exact splitters
+  encode 15-21% fewer characters on the seeded splitter corpus (split plus
+  finalize) with byte-identical chunk output.
+- `ChunkFinalizer` reuses an exact draft's split-time counts when the default
+  normalize/transform stages leave the rendered body unchanged, instead of
+  re-encoding every final chunk body. Texts actually modified by custom text
+  stages are still recounted authoritatively.
+- Exact subtree fit decisions (`exact-subtree`, `exact-sibling`) first compare
+  a raw block-text lower bound against the budget and skip rendering subtree
+  candidates that cannot possibly fit; fitting subtrees produce unchanged
+  drafts. Entries of exact subtree drafts now carry `body_token_count=0` in
+  trace output: per-entry counts never fed a budget decision, and computing
+  them encoded every section body a second time.
+- The record splitter counts through the same cache-free per-split memo as
+  the exact splitters instead of populating the tokenizer text cache.
+- Every pipeline run now clears the tokenizer text cache before splitting, so
+  the Python API (`Lumberjack.saw()`/`saw_many()`) honors the same
+  zero-cache-per-document semantics as the web path (fresh cache per request)
+  and the CLI (fresh pipeline per file).
+- `Exact*Splitter` classes now deduplicate identical `count()` texts within
+  one split through an internal per-split memo (mirroring incremental's
+  `_count_once`) instead of re-enabling the tokenizer text cache: repeated
+  heading paths and bodies counted at both the call site and the draft
+  builder no longer re-encode, while ever-growing candidate concatenations
+  still do. On the 50 KB benchmark probe document this removes all duplicate
+  tokenizer calls and cuts exact split wall time by 38–59% (exact-section
+  48.8→30.1 ms, exact-subtree 77.6→41.1 ms, exact-sibling 97.8→40.4 ms);
+  incremental variants are unchanged.
+- `Exact*Splitter` classes no longer enable the tokenizer text cache during
+  splitting. Every document's split starts from a zero cache in production
+  (text caches are request-local and never reused across documents) and a
+  single split offers essentially no cache reuse, so exact recounting now pays
+  the full encoding cost directly instead of populating an LRU; peak memory
+  during exact splits no longer grows with the cache. The splitter benchmark
+  follows the same semantics: it clears the tokenizer text cache before every
+  timed repetition (warmup only loads the tokenizer and reaches steady
+  state), so published wall times are cold-cache numbers.
+- The Docker production image now installs a built wheel instead of an
+  editable source link, drops the `uv` binary and source tree from the
+  runtime stage, and bakes the frontend into the installed package. Build
+  scripts pass a `COMMIT` build argument so `GET /version` reports the
+  deployed revision, and `docker-compose.yml` healthchecks `GET /health`
+  instead of the SPA root.
+- The Web UI's default splitter is now `section`, matching the documented
+  CLI/Web/Python default instead of `sibling`.
+- HTML parsing now retains text that was previously dropped: fragments without
+  `<body>` wrappers, bare text between constructs, nested list items inside
+  their parent item, unclosed headings/lists/tables/paragraphs flushed at end
+  of input, `<dt>`/`<dd>`/`<div>`-style block boundaries keeping adjacent words
+  separate, and implied end tags such as `<h1>a<h2>b`, `<li>x<li>y`, and any
+  `</hN>` closing an open heading.
+- CSV/TSV parsing now preserves RFC 4180 quoted fields containing embedded
+  newlines and delimiters instead of silently dropping the newlines and
+  shifting row provenance.
+- SQL parsing now splits statements on a quote/comment-aware scanner, so
+  semicolons inside `'...'`, `"..."`, backtick identifiers, `$$...$$` dollar
+  quotes, `--`, and `/* */` comments no longer break a statement, and
+  comment-only tails emit no records.
+- XML parsing now retains mixed-content `text()`/tail segments (for example
+  `<root>lead<b>bold</b>tail</root>`) as ordered records instead of dropping
+  the container text.
+- Invalid TOML input is now consistently rejected with `ValueError` like JSON
+  and YAML instead of leaking `tomllib.TOMLDecodeError`.
+- Added a parser-focused large-corpus benchmark with version-pinned Markdown
+  and DOCX sources, deterministic per-source random sampling, per-document raw
+  evidence, token/character content-retention metrics, element conformance
+  assertions, structure validation, and error distributions.
+- Added versioned v1 JSON schemas and shared serializers for chunks and document
+  trees. CLI and Web split results now include `schema_version`.
+- Added streaming `Lumberjack.saw_many()` with per-document success or failure
+  records, plus directory/glob JSONL CLI processing and safe output-directory
+  writes.
+- Added explicit `Lumberjack.trace()` pipeline traces, format-neutral source
+  locations, optional parser extraction results, and source-location metadata
+  on chunks across Python, CLI, and Web outputs.
+- Added `DocTreeBuilder` for supported construction of hierarchical or flat
+  parser output without requiring synthetic headings, plus explicit record
+  topology and `RecordSplitter` for atomic row/record packing.
+- Added UTF-8 TXT/LOG, CSV/TSV, and JSONL parsing with explicit row, line, and
+  JSON-path provenance. Use the `record` splitter for LOG, CSV/TSV, and JSONL
+  inputs so records remain atomic.
+- Added JSON, YAML, and XML parsing as ordered scalar or leaf-element records
+  with key or element paths and scalar-type metadata.
+- Added optional XLSX parsing with sheet, row, column, and header provenance;
+  install the `spreadsheets` extra to enable it.
+- Added optional Tree-sitter source parsing for Python, JavaScript/TypeScript,
+  Bash, C/C++, C#, Go, Java, Kotlin, Lua, PHP, Ruby, Rust, Swift, and Zig
+  declarations, including byte and line provenance and recovery from malformed
+  source; install the `code-parsing` extra to enable it.
+- Added a reproducible benchmark MVP with a versioned public corpus, quality
+  and performance metrics, raw-result JSON, and optional competitor adapters.
 - Added a MkDocs Material documentation site with getting-started, concepts,
   configuration, custom-component, CLI, Web API, and generated Python API
   reference pages.
 
 ### Changed
 
+- **Breaking:** Consolidated CLI block configuration into the repeatable compact
+  `--block KIND:SETTING,...` option, and grouped generated CLI help by task.
 - **Breaking:** The default splitter is now `section` across the Python API, CLI, and Web API. Select `sibling` explicitly when adjacent sibling sections should be packed together.
 - Streamlined the English and Chinese READMEs around installation, a first split,
   splitter selection, and links to the complete documentation.
+
+### Fixed
+
+- Seeded XLSX corpus generation is now byte-deterministic across runs: the
+  generator pins the workbook's creation and modification timestamps instead
+  of letting openpyxl stamp wall-clock times, which previously made the same
+  seed produce different archives when generation straddled a second
+  boundary.
+- DOCX parsing now preserves hyperlinks and embedded images as inline nodes,
+  including inside tables; recognizes direct OOXML numbering; groups consecutive
+  list items; reads visible content controls and tracked insertions; and escapes
+  Markdown table delimiters and multiline cells. DOCX provenance now uses OOXML
+  element paths instead of synthetic line numbers.
+- Markdown math parsing now distinguishes currency-shaped dollar text, supports
+  numbered dollar/bracket display formulas, retains delimiter information, and
+  does not consume trailing prose after an invalid bracket-math block form.
+- DOCX parsing now recognizes linear OMML math, wrapped table cells, and visible
+  text boxes, and tolerates Strict OOXML plus narrowly repairable package
+  metadata defects while recording applied repairs.
+- DOCX headings and lists now rely only on explicit OOXML outline/numbering
+  properties; style names and monospace appearance are no longer guessed as
+  heading, list, quote, or code semantics. Ambiguous or oversized OPC packages
+  are rejected before parsing.
 
 ## [0.4.0] - 2026-08-19
 

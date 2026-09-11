@@ -19,6 +19,13 @@ function formatElapsed(ms: number) {
 export default function ChunkList({ result, elapsedMs }: Props) {
   const { t } = useTranslation();
   const totalTokens = result.chunks.reduce((sum, c) => sum + c.token_count, 0);
+  const estimateErrors = result.chunks
+    .filter((c) => c.token_count > 0)
+    .map((c) => Math.abs(c.estimated_token_count - c.token_count) / c.token_count);
+  const meanError =
+    estimateErrors.length > 0
+      ? (estimateErrors.reduce((sum, value) => sum + value, 0) / estimateErrors.length) * 100
+      : null;
 
   return (
     <div className={styles.container}>
@@ -29,6 +36,13 @@ export default function ChunkList({ result, elapsedMs }: Props) {
             {t('chunks_count', { count: result.chunk_count })}
           </span>
           <span className={styles.stat}>{t('chunks_total_tokens', { count: totalTokens })}</span>
+          {meanError !== null && (
+            <span className={styles.stat} title={t('chunks_mean_error_title')}>
+              {t('chunks_mean_error', {
+                value: Math.round(meanError * 10) / 10,
+              })}
+            </span>
+          )}
           {elapsedMs !== null && (
             <span className={`${styles.stat} ${styles.elapsedStat}`}>
               <span>{formatElapsed(elapsedMs)}</span>

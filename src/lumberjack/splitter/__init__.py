@@ -1,5 +1,6 @@
 """Public structure-aware splitters."""
 
+from .record import RecordSplitter
 from .section import (
     ExactSectionSplitter,
     SectionSplitter,
@@ -26,6 +27,7 @@ __all__ = [
     "ExactSectionSplitter",
     "ExactSiblingSplitter",
     "ExactSubtreeSplitter",
+    "RecordSplitter",
     "SectionSplitter",
     "SiblingSplitter",
     "SubtreeSplitter",

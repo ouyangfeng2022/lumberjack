@@ -9,12 +9,97 @@ from typing import Literal
 from zipfile import BadZipFile, ZipFile
 
 from ..models import DocTree, Document, InputFormat
+from .code import NotebookParser, SourceCodeParser, SQLParser
+from .code.tree_sitter import CodeLanguage
 from .docx import DocxParser
 from .html import HTMLParser
 from .markdown import MarkdownParser
+from .records import (
+    DelimitedTextParser,
+    JSONLinesParser,
+    JSONParser,
+    LogParser,
+    TextParser,
+    TOMLParser,
+    XMLParser,
+    YAMLParser,
+)
+from .sqlite import SQLiteParser
+from .xlsx import XlsxParser
 
-DetectedFormat = Literal["markdown", "html", "docx"]
-_VALID_FORMATS = frozenset({"auto", "markdown", "html", "docx"})
+DetectedFormat = Literal[
+    "markdown",
+    "html",
+    "docx",
+    "text",
+    "log",
+    "csv",
+    "tsv",
+    "json",
+    "jsonl",
+    "xml",
+    "yaml",
+    "xlsx",
+    "toml",
+    "sqlite",
+    "sql",
+    "python",
+    "javascript",
+    "typescript",
+    "tsx",
+    "bash",
+    "c",
+    "cpp",
+    "csharp",
+    "go",
+    "java",
+    "kotlin",
+    "lua",
+    "php",
+    "ruby",
+    "rust",
+    "swift",
+    "zig",
+    "notebook",
+]
+_VALID_FORMATS = frozenset(
+    {
+        "auto",
+        "markdown",
+        "html",
+        "docx",
+        "text",
+        "log",
+        "csv",
+        "tsv",
+        "json",
+        "jsonl",
+        "xml",
+        "yaml",
+        "xlsx",
+        "toml",
+        "sqlite",
+        "sql",
+        "python",
+        "javascript",
+        "typescript",
+        "tsx",
+        "bash",
+        "c",
+        "cpp",
+        "csharp",
+        "go",
+        "java",
+        "kotlin",
+        "lua",
+        "php",
+        "ruby",
+        "rust",
+        "swift",
+        "zig",
+        "notebook",
+    }
+)
 _HTML_START_RE = re.compile(
     r"^\s*(?:<!doctype\s+html\b|<(?:html|head|body|main|article|section|div|"
     r"h[1-6]|p|table|ul|ol|blockquote|pre)\b)",
@@ -32,6 +117,63 @@ def _format_from_suffix(path: str | Path | None) -> DetectedFormat | None:
         return "html"
     if suffix in {".md", ".markdown"}:
         return "markdown"
+    if suffix in {".txt", ".text"}:
+        return "text"
+    if suffix == ".log":
+        return "log"
+    if suffix == ".csv":
+        return "csv"
+    if suffix == ".tsv":
+        return "tsv"
+    if suffix in {".jsonl", ".ndjson"}:
+        return "jsonl"
+    if suffix == ".json":
+        return "json"
+    if suffix == ".xml":
+        return "xml"
+    if suffix in {".yaml", ".yml"}:
+        return "yaml"
+    if suffix == ".xlsx":
+        return "xlsx"
+    if suffix == ".toml":
+        return "toml"
+    if suffix in {".sqlite", ".sqlite3", ".db"}:
+        return "sqlite"
+    if suffix == ".sql":
+        return "sql"
+    if suffix == ".py":
+        return "python"
+    if suffix in {".js", ".mjs", ".cjs"}:
+        return "javascript"
+    if suffix == ".ts":
+        return "typescript"
+    if suffix == ".tsx":
+        return "tsx"
+    if suffix == ".ipynb":
+        return "notebook"
+    code_suffixes: dict[str, CodeLanguage] = {
+        ".sh": "bash",
+        ".bash": "bash",
+        ".c": "c",
+        ".h": "c",
+        ".cc": "cpp",
+        ".cpp": "cpp",
+        ".cxx": "cpp",
+        ".hpp": "cpp",
+        ".cs": "csharp",
+        ".go": "go",
+        ".java": "java",
+        ".kt": "kotlin",
+        ".kts": "kotlin",
+        ".lua": "lua",
+        ".php": "php",
+        ".rb": "ruby",
+        ".rs": "rust",
+        ".swift": "swift",
+        ".zig": "zig",
+    }
+    if suffix in code_suffixes:
+        return code_suffixes[suffix]
     return None
 
 
@@ -91,16 +233,62 @@ class AutoParser:
                 raise TypeError("DOCX input must be bytes or a pathlib.Path")
             return DocxParser().parse(parsed_tree)
 
+        if format == "xlsx":
+            if isinstance(data, str):
+                raise TypeError("XLSX input must be bytes or a pathlib.Path")
+            return XlsxParser().parse(parsed_tree)
+
+        if format == "sqlite":
+            if isinstance(data, str):
+                raise TypeError("SQLite input must be bytes or a pathlib.Path")
+            return SQLiteParser().parse(parsed_tree)
+
         if isinstance(data, bytes):
             try:
-                text = data.decode("utf-8")
+                text = data.decode("utf-8-sig")
             except UnicodeDecodeError as exc:
                 raise ValueError(
-                    "Non-DOCX bytes must contain valid UTF-8 Markdown or HTML text"
+                    "Non-DOCX bytes must contain valid UTF-8 text"
                 ) from exc
         else:
             text = data
-        parser = HTMLParser() if format == "html" else MarkdownParser()
+        parser = {
+            "html": HTMLParser(),
+            "markdown": MarkdownParser(),
+            "text": TextParser(),
+            "log": LogParser(),
+            "csv": DelimitedTextParser(delimiter=","),
+            "tsv": DelimitedTextParser(delimiter="\t"),
+            "json": JSONParser(),
+            "jsonl": JSONLinesParser(),
+            "xml": XMLParser(),
+            "yaml": YAMLParser(),
+            "toml": TOMLParser(),
+            "sql": SQLParser(),
+            **{
+                language: SourceCodeParser(language=language)
+                for language in (
+                    "python",
+                    "javascript",
+                    "typescript",
+                    "tsx",
+                    "bash",
+                    "c",
+                    "cpp",
+                    "csharp",
+                    "go",
+                    "java",
+                    "kotlin",
+                    "lua",
+                    "php",
+                    "ruby",
+                    "rust",
+                    "swift",
+                    "zig",
+                )
+            },
+            "notebook": NotebookParser(),
+        }[format]
         return parser.parse(
             Document(
                 source=text,
@@ -126,7 +314,7 @@ class AutoParser:
             return "docx"
         if isinstance(data, bytes):
             try:
-                text = data.decode("utf-8")
+                text = data.decode("utf-8-sig")
             except UnicodeDecodeError as exc:
                 raise ValueError(
                     "Unable to infer format from non-DOCX binary input"

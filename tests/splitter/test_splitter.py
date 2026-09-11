@@ -2683,3 +2683,95 @@ Two body.
     chunks = saw(splitter, document)
 
     assert len(chunks) == 3
+
+
+def test_refenced_code_pieces_outlive_inner_backtick_runs() -> None:
+    # An oversized fence whose content itself contains ``` lines must be
+    # re-fenced with a longer marker, otherwise the inner run closes the
+    # wrapper early and corrupts the chunk's Markdown structure.
+    source = (
+        "# Guide\n\n````md\n"
+        + "filler line\n" * 40
+        + "```\ncode sample\n```\n"
+        + "trailer line\n" * 20
+        + "````\n"
+    )
+    document = MarkdownParser().parse(source, document_title="nested-fences.md")
+
+    def _blocks(node):
+        yield from node.blocks
+        for child in node.children:
+            yield from _blocks(child)
+
+    literal = next(
+        block.attrs["literal"]
+        for block in _blocks(document.root)
+        if block.attrs.get("literal")
+    )
+    splitter = SiblingSplitter(
+        tokenizer=CharacterTokenizer(),
+        **splitter_options(
+            max_tokens=60,
+            ideal_max_tokens_ratio=1,
+            merge_below_ratio=0.0,
+            block_options={"code_fence": BaseParams()},
+        ),
+    )
+
+    chunks = saw(splitter, document)
+    assert len(chunks) > 1
+
+    import re as _re
+
+    inner_pieces: list[str] = []
+    for chunk in chunks:
+        lines = chunk.body.splitlines()
+        if not lines or lines[0][:1] not in ("`", "~"):
+            continue
+        marker = lines[0][0]
+        open_len = len(lines[0]) - len(lines[0].lstrip(marker))
+        close_len = len(lines[-1]) - len(lines[-1].lstrip(marker))
+        assert close_len == open_len >= 3
+        inner = "\n".join(lines[1:-1])
+        longest = max(
+            (len(run) for run in _re.findall(_re.escape(marker) + "+", inner)),
+            default=0,
+        )
+        assert open_len > longest, chunk.body
+        inner_pieces.append(inner)
+
+    assert "\n".join(inner_pieces) == literal
+
+
+def test_sentence_fallback_reaches_cjk_and_reassembles_exactly() -> None:
+    from lumberjack._internal.block_splitter import BlockSplitter
+
+    splitter = BlockSplitter(CharacterTokenizer(), max_tokens=20, block_options={})
+    cjk = "第一句内容这里。第二句内容那里。第三句结束。" * 3
+    pieces = splitter.split_text(cjk, max_tokens=15)
+    assert len(pieces) > 1
+    assert "".join(text for text, _ in pieces) == cjk
+
+    spaced = "  ".join(["First one.", "Second one.", "Third one."] * 3)
+    pieces = splitter.split_text(spaced, max_tokens=25)
+    assert "".join(text for text, _ in pieces) == spaced
+
+
+def test_unsplittable_oversized_blocks_are_marked_protected() -> None:
+    from lumberjack._internal.pipeline import split_source
+    from lumberjack.block import BlockConfig, BlockKind
+
+    source = "# T\n\n```python\n" + "x = 1  # " + "v" * 400 + "\n" * 5 + "```\n"
+    for splitter_name in ("section", "exact-section"):
+        result = split_source(
+            source,
+            format="markdown",
+            max_tokens=40,
+            splitter=splitter_name,
+            block_options=[BlockConfig(BlockKind.CODE_FENCE, split=False)],
+        )
+        oversized = [c for c in result.chunks if c.token_count > 40]
+        assert oversized, splitter_name
+        assert all(c.protected and c.chunk_type == "code_fence" for c in oversized), (
+            splitter_name
+        )

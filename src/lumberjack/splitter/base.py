@@ -17,6 +17,7 @@ from ..models import (
     common_heading_path,
     render_draft_body,
     render_heading_path,
+    source_locations_for_blocks,
 )
 from ..protocols import TokenizerProtocol
 from .context import SectionView
@@ -40,6 +41,14 @@ class BaseSplitter:
     wiring, rendering helpers, and small-draft merging.
     """
 
+    supported_topologies = frozenset({"hierarchical"})
+
+    # Whether split-phase counting may populate/read the tokenizer text cache.
+    # Every document's split starts from a zero cache in production (text
+    # caches are request-local and never reused across documents), so exact
+    # recounting — which has no intra-split cache reuse — disables it.
+    use_tokenizer_cache: bool = True
+
     def __init__(
         self,
         tokenizer: TokenizerProtocol,
@@ -61,7 +70,9 @@ class BaseSplitter:
         self.heading_sensitive = heading_sensitive
         self.max_heading_level = max_heading_level
         self.block_options = normalize_block_options(block_options)
-        self.separator_token_count = self.tokenizer.count(RENDER_SEPARATOR, cache=True)
+        self.separator_token_count = self.tokenizer.count(
+            RENDER_SEPARATOR, cache=self.use_tokenizer_cache
+        )
         self.standalone_kinds = frozenset(
             kind for kind, config in self.block_options.items() if config.isolated
         )
@@ -70,6 +81,8 @@ class BaseSplitter:
             tokenizer,
             max_tokens=self.max_tokens,
             block_options=self.block_options,
+            use_cache=self.use_tokenizer_cache,
+            count_fn=self._memoized_count,
         )
 
     def split(self, document: DocTree) -> list[ChunkDraft]:  # pragma: no cover
@@ -78,10 +91,54 @@ class BaseSplitter:
             "(ExactCountingMixin or IncrementalCountingMixin)"
         )
 
+    def _memo_count(self, text: str) -> int:
+        """Count a distinct string once per split, cache-free.
+
+        Shared per-split memo for exact-style counting (exact mixins and the
+        record splitter).  ``split()`` implementations reset ``_count_memo``
+        so counts never leak across documents.
+        """
+        memo = getattr(self, "_count_memo", None)
+        if memo is None:
+            memo = {}
+            self._count_memo = memo
+        cached = memo.get(text)
+        if cached is not None:
+            return cached
+        count = self.tokenizer.count(text, cache=False)
+        memo[text] = count
+        return count
+
+    def _memoized_count(self, text: str) -> int:
+        """Per-split dedup hook used by BlockSplitter; mixins override.
+
+        Exact-style strategies route through :meth:`_memo_count`; the
+        incremental strategy routes through :meth:`_count_once`.
+        """
+        return self.tokenizer.count(text, cache=self.use_tokenizer_cache)
+
+    def _merge_bound_exceeds(
+        self,
+        left_draft: ChunkDraft,  # noqa: ARG002
+        right_draft: ChunkDraft,  # noqa: ARG002
+        common_headings: HeadingPath,  # noqa: ARG002
+        limit: int,  # noqa: ARG002
+    ) -> bool:
+        """Sound fast rejection for merging two drafts; False unless overridden.
+
+        Returning ``True`` lets merge-heavy topologies skip rendering and
+        counting a candidate whose joined budget provably exceeds *limit*.
+        The default never pre-rejects; exact counting overrides it with a
+        part-sum lower bound.
+        """
+        return False
+
     def _heading_path_token_count(self, path: HeadingPath) -> int:
         if not path:
             return 0
-        return self.tokenizer.count(render_heading_path(path), cache=True)
+        return self.tokenizer.count(
+            render_heading_path(path), cache=self.use_tokenizer_cache
+        )
 
     def _rendered_token_count(
         self,
@@ -93,7 +150,8 @@ class BaseSplitter:
         if external_headings is None:
             external_headings = common_heading_path(entry.headings for entry in entries)
         return self.tokenizer.count(
-            render_draft_body(entries, external_headings), cache=True
+            render_draft_body(entries, external_headings),
+            cache=self.use_tokenizer_cache,
         )
 
     def _chunk_token_count(
@@ -117,6 +175,14 @@ class BaseSplitter:
         if self.max_heading_level is None:
             return document.root
         return self._limit_heading_depth(document.root, self.max_heading_level)
+
+    def _validate_document_topology(self, document: DocTree) -> None:
+        if document.topology not in self.supported_topologies:
+            supported = ", ".join(sorted(self.supported_topologies))
+            raise ValueError(
+                f"{type(self).__name__} supports only {supported} topology; "
+                f"got {document.topology!r}"
+            )
 
     def _limit_heading_depth(
         self,
@@ -256,6 +322,7 @@ class BaseSplitter:
             start_line=min(start_lines) if start_lines else None,
             end_line=max(end_lines) if end_lines else None,
             body_token_count=body_token_count,
+            source_locations=source_locations_for_blocks(blocks),
         )
 
     def _entry_group_tail(self, entries: list[Entry]) -> str:

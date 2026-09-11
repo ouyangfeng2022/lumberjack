@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Literal
 
 from .._internal.rendering import join_rendered_blocks
@@ -13,6 +14,8 @@ from ..models import (
     SectionNode,
     common_heading_path,
     render_draft_body,
+    render_heading_path,
+    source_locations_for_blocks,
 )
 from .base import BaseSplitter
 from .context import ExactCountingContext, SectionView
@@ -25,15 +28,69 @@ class ExactCountingMixin(BaseSplitter):
     via :meth:`_rendered_token_count`.  No additive arithmetic, no
     :meth:`_measure_section` pre-pass, no separator-delta window.  The
     ``SectionNode`` tree is walked directly.
+
+    Counting runs cache-free: every split starts from a zero tokenizer cache
+    and caches are never reused across documents. Identical strings within
+    one split (repeated heading paths, bodies counted at both the call site
+    and the draft builder, oversized-block pieces counted inside
+    BlockSplitter) are deduplicated by a per-split memo instead, so only
+    genuinely distinct candidates — the ever-growing rendered
+    concatenations — pay full encoding.
+
+    Budget pruning relies on the join-counting property documented on
+    :class:`~lumberjack.protocols.TokenizerProtocol`: part-sum lower bounds
+    (two tokens of slack per join) skip candidates that provably cannot
+    fit. For tokenizers honoring the contract this never changes output;
+    a contract-violating tokenizer may see differently grouped chunks.
     """
+
+    use_tokenizer_cache = False
 
     def split(self, document: DocTree) -> list[ChunkDraft]:
         """Split by walking the raw ``SectionNode`` tree (no pre-measure)."""
+        self._validate_document_topology(document)
+        self._count_memo: dict[str, int] = {}
         root = ExactCountingContext().prepare(self._root_for_splitting(document))
         drafts = self._post_process_drafts(self._split_section(root))
         for draft in drafts:
             draft.counting_mode = "exact"
         return drafts
+
+    _memoized_count = BaseSplitter._memo_count
+
+    def _merge_bound_exceeds(
+        self,
+        left_draft: ChunkDraft,
+        right_draft: ChunkDraft,
+        common_headings: HeadingPath,
+        limit: int,
+    ) -> bool:
+        """Exact drafts carry full body recounts, so their sum bounds the merge.
+
+        Relative to the shared prefix both drafts render as contiguous chunks
+        joined by one separator: the merged body is at least
+        ``left.body + right.body - 2`` tokens for tokenizers honoring the
+        join-counting property documented on ``TokenizerProtocol``.
+        """
+        head = (
+            self._heading_path_token_count(common_headings)
+            if self.heading_sensitive
+            else 0
+        )
+        bound = (
+            head
+            + self.separator_token_count
+            + max(
+                0,
+                left_draft.body_token_count + right_draft.body_token_count - 2,
+            )
+        )
+        return bound > limit
+
+    def _heading_path_token_count(self, path: HeadingPath) -> int:
+        if not path:
+            return 0
+        return self._memo_count(render_heading_path(path))
 
     def _draft_budget_tokens(self, draft: ChunkDraft) -> int:
         """Exact logical footprint selected by the heading-sensitivity policy."""
@@ -100,7 +157,7 @@ class ExactCountingMixin(BaseSplitter):
     ) -> ChunkDraft:
         """Build a draft by fully recounting its separated public fields."""
         body = render_draft_body(entries, headings)
-        body_tokens = self.tokenizer.count(body, cache=True)
+        body_tokens = self._memo_count(body)
         prefix_tokens = self._heading_path_token_count(headings)
         token_count = self._chunk_token_count(prefix_tokens, body_tokens)
         return ChunkDraft(
@@ -115,7 +172,13 @@ class ExactCountingMixin(BaseSplitter):
         )
 
     def _entries_from_section(self, section: SectionNode) -> list[Entry]:
-        """Render-ready entries for a section selected as a draft."""
+        """Render-ready entries for a section selected as a draft.
+
+        Entry-level ``body_token_count`` is left at 0 here: exact drafts are
+        measured through one full recount of the rendered body, and per-entry
+        counts would encode every section body a second time without feeding
+        any budget decision.
+        """
         entries: list[Entry] = []
         if section.blocks or (not section.children and section.level > 0):
             body = join_rendered_blocks([b.text for b in section.blocks])
@@ -125,7 +188,7 @@ class ExactCountingMixin(BaseSplitter):
                     body=body,
                     start_line=self._min_start_lines(section.blocks),
                     end_line=self._max_end_lines(section.blocks),
-                    body_token_count=self.tokenizer.count(body, cache=True),
+                    source_locations=source_locations_for_blocks(section.blocks),
                 )
             )
 
@@ -133,6 +196,40 @@ class ExactCountingMixin(BaseSplitter):
             entries.extend(self._entries_from_section(child))
 
         return entries
+
+    def _subtree_parts(self, section: SectionNode) -> tuple[int, int]:
+        """Raw (part-count sum, part count) for the body render below a node.
+
+        Parts are the node's own block texts plus every descendant heading
+        and block text; the node's own heading is excluded because it lands
+        in the draft's external heading prefix, not its body.
+        """
+        total = 0
+        parts = 0
+        for block in section.blocks:
+            if block.text:
+                total += self._memo_count(block.text)
+                parts += 1
+        for child in section.children:
+            if child.level > 0 and child.title:
+                total += self._memo_count(render_heading_path((child.heading_key,)))
+                parts += 1
+            child_total, child_parts = self._subtree_parts(child)
+            total += child_total
+            parts += child_parts
+        return total, parts
+
+    def _subtree_body_token_bound(self, section: SectionNode) -> int:
+        """Sound lower bound of the rendered subtree body cost.
+
+        The render joins every part with ``RENDER_SEPARATOR``; for tokenizers
+        honoring the join-counting property documented on
+        ``TokenizerProtocol``, each join adds at least one separator token
+        while boundary merges save at most a token or two, so two tokens of
+        slack per join keeps the bound below the true rendered count.
+        """
+        total, parts = self._subtree_parts(section)
+        return total - 2 * max(0, parts - 1)
 
     def _split_section_body(
         self,
@@ -156,7 +253,7 @@ class ExactCountingMixin(BaseSplitter):
             entry = self._entry_from_blocks(
                 headings,
                 blocks,
-                body_token_count=self.tokenizer.count(body, cache=True),
+                body_token_count=self._memo_count(body),
             )
             return [
                 self._draft_from_entries(
@@ -192,6 +289,7 @@ class ExactCountingMixin(BaseSplitter):
                 start_line=block.start_line,
                 end_line=block.end_line,
                 body_token_count=body_tokens,
+                source_locations=block.source_locations,
             )
 
         for block in blocks:
@@ -217,7 +315,7 @@ class ExactCountingMixin(BaseSplitter):
                     entry = make_entry(
                         block,
                         block.text,
-                        self.tokenizer.count(block.text, cache=True),
+                        self._memo_count(block.text),
                     )
                     drafts.append(
                         self._draft_from_entries(
@@ -230,15 +328,13 @@ class ExactCountingMixin(BaseSplitter):
                     )
                 continue
 
-            entry = make_entry(
-                block, block.text, self.tokenizer.count(block.text, cache=True)
-            )
+            entry = make_entry(block, block.text, self._memo_count(block.text))
             block_draft = self._draft_from_entries(
                 [entry],
                 headings,
                 own_heading=headings[-1] if headings else None,
                 origin="fragment",
-                chunk_type="paragraph",
+                chunk_type=block.kind,
             )
 
             if (
@@ -251,7 +347,10 @@ class ExactCountingMixin(BaseSplitter):
                     default_budget=budget,
                 )
                 if block_pieces is None:
-                    drafts.append(block_draft)
+                    # Unsplittable oversized block: report it as protected
+                    # instead of silently emitting an unmarked over-budget
+                    # chunk (mirrors the record splitter's contract).
+                    drafts.append(replace(block_draft, protected=True))
                 else:
                     for piece, piece_tokens in block_pieces:
                         pe = make_entry(block, piece, piece_tokens)
@@ -297,7 +396,7 @@ class ExactCountingMixin(BaseSplitter):
         if not (node.blocks or node.level > 0):
             return []
         body = join_rendered_blocks([block.text for block in node.blocks])
-        body_tokens = self.tokenizer.count(body, cache=True)
+        body_tokens = self._memo_count(body)
         has_standalone = any(
             block.kind in self.standalone_kinds for block in node.blocks
         )
@@ -307,6 +406,7 @@ class ExactCountingMixin(BaseSplitter):
             start_line=self._min_start_lines(node.blocks),
             end_line=self._max_end_lines(node.blocks),
             body_token_count=body_tokens,
+            source_locations=source_locations_for_blocks(node.blocks),
         )
         draft = self._draft_from_entries(
             [entry],
@@ -329,6 +429,16 @@ class ExactCountingMixin(BaseSplitter):
         ):
             structural_root = section.children[0]
         node = structural_root.node
+        head_tokens = (
+            self._heading_path_token_count(node.path) if self.heading_sensitive else 0
+        )
+        if (
+            head_tokens
+            + self.separator_token_count
+            + self._subtree_body_token_bound(node)
+            > self.ideal_max_tokens
+        ):
+            return None
         entries = self._entries_from_section(node)
         return self._draft_from_entries(
             entries,
@@ -346,9 +456,8 @@ class ExactCountingMixin(BaseSplitter):
         entry = self._entry_from_blocks(
             node.path,
             node.blocks,
-            body_token_count=self.tokenizer.count(
-                join_rendered_blocks([block.text for block in node.blocks]),
-                cache=True,
+            body_token_count=self._memo_count(
+                join_rendered_blocks([block.text for block in node.blocks])
             ),
         )
         draft = self._draft_from_entries(

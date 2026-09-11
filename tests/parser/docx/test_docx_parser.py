@@ -71,8 +71,7 @@ def test_docx_parser_block_kinds() -> None:
             "table",
             "list",
             "list_item",
-            "code_block",
-            "blockquote",
+            "math_block",
         }
     )
     assert isinstance(kinds, frozenset)

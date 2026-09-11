@@ -4,10 +4,12 @@ from .._internal.rendering import RENDER_SEPARATOR, join_rendered_blocks
 from ..models import (
     ChunkDraft,
     DocTree,
+    DocumentBlock,
     Entry,
     HeadingPath,
     common_heading_path,
     render_heading_path,
+    source_locations_for_blocks,
 )
 from .base import BaseSplitter
 from .context import IncrementalCountingContext, SectionView
@@ -28,6 +30,7 @@ class IncrementalCountingMixin(BaseSplitter):
 
     def split(self, document: DocTree) -> list[ChunkDraft]:
         """Measure the tree once, then split via the topology's _split_section."""
+        self._validate_document_topology(document)
         self._atomic_token_counts: dict[str, int] = {}
         root = IncrementalCountingContext(self).prepare(
             self._root_for_splitting(document)
@@ -46,7 +49,14 @@ class IncrementalCountingMixin(BaseSplitter):
         )
 
     def _count_once(self, text: str) -> int:
-        """Count an atomic measurement once during the incremental pre-pass."""
+        """Count an atomic measurement once during the incremental pre-pass.
+
+        ``cache=True`` is deliberate: the per-split dict memo dedupes split
+        decisions, but the request-local tokenizer LRU is what carries piece
+        and heading counts across the component boundary into
+        :class:`ChunkFinalizer`, whose authoritative recount would otherwise
+        re-encode them.
+        """
         counts = getattr(self, "_atomic_token_counts", None)
         if counts is None:
             counts = {}
@@ -57,6 +67,8 @@ class IncrementalCountingMixin(BaseSplitter):
         count = self.tokenizer.count(text, cache=True)
         counts[text] = count
         return count
+
+    _memoized_count = _count_once
 
     def _heading_path_token_count(self, path: HeadingPath) -> int:
         if not path:
@@ -234,6 +246,7 @@ class IncrementalCountingMixin(BaseSplitter):
         current_body_tokens = 0
         current_start_line: int | None = None
         current_end_line: int | None = None
+        current_blocks: list[DocumentBlock] = []
 
         budget = body_budget
 
@@ -244,6 +257,7 @@ class IncrementalCountingMixin(BaseSplitter):
                 start_line=current_start_line,
                 end_line=current_end_line,
                 body_token_count=current_body_tokens,
+                source_locations=source_locations_for_blocks(current_blocks),
             )
             token_count = self._chunk_token_count(prefix_tokens, current_body_tokens)
             return ChunkDraft(
@@ -265,6 +279,7 @@ class IncrementalCountingMixin(BaseSplitter):
                     current_body_tokens = 0
                     current_start_line = None
                     current_end_line = None
+                    current_blocks = []
 
                 block_tokens = self._count_once(block.text)
                 # This draft will only contain this block and headings.
@@ -280,6 +295,7 @@ class IncrementalCountingMixin(BaseSplitter):
                             start_line=block.start_line,
                             end_line=block.end_line,
                             body_token_count=piece_tokens,
+                            source_locations=block.source_locations,
                         )
                         drafts.append(
                             ChunkDraft(
@@ -302,6 +318,7 @@ class IncrementalCountingMixin(BaseSplitter):
                         start_line=block.start_line,
                         end_line=block.end_line,
                         body_token_count=block_tokens,
+                        source_locations=block.source_locations,
                     )
 
                     drafts.append(
@@ -345,6 +362,7 @@ class IncrementalCountingMixin(BaseSplitter):
                 current_body_tokens = 0
                 current_start_line = None
                 current_end_line = None
+                current_blocks = []
                 candidate_body_tokens = block_tokens
 
             if block_tokens <= budget:
@@ -356,6 +374,7 @@ class IncrementalCountingMixin(BaseSplitter):
                 )
                 current_body_tokens = candidate_body_tokens
                 current_joined = candidate_text
+                current_blocks.append(block)
                 if block.start_line is not None and (
                     current_start_line is None or block.start_line < current_start_line
                 ):
@@ -378,6 +397,7 @@ class IncrementalCountingMixin(BaseSplitter):
                     start_line=block.start_line,
                     end_line=block.end_line,
                     body_token_count=block_tokens,
+                    source_locations=block.source_locations,
                 )
                 drafts.append(
                     ChunkDraft(
@@ -390,7 +410,11 @@ class IncrementalCountingMixin(BaseSplitter):
                             prefix_tokens, block_tokens
                         ),
                         split_origin="fragment",
-                        chunk_type="paragraph",
+                        chunk_type=block.kind,
+                        # Unsplittable oversized block: marked protected
+                        # instead of silently emitting an unmarked
+                        # over-budget chunk.
+                        protected=True,
                     )
                 )
                 current_parts = []
@@ -398,6 +422,7 @@ class IncrementalCountingMixin(BaseSplitter):
                 current_body_tokens = 0
                 current_start_line = None
                 current_end_line = None
+                current_blocks = []
                 continue
 
             for piece, piece_tokens in block_pieces:
@@ -407,6 +432,7 @@ class IncrementalCountingMixin(BaseSplitter):
                     start_line=block.start_line,
                     end_line=block.end_line,
                     body_token_count=piece_tokens,
+                    source_locations=block.source_locations,
                 )
                 drafts.append(
                     ChunkDraft(

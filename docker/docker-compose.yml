@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
       args:
         VERSION: ${VERSION:-0.0.0}
+        COMMIT: ${COMMIT:-}
     image: ${IMAGE_NAME:-lumberjack}:${TAG:-latest}
     container_name: ${COMPOSE_PROJECT_NAME:-lumberjack}
     restart: unless-stopped
@@ -13,16 +14,9 @@ services:
     environment:
       TIKTOKEN_CACHE_DIR: /app/.cache/tiktoken
       HF_HOME: /app/.cache/huggingface
-    volumes:
-      - type: bind
-        source: ../src
-        target: /app/src
-      - type: bind
-        source: ../README.md
-        target: /app/README.md
     command: ["--host", "0.0.0.0", "--port", "9612"]
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9612/')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9612/health')"]
       interval: 30s
       timeout: 5s
       retries: 3

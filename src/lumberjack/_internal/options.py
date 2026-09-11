@@ -39,9 +39,12 @@ def block_config_from_mapping(kind: str, config: Mapping[str, Any]) -> BlockOpti
     if normalized == BlockKind.HTML_TABLE:
         return HTMLTableConfig(**base, repeat_header=config.get("repeat_header", True))
     try:
-        return BlockConfig(BlockKind(normalized), **base)
+        kind_enum = BlockKind(normalized)
     except ValueError:
+        # Genuinely unknown kind: treat it as a plugin-defined custom kind.
         return CustomBlockConfig(normalized, **base)
+    # Let BlockConfig's own validation errors surface verbatim.
+    return BlockConfig(kind_enum, **base)
 
 
 def parse_block_config_mapping(
@@ -67,46 +70,3 @@ def parse_block_config_json(raw: str) -> list[BlockOption] | None:
     if not isinstance(parsed, Mapping):
         raise TypeError("block_configs must be a JSON object")
     return parse_block_config_mapping(parsed)
-
-
-def _parse_cli_entry(entry: str, block_kinds: frozenset[str]) -> BlockOption:
-    parts = [part.strip() for part in entry.split(":")]
-    kind = parts[0].lower() if parts else ""
-    if not kind:
-        raise ValueError("block config kind cannot be empty")
-    if kind not in block_kinds:
-        valid = ", ".join(sorted(block_kinds))
-        raise ValueError(f"Unknown block kind: {kind!r} (valid: {valid})")
-
-    config: dict[str, object] = {}
-    for token in parts[1:]:
-        lowered = token.lower()
-        if not token:
-            continue
-        if lowered == "isolated":
-            config["isolated"] = True
-        elif lowered == "nosplit":
-            config["split"] = False
-        else:
-            try:
-                config["max_tokens"] = int(token)
-            except ValueError as exc:
-                raise ValueError(f"Unknown block config token: {token!r}") from exc
-    return block_config_from_mapping(kind, config)
-
-
-def parse_cli_block_configs(
-    entries: list[str],
-    *,
-    block_kinds: frozenset[str],
-    json_config: str = "",
-) -> list[BlockOption]:
-    """Parse CLI config, with JSON entries overriding short-form entries."""
-    indexed = {
-        str(config.kind): config
-        for config in (_parse_cli_entry(entry, block_kinds) for entry in entries)
-    }
-    json_options = parse_block_config_json(json_config)
-    if json_options:
-        indexed.update((str(config.kind), config) for config in json_options)
-    return list(indexed.values())

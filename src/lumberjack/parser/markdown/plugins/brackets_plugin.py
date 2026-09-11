@@ -13,10 +13,11 @@ if TYPE_CHECKING:
 
 BRACKETS_MATH_INLINE_RE = re.compile(r"^\\\((.+?)\\\)", re.DOTALL)
 BRACKETS_MATH_BLOCK_EQNO_RE = re.compile(
-    r"^\\\[(((?!\\\]|\\\[)[\s\S])+?)\\\]\s*?\(([^)$\r\n]+?)\)",
+    r"^\\\[(((?!\\\]|\\\[)[\s\S])+?)\\\][ \t]*\(([^)$\r\n]+?)\)"
+    r"[ \t]*(?=\r?\n|$)",
     re.M,
 )
-BRACKETS_MATH_BLOCK_RE = re.compile(r"^\\\[([\s\S]+?)\\\]", re.M)
+BRACKETS_MATH_BLOCK_RE = re.compile(r"^\\\[([\s\S]+?)\\\][ \t]*(?=\r?\n|$)", re.M)
 
 
 def brackets_math_plugin(md: MarkdownIt) -> None:
@@ -83,7 +84,6 @@ def make_block_func(
             token.content = match.group(1)
             if match.lastindex is not None:
                 token.info = match.group(match.lastindex)
-            token.info = match.group(0)
             token.markup = tag
             token.map = [begLine, next_line]
 

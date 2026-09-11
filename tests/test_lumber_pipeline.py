@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from lumberjack import Document, Lumberjack
+from lumberjack._internal.pipeline import build_pipeline
 from lumberjack.finalizer import ChunkFinalizer
 from lumberjack.models import ChunkDraft, DocTree, Entry, SectionNode
 from lumberjack.normalizer import TextNormalizer
@@ -20,6 +21,27 @@ def test_tree_log_draft_chunk_pipeline_is_explicit() -> None:
     assert isinstance(document, DocTree)
     assert drafts and isinstance(drafts[0], ChunkDraft)
     assert chunks and chunks[0].body == "Body"
+
+
+def test_pipeline_clears_tokenizer_cache_per_document() -> None:
+    """Every run starts from a zero text cache, matching the web/CLI paths."""
+
+    class CacheSpyTokenizer(ApproxByteTokenizer):
+        def __init__(self) -> None:
+            self.clear_calls = 0
+
+        def clear_cache(self) -> None:
+            self.clear_calls += 1
+
+    tokenizer = CacheSpyTokenizer()
+    pipeline = build_pipeline(
+        tokenizer=tokenizer, splitter="incremental-section", max_tokens=50
+    )
+
+    pipeline.run(Document("# One\n\nbody one", format="markdown"))
+    pipeline.run(Document("# Two\n\nbody two", format="markdown"))
+
+    assert tokenizer.clear_calls == 2
 
 
 def test_normalizer_and_transformer_are_lossless_for_markup() -> None:

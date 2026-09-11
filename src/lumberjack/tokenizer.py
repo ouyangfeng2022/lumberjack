@@ -108,7 +108,9 @@ class ApproxByteTokenizer(TokenizerProtocol):
         return tuple(text.encode("utf-8"))
 
     def count(self, text: str, *, cache: bool = False) -> int:  # noqa: ARG002
-        return len(self.encode(text)) // 3
+        # Never route through encode(): materializing the per-byte int tuple
+        # costs ~90x more than the byte length itself.
+        return len(text.encode("utf-8")) // 3
 
 
 class TransformersTokenizer(TokenizerProtocol):

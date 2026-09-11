@@ -1,0 +1,102 @@
+name: Demo uptime
+
+# Simple availability monitoring for the public demo. The demo URL is
+# platform-neutral: set the DEMO_URL repository variable (for example
+# https://lumberjack-demo.example.com) once the demo is deployed. Until then
+# every scheduled run skips successfully, so the workflow is safe to land
+# before deployment exists.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Demo base URL to check (overrides DEMO_URL)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: demo-uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check demo /health
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve demo URL
+        id: resolve
+        env:
+          DISPATCH_URL: ${{ inputs.url }}
+          DEMO_URL: ${{ vars.DEMO_URL }}
+        run: |
+          base="${DISPATCH_URL:-$DEMO_URL}"
+          if [ -z "$base" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "DEMO_URL is not set; skipping the uptime check."
+          else
+            base="${base%/}"
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "base=$base" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Probe /health and /version
+        id: probe
+        if: steps.resolve.outputs.configured == 'true'
+        env:
+          BASE: ${{ steps.resolve.outputs.base }}
+        run: |
+          set +e
+          health_body=$(curl -fsS --max-time 30 --retry 2 --retry-delay 5 "$BASE/lumber/api/health" 2>/tmp/uptime-curl.err)
+          health_rc=$?
+          version_body=$(curl -fsS --max-time 30 "$BASE/lumber/api/version" 2>/dev/null)
+          version_rc=$?
+          set -e
+          details="health exit $health_rc, version exit $version_rc"
+          if [ "$health_rc" -eq 0 ] && printf '%s' "$health_body" | grep -q '"status":"ok"'; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "details=$details; body: $health_body; version: $version_body" >> "$GITHUB_OUTPUT"
+          else
+            error=$(tr '\n' ' ' </tmp/uptime-curl.err | cut -c1-300)
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "details=$details; body: ${health_body:-<none>}; curl: $error" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report failure (open or update tracking issue)
+        if: steps.resolve.outputs.configured == 'true' && steps.probe.outputs.ok != 'true'
+        env:
+          DETAILS: ${{ steps.probe.outputs.details }}
+          BASE: ${{ steps.resolve.outputs.base }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create demo-uptime --color d73a4a 2>/dev/null || true
+          issue=$(gh issue list --label demo-uptime --state open --json number --jq '.[0].number // empty')
+          body="Demo health check failed at $(date -u +%Y-%m-%dT%H:%M:%SZ).
+
+          URL: $BASE/lumber/api/health
+          $DETAILS
+
+          This issue was opened automatically by the demo-uptime workflow."
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body "$body"
+          else
+            gh issue create --title "Demo is down" --body "$body" --label demo-uptime
+          fi
+          exit 1
+
+      - name: Report recovery
+        if: steps.resolve.outputs.configured == 'true' && steps.probe.outputs.ok == 'true'
+        env:
+          DETAILS: ${{ steps.probe.outputs.details }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          issue=$(gh issue list --label demo-uptime --state open --json number --jq '.[0].number // empty')
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body "Demo recovered at $(date -u +%Y-%m-%dT%H:%M:%SZ). $DETAILS"
+            gh issue close "$issue"
+          fi
