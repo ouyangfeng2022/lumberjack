@@ -27,6 +27,10 @@ SENTENCE_BREAK_RE = re.compile(
 )
 PROTECTED_SPAN_RE = re.compile(r"<https?://[^\s>]+>|https?://[^\s)>\]]+")
 TABLE_DELIMITER_CELL_RE = re.compile(r":?-+(:?-+)*:?")
+# Hard splitting need not find the last token that fits.  Stopping the binary
+# search here avoids several tokenizer encodes per piece while keeping the
+# conservative boundary loss small.
+HARD_SPLIT_SEARCH_WINDOW = 32
 
 
 def _longest_char_run(text: str, char: str) -> int:
@@ -540,7 +544,7 @@ class BlockSplitter:
                 left = max(start + 1, lower + 1)
                 right = upper
                 best = lower
-                while left <= right:
+                while right - left > HARD_SPLIT_SEARCH_WINDOW:
                     middle = (left + right) // 2
                     if self._count(text[start:middle]) <= max_tokens:
                         best = middle

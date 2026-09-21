@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Oversized-text hard splitting now stops binary token probes within a small
+  character window, reducing tokenizer work while allowing slightly more
+  conservative chunk boundaries.
+
 ## [0.5.0] - 2026-09-11
 
 ### Security
