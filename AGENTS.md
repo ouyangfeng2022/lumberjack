@@ -10,22 +10,20 @@ Current runtime dependencies:
 
 - `markdown-it-py[linkify,plugins]>=4.0.0` for the default GFM-like parser
 - `pyyaml>=6.0` for YAML front matter and YAML records
+- `python-docx>=1.1.0`, `openpyxl>=3.1.0`, and `tomli>=2.0.0` on Python < 3.11 for DOCX, XLSX, and TOML input
 
 Optional dependencies:
 
 - `tiktoken>=0.9.0`, `cachetools>=7.1.1`, `transformers>=4.41.0` for model-based token counting (install via `--extra tokenizers`)
-- `python-docx>=1.1.0` for DOCX document support (install via `--extra docx`)
 - `fastapi>=0.115.0`, `uvicorn>=0.34.0`, `python-multipart>=0.0.18` for the web server (install via `--extra web`)
-- `openpyxl>=3.1.0` for XLSX support (install via `--extra spreadsheets`)
-- `tomli>=2.0.0` on Python < 3.11 for TOML records (install via `--extra toml`)
 - tree-sitter language wheels for declaration-aware source parsing (install via `--extra code-parsing`; the built-in fallback works without it)
 - `langchain-core`/`langchain-text-splitters`, `llama-index-core`, or `haystack-ai` for the RAG framework adapters (install via `--extra langchain` / `--extra llama-index` / `--extra haystack`)
 
 ## Commands
 
 ```bash
-# Install dev, test, tokenizer, and DOCX dependencies
-uv sync --group dev --group test --extra tokenizers --extra docx --extra web
+# Install dev, test, tokenizer, and web dependencies
+uv sync --group dev --group test --extra tokenizers --extra web
 
 # Run CLI (Markdown)
 uv run lumber path/to/file.md --max-tokens 1200 --merge-below-ratio 0.125

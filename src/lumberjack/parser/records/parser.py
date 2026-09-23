@@ -465,8 +465,7 @@ class TOMLParser(_StructuredDataParser):
                 tomllib = import_module("tomli")
             except ModuleNotFoundError as exc:
                 raise ImportError(
-                    "TOML support on Python 3.10 requires 'tomli'. "
-                    "Install lumberjack-py[toml]."
+                    "TOML support requires the bundled 'tomli' dependency."
                 ) from exc
         return tomllib.loads(source)
 

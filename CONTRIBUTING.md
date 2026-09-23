@@ -37,10 +37,10 @@ Contributions of all sizes are welcome — bug reports, bug fixes, new features,
    git remote add upstream https://github.com/ouyangfeng2022/lumberjack.git
    ```
 
-3. **Install Python dependencies** (dev tools, tests, tokenizers, and DOCX support):
+3. **Install Python dependencies** (dev tools, tests, tokenizers, and web support):
 
    ```bash
-   uv sync --group dev --group test --extra tokenizers --extra docx --extra web
+   uv sync --group dev --group test --extra tokenizers --extra web
    ```
 
 4. **(Optional) Install web dependencies** if you'll touch the frontend:

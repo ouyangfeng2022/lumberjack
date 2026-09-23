@@ -197,8 +197,8 @@ def test_node_parser_ids_are_deterministic_across_runs() -> None:
 
 def _docx_fixture() -> Path:
     fixture = Path(__file__).parents[1] / "fixtures" / "docx" / "sample.docx"
-    if not fixture.exists():  # pragma: no cover - docx extra not installed
-        pytest.skip("DOCX fixture requires the docx extra")
+    if not fixture.exists():  # pragma: no cover - repository fixture is required
+        pytest.skip("DOCX fixture is missing")
     return fixture
 
 

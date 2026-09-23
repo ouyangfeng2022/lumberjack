@@ -55,18 +55,24 @@ def test_wheel_contains_typed_package_without_web_assets(
     extras = {
         "all",
         "code-parsing",
-        "docx",
         "haystack",
         "langchain",
         "llama-index",
-        "spreadsheets",
         "tokenizers",
-        "toml",
         "web",
     }
     assert set(package_metadata.get_all("Provides-Extra", [])) == extras
 
     requirements = set(package_metadata.get_all("Requires-Dist", []))
+    assert {
+        requirement for requirement in requirements if "extra ==" not in requirement
+    } == {
+        "markdown-it-py[linkify,plugins]>=4.0.0",
+        "openpyxl>=3.1",
+        "python-docx>=1.1.0",
+        "pyyaml>=6.0",
+        "tomli>=2.0; python_version < '3.11'",
+    }
     requirements_by_extra = {
         extra: {
             requirement.partition(";")[0].strip()
@@ -80,7 +86,6 @@ def test_wheel_contains_typed_package_without_web_assets(
         "tiktoken>=0.9.0",
         "transformers>=4.41.0",
     }
-    assert requirements_by_extra["docx"] == {"python-docx>=1.1.0"}
     assert requirements_by_extra["web"] == {
         "fastapi>=0.115.0",
         "python-multipart>=0.0.18",

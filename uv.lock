@@ -2311,7 +2311,10 @@ name = "lumberjack-py"
 source = { editable = "." }
 dependencies = [
     { name = "markdown-it-py", extra = ["linkify", "plugins"] },
+    { name = "openpyxl" },
+    { name = "python-docx" },
     { name = "pyyaml" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
 
 [package.optional-dependencies]
@@ -2322,12 +2325,9 @@ all = [
     { name = "langchain-core" },
     { name = "langchain-text-splitters" },
     { name = "llama-index-core" },
-    { name = "openpyxl" },
-    { name = "python-docx" },
     { name = "python-multipart" },
     { name = "starlette" },
     { name = "tiktoken" },
-    { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "transformers" },
     { name = "tree-sitter" },
     { name = "tree-sitter-bash" },
@@ -2367,9 +2367,6 @@ code-parsing = [
     { name = "tree-sitter-typescript" },
     { name = "tree-sitter-zig" },
 ]
-docx = [
-    { name = "python-docx" },
-]
 haystack = [
     { name = "haystack-ai" },
 ]
@@ -2380,16 +2377,10 @@ langchain = [
 llama-index = [
     { name = "llama-index-core" },
 ]
-spreadsheets = [
-    { name = "openpyxl" },
-]
 tokenizers = [
     { name = "cachetools" },
     { name = "tiktoken" },
     { name = "transformers" },
-]
-toml = [
-    { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
 web = [
     { name = "fastapi" },
@@ -2443,10 +2434,8 @@ requires-dist = [
     { name = "llama-index-core", marker = "extra == 'all'", specifier = ">=0.12" },
     { name = "llama-index-core", marker = "extra == 'llama-index'", specifier = ">=0.12" },
     { name = "markdown-it-py", extras = ["linkify", "plugins"], specifier = ">=4.0.0" },
-    { name = "openpyxl", marker = "extra == 'all'", specifier = ">=3.1" },
-    { name = "openpyxl", marker = "extra == 'spreadsheets'", specifier = ">=3.1" },
-    { name = "python-docx", marker = "extra == 'all'", specifier = ">=1.1.0" },
-    { name = "python-docx", marker = "extra == 'docx'", specifier = ">=1.1.0" },
+    { name = "openpyxl", specifier = ">=3.1" },
+    { name = "python-docx", specifier = ">=1.1.0" },
     { name = "python-multipart", marker = "extra == 'all'", specifier = ">=0.0.18" },
     { name = "python-multipart", marker = "extra == 'web'", specifier = ">=0.0.18" },
     { name = "pyyaml", specifier = ">=6.0" },
@@ -2454,8 +2443,7 @@ requires-dist = [
     { name = "starlette", marker = "extra == 'web'", specifier = "<1.0.0" },
     { name = "tiktoken", marker = "extra == 'all'", specifier = ">=0.9.0" },
     { name = "tiktoken", marker = "extra == 'tokenizers'", specifier = ">=0.9.0" },
-    { name = "tomli", marker = "python_full_version < '3.11' and extra == 'all'", specifier = ">=2.0" },
-    { name = "tomli", marker = "python_full_version < '3.11' and extra == 'toml'", specifier = ">=2.0" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0" },
     { name = "transformers", marker = "extra == 'all'", specifier = ">=4.41.0" },
     { name = "transformers", marker = "extra == 'tokenizers'", specifier = ">=4.41.0" },
     { name = "tree-sitter", marker = "extra == 'all'", specifier = ">=0.25" },
@@ -2495,7 +2483,7 @@ requires-dist = [
     { name = "uvicorn", marker = "extra == 'all'", specifier = ">=0.34.0" },
     { name = "uvicorn", marker = "extra == 'web'", specifier = ">=0.34.0" },
 ]
-provides-extras = ["all", "code-parsing", "docx", "haystack", "langchain", "llama-index", "spreadsheets", "tokenizers", "toml", "web"]
+provides-extras = ["all", "code-parsing", "haystack", "langchain", "llama-index", "tokenizers", "web"]
 
 [package.metadata.requires-dev]
 benchmark = [

@@ -161,7 +161,7 @@ docling 的耗时由文档转换主导而非 chunking；应把它的墙钟时间
 
 ```bash
 uv sync --group dev --group test --group benchmark \
-  --extra tokenizers --extra docx --extra web
+  --extra tokenizers --extra web
 BASE="benchmarks/results/$(date +%Y%m%d)-$(git rev-parse --short=12 HEAD)"
 uv run python -m benchmarks.run --adapter lumberjack --splitter section \
   --output "$BASE/lumberjack"

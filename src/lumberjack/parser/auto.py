@@ -310,6 +310,8 @@ class AutoParser:
         suffix_format = _format_from_suffix(source_path)
         if suffix_format is not None:
             return suffix_format
+        if isinstance(data, bytes) and data.startswith(b"%PDF-"):
+            raise ValueError("PDF input is not supported")
         if isinstance(data, bytes) and _is_docx(data):
             return "docx"
         if isinstance(data, bytes):

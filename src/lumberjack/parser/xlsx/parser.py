@@ -34,7 +34,7 @@ def _cell_text(value: object) -> str:
 class XlsxParser:
     """Parse each non-empty XLSX row as an atomic, sheet-aware record.
 
-    Requires ``pip install lumberjack-py[spreadsheets]``.
+    ``openpyxl`` is installed with Lumberjack.
     """
 
     default_block_kinds: ClassVar[frozenset[str]] = frozenset({"tabular_row"})
@@ -65,7 +65,7 @@ class XlsxParser:
             from openpyxl import load_workbook
         except ImportError as exc:
             raise ImportError(
-                "XLSX support requires 'openpyxl'. Install lumberjack-py[spreadsheets]."
+                "XLSX support requires the bundled 'openpyxl' dependency."
             ) from exc
 
         workbook = load_workbook(
