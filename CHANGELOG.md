@@ -9,9 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- PDF input is converted locally through MarkItDown before splitting; PDFs with
+  no extractable text now point users to MinerU or PaddleOCR.
 - DOCX, XLSX, and Python 3.10 TOML support are now installed with the core
-  package instead of optional extras. PDF bytes are rejected explicitly rather
-  than being mistaken for Markdown when their bytes happen to be valid UTF-8.
+  package instead of optional extras.
 - Oversized-text hard splitting now stops binary token probes within a small
   character window, reducing tokenizer work while allowing slightly more
   conservative chunk boundaries.

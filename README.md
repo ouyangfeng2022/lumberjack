@@ -61,7 +61,7 @@ The API provides `POST /lumber/api/split/text` and `POST /lumber/api/split/file`
 
 ## What it does well
 
-- **Broad format support.** Markdown, HTML, DOCX, plain text and logs, CSV/TSV, JSON/JSONL, XML, YAML/TOML, XLSX, SQLite/SQL, source code, and Jupyter notebooks are parsed into a shared document model. DOCX, XLSX, model-based tokenizers, and enhanced code parsing require optional dependencies.
+- **Broad format support.** Markdown, HTML, DOCX, PDF, plain text and logs, CSV/TSV, JSON/JSONL, XML, YAML/TOML, XLSX, SQLite/SQL, source code, and Jupyter notebooks are parsed into a shared document model. Model-based tokenizers and enhanced code parsing require optional dependencies.
 - **Structure and provenance.** Heading context is retained with each chunk. Record-oriented inputs preserve row, field, sheet, and source-location metadata rather than being represented as artificial sections.
 - **Row-aware table splitting.** Markdown and HTML tables are split at row boundaries. Table headers are repeated in each generated chunk by default and can be configured by table type.
 - **Content-aware splitting.** Code fences retain their delimiters when split. Lists and other block types have dedicated handling. Protected blocks that cannot be split safely may exceed the configured token budget.
@@ -72,12 +72,12 @@ The API provides `POST /lumber/api/split/text` and `POST /lumber/api/split/file`
 
 | Family | Formats | Notes |
 | --- | --- | --- |
-| Documents | Markdown, HTML, DOCX | Headings, paragraphs, lists, tables, code, and document properties where available. |
+| Documents | Markdown, HTML, DOCX, PDF | Headings, paragraphs, lists, tables, code, and document properties where available. PDF conversion stays local through MarkItDown; use MinerU or PaddleOCR for scanned PDFs. |
 | Text and records | TXT, LOG, CSV, TSV, JSON, JSONL, XML, YAML, TOML | Record formats preserve logical row/field paths; use the `record` splitter for flat record packing. |
 | Spreadsheets and databases | XLSX, SQLite, SQL dumps | SQLite uses the standard library. |
 | Code and notebooks | Python, JavaScript/TypeScript, Bash, C/C++, C#, Go, Java, Kotlin, Lua, PHP, Ruby, Rust, Swift, Zig, Jupyter notebooks | The `code-parsing` extra adds Tree-sitter declaration boundaries and syntax-error recovery. |
 
-RTF, ODT, legacy Excel, PDF, image, presentation, and columnar formats are not currently supported.
+RTF, ODT, legacy Excel, image, presentation, and columnar formats are not currently supported.
 
 ## Table splitting
 

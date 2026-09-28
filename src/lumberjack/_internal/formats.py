@@ -8,6 +8,7 @@ SUPPORTED_FORMATS = frozenset(
         "markdown",
         "html",
         "docx",
+        "pdf",
         "text",
         "log",
         "csv",
@@ -23,6 +24,7 @@ SUPPORTED_FORMATS = frozenset(
         "python",
         "javascript",
         "typescript",
+        "tsx",
         "bash",
         "c",
         "cpp",
@@ -56,6 +58,7 @@ TEXT_FORMATS = frozenset(
         "python",
         "javascript",
         "typescript",
+        "tsx",
         "bash",
         "c",
         "cpp",
@@ -84,6 +87,8 @@ def detect_format(source: str | bytes | Path, format: str) -> str:
         return format
 
     if isinstance(source, bytes):
+        if source.startswith(b"%PDF-"):
+            return "pdf"
         if source.startswith(b"SQLite format 3\x00"):
             return "sqlite"
         if source.startswith(b"PK\x03\x04") and b"xl/" in source[:2000]:
@@ -98,6 +103,7 @@ def detect_format(source: str | bytes | Path, format: str) -> str:
 
 _SUFFIX_FORMATS: dict[str, str] = {
     ".docx": "docx",
+    ".pdf": "pdf",
     ".html": "html",
     ".htm": "html",
     ".md": "markdown",

@@ -13,7 +13,7 @@ lumber INPUT [OPTIONS]
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--input-format` | `auto` | All documented input formats, including `sql`, `sqlite`, `notebook`, and code formats: `python`, `javascript`, `typescript`, `bash`, `c`, `cpp`, `csharp`, `go`, `java`, `kotlin`, `lua`, `php`, `ruby`, `rust`, `swift`, and `zig`. Auto detects supported file extensions. Syntax-aware code parsing requires `code-parsing`. |
+| `--input-format` | `auto` | All documented input formats, including `pdf`, `sql`, `sqlite`, `notebook`, and code formats: `python`, `javascript`, `typescript`, `bash`, `c`, `cpp`, `csharp`, `go`, `java`, `kotlin`, `lua`, `php`, `ruby`, `rust`, `swift`, and `zig`. Auto detects supported file extensions. Syntax-aware code parsing requires `code-parsing`. |
 | `--tokenizer` | `approx` | `approx`, `tiktoken`, or `transformers`; controls encoding and token counting only. |
 | `--splitter` | `section` | Structure topology and counting mode. Use `record` for LOG, CSV/TSV, JSON/JSONL, XML, and YAML so input records remain atomic. See [splitting](../concepts/splitting.md). |
 | `--max-tokens` | `1200` | Maximum tokens per chunk. |

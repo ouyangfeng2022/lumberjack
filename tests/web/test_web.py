@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient, Response
 
 import lumberjack.web.routes as web_routes
+from lumberjack.models import DocTree, SectionNode, SplitResult
 from lumberjack.tokenizer import ApproxByteTokenizer, TiktokenTokenizer
 from lumberjack.web import create_app
 
@@ -169,6 +170,26 @@ def test_split_with_file(client: ASGITestClient) -> None:
     body = response.json()
     assert body["document"] == "guide.md"
     assert body["chunk_count"] >= 1
+
+
+def test_split_file_passes_pdf_bytes_to_the_pipeline(
+    client: ASGITestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def split_pdf(source: str | bytes, **kwargs: object) -> SplitResult:
+        assert source == b"%PDF-1.7\n"
+        assert kwargs["format"] == "pdf"
+        return SplitResult(
+            document=DocTree(title="report.pdf", source="", root=SectionNode(0, "")),
+            chunks=[],
+        )
+
+    monkeypatch.setattr(web_routes, "split_source", split_pdf)
+    response = client.post(
+        "/lumber/api/split/file",
+        files={"file": ("report.pdf", io.BytesIO(b"%PDF-1.7\n"), "application/pdf")},
+    )
+
+    assert response.status_code == 200
 
 
 def test_split_text_accepts_heading_sensitive_false(client: ASGITestClient) -> None:

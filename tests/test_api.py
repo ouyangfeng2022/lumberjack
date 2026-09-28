@@ -318,11 +318,6 @@ def test_auto_parser_rejects_non_utf8_non_docx_bytes() -> None:
         AutoParser().parse(b"\xff\xfe\x00")
 
 
-def test_auto_parser_rejects_pdf_bytes() -> None:
-    with pytest.raises(ValueError, match="PDF input is not supported"):
-        AutoParser().parse(b"%PDF-1.7\n")
-
-
 def test_metadata_overrides_parser_metadata_and_source_path_is_independent() -> None:
     document = AutoParser().parse(
         "---\ntitle: Front matter\nauthor: Ada\n---\n\nBody",

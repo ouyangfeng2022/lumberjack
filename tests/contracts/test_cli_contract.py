@@ -19,6 +19,7 @@ def test_cli_public_defaults_and_choices() -> None:
         "markdown",
         "html",
         "docx",
+        "pdf",
         "text",
         "log",
         "csv",

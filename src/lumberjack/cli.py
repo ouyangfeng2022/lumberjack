@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from ._internal.formats import detect_format, has_known_suffix
+from ._internal.formats import SUPPORTED_FORMATS, detect_format, has_known_suffix
 from ._internal.options import parse_block_config_mapping
 from ._internal.pipeline import (
     BUILTIN_SPLITTER_NAMES,
@@ -84,7 +84,7 @@ def _parse_cli_block_options(args: argparse.Namespace) -> list[BlockOption]:
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser with all split options."""
     parser = argparse.ArgumentParser(
-        description="Markdown, HTML, DOCX, text, CSV/TSV, JSONL, and log document splitter"
+        description="Markdown, HTML, DOCX, PDF, text, CSV/TSV, JSONL, and log document splitter"
     )
     parser.add_argument(
         "input", help="Path, directory, or glob of supported document files"
@@ -92,42 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
     input_options = parser.add_argument_group("input")
     input_options.add_argument(
         "--input-format",
-        choices=(
-            "auto",
-            "markdown",
-            "html",
-            "docx",
-            "text",
-            "log",
-            "csv",
-            "tsv",
-            "json",
-            "jsonl",
-            "xml",
-            "yaml",
-            "xlsx",
-            "toml",
-            "sqlite",
-            "sql",
-            "python",
-            "javascript",
-            "typescript",
-            "tsx",
-            "bash",
-            "c",
-            "cpp",
-            "csharp",
-            "go",
-            "java",
-            "kotlin",
-            "lua",
-            "php",
-            "ruby",
-            "rust",
-            "swift",
-            "zig",
-            "notebook",
-        ),
+        choices=tuple(sorted(SUPPORTED_FORMATS)),
         default="auto",
         metavar="FORMAT",
         help="Input format (default: auto-detect from file extension)",

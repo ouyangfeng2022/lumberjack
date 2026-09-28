@@ -48,6 +48,7 @@ def test_wheel_contains_typed_package_without_web_assets(
         metadata = archive.read(metadata_name).decode("utf-8")
 
     assert "lumberjack/py.typed" in names
+    assert "lumberjack/parser/pdf/parser.py" in names
     # The Web UI's static assets are git-ignored build outputs and are
     # deliberately not bundled; deployments build them from lumberjack_webui/.
     assert not any(name.startswith("lumberjack/web/static") for name in names)
@@ -68,6 +69,7 @@ def test_wheel_contains_typed_package_without_web_assets(
         requirement for requirement in requirements if "extra ==" not in requirement
     } == {
         "markdown-it-py[linkify,plugins]>=4.0.0",
+        "markitdown[pdf]>=0.1.8",
         "openpyxl>=3.1",
         "python-docx>=1.1.0",
         "pyyaml>=6.0",
@@ -118,6 +120,7 @@ def test_sdist_excludes_local_and_frontend_development_outputs(
         names = archive.getnames()
 
     assert any(name.endswith("/src/lumberjack/py.typed") for name in names)
+    assert any(name.endswith("/src/lumberjack/parser/pdf/parser.py") for name in names)
     forbidden_parts = (
         "/lumberjack_webui/",
         "/node_modules/",

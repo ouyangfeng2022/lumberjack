@@ -4,13 +4,14 @@
 
 The project is in the **development stage** and compatibility does not need to be considered. Allow all disruptive changes.
 
-Structure-aware document splitter for RAG preprocessing: Markdown, HTML, DOCX, plain text/log, CSV/TSV, JSON/JSONL/XML/YAML/TOML, XLSX, SQLite/SQL dumps, and source code/notebooks. Python 3.10+, `src/` layout, built with `hatchling` + `hatch-vcs`.
+Structure-aware document splitter for RAG preprocessing: Markdown, HTML, DOCX, PDF, plain text/log, CSV/TSV, JSON/JSONL/XML/YAML/TOML, XLSX, SQLite/SQL dumps, and source code/notebooks. Python 3.10+, `src/` layout, built with `hatchling` + `hatch-vcs`.
 
 Current runtime dependencies:
 
 - `markdown-it-py[linkify,plugins]>=4.0.0` for the default GFM-like parser
 - `pyyaml>=6.0` for YAML front matter and YAML records
 - `python-docx>=1.1.0`, `openpyxl>=3.1.0`, and `tomli>=2.0.0` on Python < 3.11 for DOCX, XLSX, and TOML input
+- `markitdown[pdf]>=0.1.8` for local PDF text-layer conversion; use MinerU or PaddleOCR for scanned PDFs
 
 Optional dependencies:
 
@@ -203,7 +204,7 @@ Implemented in `src/lumberjack/web/` (app factory in `app.py`, routes in `routes
 
 - `POST /lumber/api/split/text` — JSON body with `text` and split options
 - `POST /lumber/api/split/file` — multipart form with `file` upload and split options
-  - Supports `input_format` form field: `auto` (detect from extension) or any supported format; binary formats (`docx`, `xlsx`, `sqlite`) are passed through as bytes
+  - Supports `input_format` form field: `auto` (detect from extension) or any supported format; binary formats (`docx`, `pdf`, `xlsx`, `sqlite`) are passed through as bytes
 - Both endpoints accept `trace_stages` (repeatable) and `trace_max_bytes` for size-capped selective stage output
 - Response: JSON with `schema_version`, `document`, `metadata`, `chunk_count`, `chunks` array, and optional `trace`
 - Static Web UI assets are mounted only when built; otherwise the server runs API-only
@@ -214,7 +215,7 @@ Implemented in `src/lumberjack/web/` (app factory in `app.py`, routes in `routes
 Implemented in `src/lumberjack/cli.py`.
 
 - Input is a file path, a directory, or a glob of supported documents
-- `--input-format`: `auto` (detect from extension) or any of `markdown`, `html`, `docx`, `text`, `log`, `csv`, `tsv`, `json`, `jsonl`, `xml`, `yaml`, `xlsx`, `toml`, `sqlite`, `sql`, source-code names (`python` … `zig`), `notebook`
+- `--input-format`: `auto` (detect from extension) or any of `markdown`, `html`, `docx`, `pdf`, `text`, `log`, `csv`, `tsv`, `json`, `jsonl`, `xml`, `yaml`, `xlsx`, `toml`, `sqlite`, `sql`, source-code names (`python` … `zig`), `notebook`
 - Output format: JSON only; `--jsonl` emits one result record per line for batch runs
 - Batch: `--output-dir` writes one JSON per input, `--recursive` recurses directories, `--overwrite` allows replacing outputs, `--fail-fast` stops at the first failure; progress/logs go to stderr so stdout stays pipeable
 - Tokenizers (engine): `approx`, `tiktoken`, `transformers`
@@ -240,7 +241,7 @@ Implemented in `src/lumberjack/cli.py`.
 
 ## Constraints
 
-- Supported input formats: Markdown, HTML, DOCX, TXT/LOG, CSV/TSV, JSON/JSONL/XML/YAML/TOML, XLSX, SQLite/SQL, source code, and notebooks (RTF/ODT/DOC/XLS/ODS/Parquet/Avro/ORC and PDF are deliberately deferred)
+- Supported input formats: Markdown, HTML, DOCX, PDF, TXT/LOG, CSV/TSV, JSON/JSONL/XML/YAML/TOML, XLSX, SQLite/SQL, source code, and notebooks (RTF/ODT/DOC/XLS/ODS/Parquet/Avro/ORC are deliberately deferred)
 - Oversized fenced code blocks are split into re-fenced segments by default (`BlockConfig.split=True`); configure `code_block`/`code_fence` with `split=False` to preserve them intact even when they exceed `max_tokens`
 - CLI should stay orchestration-only; parsing and splitting logic belongs to the public component implementations, while integration adapters belong in `src/lumberjack/_internal/`
 - The core package has no LangChain/LlamaIndex/Haystack/Docling/Unstructured dependency; framework adapters live in `src/lumberjack/integrations/` behind optional extras and lazy imports

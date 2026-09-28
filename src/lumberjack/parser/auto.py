@@ -14,6 +14,7 @@ from .code.tree_sitter import CodeLanguage
 from .docx import DocxParser
 from .html import HTMLParser
 from .markdown import MarkdownParser
+from .pdf import PdfParser
 from .records import (
     DelimitedTextParser,
     JSONLinesParser,
@@ -31,6 +32,7 @@ DetectedFormat = Literal[
     "markdown",
     "html",
     "docx",
+    "pdf",
     "text",
     "log",
     "csv",
@@ -68,6 +70,7 @@ _VALID_FORMATS = frozenset(
         "markdown",
         "html",
         "docx",
+        "pdf",
         "text",
         "log",
         "csv",
@@ -113,6 +116,8 @@ def _format_from_suffix(path: str | Path | None) -> DetectedFormat | None:
     suffix = Path(path).suffix.lower()
     if suffix == ".docx":
         return "docx"
+    if suffix == ".pdf":
+        return "pdf"
     if suffix in {".html", ".htm"}:
         return "html"
     if suffix in {".md", ".markdown"}:
@@ -233,6 +238,11 @@ class AutoParser:
                 raise TypeError("DOCX input must be bytes or a pathlib.Path")
             return DocxParser().parse(parsed_tree)
 
+        if format == "pdf":
+            if isinstance(data, str):
+                raise TypeError("PDF input must be bytes or a pathlib.Path")
+            return PdfParser().parse(parsed_tree)
+
         if format == "xlsx":
             if isinstance(data, str):
                 raise TypeError("XLSX input must be bytes or a pathlib.Path")
@@ -311,7 +321,7 @@ class AutoParser:
         if suffix_format is not None:
             return suffix_format
         if isinstance(data, bytes) and data.startswith(b"%PDF-"):
-            raise ValueError("PDF input is not supported")
+            return "pdf"
         if isinstance(data, bytes) and _is_docx(data):
             return "docx"
         if isinstance(data, bytes):

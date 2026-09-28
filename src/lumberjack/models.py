@@ -17,6 +17,7 @@ InputFormat: TypeAlias = Literal[
     "markdown",
     "html",
     "docx",
+    "pdf",
     "text",
     "log",
     "csv",

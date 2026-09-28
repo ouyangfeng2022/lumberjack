@@ -12,6 +12,7 @@ from .markdown import (
     MarkdownItParser,
     MarkdownParser,
 )
+from .pdf import PdfParser
 from .records import (
     DelimitedTextParser,
     JSONLinesParser,
@@ -41,6 +42,7 @@ __all__ = [
     "MarkdownItParser",
     "MarkdownParser",
     "NotebookParser",
+    "PdfParser",
     "SQLParser",
     "SQLiteParser",
     "SourceCodeParser",
