@@ -4,14 +4,16 @@
 
 The project is in the **development stage** and compatibility does not need to be considered. Allow all disruptive changes.
 
-Structure-aware document splitter for RAG preprocessing: Markdown, HTML, DOCX, PDF, plain text/log, CSV/TSV, JSON/JSONL/XML/YAML/TOML, XLSX, SQLite/SQL dumps, and source code/notebooks. Python 3.10+, `src/` layout, built with `hatchling` + `hatch-vcs`.
+Structure-aware document splitter for RAG preprocessing: Markdown, HTML, DOCX, PDF, EPUB, PPTX/PPT/ODP, EML/MSG/MBOX, plain text/log, CSV/TSV, JSON/JSONL/XML/YAML/TOML, XLSX, SQLite/SQL dumps, and source code/notebooks. Python 3.10+, `src/` layout, built with `hatchling` + `hatch-vcs`.
 
 Current runtime dependencies:
 
 - `markdown-it-py[linkify,plugins]>=4.0.0` for the default GFM-like parser
 - `pyyaml>=6.0` for YAML front matter and YAML records
 - `python-docx>=1.1.0`, `openpyxl>=3.1.0`, and `tomli>=2.0.0` on Python < 3.11 for DOCX, XLSX, and TOML input
-- `markitdown[pdf]>=0.1.8` for local PDF text-layer conversion; use MinerU or PaddleOCR for scanned PDFs
+- `markitdown[pdf]>=0.1.8` for local PDF text-layer conversion (install via `--extra pdf`); use MinerU or PaddleOCR for scanned PDFs
+- `python-pptx>=1.0.2` for PPTX (install via `--extra presentations`); legacy PPT also needs local LibreOffice
+- `aspose-email-foss>=26.3` for MSG (install via `--extra msg`)
 
 Optional dependencies:
 
@@ -23,8 +25,8 @@ Optional dependencies:
 ## Commands
 
 ```bash
-# Install dev, test, tokenizer, and web dependencies
-uv sync --group dev --group test --extra tokenizers --extra web
+# Install dev, test, parser, tokenizer, and web dependencies
+uv sync --group dev --group test --extra pdf --extra presentations --extra msg --extra tokenizers --extra web
 
 # Run CLI (Markdown)
 uv run lumber path/to/file.md --max-tokens 1200 --merge-below-ratio 0.125
@@ -147,6 +149,13 @@ Format-specific parsers — each turns one input format into the shared `DocTree
   - Iterates body elements in document order to preserve paragraph/table sequence
   - Extracts core properties as document metadata
 
+#### PDF, EPUB, presentations, and mail
+
+- `parser/pdf/parser.py` converts PDF text layers locally with MarkItDown; no OCR.
+- `parser/epub/parser.py` follows EPUB spine order using the HTML parser.
+- `parser/presentation/parser.py` reads PPTX/ODP slides and notes; PPT uses local LibreOffice conversion first.
+- `parser/email/parser.py` reads EML/MBOX with the standard email library and MSG through the `msg` extra.
+
 #### HTML (`src/lumberjack/parser/html/`)
 
 - **Parser**: `src/lumberjack/parser/html/parser.py`
@@ -204,7 +213,7 @@ Implemented in `src/lumberjack/web/` (app factory in `app.py`, routes in `routes
 
 - `POST /lumber/api/split/text` — JSON body with `text` and split options
 - `POST /lumber/api/split/file` — multipart form with `file` upload and split options
-  - Supports `input_format` form field: `auto` (detect from extension) or any supported format; binary formats (`docx`, `pdf`, `xlsx`, `sqlite`) are passed through as bytes
+  - Supports `input_format` form field: `auto` (detect from extension) or any supported format; binary formats (`docx`, `pdf`, `epub`, `pptx`, `ppt`, `odp`, `eml`, `msg`, `mbox`, `xlsx`, `sqlite`) are passed through as bytes
 - Both endpoints accept `trace_stages` (repeatable) and `trace_max_bytes` for size-capped selective stage output
 - Response: JSON with `schema_version`, `document`, `metadata`, `chunk_count`, `chunks` array, and optional `trace`
 - Static Web UI assets are mounted only when built; otherwise the server runs API-only
@@ -215,7 +224,7 @@ Implemented in `src/lumberjack/web/` (app factory in `app.py`, routes in `routes
 Implemented in `src/lumberjack/cli.py`.
 
 - Input is a file path, a directory, or a glob of supported documents
-- `--input-format`: `auto` (detect from extension) or any of `markdown`, `html`, `docx`, `pdf`, `text`, `log`, `csv`, `tsv`, `json`, `jsonl`, `xml`, `yaml`, `xlsx`, `toml`, `sqlite`, `sql`, source-code names (`python` … `zig`), `notebook`
+- `--input-format`: `auto` (detect from extension) or any of `markdown`, `html`, `docx`, `pdf`, `epub`, `pptx`, `ppt`, `odp`, `eml`, `msg`, `mbox`, `text`, `log`, `csv`, `tsv`, `json`, `jsonl`, `xml`, `yaml`, `xlsx`, `toml`, `sqlite`, `sql`, source-code names (`python` … `zig`), `notebook`
 - Output format: JSON only; `--jsonl` emits one result record per line for batch runs
 - Batch: `--output-dir` writes one JSON per input, `--recursive` recurses directories, `--overwrite` allows replacing outputs, `--fail-fast` stops at the first failure; progress/logs go to stderr so stdout stays pipeable
 - Tokenizers (engine): `approx`, `tiktoken`, `transformers`
@@ -241,7 +250,7 @@ Implemented in `src/lumberjack/cli.py`.
 
 ## Constraints
 
-- Supported input formats: Markdown, HTML, DOCX, PDF, TXT/LOG, CSV/TSV, JSON/JSONL/XML/YAML/TOML, XLSX, SQLite/SQL, source code, and notebooks (RTF/ODT/DOC/XLS/ODS/Parquet/Avro/ORC are deliberately deferred)
+- Supported input formats: Markdown, HTML, DOCX, PDF, EPUB, PPTX/PPT/ODP, EML/MSG/MBOX, TXT/LOG, CSV/TSV, JSON/JSONL/XML/YAML/TOML, XLSX, SQLite/SQL, source code, and notebooks (RTF/ODT/DOC/XLS/ODS/Parquet/Avro/ORC are deliberately deferred)
 - Oversized fenced code blocks are split into re-fenced segments by default (`BlockConfig.split=True`); configure `code_block`/`code_fence` with `split=False` to preserve them intact even when they exceed `max_tokens`
 - CLI should stay orchestration-only; parsing and splitting logic belongs to the public component implementations, while integration adapters belong in `src/lumberjack/_internal/`
 - The core package has no LangChain/LlamaIndex/Haystack/Docling/Unstructured dependency; framework adapters live in `src/lumberjack/integrations/` behind optional extras and lazy imports

@@ -192,6 +192,32 @@ def test_split_file_passes_pdf_bytes_to_the_pipeline(
     assert response.status_code == 200
 
 
+@pytest.mark.parametrize(
+    "format",
+    ["epub", "pptx", "ppt", "odp", "eml", "msg", "mbox"],
+)
+def test_split_file_passes_new_formats_as_bytes(
+    client: ASGITestClient, monkeypatch: pytest.MonkeyPatch, format: str
+) -> None:
+    def split_format(source: str | bytes, **kwargs: object) -> SplitResult:
+        assert source == b"example"
+        assert kwargs["format"] == format
+        return SplitResult(
+            document=DocTree(
+                title=f"example.{format}", source="", root=SectionNode(0, "")
+            ),
+            chunks=[],
+        )
+
+    monkeypatch.setattr(web_routes, "split_source", split_format)
+    response = client.post(
+        "/lumber/api/split/file",
+        files={"file": (f"example.{format}", io.BytesIO(b"example"))},
+        data={"input_format": format},
+    )
+    assert response.status_code == 200
+
+
 def test_split_text_accepts_heading_sensitive_false(client: ASGITestClient) -> None:
     response = client.post(
         "/lumber/api/split/text",

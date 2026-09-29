@@ -6,19 +6,12 @@ from io import BytesIO
 from pathlib import Path
 from typing import ClassVar
 
-from markitdown import MarkItDown
-from pdfplumber import open as open_pdf
-
 from ...models import DocTree, Document
 from ..markdown import MarkdownParser
 
 
 class PdfParser:
-    """Convert a text-layer PDF to Markdown, then parse the Markdown tree.
-
-    Plugins are disabled so parsing stays local and never uploads document data.
-    Scanned PDFs are outside Lumberjack's scope; use MinerU or PaddleOCR.
-    """
+    """Convert a text-layer PDF to Markdown without OCR or remote services."""
 
     block_kinds: ClassVar[frozenset[str]] = MarkdownParser().block_kinds
 
@@ -41,8 +34,15 @@ class PdfParser:
         if not isinstance(document.source, bytes | bytearray):
             raise TypeError("PdfParser.parse expects Document[bytes]")
         try:
-            # MarkItDown falls back to its plain-text converter for malformed
-            # PDFs, which would emit the PDF bytes as document content.
+            from markitdown import MarkItDown
+            from pdfminer.pdfdocument import PDFPasswordIncorrect
+            from pdfplumber import open as open_pdf
+        except ImportError as exc:
+            raise RuntimeError(
+                "PDF parsing requires the 'pdf' extra: pip install 'lumberjack-py[pdf]'"
+            ) from exc
+        try:
+            # MarkItDown can treat malformed PDF bytes as plain text.
             with open_pdf(BytesIO(bytes(document.source))):
                 pass
             markdown = (
@@ -50,6 +50,8 @@ class PdfParser:
                 .convert_stream(BytesIO(bytes(document.source)), file_extension=".pdf")
                 .markdown.strip()
             )
+        except PDFPasswordIncorrect as exc:
+            raise ValueError("Encrypted PDF requires a password") from exc
         except Exception as exc:
             raise ValueError(f"Invalid or unreadable PDF: {exc}") from exc
         if not markdown:

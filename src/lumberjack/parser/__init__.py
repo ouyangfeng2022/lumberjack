@@ -4,6 +4,8 @@ from .auto import AutoParser, InputFormat
 from .builder import DocTreeBuilder
 from .code import NotebookParser, SourceCodeParser, SQLParser
 from .docx import DocxParser
+from .email import EmlParser, MboxParser, MsgParser
+from .epub import EpubParser
 from .html import HTMLParser
 from .markdown import (
     MarkdownBlockContext,
@@ -13,6 +15,7 @@ from .markdown import (
     MarkdownParser,
 )
 from .pdf import PdfParser
+from .presentation import OdpParser, PptParser, PptxParser
 from .records import (
     DelimitedTextParser,
     JSONLinesParser,
@@ -31,6 +34,8 @@ __all__ = [
     "DelimitedTextParser",
     "DocTreeBuilder",
     "DocxParser",
+    "EmlParser",
+    "EpubParser",
     "HTMLParser",
     "InputFormat",
     "JSONLinesParser",
@@ -41,8 +46,13 @@ __all__ = [
     "MarkdownBlockSpec",
     "MarkdownItParser",
     "MarkdownParser",
+    "MboxParser",
+    "MsgParser",
     "NotebookParser",
+    "OdpParser",
     "PdfParser",
+    "PptParser",
+    "PptxParser",
     "SQLParser",
     "SQLiteParser",
     "SourceCodeParser",

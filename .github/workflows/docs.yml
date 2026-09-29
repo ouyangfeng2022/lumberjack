@@ -37,7 +37,7 @@ jobs:
           enable-cache: true
 
       - name: Install documentation dependencies
-        run: uv sync --group docs --extra docx --extra web
+        run: uv sync --group docs --extra web
 
       - name: Build documentation and check internal links
         run: uv run --group docs mkdocs build --strict

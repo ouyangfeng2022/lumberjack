@@ -259,6 +259,15 @@ wheels = [
 ]
 
 [[package]]
+name = "aspose-email-foss"
+version = "26.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1a/69/489bf60a973a0a8c5d9ec59b5a1441a50d00fcf050850f3a046dc69cdb5c/aspose_email_foss-26.3.tar.gz", hash = "sha256:a2e5b8be13671c169f7309c67ce0d54d521b4c660c6e0e8286cdf75217fbaa74", size = 50788, upload-time = "2026-03-16T18:11:11.955Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/08/7119d5a962385d6b0b842cfaa278f06b9b425bc58a6d375317307cec1ea9/aspose_email_foss-26.3-py3-none-any.whl", hash = "sha256:c6552466727acacf9decea4cfa2e913133c92f8619d7a1674b715d7216b6b545", size = 45329, upload-time = "2026-03-16T18:11:10.387Z" },
+]
+
+[[package]]
 name = "async-timeout"
 version = "5.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2368,7 +2377,6 @@ name = "lumberjack-py"
 source = { editable = "." }
 dependencies = [
     { name = "markdown-it-py", extra = ["linkify", "plugins"] },
-    { name = "markitdown", extra = ["pdf"] },
     { name = "openpyxl" },
     { name = "python-docx" },
     { name = "pyyaml" },
@@ -2377,13 +2385,16 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
+    { name = "aspose-email-foss" },
     { name = "cachetools" },
     { name = "fastapi" },
     { name = "haystack-ai" },
     { name = "langchain-core" },
     { name = "langchain-text-splitters" },
     { name = "llama-index-core" },
+    { name = "markitdown", extra = ["pdf"] },
     { name = "python-multipart" },
+    { name = "python-pptx" },
     { name = "starlette" },
     { name = "tiktoken" },
     { name = "transformers" },
@@ -2435,6 +2446,15 @@ langchain = [
 llama-index = [
     { name = "llama-index-core" },
 ]
+msg = [
+    { name = "aspose-email-foss" },
+]
+pdf = [
+    { name = "markitdown", extra = ["pdf"] },
+]
+presentations = [
+    { name = "python-pptx" },
+]
 tokenizers = [
     { name = "cachetools" },
     { name = "tiktoken" },
@@ -2479,6 +2499,8 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aspose-email-foss", marker = "extra == 'all'", specifier = ">=26.3" },
+    { name = "aspose-email-foss", marker = "extra == 'msg'", specifier = ">=26.3" },
     { name = "cachetools", marker = "extra == 'all'", specifier = ">=7.1.1" },
     { name = "cachetools", marker = "extra == 'tokenizers'", specifier = ">=7.1.1" },
     { name = "fastapi", marker = "extra == 'all'", specifier = ">=0.115.0" },
@@ -2492,11 +2514,14 @@ requires-dist = [
     { name = "llama-index-core", marker = "extra == 'all'", specifier = ">=0.12" },
     { name = "llama-index-core", marker = "extra == 'llama-index'", specifier = ">=0.12" },
     { name = "markdown-it-py", extras = ["linkify", "plugins"], specifier = ">=4.0.0" },
-    { name = "markitdown", extras = ["pdf"], specifier = ">=0.1.8" },
+    { name = "markitdown", extras = ["pdf"], marker = "extra == 'all'", specifier = ">=0.1.8" },
+    { name = "markitdown", extras = ["pdf"], marker = "extra == 'pdf'", specifier = ">=0.1.8" },
     { name = "openpyxl", specifier = ">=3.1" },
     { name = "python-docx", specifier = ">=1.1.0" },
     { name = "python-multipart", marker = "extra == 'all'", specifier = ">=0.0.18" },
     { name = "python-multipart", marker = "extra == 'web'", specifier = ">=0.0.18" },
+    { name = "python-pptx", marker = "extra == 'all'", specifier = ">=1.0.2" },
+    { name = "python-pptx", marker = "extra == 'presentations'", specifier = ">=1.0.2" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "starlette", marker = "extra == 'all'", specifier = "<1.0.0" },
     { name = "starlette", marker = "extra == 'web'", specifier = "<1.0.0" },
@@ -2542,7 +2567,7 @@ requires-dist = [
     { name = "uvicorn", marker = "extra == 'all'", specifier = ">=0.34.0" },
     { name = "uvicorn", marker = "extra == 'web'", specifier = ">=0.34.0" },
 ]
-provides-extras = ["all", "code-parsing", "haystack", "langchain", "llama-index", "tokenizers", "web"]
+provides-extras = ["all", "code-parsing", "haystack", "langchain", "llama-index", "msg", "pdf", "presentations", "tokenizers", "web"]
 
 [package.metadata.requires-dev]
 benchmark = [

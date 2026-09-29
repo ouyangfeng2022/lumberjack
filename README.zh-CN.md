@@ -61,7 +61,7 @@ lumberjack-serve --host 127.0.0.1 --port 9612
 
 ## 功能特点
 
-- **格式覆盖广。** 支持 Markdown、HTML、DOCX、PDF、纯文本与日志、CSV/TSV、JSON/JSONL、XML、YAML/TOML、XLSX、SQLite/SQL、源代码和 Jupyter Notebook，并统一解析为共享文档模型。模型 tokenizer 和增强代码解析需要安装相应可选依赖。
+- **格式覆盖广。** 支持 Markdown、HTML、DOCX、PDF、EPUB、PPTX/PPT/ODP、EML/MSG/MBOX、纯文本与日志、CSV/TSV、JSON/JSONL、XML、YAML/TOML、XLSX、SQLite/SQL、源代码和 Jupyter Notebook，并统一解析为共享文档模型。模型 tokenizer 和增强代码解析需要安装相应可选依赖。
 - **保留结构与来源信息。** 标题上下文随切片保留；记录型输入保留行、字段、工作表和来源位置信息，而不是转换为虚构章节。
 - **按行拆分表格。** Markdown 和 HTML 表格在行边界拆分。默认在生成的每个切片中重复表头，并可按表格类型配置。
 - **遵循内容边界。** 代码围栏拆分后仍保留围栏；列表和其他内容块采用相应的拆分策略。无法安全拆分的受保护内容可能超过设定的 token 预算。
@@ -72,12 +72,14 @@ lumberjack-serve --host 127.0.0.1 --port 9612
 
 | 类型 | 格式 | 说明 |
 | --- | --- | --- |
-| 文档 | Markdown、HTML、DOCX、PDF | 支持标题、段落、列表、表格、代码；可读取的文档属性也会保留。PDF 通过本地 MarkItDown 转换；扫描型 PDF 请使用 MinerU 或 PaddleOCR。 |
+| 文档 | Markdown、HTML、DOCX、PDF、EPUB | EPUB 遵循 spine 顺序；安装 `pdf` extra 后，MarkItDown 在本地转换有文本层的 PDF。扫描型 PDF 需要单独的视觉解析器。 |
+| 演示文稿 | PPTX、PPT、ODP | 幻灯片和备注保留页码来源。PPTX 需要 `presentations` extra；旧版 PPT 还需要本地 LibreOffice。 |
+| 邮件 | EML、MSG、MBOX | 保留邮件头、正文、附件及会话标识。MSG 需要 `msg` extra。 |
 | 文本与记录 | TXT、LOG、CSV、TSV、JSON、JSONL、XML、YAML、TOML | 记录格式保留逻辑行号和字段路径；扁平记录使用 `record` splitter。 |
 | 电子表格与数据库 | XLSX、SQLite、SQL dump | SQLite 使用标准库。 |
 | 代码与 Notebook | Python、JavaScript/TypeScript、Bash、C/C++、C#、Go、Java、Kotlin、Lua、PHP、Ruby、Rust、Swift、Zig、Jupyter Notebook | 安装 `code-parsing` extra 后可使用 Tree-sitter 声明边界和语法错误恢复。 |
 
-目前不支持 RTF、ODT、旧版 Excel、图像、演示文稿和列式存储格式。
+目前不支持 RTF、ODT、旧版 Excel、图像和列式存储格式。
 
 ## 表格拆分
 
@@ -116,8 +118,8 @@ CLI 可用 `--block table:repeat-header=false,max-tokens=300` 设置相同选项
 ## 安装可选功能
 
 ```bash
-# 模型 tokenizer、Web API 和 Tree-sitter 解析
-pip install 'lumberjack-py[tokenizers,web,code-parsing]'
+# PDF、演示文稿、MSG 解析、模型 tokenizer、Web API 和 Tree-sitter 解析
+pip install 'lumberjack-py[pdf,presentations,msg,tokenizers,web,code-parsing]'
 
 # RAG 框架集成
 pip install 'lumberjack-py[langchain,llama-index,haystack]'

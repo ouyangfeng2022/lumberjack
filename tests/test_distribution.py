@@ -49,6 +49,8 @@ def test_wheel_contains_typed_package_without_web_assets(
 
     assert "lumberjack/py.typed" in names
     assert "lumberjack/parser/pdf/parser.py" in names
+    for parser in ("epub", "presentation", "email"):
+        assert f"lumberjack/parser/{parser}/parser.py" in names
     # The Web UI's static assets are git-ignored build outputs and are
     # deliberately not bundled; deployments build them from lumberjack_webui/.
     assert not any(name.startswith("lumberjack/web/static") for name in names)
@@ -59,6 +61,9 @@ def test_wheel_contains_typed_package_without_web_assets(
         "haystack",
         "langchain",
         "llama-index",
+        "pdf",
+        "presentations",
+        "msg",
         "tokenizers",
         "web",
     }
@@ -69,7 +74,6 @@ def test_wheel_contains_typed_package_without_web_assets(
         requirement for requirement in requirements if "extra ==" not in requirement
     } == {
         "markdown-it-py[linkify,plugins]>=4.0.0",
-        "markitdown[pdf]>=0.1.8",
         "openpyxl>=3.1",
         "python-docx>=1.1.0",
         "pyyaml>=6.0",
@@ -88,6 +92,9 @@ def test_wheel_contains_typed_package_without_web_assets(
         "tiktoken>=0.9.0",
         "transformers>=4.41.0",
     }
+    assert requirements_by_extra["pdf"] == {"markitdown[pdf]>=0.1.8"}
+    assert requirements_by_extra["presentations"] == {"python-pptx>=1.0.2"}
+    assert requirements_by_extra["msg"] == {"aspose-email-foss>=26.3"}
     assert requirements_by_extra["web"] == {
         "fastapi>=0.115.0",
         "python-multipart>=0.0.18",
@@ -121,6 +128,11 @@ def test_sdist_excludes_local_and_frontend_development_outputs(
 
     assert any(name.endswith("/src/lumberjack/py.typed") for name in names)
     assert any(name.endswith("/src/lumberjack/parser/pdf/parser.py") for name in names)
+    for parser in ("epub", "presentation", "email"):
+        assert any(
+            name.endswith(f"/src/lumberjack/parser/{parser}/parser.py")
+            for name in names
+        )
     forbidden_parts = (
         "/lumberjack_webui/",
         "/node_modules/",

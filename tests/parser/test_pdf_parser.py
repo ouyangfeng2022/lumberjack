@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from lumberjack.models import Document
@@ -112,3 +114,20 @@ def test_pdf_parser_rejects_no_text_layer() -> None:
 def test_pdf_parser_rejects_truncated_pdf() -> None:
     with pytest.raises(ValueError, match="Invalid or unreadable PDF"):
         PdfParser().parse(b"%PDF-1.4\ntruncated")
+
+
+def test_pdf_parser_reports_encrypted_pdf(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pdfminer.pdfdocument import PDFPasswordIncorrect
+
+    def encrypted(_data: object) -> None:
+        raise PDFPasswordIncorrect("password required")
+
+    monkeypatch.setattr("pdfplumber.open", encrypted)
+    with pytest.raises(ValueError, match="Encrypted PDF"):
+        PdfParser().parse(_pdf(("Secret",)))
+
+
+def test_pdf_parser_explains_missing_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, "markitdown", None)
+    with pytest.raises(RuntimeError, match=r"lumberjack-py\[pdf\]"):
+        PdfParser().parse(_pdf(("Hello PDF",)))

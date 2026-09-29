@@ -61,7 +61,7 @@ The API provides `POST /lumber/api/split/text` and `POST /lumber/api/split/file`
 
 ## What it does well
 
-- **Broad format support.** Markdown, HTML, DOCX, PDF, plain text and logs, CSV/TSV, JSON/JSONL, XML, YAML/TOML, XLSX, SQLite/SQL, source code, and Jupyter notebooks are parsed into a shared document model. Model-based tokenizers and enhanced code parsing require optional dependencies.
+- **Broad format support.** Markdown, HTML, DOCX, PDF, EPUB, PPTX/PPT/ODP, EML/MSG/MBOX, plain text and logs, CSV/TSV, JSON/JSONL, XML, YAML/TOML, XLSX, SQLite/SQL, source code, and Jupyter notebooks are parsed into a shared document model. Model-based tokenizers and enhanced code parsing require optional dependencies.
 - **Structure and provenance.** Heading context is retained with each chunk. Record-oriented inputs preserve row, field, sheet, and source-location metadata rather than being represented as artificial sections.
 - **Row-aware table splitting.** Markdown and HTML tables are split at row boundaries. Table headers are repeated in each generated chunk by default and can be configured by table type.
 - **Content-aware splitting.** Code fences retain their delimiters when split. Lists and other block types have dedicated handling. Protected blocks that cannot be split safely may exceed the configured token budget.
@@ -72,12 +72,14 @@ The API provides `POST /lumber/api/split/text` and `POST /lumber/api/split/file`
 
 | Family | Formats | Notes |
 | --- | --- | --- |
-| Documents | Markdown, HTML, DOCX, PDF | Headings, paragraphs, lists, tables, code, and document properties where available. PDF conversion stays local through MarkItDown; use MinerU or PaddleOCR for scanned PDFs. |
+| Documents | Markdown, HTML, DOCX, PDF, EPUB | EPUB follows spine order; the `pdf` extra converts text-layer PDFs locally with MarkItDown. Scanned PDFs require a separate visual parser. |
+| Presentations | PPTX, PPT, ODP | Slides and notes retain page provenance. PPTX needs `presentations`; legacy PPT also needs local LibreOffice. |
+| Mail | EML, MSG, MBOX | Headers, body, attachments, and thread identifiers are retained. MSG needs the `msg` extra. |
 | Text and records | TXT, LOG, CSV, TSV, JSON, JSONL, XML, YAML, TOML | Record formats preserve logical row/field paths; use the `record` splitter for flat record packing. |
 | Spreadsheets and databases | XLSX, SQLite, SQL dumps | SQLite uses the standard library. |
 | Code and notebooks | Python, JavaScript/TypeScript, Bash, C/C++, C#, Go, Java, Kotlin, Lua, PHP, Ruby, Rust, Swift, Zig, Jupyter notebooks | The `code-parsing` extra adds Tree-sitter declaration boundaries and syntax-error recovery. |
 
-RTF, ODT, legacy Excel, image, presentation, and columnar formats are not currently supported.
+RTF, ODT, legacy Excel, image, and columnar formats are not currently supported.
 
 ## Table splitting
 
@@ -116,8 +118,8 @@ The `exact-*` variants recount candidate text during planning. The default and `
 ## Install optional features
 
 ```bash
-# Model tokenizers, Web API, and Tree-sitter parsing
-pip install 'lumberjack-py[tokenizers,web,code-parsing]'
+# PDF, presentation, and MSG parsing, model tokenizers, Web API, and Tree-sitter parsing
+pip install 'lumberjack-py[pdf,presentations,msg,tokenizers,web,code-parsing]'
 
 # Optional framework adapters
 pip install 'lumberjack-py[langchain,llama-index,haystack]'

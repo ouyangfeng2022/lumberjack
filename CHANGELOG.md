@@ -7,10 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- EPUB chapters, PPTX/PPT/ODP slides, and EML/MSG/MBOX messages can be split
+  through the Python, CLI, and Web APIs with source provenance. Legacy PPT
+  requires local LibreOffice; PPTX and MSG use separate optional extras.
+
 ### Changed
 
-- PDF input is converted locally through MarkItDown before splitting; PDFs with
-  no extractable text now point users to MinerU or PaddleOCR.
+- Local PDF text-layer conversion uses the `pdf` extra and reports when a PDF
+  needs a visual/OCR parser; no OCR is performed by lumberjack.
 - DOCX, XLSX, and Python 3.10 TOML support are now installed with the core
   package instead of optional extras.
 - Oversized-text hard splitting now stops binary token probes within a small

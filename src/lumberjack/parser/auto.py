@@ -12,9 +12,12 @@ from ..models import DocTree, Document, InputFormat
 from .code import NotebookParser, SourceCodeParser, SQLParser
 from .code.tree_sitter import CodeLanguage
 from .docx import DocxParser
+from .email import EmlParser, MboxParser, MsgParser
+from .epub import EpubParser
 from .html import HTMLParser
 from .markdown import MarkdownParser
 from .pdf import PdfParser
+from .presentation import OdpParser, PptParser, PptxParser
 from .records import (
     DelimitedTextParser,
     JSONLinesParser,
@@ -33,6 +36,13 @@ DetectedFormat = Literal[
     "html",
     "docx",
     "pdf",
+    "epub",
+    "pptx",
+    "ppt",
+    "odp",
+    "eml",
+    "msg",
+    "mbox",
     "text",
     "log",
     "csv",
@@ -71,6 +81,13 @@ _VALID_FORMATS = frozenset(
         "html",
         "docx",
         "pdf",
+        "epub",
+        "pptx",
+        "ppt",
+        "odp",
+        "eml",
+        "msg",
+        "mbox",
         "text",
         "log",
         "csv",
@@ -118,6 +135,20 @@ def _format_from_suffix(path: str | Path | None) -> DetectedFormat | None:
         return "docx"
     if suffix == ".pdf":
         return "pdf"
+    if suffix == ".epub":
+        return "epub"
+    if suffix == ".pptx":
+        return "pptx"
+    if suffix == ".ppt":
+        return "ppt"
+    if suffix == ".odp":
+        return "odp"
+    if suffix == ".eml":
+        return "eml"
+    if suffix == ".msg":
+        return "msg"
+    if suffix == ".mbox":
+        return "mbox"
     if suffix in {".html", ".htm"}:
         return "html"
     if suffix in {".md", ".markdown"}:
@@ -182,15 +213,25 @@ def _format_from_suffix(path: str | Path | None) -> DetectedFormat | None:
     return None
 
 
-def _is_docx(data: bytes) -> bool:
+def _zip_format(data: bytes) -> Literal["docx", "epub", "pptx", "odp"] | None:
     if not data.startswith(b"PK"):
-        return False
+        return None
     try:
         with ZipFile(BytesIO(data)) as archive:
             names = frozenset(archive.namelist())
+            if "mimetype" in names:
+                mimetype = archive.read("mimetype")
+                if mimetype == b"application/epub+zip":
+                    return "epub"
+                if mimetype == b"application/vnd.oasis.opendocument.presentation":
+                    return "odp"
     except BadZipFile:
-        return False
-    return "[Content_Types].xml" in names and "word/document.xml" in names
+        return None
+    if "[Content_Types].xml" in names and "word/document.xml" in names:
+        return "docx"
+    if "[Content_Types].xml" in names and "ppt/presentation.xml" in names:
+        return "pptx"
+    return None
 
 
 class AutoParser:
@@ -243,6 +284,29 @@ class AutoParser:
                 raise TypeError("PDF input must be bytes or a pathlib.Path")
             return PdfParser().parse(parsed_tree)
 
+        if format == "epub":
+            if isinstance(data, str):
+                raise TypeError("EPUB input must be bytes or a pathlib.Path")
+            return EpubParser().parse(parsed_tree)
+
+        if format in {"pptx", "ppt", "odp"}:
+            if isinstance(data, str):
+                raise TypeError(
+                    f"{format.upper()} input must be bytes or a pathlib.Path"
+                )
+            return {"pptx": PptxParser, "ppt": PptParser, "odp": OdpParser}[
+                format
+            ]().parse(parsed_tree)
+
+        if format in {"eml", "msg", "mbox"}:
+            if isinstance(data, str):
+                raise TypeError(
+                    f"{format.upper()} input must be bytes or a pathlib.Path"
+                )
+            return {"eml": EmlParser, "msg": MsgParser, "mbox": MboxParser}[
+                format
+            ]().parse(parsed_tree)
+
         if format == "xlsx":
             if isinstance(data, str):
                 raise TypeError("XLSX input must be bytes or a pathlib.Path")
@@ -257,9 +321,7 @@ class AutoParser:
             try:
                 text = data.decode("utf-8-sig")
             except UnicodeDecodeError as exc:
-                raise ValueError(
-                    "Non-DOCX bytes must contain valid UTF-8 text"
-                ) from exc
+                raise ValueError("Text input bytes must contain valid UTF-8") from exc
         else:
             text = data
         parser = {
@@ -322,8 +384,8 @@ class AutoParser:
             return suffix_format
         if isinstance(data, bytes) and data.startswith(b"%PDF-"):
             return "pdf"
-        if isinstance(data, bytes) and _is_docx(data):
-            return "docx"
+        if isinstance(data, bytes) and (zip_format := _zip_format(data)):
+            return zip_format
         if isinstance(data, bytes):
             try:
                 text = data.decode("utf-8-sig")

@@ -35,13 +35,16 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        # Optional extras are installed so `ty check` resolves the lazy
-        # framework imports in src/lumberjack/integrations and the spreadsheet
-        # import in the XLSX parser against the real packages.
+        # Optional extras are installed so checks resolve parser, tokenizer,
+        # Web, and framework imports against the real packages.
         run: >-
           uv sync --group dev --group test
-          --extra tokenizers --extra docx --extra web
-          --extra spreadsheets --extra langchain --extra llama-index --extra haystack
+          --extra tokenizers --extra pdf --extra presentations --extra msg --extra web
+          --extra langchain --extra llama-index --extra haystack
+
+      - name: Install LibreOffice for legacy PPT fixture
+        if: matrix.python-version == '3.11'
+        run: sudo apt-get update && sudo apt-get install -y libreoffice-impress
 
       - name: Type check
         run: uv run ty check .
@@ -99,7 +102,7 @@ jobs:
           enable-cache: true
 
       - name: Install integration test dependencies
-        run: uv sync --group test --group integrations --extra docx
+        run: uv sync --group test --group integrations
 
       - name: Test adapters
         run: uv run pytest tests/integrations
