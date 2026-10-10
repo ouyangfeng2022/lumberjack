@@ -36,12 +36,10 @@ export interface SourceLocation {
 }
 
 export interface SplitResponse {
+  schema_version: string;
   document: string;
   metadata: Record<string, unknown>;
-  reference_definitions: Record<
-    string,
-    { destination: string; title: string }
-  >;
+  reference_definitions: Record<string, { destination: string; title: string }>;
   chunk_count: number;
   chunks: ChunkData[];
 }
@@ -53,19 +51,19 @@ export interface BlockHandlingState {
   repeat_header?: boolean;
 }
 
-export type TokenizerName = 'approx' | 'tiktoken' | 'transformers';
+export type TokenizerName = "approx" | "tiktoken" | "transformers";
 
 export type SplitterName =
-  | 'sibling'
-  | 'exact-sibling'
-  | 'incremental-sibling'
-  | 'subtree'
-  | 'exact-subtree'
-  | 'incremental-subtree'
-  | 'section'
-  | 'exact-section'
-  | 'incremental-section'
-  | 'record';
+  | "sibling"
+  | "exact-sibling"
+  | "incremental-sibling"
+  | "subtree"
+  | "exact-subtree"
+  | "incremental-subtree"
+  | "section"
+  | "exact-section"
+  | "incremental-section"
+  | "record";
 
 export interface SplitOptions {
   max_tokens: number;
@@ -79,6 +77,7 @@ export interface SplitOptions {
 }
 
 export interface CompareColumn {
+  id: string;
   splitter: SplitterName;
   options: SplitOptions;
   result: SplitResponse | null;

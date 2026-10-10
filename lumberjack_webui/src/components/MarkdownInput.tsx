@@ -1,71 +1,100 @@
-import { useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import styles from './MarkdownInput.module.css';
+import { useRef } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  ACCEPTED_FILES,
+  FORMATS,
+  TEXT_FORMATS,
+  isBinaryFormat,
+  resolvedFormat,
+  type DocumentInput,
+  type FileFormat,
+} from "../lib/formats";
+import styles from "../App.module.css";
 
-interface Props {
-  text: string;
-  file: File | null;
-  onTextChange: (text: string) => void;
-  onFileChange: (file: File | null) => void;
-  onFileContentChange?: (content: string) => void;
-}
-
-export default function MarkdownInput({ text, file, onTextChange, onFileChange, onFileContentChange }: Props) {
+export default function MarkdownInput({
+  input,
+  onChange,
+}: {
+  input: DocumentInput;
+  onChange: (input: DocumentInput) => void;
+}) {
   const { t } = useTranslation();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [fileContent, setFileContent] = useState('');
-
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0] ?? null;
-    onFileChange(selected);
-
-    if (!selected) {
-      setFileContent('');
-      onFileContentChange?.('');
+  const ref = useRef<HTMLInputElement>(null);
+  const binary = !!input.file && isBinaryFormat(resolvedFormat(input));
+  const updateFile = (file: File | null) => {
+    if (!file) {
+      onChange({ text: "", file: null, format: "markdown" });
       return;
     }
-
-    const content = await selected.text();
-    setFileContent(content);
-    onFileContentChange?.(content);
+    const next: DocumentInput = { text: "", file, format: "auto" };
+    onChange(next);
   };
-
-  const clearFile = () => {
-    setFileContent('');
-    onFileContentChange?.('');
-    onFileChange(null);
-    if (inputRef.current) inputRef.current.value = '';
-  };
-
   return (
-    <div className={styles.container}>
-      <textarea
-        className={styles.textarea}
-        value={file ? fileContent : text}
-        readOnly={!!file}
-        onChange={(e) => onTextChange(e.target.value)}
-        placeholder={t('md_placeholder')}
-      />
-      <div className={styles.fileRow}>
-        <span className={styles.fileMeta}>
-          {file ? t('md_file_ready') : t('md_text_mode')}
-        </span>
-        <label className={styles.fileLabel}>
-          {file ? file.name : t('md_upload')}
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".md,.markdown,.txt"
-            onChange={handleFileSelect}
-            className={styles.fileInput}
-          />
+    <div className={styles.editor}>
+      <div className={styles.toolbar}>
+        <label className={styles.formatField}>
+          {t("ws_format")}
+          <select
+            aria-label={t("ws_format")}
+            value={input.format}
+            onChange={(event) =>
+              onChange({ ...input, format: event.target.value as FileFormat })
+            }
+          >
+            {input.file && <option value="auto">{t("ws_auto")}</option>}
+            {(input.file ? FORMATS : TEXT_FORMATS).map((format) => (
+              <option key={format} value={format}>
+                {format}
+              </option>
+            ))}
+          </select>
         </label>
-        {file && (
-          <button className={styles.clearBtn} onClick={clearFile}>
-            {t('md_clear')}
-          </button>
+        <button onClick={() => ref.current?.click()}>{t("ws_upload")}</button>
+        <input
+          ref={ref}
+          type="file"
+          accept={ACCEPTED_FILES}
+          hidden
+          onChange={(event) => {
+            void updateFile(event.target.files?.[0] ?? null);
+            event.target.value = "";
+          }}
+        />
+        {input.file && (
+          <button onClick={() => void updateFile(null)}>{t("md_clear")}</button>
         )}
       </div>
+      {input.file && (
+        <div className={styles.fileInfo}>
+          <strong>{input.file.name}</strong>
+          <span>
+            {(input.file.size / 1024).toFixed(1)} KB · {resolvedFormat(input)}
+          </span>
+        </div>
+      )}
+      {binary ? (
+        <div className={styles.empty}>
+          <IconDocument />
+          <h3>{t("ws_binary")}</h3>
+          <p>{t("ws_binary_hint")}</p>
+        </div>
+      ) : (
+        <textarea
+          aria-label={t("ws_input")}
+          value={input.text}
+          readOnly={!!input.file}
+          spellCheck={false}
+          placeholder={t("ws_input_hint")}
+          onChange={(event) => onChange({ ...input, text: event.target.value })}
+        />
+      )}
     </div>
+  );
+}
+function IconDocument() {
+  return (
+    <span aria-hidden="true" style={{ fontSize: 40 }}>
+      ▤
+    </span>
   );
 }

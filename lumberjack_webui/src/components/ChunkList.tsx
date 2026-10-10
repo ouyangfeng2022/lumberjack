@@ -1,60 +1,54 @@
-import { useTranslation } from 'react-i18next';
-import type { SplitResponse } from '../types/chunk';
-import ChunkResult from './ChunkResult';
-import styles from './ChunkList.module.css';
+import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { SplitResponse, SplitOptions } from "../types/chunk";
+import ChunkResult from "./ChunkResult";
+import styles from "../App.module.css";
 
-interface Props {
+export default function ChunkList({
+  result,
+  options,
+  selected,
+  onSelect,
+  boundaries,
+  heat,
+}: {
   result: SplitResponse;
-  elapsedMs: number | null;
-}
-
-function formatElapsed(ms: number) {
-  if (ms < 1000) {
-    return `${Math.round(ms)} ms`;
-  }
-
-  return `${(ms / 1000).toFixed(2)} s`;
-}
-
-export default function ChunkList({ result, elapsedMs }: Props) {
+  options: SplitOptions;
+  selected: number;
+  onSelect: (index: number) => void;
+  boundaries: boolean;
+  heat: boolean;
+}) {
   const { t } = useTranslation();
-  const totalTokens = result.chunks.reduce((sum, c) => sum + c.token_count, 0);
-  const estimateErrors = result.chunks
-    .filter((c) => c.token_count > 0)
-    .map((c) => Math.abs(c.estimated_token_count - c.token_count) / c.token_count);
-  const meanError =
-    estimateErrors.length > 0
-      ? (estimateErrors.reduce((sum, value) => sum + value, 0) / estimateErrors.length) * 100
-      : null;
-
+  const [visible, setVisible] = useState(30);
+  const ref = useRef<HTMLDivElement>(null);
+  const count = Math.max(visible, selected + 1);
+  useEffect(() => {
+    ref.current
+      ?.querySelector('[data-chunk-index="' + selected + '"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
   return (
-    <div className={styles.container}>
-      <div className={styles.summary}>
-        <h3 className={styles.title}>{result.document}</h3>
-        <div className={styles.stats}>
-          <span className={styles.stat}>
-            {t('chunks_count', { count: result.chunk_count })}
-          </span>
-          <span className={styles.stat}>{t('chunks_total_tokens', { count: totalTokens })}</span>
-          {meanError !== null && (
-            <span className={styles.stat} title={t('chunks_mean_error_title')}>
-              {t('chunks_mean_error', {
-                value: Math.round(meanError * 10) / 10,
-              })}
-            </span>
-          )}
-          {elapsedMs !== null && (
-            <span className={`${styles.stat} ${styles.elapsedStat}`}>
-              <span>{formatElapsed(elapsedMs)}</span>
-            </span>
-          )}
-        </div>
-      </div>
-      <div className={styles.list}>
-        {result.chunks.map((chunk, i) => (
-          <ChunkResult key={chunk.chunk_id} chunk={chunk} index={i} />
-        ))}
-      </div>
+    <div ref={ref} className={styles.chunkList}>
+      {result.chunks.slice(0, count).map((chunk, index) => (
+        <ChunkResult
+          key={chunk.chunk_id}
+          {...{ chunk, index, options, boundaries, heat }}
+          selected={index === selected}
+          onSelect={() => onSelect(index)}
+        />
+      ))}
+      {result.chunks.length > count && (
+        <button
+          className={styles.loadMore}
+          onClick={() => setVisible(count + 30)}
+        >
+          {t("ws_more", { count: result.chunks.length - count })}
+        </button>
+      )}
+      <p className={styles.end}>
+        {t("ws_document_end", { count: result.chunks.length })}
+      </p>
     </div>
   );
 }

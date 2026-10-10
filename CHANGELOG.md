@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- WebUI now provides a document workspace with multi-format input, linked chunk
+  previews and boundary navigation, editable comparison plans, and an export
+  center with CLI, cURL, and Python examples. Dark/light themes, responsive
+  layouts, and Chinese/English controls are available throughout.
+
 - EPUB chapters, PPTX/PPT/ODP slides, and EML/MSG/MBOX messages can be split
   through the Python, CLI, and Web APIs with source provenance. Legacy PPT
   requires local LibreOffice; PPTX and MSG use separate optional extras.
