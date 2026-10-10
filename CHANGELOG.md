@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-10
+
 ### Added
 
+- Local PDF text-layer parsing is available through the Python, CLI, and Web
+  APIs with the `pdf` extra. Scanned PDFs require a separate OCR parser.
 - EPUB chapters, PPTX/PPT/ODP slides, and EML/MSG/MBOX messages can be split
   through the Python, CLI, and Web APIs with source provenance. Legacy PPT
   requires local LibreOffice; PPTX and MSG use separate optional extras.
