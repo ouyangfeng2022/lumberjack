@@ -9,73 +9,17 @@
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-4051b5)](https://ouyangfeng2022.github.io/lumberjack/)
 [![CI](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml/badge.svg)](https://github.com/ouyangfeng2022/lumberjack/actions/workflows/ci.yml)
 
-**Turn documents and flat records into retrieval-ready chunks with structure and provenance intact.**
+Lumberjack is a document preprocessing library for retrieval-augmented generation (RAG). It converts documents into token-budgeted chunks, preserves document structure and source metadata, and splits tables by row with configurable header repetition.
 
-Lumberjack is a Python library and CLI for RAG preprocessing. It reads a document tree instead of cutting plain text, preserves headings and source metadata, respects tables and fenced code, and keeps every chunk within a token budget whenever its content can be split safely.
+Lumberjack can be used through the Python API, command-line interface, or Web API. Optional adapters support integration with LangChain, LlamaIndex, and Haystack.
 
 [中文说明](README.zh-CN.md) · [Documentation](https://ouyangfeng2022.github.io/lumberjack/) · [PyPI](https://pypi.org/project/lumberjack-py/)
 
-## Why Lumberjack?
+## Three ways to use Lumberjack
 
-- **Context survives splitting.** Chunks separate heading metadata from body content, so retrieval can retain the section that introduced an answer.
-- **Structure stays honest.** Markdown/HTML/DOCX become heading trees; CSV/TSV, JSONL, and logs remain ordered records rather than fabricated sections.
-- **Budgets are practical.** The default splitter plans with fast incremental estimates, then records an authoritative final token count.
-- **Topology is your choice.** Pack sibling sections, preserve subtrees, or process each section body independently.
+### 1. Python API
 
-## Input formats: now and planned
-
-Lumberjack currently supports the formats below. A “planned” entry is a design
-commitment, not an installation promise: do not pass it to `format` or rely on
-automatic detection until it is marked supported in a release.
-
-| Format family | Formats | Status | Intended structural model |
-| --- | --- | --- | --- |
-| Markup documents | Markdown (`.md`, `.markdown`), HTML (`.html`, `.htm`) | Supported | Headings, blocks, tables, lists, code, and source lines. |
-| Word-processing documents | DOCX (`.docx`) | Supported | Heading styles, paragraphs, tables, lists, and document properties. |
-| Plain and rich text | TXT (`.txt`, `.text`), text logs (`.log`) | Supported | TXT paragraphs/lines; logs are atomic ordered records. RTF remains planned. |
-| OpenDocument and legacy word processing | ODT, DOC | Planned | Headings and blocks when the source format exposes them. |
-| Spreadsheets and delimited data | CSV (`.csv`), TSV (`.tsv`), XLSX (`.xlsx`, `spreadsheets` extra) | Supported | Header schema plus atomic rows with sheet/row/column provenance. XLS and ODS remain planned. |
-| Semi-structured data | JSON (`.json`), JSONL (`.jsonl`, `.ndjson`), XML (`.xml`), YAML (`.yaml`, `.yml`), TOML (`.toml`) | Supported | Scalar key paths, record lines, and XML leaf-element paths; all remain ordered records. |
-| Analytical and database exports | SQLite (`.sqlite`, `.sqlite3`, `.db`), SQL dump (`.sql`) | Supported | SQLite table/row provenance and ordered SQL statements. Parquet, Avro, and ORC are deferred. |
-| Source code and notebooks | Python, JavaScript/TypeScript, Bash, C/C++, C#, Go, Java, Kotlin, Lua, PHP, Ruby, Rust, Swift, Zig, and Jupyter notebooks | Supported | Install `code-parsing` for Tree-sitter declaration boundaries, syntax-error recovery, and source locations. Other languages are deferred. |
-| Presentations and ebooks | PPTX, PPT, ODP, EPUB | Planned | Slides/pages, titles, notes, and ordered content blocks. |
-| Messages and archives | EML, MSG, MBOX | Planned | Message headers, body, attachments, and thread provenance. |
-| PDFs and images | PDF, PNG, JPG/JPEG, TIFF, WebP | Planned | Native PDF text/layout where available; OCR/layout blocks and page provenance otherwise. |
-
-Flat data is a first-class design case, not a disguised heading tree. CSV,
-TSV, JSONL, Parquet, and record-oriented JSON will use ordered record/row units
-with schema and field-path provenance. Heading-oriented policies such as
-sibling section packing are not meaningful for those inputs; their adapters
-must select row/record-aware packing, preserve complete protected rows when
-configured, and report logical locations such as row number, column name, JSON
-path, page, or sheet. This behavior is planned; it is not implemented by the
-current three parsers.
-
-## Inspect every pipeline stage
-
-Today, `Lumberjack.saw()` returns `SplitResult(document, chunks)`, and the
-public parser, splitter, and finalizer can be called individually when an
-integration needs an intermediate `DocTree` or `ChunkDraft`.
-
-The planned pipeline trace API will make every built-in and optional parsing
-stage inspectable through one stable result: raw `Document`, extraction output
-(for example OCR/layout), normalized `DocTree`, `ChunkDraft`s, rendered text,
-normalized/transformed text, and final `Chunk`s. Visual PDF parsers such as
-MinerU, Docling, PaddleOCR-VL, and dots.mocr will be optional integrations—not
-core dependencies—and will retain page, bounding-box, and parser provenance.
-
-## Install
-
-```bash
-pip install lumberjack-py
-
-# Exact tokenizers, DOCX/XLSX, Tree-sitter code parsing, and the Web API
-pip install "lumberjack-py[tokenizers,docx,spreadsheets,code-parsing,web]"
-```
-
-Requires Python 3.10 or newer.
-
-## Split your first document
+Pass text, bytes, a file path, or a `Document` to `Lumberjack.saw()`. The result contains the parsed document and finalized chunks.
 
 ```python
 from lumberjack import Lumberjack
@@ -83,63 +27,109 @@ from lumberjack import Lumberjack
 result = Lumberjack(max_tokens=500).saw("""
 # Deployment
 
-Deploy the service through the approved release workflow.
-
-## Rollback
-
-Keep the previous image available until health checks pass.
+Deploy through the approved release workflow.
 """)
 
 for chunk in result.chunks:
-    print(chunk.own_heading, chunk.body, chunk.token_count)
+    print(chunk.body, chunk.token_count)
 ```
 
-`result.document` contains the parsed `DocTree`, title, metadata, and source provenance. Each `Chunk` includes its body, final `token_count`, heading context, and source line range when available. See the [five-minute guide](https://ouyangfeng2022.github.io/lumberjack/getting-started/quickstart/) for file inputs, output handling, and optional dependencies.
+For multiple documents, `saw_many()` returns results as an iterator. See the [Python API reference](https://ouyangfeng2022.github.io/lumberjack/reference/python/).
 
-## Use the CLI
+### 2. Command line
+
+Pass a file, directory, or glob to `lumber`. The command-line interface emits JSON and supports batch output, with one result file per input document.
 
 ```bash
-# Infer a supported format from the file extension.
+pip install lumberjack-py
 lumber handbook.md --max-tokens 1200
-
-# Preserve CSV rows as atomic records (also use this for TSV, JSONL, and logs).
-lumber people.csv --splitter record --max-tokens 1200
-
-# Emit JSON suitable for an ingestion job.
-lumber report.docx --tokenizer tiktoken --splitter subtree > chunks.json
+lumber 'docs/**/*.md' --recursive --output-dir chunks/
 ```
 
-The [CLI reference](https://ouyangfeng2022.github.io/lumberjack/reference/cli/) lists every option and its default.
+Use `--input-format` to select a parser explicitly. For row- or record-oriented inputs such as CSV, TSV, JSONL, and logs, select `--splitter record`. See the [CLI reference](https://ouyangfeng2022.github.io/lumberjack/reference/cli/).
 
-## Choose a splitter
+### 3. Web API
 
-| Splitter | Choose it when you need |
-| --- | --- |
-| `sibling` | Well-filled chunks that may pack adjacent sibling sections with shared context. |
-| `subtree` | A whole section subtree to stay together whenever it fits. |
-| `section` (default) | Each section's direct body to be considered independently. |
-
-| Counting mode | Behavior |
-| --- | --- |
-| Unprefixed / `incremental-*` | Fast running estimates while planning, followed by a final authoritative count. |
-| `exact-*` | Fully recount each rendered candidate during planning. |
-
-Tokenizer choice and counting mode are independent. For example, `tiktoken` works with `incremental-sibling`. Read the [splitter decision guide](https://ouyangfeng2022.github.io/lumberjack/concepts/splitting/) before tuning a production pipeline.
-
-## Web API
+Install the `web` extra and start the service. Submit text or upload a file; the response contains the resulting chunks in JSON format.
 
 ```bash
-lumberjack-serve --reload
+pip install 'lumberjack-py[web]'
+lumberjack-serve --host 127.0.0.1 --port 9612
 ```
 
-With the `web` extra installed, the service exposes `POST /lumber/api/split/text` for UTF-8 Markdown, HTML, TXT, LOG, CSV/TSV, JSON/JSONL, XML, and YAML requests, and `POST /lumber/api/split/file` for those formats plus DOCX and XLSX (install `spreadsheets` for XLSX). Select `splitter: "record"` for LOG, CSV/TSV/XLSX, JSON/JSONL, XML, and YAML. The remaining planned formats above are not accepted yet. FastAPI serves interactive OpenAPI documentation at [`/docs`](http://127.0.0.1:9612/docs) while the server is running.
+The API provides `POST /lumber/api/split/text` and `POST /lumber/api/split/file`. Interactive request documentation is available at `http://127.0.0.1:9612/docs` while the service is running.
+
+## What it does well
+
+- **Broad format support.** Markdown, HTML, DOCX, PDF, EPUB, PPTX/PPT/ODP, EML/MSG/MBOX, plain text and logs, CSV/TSV, JSON/JSONL, XML, YAML/TOML, XLSX, SQLite/SQL, source code, and Jupyter notebooks are parsed into a shared document model. Model-based tokenizers and enhanced code parsing require optional dependencies.
+- **Structure and provenance.** Heading context is retained with each chunk. Record-oriented inputs preserve row, field, sheet, and source-location metadata rather than being represented as artificial sections.
+- **Row-aware table splitting.** Markdown and HTML tables are split at row boundaries. Table headers are repeated in each generated chunk by default and can be configured by table type.
+- **Content-aware splitting.** Code fences retain their delimiters when split. Lists and other block types have dedicated handling. Protected blocks that cannot be split safely may exceed the configured token budget.
+- **Configurable chunk organization.** Select sibling-section packing, subtree-first grouping, per-section processing, or record-aware packing for flat inputs.
+- **Token-budget controls.** The default approximate tokenizer requires no model download. Optional `tiktoken` and Transformers tokenizers provide model-based counts. Exact and incremental counting modes can be selected independently.
+
+## Supported input formats
+
+| Family | Formats | Notes |
+| --- | --- | --- |
+| Documents | Markdown, HTML, DOCX, PDF, EPUB | EPUB follows spine order; the `pdf` extra converts text-layer PDFs locally with MarkItDown. Scanned PDFs require a separate visual parser. |
+| Presentations | PPTX, PPT, ODP | Slides and notes retain page provenance. PPTX needs `presentations`; legacy PPT also needs local LibreOffice. |
+| Mail | EML, MSG, MBOX | Headers, body, attachments, and thread identifiers are retained. MSG needs the `msg` extra. |
+| Text and records | TXT, LOG, CSV, TSV, JSON, JSONL, XML, YAML, TOML | Record formats preserve logical row/field paths; use the `record` splitter for flat record packing. |
+| Spreadsheets and databases | XLSX, SQLite, SQL dumps | SQLite uses the standard library. |
+| Code and notebooks | Python, JavaScript/TypeScript, Bash, C/C++, C#, Go, Java, Kotlin, Lua, PHP, Ruby, Rust, Swift, Zig, Jupyter notebooks | The `code-parsing` extra adds Tree-sitter declaration boundaries and syntax-error recovery. |
+
+RTF, ODT, legacy Excel, image, and columnar formats are not currently supported.
+
+## Table splitting
+
+Tables are treated as structured blocks. When a table exceeds its block budget, Lumberjack groups complete rows into separate chunks and repeats the Markdown header and delimiter, or the HTML table header, by default. Set `repeat_header=False` to omit the header from subsequent chunks. A row that individually exceeds the budget is preserved intact and may cause its chunk to exceed that budget.
+
+Python callers configure tables with typed options:
+
+```python
+from lumberjack import Lumberjack
+from lumberjack.block import MarkdownTableConfig
+from lumberjack.splitter import SectionSplitter
+from lumberjack.tokenizer import ApproxByteTokenizer
+
+tokenizer = ApproxByteTokenizer()
+splitter = SectionSplitter(
+    tokenizer,
+    max_tokens=500,
+    block_options=[MarkdownTableConfig(repeat_header=True, max_tokens=300)],
+)
+result = Lumberjack(tokenizer=tokenizer, splitter=splitter).saw("report.md")
+```
+
+The CLI accepts equivalent settings, for example `--block table:repeat-header=false,max-tokens=300`. HTML tables use `HTMLTableConfig` in Python or `html_table` in CLI configuration.
+
+## Choosing a splitter
+
+| Splitter | Behavior |
+| --- | --- |
+| `section` (default) | Processes each section's direct body independently. |
+| `subtree` | Keeps a section subtree together when it fits. |
+| `sibling` | Packs adjacent sibling sections when they fit. |
+| `record` | Packs flat rows or records, for CSV/TSV, JSONL, logs, and similar inputs. |
+
+The `exact-*` variants recount candidate text during planning. The default and `incremental-*` variants use incremental counts during planning and report a final authoritative count. Tokenizer choice is independent of counting mode.
+
+## Install optional features
+
+```bash
+# PDF, presentation, and MSG parsing, model tokenizers, Web API, and Tree-sitter parsing
+pip install 'lumberjack-py[pdf,presentations,msg,tokenizers,web,code-parsing]'
+
+# Optional framework adapters
+pip install 'lumberjack-py[langchain,llama-index,haystack]'
+```
+
+Framework adapters are available under `lumberjack.integrations`. They convert chunks to framework documents or nodes and provide native splitter or parser components. See the [integration guides](https://ouyangfeng2022.github.io/lumberjack/guides/integrations/).
 
 ## Learn more
 
-- [Core concepts](https://ouyangfeng2022.github.io/lumberjack/concepts/pipeline/) — `Document` to `Chunk`, rendering, budgets, and source metadata.
+- [Core concepts](https://ouyangfeng2022.github.io/lumberjack/concepts/pipeline/) — document parsing, chunking, rendering, and source metadata.
 - [Configuration guide](https://ouyangfeng2022.github.io/lumberjack/guides/configuration/) — block policies and budget controls.
-- [Custom components](https://ouyangfeng2022.github.io/lumberjack/guides/custom-components/) — parsers, tokenizers, splitters, and post-processing stages.
-- [Python API reference](https://ouyangfeng2022.github.io/lumberjack/reference/python/)
+- [Custom components](https://ouyangfeng2022.github.io/lumberjack/guides/custom-components/) — parsers, tokenizers, splitters, and post-processing.
 - [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [License](LICENSE)
-
-Benchmark reporting is under construction; this project does not make unverified quality or performance claims.

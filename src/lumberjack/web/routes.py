@@ -305,6 +305,14 @@ async def split_file(
         "markdown",
         "html",
         "docx",
+        "pdf",
+        "epub",
+        "pptx",
+        "ppt",
+        "odp",
+        "eml",
+        "msg",
+        "mbox",
         "text",
         "log",
         "csv",
@@ -373,7 +381,19 @@ async def split_file(
 
     def work() -> SplitOutcome:
         try:
-            if fmt in {"docx", "sqlite", "xlsx"}:
+            if fmt in {
+                "docx",
+                "pdf",
+                "epub",
+                "pptx",
+                "ppt",
+                "odp",
+                "eml",
+                "msg",
+                "mbox",
+                "sqlite",
+                "xlsx",
+            }:
                 content = raw
             else:
                 content = raw.decode("utf-8-sig")

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
+from zipfile import BadZipFile, ZipFile
 
 SUPPORTED_FORMATS = frozenset(
     {
@@ -8,6 +10,14 @@ SUPPORTED_FORMATS = frozenset(
         "markdown",
         "html",
         "docx",
+        "pdf",
+        "epub",
+        "pptx",
+        "ppt",
+        "odp",
+        "eml",
+        "msg",
+        "mbox",
         "text",
         "log",
         "csv",
@@ -23,6 +33,7 @@ SUPPORTED_FORMATS = frozenset(
         "python",
         "javascript",
         "typescript",
+        "tsx",
         "bash",
         "c",
         "cpp",
@@ -56,6 +67,7 @@ TEXT_FORMATS = frozenset(
         "python",
         "javascript",
         "typescript",
+        "tsx",
         "bash",
         "c",
         "cpp",
@@ -84,6 +96,25 @@ def detect_format(source: str | bytes | Path, format: str) -> str:
         return format
 
     if isinstance(source, bytes):
+        if source.startswith(b"%PDF-"):
+            return "pdf"
+        if source.startswith(b"PK"):
+            try:
+                with ZipFile(BytesIO(source)) as archive:
+                    names = frozenset(archive.namelist())
+                    if "mimetype" in names:
+                        mimetype = archive.read("mimetype")
+                        if mimetype == b"application/epub+zip":
+                            return "epub"
+                        if (
+                            mimetype
+                            == b"application/vnd.oasis.opendocument.presentation"
+                        ):
+                            return "odp"
+                    if "ppt/presentation.xml" in names:
+                        return "pptx"
+            except (BadZipFile, KeyError):
+                pass
         if source.startswith(b"SQLite format 3\x00"):
             return "sqlite"
         if source.startswith(b"PK\x03\x04") and b"xl/" in source[:2000]:
@@ -98,6 +129,14 @@ def detect_format(source: str | bytes | Path, format: str) -> str:
 
 _SUFFIX_FORMATS: dict[str, str] = {
     ".docx": "docx",
+    ".pdf": "pdf",
+    ".epub": "epub",
+    ".pptx": "pptx",
+    ".ppt": "ppt",
+    ".odp": "odp",
+    ".eml": "eml",
+    ".msg": "msg",
+    ".mbox": "mbox",
     ".html": "html",
     ".htm": "html",
     ".md": "markdown",

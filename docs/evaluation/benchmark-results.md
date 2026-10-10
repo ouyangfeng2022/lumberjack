@@ -188,7 +188,7 @@ needed fewer tokenizer `count` calls on this corpus (487 vs 1878 under
 
 ```bash
 uv sync --group dev --group test --group benchmark \
-  --extra tokenizers --extra docx --extra web
+  --extra tokenizers --extra web
 BASE="benchmarks/results/$(date +%Y%m%d)-$(git rev-parse --short=12 HEAD)"
 uv run python -m benchmarks.run --adapter lumberjack --splitter section \
   --output "$BASE/lumberjack"

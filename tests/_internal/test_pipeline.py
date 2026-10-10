@@ -94,4 +94,14 @@ def test_hard_split_uses_sublinear_counts_per_piece() -> None:
 
     assert "".join(piece for piece, _ in pieces) == "x" * 4096
     assert all(tokens <= 64 for _, tokens in pieces)
-    assert tokenizer.calls < 2000
+    assert tokenizer.calls < 650
+
+
+def test_hard_split_stops_before_single_character_precision() -> None:
+    splitter = BlockSplitter(CharacterTokenizer(), max_tokens=100, block_options={})
+
+    pieces = splitter.hard_split("x" * 300, 100)
+
+    assert "".join(piece for piece, _ in pieces) == "x" * 300
+    assert all(tokens <= 100 for _, tokens in pieces)
+    assert max(len(piece) for piece, _ in pieces) == 96

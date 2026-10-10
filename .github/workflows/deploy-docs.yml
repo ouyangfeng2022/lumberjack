@@ -40,7 +40,7 @@ jobs:
       - uses: actions/configure-pages@v5
 
       - name: Install documentation dependencies
-        run: uv sync --group docs --extra docx --extra web
+        run: uv sync --group docs --extra web
 
       - name: Build documentation
         run: uv run --group docs mkdocs build --strict --site-dir _site

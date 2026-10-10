@@ -16,7 +16,7 @@ lumberjack-serve --reload
 | Endpoint | 输入 |
 | --- | --- |
 | `POST /lumber/api/split/text` | JSON：文本兼容的 `input_format` 与拆分选项，包含所有已支持的代码格式：Python、JavaScript/TypeScript、Bash、C/C++、C#、Go、Java、Kotlin、Lua、PHP、Ruby、Rust、Swift、Zig。 |
-| `POST /lumber/api/split/file` | multipart form：`file`、任一已支持的 `input_format` 与拆分选项。XLSX 需要 `spreadsheets`；语法感知代码解析需要 `code-parsing`。 |
+| `POST /lumber/api/split/file` | multipart form：`file`、任一已支持的 `input_format` 与拆分选项。语法感知代码解析需要 `code-parsing`。 |
 
 两个 endpoint 都会返回 `schema_version`（`lumberjack.chunk.v1`）、`document`、`metadata`、`reference_definitions`、`chunk_count`，以及与 Python `Chunk` model 对应的序列化 `chunks`。
 
