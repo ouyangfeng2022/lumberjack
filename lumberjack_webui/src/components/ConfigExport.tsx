@@ -1,71 +1,86 @@
-import { useTranslation } from 'react-i18next';
-import { useState } from 'react';
-import type { SplitOptions } from '../types/chunk';
-import { buildCliSnippet, buildPythonSnippet } from '../lib/exportConfig';
-import styles from './ConfigExport.module.css';
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { SplitOptions } from "../types/chunk";
+import { inputFilename, type DocumentInput } from "../lib/formats";
+import {
+  buildCliSnippet,
+  buildCurlSnippet,
+  buildPythonSnippet,
+} from "../lib/exportConfig";
+import { triggerDownload } from "../lib/download";
+import styles from "../App.module.css";
 
-interface Props {
-  options: SplitOptions;
-}
-
-function CopyButton({ text }: { text: string }) {
+export function CopyButton({ text, label }: { text: string; label?: string }) {
   const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
-
+  const [status, setStatus] = useState("");
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text);
+      setStatus(t("export_copied"));
     } catch {
-      const area = document.createElement('textarea');
-      area.value = text;
-      document.body.appendChild(area);
-      area.select();
-      document.execCommand('copy');
-      area.remove();
+      setStatus(t("ws_copy_failed"));
     }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
   };
-
   return (
-    <button className={styles.copyBtn} onClick={copy}>
-      {copied ? t('export_copied') : t('export_copy')}
-    </button>
+    <span className={styles.copyAction}>
+      <button onClick={() => void copy()}>{label ?? t("export_copy")}</button>
+      <span role="status">{status}</span>
+    </span>
   );
 }
-
-export default function ConfigExport({ options }: Props) {
+export default function ConfigExport({
+  options,
+  input,
+}: {
+  options: SplitOptions;
+  input: DocumentInput;
+}) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<'python' | 'cli'>('python');
-
-  const snippet = tab === 'python' ? buildPythonSnippet(options) : buildCliSnippet(options);
-
+  const [tab, setTab] = useState("CLI");
+  const snippets: Record<string, string> = {
+    CLI: buildCliSnippet(options, input),
+    cURL: buildCurlSnippet(options, input, window.location.origin),
+    Python: buildPythonSnippet(options, input),
+  };
   return (
-    <div className={styles.container}>
-      <button className={styles.toggle} onClick={() => setOpen(!open)}>
-        {open ? t('export_hide') : t('export_title')}
-      </button>
-      {open && (
-        <div className={styles.body}>
-          <div className={styles.tabs}>
+    <section className={styles.codeCard} aria-label={t("ws_export")}>
+      <div className={styles.toolbar}>
+        <div className={styles.tabs} role="tablist">
+          {Object.keys(snippets).map((name) => (
             <button
-              className={`${styles.tab} ${tab === 'python' ? styles.tabActive : ''}`}
-              onClick={() => setTab('python')}
+              key={name}
+              role="tab"
+              aria-selected={tab === name}
+              onClick={() => setTab(name)}
             >
-              {t('export_python')}
+              {name}
             </button>
-            <button
-              className={`${styles.tab} ${tab === 'cli' ? styles.tabActive : ''}`}
-              onClick={() => setTab('cli')}
-            >
-              {t('export_cli')}
-            </button>
-            <CopyButton text={snippet} />
-          </div>
-          <pre className={styles.snippet}>{snippet}</pre>
+          ))}
+        </div>
+        <CopyButton
+          key={snippets[tab]}
+          text={snippets[tab]}
+          label={t("ws_copy_code")}
+        />
+      </div>
+      {!input.file && tab === "CLI" && (
+        <div className={styles.notice}>
+          {t("ws_cli_input")}{" "}
+          <button
+            onClick={() =>
+              triggerDownload(
+                new Blob([input.text], { type: "text/plain" }),
+                inputFilename(input),
+              )
+            }
+          >
+            {t("ws_download_input")}
+          </button>
         </div>
       )}
-    </div>
+      <pre role="tabpanel" tabIndex={0}>
+        {snippets[tab]}
+      </pre>
+    </section>
   );
 }

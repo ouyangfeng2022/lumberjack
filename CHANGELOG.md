@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-13
+
+### Added
+
+- WebUI now provides a document workspace with multi-format input, linked chunk
+  previews and boundary navigation, editable comparison plans, and an export
+  center with CLI, cURL, and Python examples. Dark/light themes, responsive
+  layouts, and Chinese/English controls are available throughout.
+
 ## [0.6.0] - 2026-10-10
 
 ### Added

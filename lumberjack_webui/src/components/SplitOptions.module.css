@@ -7,7 +7,7 @@
 
 .sectionTitle {
   color: var(--ink-secondary);
-  font-size: 0.6875rem;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -34,7 +34,7 @@
 
 .fieldLabel {
   color: var(--ink-secondary);
-  font-size: 0.6875rem;
+  font-size: 13px;
   font-weight: 500;
 }
 
@@ -47,7 +47,7 @@
   border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--ink);
-  font-size: 0.8125rem;
+  font-size: 14px;
   font-weight: 400;
 }
 
@@ -71,7 +71,7 @@
   align-items: center;
   gap: var(--space-2);
   color: var(--ink-secondary);
-  font-size: 0.6875rem;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
 }
@@ -84,7 +84,7 @@
   accent-color: var(--primary);
 }
 
-.toggleBtn {
+.container .toggleBtn {
   display: inline-flex;
   align-self: flex-start;
   min-height: 24px;
@@ -93,7 +93,7 @@
   border: none;
   background: transparent;
   color: var(--primary);
-  font-size: 0.6875rem;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
 }
@@ -118,15 +118,37 @@
 .blockHandlingGrid {
   display: flex;
   flex-direction: column;
+  gap: 2px;
+}
+
+.blockHandlingHeader,
+.blockHandlingRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(3, 56px);
+  padding-inline: 6px;
+  align-items: center;
   gap: var(--space-1);
 }
 
 .blockHandlingHeader {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
   padding-bottom: var(--space-1);
   border-bottom: 1px solid var(--border);
+}
+
+.blockHandlingRow {
+  min-height: 26px;
+  border-radius: var(--radius-sm);
+}
+
+.blockHandlingRow:hover,
+.blockHandlingRow:focus-within {
+  background: var(--primary-subtle);
+  box-shadow: inset 3px 0 var(--primary);
+}
+
+.blockHandlingRow:hover .blockKindLabel,
+.blockHandlingRow:focus-within .blockKindLabel {
+  color: var(--ink);
 }
 
 .blockHeaderLabel {
@@ -135,23 +157,17 @@
   flex-shrink: 0;
   text-align: center;
   color: var(--ink-secondary);
-  font-size: 0.625rem;
+  font-size: 12px;
   font-weight: 500;
   cursor: help;
-  white-space: nowrap;
-}
-
-.blockHandlingRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  overflow-wrap: anywhere;
 }
 
 .blockKindLabel {
   flex: 1;
   min-width: 0;
   color: var(--ink-secondary);
-  font-size: 0.6875rem;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -166,7 +182,7 @@
   border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--ink);
-  font-size: 0.6875rem;
+  font-size: 13px;
   font-weight: 400;
   flex-shrink: 0;
 }
@@ -183,6 +199,8 @@
   justify-content: center;
   width: 14px;
   height: 14px;
+  margin: 0;
+  justify-self: center;
   flex-shrink: 0;
   accent-color: var(--primary);
   cursor: pointer;
@@ -212,24 +230,13 @@
   }
 
   .checkField {
-    font-size: 0.75rem;
+    font-size: 13px;
     min-height: 32px;
   }
 
   .checkField input[type="checkbox"] {
     width: 16px;
     height: 16px;
-  }
-
-  .blockHandlingRow {
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--space-1);
-  }
-
-  .blockHandlingHeader {
-    justify-content: flex-end;
-    gap: var(--space-3);
   }
 
   .blockKindLabel {

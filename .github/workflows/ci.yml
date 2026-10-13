@@ -89,6 +89,18 @@ jobs:
         run: bun run build
         working-directory: lumberjack_webui
 
+      - name: Frontend unit tests
+        run: bun run test
+        working-directory: lumberjack_webui
+
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+        working-directory: lumberjack_webui
+
+      - name: Browser workflow tests
+        run: bun run test:e2e
+        working-directory: lumberjack_webui
+
   integrations:
     name: RAG framework integrations
     runs-on: ubuntu-latest

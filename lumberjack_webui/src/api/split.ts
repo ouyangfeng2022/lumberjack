@@ -1,57 +1,69 @@
-import type { SplitOptions, SplitResponse } from '../types/chunk';
+import type { SplitOptions, SplitResponse } from "../types/chunk";
+import { resolvedFormat, type DocumentInput } from "../lib/formats";
 
-export async function splitMarkdown(
-  text: string | null,
-  file: File | null,
-  options: SplitOptions,
-): Promise<SplitResponse> {
-  if (file) {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('max_tokens', String(options.max_tokens));
-    formData.append('ideal_max_tokens_ratio', String(options.ideal_max_tokens_ratio));
-    formData.append('merge_below_ratio', String(options.merge_below_ratio));
-    formData.append('skip_empty_sections', String(options.skip_empty_sections));
-    formData.append('heading_sensitive', String(options.heading_sensitive));
-    if (options.block_configs) {
-      formData.append('block_configs', JSON.stringify(options.block_configs));
-    }
-    formData.append('tokenizer', options.tokenizer);
-    formData.append('splitter', options.splitter);
-
-    const response = await fetch('/lumber/api/split/file', {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(error || `Request failed with status ${response.status}`);
-    }
-
-    return response.json();
-  }
-
-  const response = await fetch('/lumber/api/split/text', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      text: text ?? '',
-      max_tokens: options.max_tokens,
-      ideal_max_tokens_ratio: options.ideal_max_tokens_ratio,
-      merge_below_ratio: options.merge_below_ratio,
-      skip_empty_sections: options.skip_empty_sections,
-      heading_sensitive: options.heading_sensitive,
-      block_configs: options.block_configs,
-      tokenizer: options.tokenizer,
-      splitter: options.splitter,
-    }),
-  });
-
+async function readResponse(response: Response) {
+  const body = await response.text();
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(error || `Request failed with status ${response.status}`);
+    let detail = body;
+    try {
+      const data = JSON.parse(body);
+      detail =
+        typeof data.detail === "string"
+          ? data.detail
+          : JSON.stringify(data.detail ?? data);
+    } catch {
+      /* A proxy can return plain-text errors. */
+    }
+    throw new Error(
+      "HTTP " + response.status + ": " + (detail || response.statusText),
+    );
   }
-
-  return response.json();
+  return JSON.parse(body);
+}
+export async function splitDocument(
+  input: DocumentInput,
+  options: SplitOptions,
+  signal?: AbortSignal,
+): Promise<SplitResponse> {
+  if (input.file) {
+    const form = new FormData();
+    form.append("file", input.file);
+    form.append("input_format", input.format);
+    for (const [key, value] of Object.entries(options)) {
+      if (value !== null)
+        form.append(
+          key,
+          typeof value === "object" ? JSON.stringify(value) : String(value),
+        );
+    }
+    return readResponse(
+      await fetch("/lumber/api/split/file", {
+        method: "POST",
+        body: form,
+        signal,
+      }),
+    );
+  }
+  return readResponse(
+    await fetch("/lumber/api/split/text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: input.text,
+        input_format: resolvedFormat(input),
+        ...options,
+      }),
+      signal,
+    }),
+  );
+}
+export async function getServiceInfo(
+  signal?: AbortSignal,
+): Promise<{ version: string; commit: string | null }> {
+  const [health, version] = await Promise.all([
+    fetch("/lumber/api/health", { signal }).then(readResponse),
+    fetch("/lumber/api/version", { signal }).then(readResponse),
+  ]);
+  if (health.status !== "ok") throw new Error("Service unavailable");
+  return version;
 }
