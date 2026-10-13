@@ -1,360 +1,736 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
-import MarkdownInput from './components/MarkdownInput';
-import SplitOptions from './components/SplitOptions';
-import ChunkList from './components/ChunkList';
-import LanguageSwitcher from './components/LanguageSwitcher';
-import SamplePicker from './components/SamplePicker';
-import CompareControls from './components/CompareControls';
-import CompareResults from './components/CompareResults';
-import ConfigExport from './components/ConfigExport';
-import BoundaryMap from './components/BoundaryMap';
-import { splitMarkdown } from './api/split';
-import { downloadChunksJsonl, downloadResultJson } from './lib/download';
-import { resolveCompareSplitters, type ComparePreset } from './lib/compare';
-import type {
-  CompareColumn,
-  SplitResponse,
-  SplitOptions as Options,
-  SplitterName,
-} from './types/chunk';
-import logo from './assets/lumberjack.png';
-import styles from './App.module.css';
+import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import MarkdownInput from "./components/MarkdownInput";
+import SplitOptions from "./components/SplitOptions";
+import LanguageSwitcher from "./components/LanguageSwitcher";
+import CompareResults from "./components/CompareResults";
+import ConfigExport, { CopyButton } from "./components/ConfigExport";
+import BoundaryMap from "./components/BoundaryMap";
+import DocumentPreview from "./components/DocumentPreview";
+import Dialog from "./components/Dialog";
+import Icon from "./components/Icon";
+import { getServiceInfo } from "./api/split";
+import {
+  downloadChunksJsonl,
+  downloadResultJson,
+  triggerDownload,
+} from "./lib/download";
+import { PRESET_SPLITTERS, ALL_SPLITTERS } from "./lib/compare";
+import {
+  budgetCount,
+  chunkBudget,
+  summarize,
+  validateOptions,
+} from "./lib/workspace";
+import { configurationJson } from "./lib/exportConfig";
+import { inputFilename, resolvedFormat } from "./lib/formats";
+import { BUILT_IN_SAMPLES } from "./samples";
+import useWorkspace from "./useWorkspace";
+import styles from "./App.module.css";
 
-const DEFAULT_OPTIONS: Options = {
-  max_tokens: 1200,
-  ideal_max_tokens_ratio: 0.8,
-  merge_below_ratio: 0.125,
-  skip_empty_sections: true,
-  heading_sensitive: true,
-  block_configs: null,
-  tokenizer: 'approx',
-  splitter: 'section',
-};
-
-const SAMPLE_MD = `# Getting Started
-
-This guide walks you through the basics of using our platform.
-
-## Installation
-
-First, install the required packages using your preferred package manager.
-
-\`\`\`bash
-npm install my-package
-\`\`\`
-
-## Configuration
-
-Create a config file in your project root:
-
-\`\`\`json
-{
-  "theme": "dark",
-  "language": "en"
+type Page = "split" | "compare" | "export";
+function hashPage(): Page {
+  const value = window.location.hash.slice(1);
+  return value === "compare" || value === "export" ? value : "split";
 }
-\`\`\`
-
-### Advanced Settings
-
-For production deployments, you should also set the following environment variables:
-
-- \`API_KEY\`: Your API key
-- \`BASE_URL\`: The base URL of your instance
-- \`LOG_LEVEL\`: Logging verbosity (debug, info, warn, error)
-
-## Usage
-
-Import the library and initialize it with your configuration:
-
-\`\`\`javascript
-import { createClient } from 'my-package';
-
-const client = createClient({
-  apiKey: 'your-api-key',
-});
-\`\`\`
-
-### Making Requests
-
-Once initialized, you can make requests to the API:
-
-\`\`\`javascript
-const result = await client.query({
-  text: "Hello, world!",
-  maxTokens: 100,
-});
-\`\`\`
-
-## Troubleshooting
-
-If you encounter issues, check the following:
-
-1. Verify your API key is valid
-2. Ensure your network allows outbound HTTPS connections
-3. Check the service status page for any ongoing incidents
-
-For more help, consult the FAQ or open a GitHub issue.
-`;
-
 export default function App() {
   const { t, i18n } = useTranslation();
-  const [text, setText] = useState(SAMPLE_MD);
-  const [file, setFile] = useState<File | null>(null);
-  const [fileContent, setFileContent] = useState('');
-  const [options, setOptions] = useState<Options>(DEFAULT_OPTIONS);
-  const [result, setResult] = useState<SplitResponse | null>(null);
-  const [splitElapsedMs, setSplitElapsedMs] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const [compareEnabled, setCompareEnabled] = useState(false);
-  const [comparePreset, setComparePreset] = useState<ComparePreset>('topology');
-  const [customSplitters, setCustomSplitters] = useState<SplitterName[]>([
-    'incremental-section',
-    'incremental-sibling',
-  ]);
-  const [compareColumns, setCompareColumns] = useState<CompareColumn[]>([]);
-  const [showBoundary, setShowBoundary] = useState(false);
+  const w = useWorkspace();
+  const [page, setPage] = useState<Page>(hashPage);
+  const [view, setView] = useState<"input" | "preview">("input");
+  const [theme, setTheme] = useState(() =>
+    localStorage.getItem("lumberjack_theme") === "light" ? "light" : "dark",
+  );
+  const [menu, setMenu] = useState(false);
+  const navRef = useRef<HTMLElement>(null);
+  const menuRef = useRef<HTMLButtonElement>(null);
+  const [modal, setModal] = useState<
+    "options" | "samples" | "detail" | "json" | null
+  >(null);
+  const [planIndex, setPlanIndex] = useState(0);
+  const [selected, setSelected] = useState(0);
+  const [service, setService] = useState<{
+    status: "checking" | "online" | "offline";
+    version?: string;
+  }>({ status: "checking" });
+  const [healthRetry, setHealthRetry] = useState(0);
 
   useEffect(() => {
+    if (!menu) return;
+    const trigger = menuRef.current;
+    navRef.current?.querySelector<HTMLElement>("a")?.focus();
+    return () => trigger?.focus();
+  }, [menu]);
+  useEffect(() => {
+    const listener = () => {
+      setPage(hashPage());
+      setMenu(false);
+    };
+    window.addEventListener("hashchange", listener);
+    return () => window.removeEventListener("hashchange", listener);
+  }, []);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("lumberjack_theme", theme);
+  }, [theme]);
+  useEffect(() => {
     document.documentElement.lang = i18n.language;
-    document.title = t('html_title');
+    document.title = t("ws_title");
   }, [i18n.language, t]);
+  useEffect(() => {
+    const controller = new AbortController();
+    getServiceInfo(
+      AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]),
+    )
+      .then((info) => setService({ status: "online", version: info.version }))
+      .catch(() => {
+        if (!controller.signal.aborted) setService({ status: "offline" });
+      });
+    return () => controller.abort();
+  }, [healthRetry]);
 
-  const canSubmit = !!file || text.trim().length > 0;
-  const sourceText = file ? fileContent : text;
-
-  const inputStats = useMemo(() => {
-    return {
-      lines: sourceText ? sourceText.split(/\r\n|\r|\n/).length : 0,
-      characters: sourceText.length,
-      name: file?.name ?? 'document.md',
-    };
-  }, [file, sourceText]);
-
-  const resultStats = useMemo(() => {
-    if (!result) return null;
-    const largestChunk = result.chunks.reduce(
-      (max, chunk) =>
-        Math.max(
-          max,
-          options.heading_sensitive ? chunk.token_count : chunk.body_token_count,
-        ),
-      0,
-    );
-    const budgetUse = Math.min(100, Math.round((largestChunk / options.max_tokens) * 100));
-
-    return {
-      budgetUse,
-    };
-  }, [options.heading_sensitive, options.max_tokens, result]);
-
-  const loadSample = (sampleText: string) => {
-    setFile(null);
-    setFileContent('');
-    setText(sampleText);
+  const navigate = (next: Page) => {
+    window.location.assign("#" + next);
+    setPage(next);
+    setMenu(false);
   };
-
-  const handleSubmit = async () => {
-    setError(null);
-    setResult(null);
-    setSplitElapsedMs(null);
-    setCompareColumns([]);
-    setLoading(true);
-
-    if (compareEnabled) {
-      const splitters = resolveCompareSplitters(comparePreset, customSplitters);
-      const columns: CompareColumn[] = splitters.map((splitter) => ({
-        splitter,
-        options: { ...options, splitter },
-        result: null,
-        error: null,
-        elapsedMs: null,
-      }));
-      // Sequential on purpose: keeps concurrent splits bounded and stays
-      // friendly to the demo server's rate limit.
-      for (let i = 0; i < columns.length; i += 1) {
-        const column = columns[i];
-        const startedAt = performance.now();
-        try {
-          const data = await splitMarkdown(text, file, {
-            ...options,
-            splitter: column.splitter,
-          });
-          column.elapsedMs = Math.max(0, performance.now() - startedAt);
-          if ('error' in data) {
-            column.error = (data as { error: string }).error;
-          } else {
-            column.result = data as SplitResponse;
+  const run = w.run;
+  const stale = !!run && run.revision !== w.revision;
+  const compareStale =
+    !!w.comparison &&
+    (w.comparison.revision !== w.revision ||
+      w.comparison.planRevision !== w.planRevision);
+  const chunk = run?.result.chunks[selected];
+  const stats = run && summarize(run.result, run.options);
+  const canRun =
+    (!!w.input.file || !!w.input.text.trim()) &&
+    !w.busy &&
+    !w.reading &&
+    (page === "compare"
+      ? w.plans.length >= 2 && w.plans.every(validateOptions)
+      : validateOptions(w.options));
+  const select = (index: number) => setSelected(index);
+  const execute = async () => {
+    if (await w.execute(page === "compare")) {
+      setSelected(0);
+      if (page === "split") setView("preview");
+    }
+  };
+  const openOptions = () => {
+    setModal("options");
+  };
+  const detail = chunk && run && (
+    <>
+      <div className={styles.inspectorCard}>
+        <div className={styles.toolbar}>
+          <strong className={styles.chunkNumber}>
+            #{String(selected + 1).padStart(2, "0")}
+          </strong>
+          {chunk.protected && (
+            <span className={styles.warning}>{t("chunk_protected")}</span>
+          )}
+        </div>
+        <div className={styles.meter}>
+          <i
+            style={{
+              width:
+                Math.min(
+                  100,
+                  (budgetCount(chunk, run.options) /
+                    chunkBudget(chunk, run.options)) *
+                    100,
+                ) + "%",
+              background:
+                budgetCount(chunk, run.options) >
+                chunkBudget(chunk, run.options)
+                  ? "var(--warning)"
+                  : "var(--primary)",
+            }}
+          />
+        </div>
+        <p
+          className={
+            budgetCount(chunk, run.options) > chunkBudget(chunk, run.options)
+              ? styles.warning
+              : styles.muted
           }
-        } catch (err) {
-          column.error = err instanceof Error ? err.message : 'Unknown error';
-        }
-        setCompareColumns([...columns]);
-      }
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const startedAt = performance.now();
-      const data = await splitMarkdown(text, file, options);
-      const elapsedMs = Math.max(0, performance.now() - startedAt);
-      if ('error' in data) {
-        setError((data as { error: string }).error);
-      } else {
-        setSplitElapsedMs(elapsedMs);
-        setResult(data as SplitResponse);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const exportOptions = compareEnabled
-    ? { ...options, splitter: resolveCompareSplitters(comparePreset, customSplitters)[0] }
-    : options;
+        >
+          {budgetCount(chunk, run.options)} / {chunkBudget(chunk, run.options)}{" "}
+          tokens
+        </p>
+        <dl className={styles.details}>
+          <dt>{t("ws_heading_path")}</dt>
+          <dd>
+            {[
+              ...chunk.ancestor_headings,
+              ...(chunk.own_heading ? [chunk.own_heading] : []),
+            ]
+              .map(([, value]) => value)
+              .join(" / ") || "—"}
+          </dd>
+          <dt>{t("ws_location")}</dt>
+          <dd>
+            {chunk.start_line != null
+              ? "L" + chunk.start_line + "–L" + chunk.end_line
+              : "—"}{" "}
+            · {inputFilename(run.input)}
+            {chunk.source_locations.map((location, index) => (
+              <div key={index}>
+                {[
+                  location.page_start != null
+                    ? t("ws_page") +
+                      " " +
+                      location.page_start +
+                      (location.page_end !== location.page_start
+                        ? "–" + location.page_end
+                        : "")
+                    : "",
+                  location.sheet,
+                  location.row_start != null
+                    ? t("ws_row") +
+                      " " +
+                      location.row_start +
+                      "–" +
+                      location.row_end
+                    : "",
+                  location.json_path,
+                  location.element_id,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </div>
+            ))}
+          </dd>
+          <dt>{t("ws_block_type")}</dt>
+          <dd>{chunk.chunk_type}</dd>
+          <dt>{t("ws_body_headings")}</dt>
+          <dd>
+            {chunk.body_token_count} + {chunk.headings_token_count}
+          </dd>
+          <dt>{t("ws_estimated")}</dt>
+          <dd>
+            {chunk.estimated_token_count}{" "}
+            {chunk.token_count > 0
+              ? "(Δ " +
+                Math.round(
+                  ((chunk.estimated_token_count - chunk.token_count) /
+                    chunk.token_count) *
+                    100,
+                ) +
+                "%)"
+              : ""}
+          </dd>
+        </dl>
+        <div className={styles.toolbar}>
+          <CopyButton
+            key={chunk.chunk_id}
+            text={chunk.body}
+            label={t("ws_copy_content")}
+          />
+          <button
+            aria-label={t("ws_chunk_json")}
+            onClick={() => setModal("json")}
+          >
+            {"{ }"}
+          </button>
+        </div>
+      </div>
+      <h3>{t("ws_parameters")}</h3>
+      <div className={styles.inspectorCard}>
+        <dl className={styles.details}>
+          <dt>max_tokens</dt>
+          <dd>{run.options.max_tokens}</dd>
+          <dt>tokenizer</dt>
+          <dd>{run.options.tokenizer}</dd>
+          <dt>splitter</dt>
+          <dd>{run.options.splitter}</dd>
+          <dt>{t("ws_counting")}</dt>
+          <dd>
+            {run.options.splitter.startsWith("exact-") ||
+            run.options.splitter === "record"
+              ? "exact"
+              : "incremental"}
+          </dd>
+        </dl>
+        <button className={styles.textButton} onClick={openOptions}>
+          {t("ws_adjust")} ›
+        </button>
+      </div>
+      <h3>{t("ws_statistics")}</h3>
+      <div className={styles.inspectorCard}>
+        <strong>
+          {stats?.count} {t("ws_chunks")} · {stats?.total.toLocaleString()}{" "}
+          tokens
+        </strong>
+        <p className={styles.muted}>
+          {t("ws_largest")}: {stats?.largest} · {stats?.over} {t("ws_over")}
+        </p>
+      </div>
+      <p className={styles.requestInfo}>
+        POST /lumber/api/split/{run.input.file ? "file" : "text"} · 200 OK ·{" "}
+        {Math.round(run.elapsedMs)} ms
+      </p>
+    </>
+  );
 
   return (
-    <div className={styles.page}>
-      <header className={styles.header}>
-        <div className={styles.brand}>
-          <img className={styles.logoMark} src={logo} alt="Lumberjack" />
-          <div>
-            <h1 className={styles.title}>{t('app_title')}</h1>
-            <p className={styles.subtitle}>{t('app_subtitle')}</p>
-          </div>
-        </div>
-        <div className={styles.headerActions}>
-          <LanguageSwitcher />
-        </div>
-      </header>
-
-      <main className={styles.main}>
-        <section className={`${styles.panel} ${styles.inputPanel}`}>
-          <div className={styles.panelHeader}>
-            <h2 className={styles.panelTitle}>{t('md_label')}</h2>
-            <div className={styles.inputActions}>
-              <div className={styles.inputStats}>
-                <span>{t('stats_lines')}: {inputStats.lines}</span>
-                <span>{t('stats_characters')}: {inputStats.characters}</span>
-              </div>
-              <SamplePicker onLoad={loadSample} />
-            </div>
-          </div>
-          <MarkdownInput
-            text={text}
-            file={file}
-            onTextChange={setText}
-            onFileChange={setFile}
-            onFileContentChange={setFileContent}
-          />
-        </section>
-
-        <aside className={`${styles.panel} ${styles.optionsPanel}`}>
-          <div className={styles.panelHeader}>
-            <h2 className={styles.panelTitle}>{t('opts_label')}</h2>
-          </div>
-          <div className={styles.optionsScroll}>
-            <div className={styles.compareSlot}>
-              <CompareControls
-                enabled={compareEnabled}
-                preset={comparePreset}
-                customSplitters={customSplitters}
-                onToggle={setCompareEnabled}
-                onPresetChange={setComparePreset}
-                onCustomChange={setCustomSplitters}
-              />
-            </div>
-            <SplitOptions options={options} onChange={setOptions} />
-          </div>
-          <div className={styles.optionsFooter}>
-            <button
-              className={styles.splitBtn}
-              disabled={!canSubmit || loading}
-              onClick={handleSubmit}
+    <div className={styles.workspace}>
+      <aside
+        ref={navRef}
+        role={menu ? "dialog" : undefined}
+        aria-modal={menu ? true : undefined}
+        aria-label={t("ws_workspace")}
+        className={styles.sidebar + " " + (menu ? styles.sidebarOpen : "")}
+        onKeyDown={(event) => {
+          if (!menu) return;
+          if (event.key === "Escape") {
+            setMenu(false);
+            return;
+          }
+          if (event.key !== "Tab") return;
+          const items =
+            navRef.current!.querySelectorAll<HTMLElement>("a, button");
+          const target = event.shiftKey ? items[0] : items[items.length - 1];
+          if (document.activeElement === target) {
+            event.preventDefault();
+            (event.shiftKey ? items[items.length - 1] : items[0]).focus();
+          }
+        }}
+      >
+        <a
+          className={styles.brand}
+          href="#split"
+          onClick={() => setMenu(false)}
+        >
+          <span className={styles.logo}>◎</span> Lumberjack
+        </a>
+        <span className={styles.navLabel}>{t("ws_workspace")}</span>
+        <nav aria-label={t("ws_workspace")}>
+          {(["split", "compare"] as const).map((name) => (
+            <a
+              key={name}
+              href={"#" + name}
+              aria-current={page === name ? "page" : undefined}
+              onClick={() => navigate(name)}
             >
-              {loading ? t('btn_splitting') : t('btn_split')}
+              <Icon name={name} />
+              {t("ws_" + name)}
+            </a>
+          ))}
+          <span className={styles.navLabel}>{t("ws_resources")}</span>
+          <a
+            href="#export"
+            aria-current={page === "export" ? "page" : undefined}
+            onClick={() => navigate("export")}
+          >
+            <Icon name="export" />
+            {t("ws_export")}
+          </a>
+          <button
+            onClick={() => {
+              setMenu(false);
+              setModal("samples");
+            }}
+          >
+            <Icon name="samples" />
+            {t("ws_samples")}
+          </button>
+        </nav>
+        <div className={styles.sidebarBottom}>
+          <button
+            className={styles.serviceCard}
+            onClick={() => {
+              setService({ status: "checking" });
+              setHealthRetry(healthRetry + 1);
+            }}
+            title={t("ws_retry")}
+          >
+            <strong>
+              <i className={styles.statusDot} data-status={service.status} />
+              {t("ws_service_" + service.status)}
+            </strong>
+            <small>
+              {window.location.host}{" "}
+              {service.version ? "· v" + service.version : ""}
+            </small>
+          </button>
+          <div className={styles.toolbar}>
+            <LanguageSwitcher />
+            <button
+              className={styles.themeButton}
+              aria-label={t(theme === "dark" ? "ws_light" : "ws_dark")}
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              <Icon name="sun" />
             </button>
-            <div className={styles.optionHint}>
-              <span>{inputStats.name}</span>
-            </div>
-            <ConfigExport options={exportOptions} />
           </div>
-        </aside>
-
-        <section className={`${styles.panel} ${styles.resultsPanel}`}>
-          <div className={styles.panelHeader}>
-            <h2 className={styles.panelTitle}>
-              {compareEnabled && compareColumns.length > 0
-                ? t('panel_compare_title')
-                : t('panel_results_title')}
-            </h2>
-            <div className={styles.resultsActions}>
-              {result && (
-                <>
+        </div>
+      </aside>
+      {menu && (
+        <button
+          className={styles.navBackdrop}
+          onClick={() => setMenu(false)}
+          aria-label={t("ws_close")}
+        />
+      )}
+      <main className={styles.main} inert={menu}>
+        <header className={styles.topbar}>
+          <button
+            ref={menuRef}
+            className={styles.menuButton}
+            onClick={() => setMenu(!menu)}
+            aria-label={t("ws_menu")}
+            aria-expanded={menu}
+            aria-haspopup="dialog"
+          >
+            <Icon name="menu" />
+          </button>
+          <div className={styles.pageTitle}>
+            <span className={styles.titleIcon}>
+              <Icon name={page === "split" ? "doc" : page} />
+            </span>
+            <div>
+              <h1>
+                {page === "split" ? inputFilename(w.input) : t("ws_" + page)}
+              </h1>
+              <p>
+                {page === "split"
+                  ? resolvedFormat(w.input) +
+                    " · " +
+                    (w.input.file
+                      ? (w.input.file.size / 1024).toFixed(1) + " KB"
+                      : w.input.text.length + " " + t("stats_characters"))
+                  : t("ws_" + page + "_subtitle")}
+              </p>
+            </div>
+          </div>
+          <div className={styles.topActions}>
+            <span className={styles.endpoint}>
+              <i className={styles.statusDot} data-status={service.status} />
+              {window.location.host}
+            </span>
+            {page !== "export" ? (
+              <>
+                <button onClick={openOptions}>
+                  {t(page === "compare" ? "ws_adjust_plans" : "ws_adjust")}
+                </button>
+                {w.busy ? (
+                  <button onClick={w.cancel}>{t("ws_cancel")}</button>
+                ) : (
                   <button
-                    className={styles.miniBtn}
-                    onClick={() => setShowBoundary(!showBoundary)}
+                    className={styles.primaryButton}
+                    disabled={!canRun}
+                    onClick={() => void execute()}
                   >
-                    {showBoundary ? t('boundary_hide') : t('boundary_show')}
+                    <Icon name={page === "compare" ? "compare" : "play"} />
+                    {t(page === "compare" ? "ws_run_compare" : "ws_run_split")}
                   </button>
-                  <button
-                    className={styles.miniBtn}
-                    onClick={() => downloadResultJson(result)}
-                  >
-                    {t('download_json')}
-                  </button>
-                  <button
-                    className={styles.miniBtn}
-                    onClick={() => downloadChunksJsonl(result)}
-                  >
-                    {t('download_jsonl')}
-                  </button>
-                </>
+                )}
+              </>
+            ) : (
+              <button
+                className={styles.primaryButton}
+                onClick={() =>
+                  triggerDownload(
+                    new Blob([configurationJson(w.options, w.input)], {
+                      type: "application/json",
+                    }),
+                    "lumber.json",
+                  )
+                }
+              >
+                {t("ws_download_config")}
+              </button>
+            )}
+          </div>
+        </header>
+        {(w.error ||
+          (page === "split" && stale) ||
+          (page === "compare" && compareStale)) && (
+          <div
+            role={w.error ? "alert" : "status"}
+            className={w.error ? styles.error : styles.notice}
+          >
+            {w.error || t("ws_stale")}
+          </div>
+        )}
+        {w.busy && (
+          <div className={styles.progress} role="status">
+            {t("btn_splitting")}
+          </div>
+        )}
+        {page === "split" && (
+          <>
+            <div className={styles.viewTabs}>
+              <div className={styles.tabs} role="tablist">
+                <button
+                  role="tab"
+                  aria-selected={view === "input"}
+                  onClick={() => setView("input")}
+                >
+                  {t("ws_input")}
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={view === "preview"}
+                  disabled={!run}
+                  onClick={() => setView("preview")}
+                >
+                  {t("ws_preview")}
+                </button>
+              </div>
+              {view === "preview" && chunk && (
+                <button
+                  className={styles.detailButton}
+                  onClick={() => setModal("detail")}
+                >
+                  {t("ws_selected")} #{selected + 1}
+                </button>
               )}
-              {resultStats && (
-                <div className={styles.resultMeter} aria-label={t('result_budget_use')}>
-                  <span>{resultStats.budgetUse}%</span>
-                  <div className={styles.meterTrack}>
-                    <div
-                      className={styles.meterFill}
-                      style={{ width: `${resultStats.budgetUse}%` }}
-                    />
+            </div>
+            {view === "input" ? (
+              <div className={styles.inputArea}>
+                <MarkdownInput input={w.input} onChange={w.updateInput} />
+              </div>
+            ) : (
+              run && (
+                <div className={styles.previewLayout}>
+                  <DocumentPreview
+                    key={run.revision + ":" + run.elapsedMs}
+                    run={run}
+                    selected={selected}
+                    onSelect={select}
+                  />
+                  <aside className={styles.inspector}>
+                    <h3>{t("ws_selected")}</h3>
+                    {detail}
+                  </aside>
+                </div>
+              )
+            )}
+            {view === "preview" && run && (
+              <BoundaryMap
+                chunks={run.result.chunks}
+                options={run.options}
+                selected={selected}
+                onSelect={select}
+              />
+            )}
+          </>
+        )}
+        {page === "compare" &&
+          (w.comparison ? (
+            <CompareResults
+              columns={w.comparison.columns}
+              input={w.comparison.input}
+              stale={compareStale}
+              loading={!!w.busy}
+              onAdopt={(column) => {
+                w.adopt(column);
+                setSelected(0);
+                setView("preview");
+                navigate("split");
+              }}
+            />
+          ) : (
+            <div className={styles.empty}>
+              <Icon name="compare" />
+              <h2>{t("ws_compare")}</h2>
+              <p>{t("ws_compare_hint")}</p>
+              <button onClick={openOptions}>{t("ws_adjust_plans")}</button>
+            </div>
+          ))}
+        {page === "export" && (
+          <>
+            <div className={styles.exportLayout}>
+              <aside className={styles.exportSummary}>
+                <h3>{t("ws_parameters")}</h3>
+                <pre>{configurationJson(w.options, w.input)}</pre>
+                <h3>{t("ws_input")}</h3>
+                <p>
+                  {inputFilename(w.input)} · {resolvedFormat(w.input)}
+                </p>
+                <p className={styles.muted}>{t("ws_export_hint")}</p>
+                {run && (
+                  <div className={styles.downloads}>
+                    <button onClick={() => downloadResultJson(run.result)}>
+                      {t("ws_result_json")}
+                    </button>
+                    <button onClick={() => downloadChunksJsonl(run.result)}>
+                      {t("ws_result_jsonl")}
+                    </button>
+                    {stale && (
+                      <p className={styles.warning}>{t("ws_stale_download")}</p>
+                    )}
                   </div>
-                </div>
-              )}
+                )}
+              </aside>
+              <ConfigExport options={w.options} input={w.input} />
             </div>
-          </div>
-
-          {error && <div className={styles.error}>{error}</div>}
-
-          {compareColumns.length > 0 && (
-            <CompareResults columns={compareColumns} sourceText={sourceText} />
-          )}
-
-          {!compareEnabled && result && (
-            <>
-              {showBoundary && (
-                <div className={styles.boundarySlot}>
-                  <BoundaryMap sourceText={sourceText} chunks={result.chunks} />
-                </div>
-              )}
-              <ChunkList result={result} elapsedMs={splitElapsedMs} />
-            </>
-          )}
-
-          {!result && !error && compareColumns.length === 0 && (
-            <div className={styles.emptyState}>
-              <h3>{t('empty_split_title')}</h3>
-              <p>{t('empty_split_body')}</p>
-            </div>
-          )}
-        </section>
+            <footer className={styles.envBar}>
+              {t("ws_environment")} ·{" "}
+              {service.version
+                ? "v" + service.version
+                : t("ws_service_" + service.status)}{" "}
+              · /lumber/api/split/*
+            </footer>
+          </>
+        )}
       </main>
+      {modal === "options" && (
+        <Dialog
+          drawer
+          title={t(page === "compare" ? "ws_adjust_plans" : "ws_adjust")}
+          onClose={() => setModal(null)}
+        >
+          {page === "compare" && (
+            <div className={styles.planControls}>
+              <label>
+                {t("compare_preset")}{" "}
+                <select
+                  aria-label={t("compare_preset")}
+                  defaultValue=""
+                  onChange={(event) => {
+                    const names =
+                      event.target.value === "topology"
+                        ? PRESET_SPLITTERS.topology
+                        : event.target.value === "counting"
+                          ? PRESET_SPLITTERS.counting
+                          : ([
+                              w.options.splitter,
+                              w.options.splitter === "sibling"
+                                ? "section"
+                                : "sibling",
+                            ] as const);
+                    w.updatePlans(
+                      names.map((splitter) => ({
+                        ...structuredClone(w.options),
+                        splitter,
+                      })),
+                    );
+                    setPlanIndex(0);
+                  }}
+                >
+                  <option value="" disabled>
+                    {t("compare_preset_custom")}
+                  </option>
+                  <option value="ab">A / B</option>
+                  <option value="topology">
+                    {t("compare_preset_topology")}
+                  </option>
+                  <option value="counting">
+                    {t("compare_preset_counting")}
+                  </option>
+                </select>
+              </label>
+              <div className={styles.tabs}>
+                {w.plans.map((_, index) => (
+                  <button
+                    key={index}
+                    aria-pressed={planIndex === index}
+                    onClick={() => setPlanIndex(index)}
+                  >
+                    {String.fromCharCode(65 + index)}
+                  </button>
+                ))}
+                <button
+                  aria-label={t("ws_add_plan")}
+                  disabled={w.plans.length >= ALL_SPLITTERS.length}
+                  onClick={() => {
+                    w.updatePlans([...w.plans, structuredClone(w.options)]);
+                    setPlanIndex(w.plans.length);
+                  }}
+                >
+                  +
+                </button>
+                <button
+                  aria-label={t("ws_remove_plan")}
+                  disabled={w.plans.length <= 2}
+                  onClick={() => {
+                    w.updatePlans(
+                      w.plans.filter((_, index) => index !== planIndex),
+                    );
+                    setPlanIndex(0);
+                  }}
+                >
+                  −
+                </button>
+              </div>
+            </div>
+          )}
+          <SplitOptions
+            options={
+              page === "compare"
+                ? (w.plans[planIndex] ?? w.plans[0])
+                : w.options
+            }
+            onChange={(next) =>
+              page === "compare"
+                ? w.updatePlans(
+                    w.plans.map((plan, index) =>
+                      index === planIndex ? next : plan,
+                    ),
+                  )
+                : w.updateOptions(next)
+            }
+          />
+          {!(page === "compare"
+            ? w.plans.every(validateOptions)
+            : validateOptions(w.options)) && (
+            <p role="alert" className={styles.error}>
+              {t("ws_invalid_options")}
+            </p>
+          )}
+          <footer className={styles.dialogFooter}>
+            <button
+              className={styles.primaryButton}
+              onClick={() => setModal(null)}
+            >
+              {t("ws_done")}
+            </button>
+          </footer>
+        </Dialog>
+      )}
+      {modal === "samples" && (
+        <Dialog title={t("ws_samples")} onClose={() => setModal(null)}>
+          <div className={styles.sampleGrid}>
+            {BUILT_IN_SAMPLES.map((sample) => (
+              <button
+                key={sample.id}
+                onClick={() => {
+                  w.updateInput({
+                    file: null,
+                    text: sample.text,
+                    format: sample.format ?? "markdown",
+                  });
+                  setSelected(0);
+                  setView("input");
+                  navigate("split");
+                  setModal(null);
+                }}
+              >
+                <Icon name="doc" />
+                <strong>{t(sample.labelKey)}</strong>
+                <small>
+                  {sample.format ?? "markdown"} · {sample.text.length}{" "}
+                  {t("stats_characters")}
+                </small>
+              </button>
+            ))}
+          </div>
+        </Dialog>
+      )}
+      {modal === "detail" && (
+        <Dialog drawer title={t("ws_selected")} onClose={() => setModal(null)}>
+          {detail}
+        </Dialog>
+      )}
+      {modal === "json" && chunk && (
+        <Dialog title={t("ws_chunk_json")} onClose={() => setModal(null)}>
+          <CopyButton text={JSON.stringify(chunk, null, 2)} />
+          <pre className={styles.json}>{JSON.stringify(chunk, null, 2)}</pre>
+        </Dialog>
+      )}
     </div>
   );
 }

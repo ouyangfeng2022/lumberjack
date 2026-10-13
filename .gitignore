@@ -17,6 +17,8 @@ wheels/
 # Frontend
 lumberjack_webui/node_modules/
 lumberjack_webui/dist/
+lumberjack_webui/test-results/
+lumberjack_webui/playwright-report/
 src/lumberjack/web/static/
 
 # Datasets

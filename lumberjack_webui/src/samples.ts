@@ -1,4 +1,5 @@
 export interface BuiltInSample {
+  format?: import("./lib/formats").InputFormat;
   id: string;
   labelKey: string;
   text: string;
@@ -6,8 +7,20 @@ export interface BuiltInSample {
 
 export const BUILT_IN_SAMPLES: BuiltInSample[] = [
   {
-    id: 'technical',
-    labelKey: 'sample_technical',
+    id: "csv",
+    labelKey: "ws_sample_csv",
+    format: "csv",
+    text: "name,region,quota\napi-gateway,us-east-1,12000\nauth-service,eu-west-1,8000\nsearch-indexer,ap-south-1,15000\n",
+  },
+  {
+    id: "jsonl",
+    labelKey: "ws_sample_jsonl",
+    format: "jsonl",
+    text: '{"id":1,"name":"API gateway","region":"us-east-1"}\n{"id":2,"name":"Auth service","region":"eu-west-1"}\n{"id":3,"name":"Search indexer","region":"ap-south-1"}\n',
+  },
+  {
+    id: "technical",
+    labelKey: "sample_technical",
     text: `# Getting Started
 
 This guide walks you through the basics of using our platform.
@@ -74,8 +87,8 @@ For more help, consult the FAQ or open a GitHub issue.
 `,
   },
   {
-    id: 'table',
-    labelKey: 'sample_table',
+    id: "table",
+    labelKey: "sample_table",
     text: `# Service Catalog
 
 An overview of the services we operate, their regions, and quotas.
@@ -111,8 +124,8 @@ before requesting increases above the listed values.
 `,
   },
   {
-    id: 'long-paragraph',
-    labelKey: 'sample_long_paragraph',
+    id: "long-paragraph",
+    labelKey: "sample_long_paragraph",
     text: `# System Design Retrospective
 
 ## Background
@@ -133,8 +146,8 @@ Would we make the same choices again? Mostly yes. We would invest earlier in the
 `,
   },
   {
-    id: 'mixed-language',
-    labelKey: 'sample_mixed',
+    id: "mixed-language",
+    labelKey: "sample_mixed",
     text: `# 混合语言文档 / Mixed-Language Document
 
 This document mixes Chinese and English to show how token estimation behaves
@@ -171,8 +184,8 @@ candidate text, at the cost of more tokenizer calls.
 `,
   },
   {
-    id: 'code-heavy',
-    labelKey: 'sample_code',
+    id: "code-heavy",
+    labelKey: "sample_code",
     text: `# Parser Internals
 
 The parser turns a token stream into the shared document tree.
